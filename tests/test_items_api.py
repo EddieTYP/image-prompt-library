@@ -1,9 +1,17 @@
 from fastapi.testclient import TestClient
+from io import BytesIO
+from PIL import Image
 from backend.main import create_app
 
 
 def client(tmp_path):
     return TestClient(create_app(library_path=tmp_path / "library"))
+
+
+def png_bytes(size=(32, 24), color=(120, 40, 220)):
+    buf = BytesIO()
+    Image.new("RGB", size, color).save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def create_payload(**overrides):
@@ -121,6 +129,31 @@ def test_upload_to_missing_item_returns_404_without_orphan_files(tmp_path):
     assert response.status_code == 404
     library = tmp_path / "library"
     assert not [p for name in ("originals", "thumbs", "previews") if (library / name).exists() for p in (library / name).rglob("*")]
+
+
+def test_image_upload_persists_result_and_reference_roles(tmp_path):
+    c = client(tmp_path)
+    item = c.post("/api/items", json=create_payload()).json()
+    result = c.post(
+        f"/api/items/{item['id']}/images",
+        data={"role": "result_image"},
+        files={"file": ("result.png", png_bytes(), "image/png")},
+    )
+    reference = c.post(
+        f"/api/items/{item['id']}/images",
+        data={"role": "reference_image"},
+        files={"file": ("reference.png", png_bytes(color=(1, 2, 3)), "image/png")},
+    )
+    invalid = c.post(
+        f"/api/items/{item['id']}/images",
+        data={"role": "other"},
+        files={"file": ("other.png", png_bytes(color=(4, 5, 6)), "image/png")},
+    )
+    detail = c.get(f"/api/items/{item['id']}").json()
+    assert result.status_code == 200
+    assert reference.status_code == 200
+    assert invalid.status_code == 400
+    assert [image["role"] for image in detail["images"]] == ["result_image", "reference_image"]
 
 
 def test_create_simplified_prompt_adds_traditional_prompt(tmp_path):

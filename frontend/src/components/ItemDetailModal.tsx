@@ -7,7 +7,6 @@ import { PROMPT_LANGUAGE_LABELS, resolvePromptText, type PromptLanguage } from '
 
 const LANG_LABELS: Record<string, string> = {
   ...PROMPT_LANGUAGE_LABELS,
-  original: 'Original',
 };
 
 function getImageIdentity(image: ImageRecord) {
@@ -94,7 +93,7 @@ export default function ItemDetailModal({
               <p className="muted">{item.model || 'ChatGPT Image'} · {item.source_name || 'Local reference'}</p>
 
               <div className="tabs prompt-tabs" aria-label="Prompt language">
-                {Array.from(new Set([preferredLanguage, 'zh_hant', 'en', 'original', 'zh_hans'])).map(l => (
+                {Array.from(new Set([preferredLanguage, 'zh_hant', 'en', 'zh_hans'])).map(l => (
                   <button key={l} className={lang === l ? 'active' : ''} onClick={() => setLang(l)}>
                     {LANG_LABELS[l] || l}
                   </button>

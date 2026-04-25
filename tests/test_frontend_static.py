@@ -308,3 +308,57 @@ def test_gallery_visuals_are_polished():
     assert "editor-grid" in editor and "drop-zone" in editor
     assert "--surface-warm" in css
     assert ".fab{position:fixed;right:32px;bottom:32px" in css.replace("\n", "")
+
+
+def test_editor_supports_multilingual_prompts_collection_suggestions_and_image_requirements():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    editor = (ROOT / "frontend" / "src" / "components" / "ItemEditorModal.tsx").read_text()
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+    types = (ROOT / "frontend" / "src" / "types.ts").read_text()
+    api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+
+    assert "clusters={clusters}" in app
+    assert "tags={tags}" in app
+    assert "clusters: ClusterRecord[]" in editor
+    assert "tags: TagRecord[]" in editor
+    assert "initialTraditionalPrompt" in editor
+    assert "promptText(item, 'zh_hant') || promptText(item, 'original')" in editor
+    assert "zhHantPrompt" in editor and "zhHansPrompt" in editor and "englishPrompt" in editor
+    assert "language: 'zh_hant'" in editor
+    assert "language: 'zh_hans'" in editor
+    assert "language: 'en'" in editor
+    assert "Traditional Chinese prompt" in editor
+    assert "Simplified Chinese prompt" in editor
+    assert "English prompt" in editor
+    assert "collection-suggestions" in editor
+    assert "filteredClusters" in editor
+    assert "list=\"collection-suggestions\"" in editor
+    assert "tag-suggestions" in editor
+    assert "filteredTags" in editor
+    assert "list=\"tag-suggestions\"" in editor
+    assert "Original" not in detail
+    assert "'original'" not in detail
+    assert "Result image" in editor and "required" in editor
+    assert "Reference photo" in editor and "optional" in editor
+    assert "resultFile" in editor and "referenceFile" in editor
+    assert "hasExistingResultImage" in editor
+    assert "missingRequiredImage" in editor
+    assert "result_image" in types
+    assert "reference_image" in types
+    assert "role?: UploadImageRole" in types
+    assert "fd.set('role', role)" in api_client
+
+
+def test_delete_action_archives_item_and_refreshes_visible_data():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+    editor = (ROOT / "frontend" / "src" / "components" / "ItemEditorModal.tsx").read_text()
+
+    assert "deleteItem" in api_client
+    assert "method: 'DELETE'" in api_client
+    assert "onDeleted" in app
+    assert "setItemsReloadKey(k => k + 1)" in app
+    assert "Delete reference" in editor
+    assert "confirm('Delete this reference?" in editor
+    assert "api.deleteItem(item.id)" in editor
+    assert "danger" in editor

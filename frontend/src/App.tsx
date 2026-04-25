@@ -10,7 +10,7 @@ import ItemEditorModal from './components/ItemEditorModal';
 import ConfigPanel from './components/ConfigPanel';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
-import type { ClusterRecord, ItemDetail, ItemSummary, ViewMode } from './types';
+import type { ClusterRecord, ItemDetail, ItemSummary, TagRecord, ViewMode } from './types';
 import { copyTextToClipboard } from './utils/clipboard';
 import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptLanguage } from './utils/prompts';
 
@@ -38,6 +38,7 @@ export default function App() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [clusters, setClusters] = useState<ClusterRecord[]>([]);
+  const [tags, setTags] = useState<TagRecord[]>([]);
   const [detailId, setDetailId] = useState<string>();
   const [editing, setEditing] = useState<ItemDetail | undefined>();
   const [editorOpen, setEditorOpen] = useState(false);
@@ -49,13 +50,15 @@ export default function App() {
   const { data, loading, error } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
   const selectedCluster = useMemo(() => clusters.find(c => c.id === clusterId), [clusters, clusterId]);
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
-  useEffect(() => { refreshClusters(); }, []);
+  const refreshTags = () => api.tags().then(setTags).catch(() => setTags([]));
+  useEffect(() => { refreshClusters(); refreshTags(); }, []);
   const selectCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('cards'); setFiltersOpen(false); };
   const focusCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('explore'); setFiltersOpen(false); };
   const handleFilterSelect = (c: ClusterRecord) => { view === 'explore' ? focusCluster(c) : selectCluster(c); };
   const openClusterAsCards = (c: ClusterRecord) => { setClusterId(c.id); setView('cards'); setFiltersOpen(false); };
   const clearCluster = () => setClusterId(undefined);
-  const saved = () => { refreshClusters(); setItemsReloadKey(k => k + 1); };
+  const saved = () => { refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
+  const deleted = () => { setDetailId(undefined); setEditing(undefined); refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
   const updatePreferredLanguage = (language: PromptLanguage) => {
     setPreferredLanguage(language);
     window.localStorage.setItem(PROMPT_LANGUAGE_STORAGE_KEY, language);
@@ -93,6 +96,6 @@ export default function App() {
     <button className="fab" onClick={() => { setEditing(undefined); setEditorOpen(true); }}><Plus/> Add</button>
     <ItemDetailModal id={detailId} preferredLanguage={preferredLanguage} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} />
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
-    {editorOpen && <ItemEditorModal item={editing} onClose={() => setEditorOpen(false)} onSaved={saved} />}
+    {editorOpen && <ItemEditorModal item={editing} clusters={clusters} tags={tags} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} />}
   </div>
 }

@@ -115,10 +115,12 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
    - Explore thumbnail cards now use the same CSS-only desktop hover/focus preview scale in both global and focused Explore, guarded by `(hover: hover) and (pointer: fine)`, so behavior stays aligned while touch behavior remains safe.
    - The preview is transform-only (`scale(1.42)`) and preserves node coordinates/rotation through a CSS variable; it does not mutate layout, rerun positioning, or add live physics.
 
-8. **Edit modal data-entry improvements**
-   - Prompt edit should support separate Traditional Chinese, Simplified Chinese, and English editing fields/tabs.
-   - Collection input should offer a smart existing-cluster suggestion list while typing for quick fill/selection.
-   - Image editing should distinguish mandatory result/upload image from optional referenced photo(s): result image required, reference image optional.
+8. **Edit modal data-entry improvements** — implemented
+   - Add/Edit modal now has separate Traditional Chinese, Simplified Chinese, and English prompt fields; legacy `original` prompts prefill the Traditional Chinese field for older imported items.
+   - Collection input offers existing collection suggestions via datalist while still allowing typed new collections; tag input now also offers existing tag suggestions/chips.
+   - Detail and edit modals no longer expose a separate `Original` prompt tab/field; legacy `original` content is folded into Traditional Chinese editing when needed.
+   - Image upload UI distinguishes mandatory result image from optional reference photo; uploads persist `result_image` vs `reference_image` roles in the DB/API.
+   - Existing items expose a guarded Delete reference action; it calls the existing archive/delete API, hides the item from active lists, refreshes collections/items, and keeps archived recovery possible via the existing `archived=true` API filter.
 
 9. **Full interface language setting**
    - Add a UI language setting for Traditional Chinese, Simplified Chinese, and English.
