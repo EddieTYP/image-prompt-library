@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { api } from './api/client';
 import TopBar from './components/TopBar';
@@ -24,15 +24,10 @@ export default function App() {
   const [editing, setEditing] = useState<ItemDetail | undefined>();
   const [editorOpen, setEditorOpen] = useState(false);
   const [itemsReloadKey, setItemsReloadKey] = useState(0);
-  const searchRef = useRef<HTMLInputElement | null>(null);
   const { data, loading, error } = useItemsQuery(debouncedQ, clusterId, undefined, 100, itemsReloadKey);
   const selectedCluster = useMemo(() => clusters.find(c => c.id === clusterId), [clusters, clusterId]);
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
   useEffect(() => { refreshClusters(); }, []);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); (document.querySelector('.search input') as HTMLInputElement | null)?.focus(); } };
-    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
-  }, []);
   const selectCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('cards'); setFiltersOpen(false); };
   const saved = () => { refreshClusters(); setItemsReloadKey(k => k + 1); };
   return <div className="app">

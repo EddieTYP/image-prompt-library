@@ -1,4 +1,4 @@
-import { Filter, Settings, Search, Sparkles } from 'lucide-react';
+import { Filter, Search, Settings, Sparkles } from 'lucide-react';
 import type { ViewMode } from '../types';
 import ViewToggle from './ViewToggle';
 
@@ -32,29 +32,9 @@ export default function TopBar({
           <Filter size={18} />
           Filters
         </button>
-        <div className="logo" aria-label="Prompt Library home">
-          <Sparkles size={22} />
-          <div>
-            <b>Prompt Library</b>
-            <span>ChatGPT Image2 reference</span>
-          </div>
-        </div>
-        <button className="iconbtn" onClick={onConfig} aria-label="Config">
-          <Settings size={19} />
-        </button>
-      </nav>
 
-      <section className="hero-shell" aria-label="Library search">
-        <p className="eyebrow">Local creative reference library</p>
-        <div className="hero-copy">
-          <h1>Start your visual prompt collection</h1>
-          <p>
-            Browse beautiful AI image references, compare Chinese and English prompts,
-            and turn saved generations into reusable inspiration.
-          </p>
-        </div>
-        <label className="search hero-search">
-          <Search size={21} />
+        <label className="search toolbar-search" aria-label="Search all prompts">
+          <Search size={20} />
           <input
             value={q}
             onChange={e => onQ(e.target.value)}
@@ -62,16 +42,34 @@ export default function TopBar({
             autoFocus
           />
         </label>
-        <div className="hero-meta">
-          <span className="template-count">{count} visible prompts</span>
+
+        <div className="logo" aria-label="Prompt Library home">
+          <Sparkles size={22} />
+          <div>
+            <b>Prompt Library</b>
+            <span>ChatGPT Image2 reference</span>
+          </div>
+        </div>
+
+        <button className="iconbtn" onClick={onConfig} aria-label="Config">
+          <Settings size={19} />
+        </button>
+      </nav>
+
+      <div className="status-row">
+        <div className="active-filter-strip" aria-label="Current filters">
+          <span className="template-count">{count} references shown</span>
+          {q && <span className="chip soft-chip">Search: “{q}”</span>}
           {clusterName && (
             <button className="chip active-filter" onClick={clearCluster}>
-              Cluster: {clusterName} ×
+              Collection: {clusterName} ×
             </button>
           )}
+        </div>
+        <div className="view-dock">
           <ViewToggle view={view} onView={onView} />
         </div>
-      </section>
+      </div>
     </header>
   );
 }
