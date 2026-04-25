@@ -1,0 +1,26 @@
+# Runtime library data (local/private; add backup/export before relying on this as only copy)
+library/db.sqlite
+library/db.sqlite-*
+library/originals/
+library/thumbs/
+library/previews/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
