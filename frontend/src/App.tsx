@@ -79,11 +79,11 @@ export default function App() {
   };
   const favorite = (id: string) => { api.favorite(id).then(saved).catch(() => undefined); };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
-  return <div className="app">
+  return <div className={`app ${view === 'explore' ? 'explore-mode' : 'cards-mode'}`}>
     <TopBar q={q} onQ={setQ} view={view} onView={setView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={data.total} clusterName={selectedCluster?.name} clearCluster={clearCluster} />
     <FiltersPanel open={filtersOpen} clusters={clusters} selected={clusterId} onSelect={handleFilterSelect} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
     <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} />
-    <main>
+    <main className="app-main">
       {loading && <div className="loading">Loading…</div>}
       {error && <div className="error">{error}</div>}
       {view === 'explore'

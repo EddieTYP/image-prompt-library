@@ -109,11 +109,11 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
    - Kept as toolbar branding, not a hero section or large marketing banner.
    - Logo source currently uses Edward's latest attached 578×578 PNG at `frontend/src/assets/header-logo.png`, preserving its transparency; retained source copy is `header-logo-source.png`; runtime media/database artifacts remain excluded.
 
-7. **Polish global Explore viewport and hover preview** — next implementation target
-   - Fix Global Explore so the page/screen itself fits the viewport instead of allowing whole-page scroll; Cards mode should still remain scrollable for masonry browsing.
-   - Add hover enlargement / preview affordance for global thumbnails.
-   - Should improve creative browsing without disturbing the accepted focus view or zero-overlap layout.
-   - Keep it lightweight: hover/focus preview for desktop, tap-safe behavior for touch, no live physics or layout mutation.
+7. **Polish global Explore viewport and hover preview** — implemented
+   - Global Explore now uses an `explore-mode` app shell that fits the viewport and hides whole-page scroll while keeping the constellation canvas inside the screen.
+   - Cards mode keeps the normal document flow and masonry page scrolling.
+   - Explore thumbnail cards now use the same CSS-only desktop hover/focus preview scale in both global and focused Explore, guarded by `(hover: hover) and (pointer: fine)`, so behavior stays aligned while touch behavior remains safe.
+   - The preview is transform-only (`scale(1.42)`) and preserves node coordinates/rotation through a CSS variable; it does not mutate layout, rerun positioning, or add live physics.
 
 8. **Edit modal data-entry improvements**
    - Prompt edit should support separate Traditional Chinese, Simplified Chinese, and English editing fields/tabs.
@@ -231,7 +231,8 @@ Logged on 2026-04-25 for the collection drawer / shared-toast pass:
 - New roadmap notes from Edward: Add header logo branding was completed as the first implementation target, followed by polishing the Global Explore viewport and hover preview; toast theme should be revisited later only; editor improvements should add separate Traditional/Simplified/English prompt editing, smart existing-cluster suggestions while typing Collection, mandatory result image upload plus optional reference photo upload; full interface UI language setting should support Traditional Chinese, Simplified Chinese, and English separately from prompt-copy language.
 - Header logo implemented and revised: `TopBar` now uses Edward's newer transparent image-cards logo on the left and `Image Prompt Library` text on the right; after trying a cropped/optimized derivative and then the larger original, Edward asked to swap again, so `frontend/src/assets/header-logo.png` now preserves the latest attached 578×578 transparent PNG, displayed at 64×64. The retained source attachment is named `header-logo-source.png`.
 - Header logo QA: static regression covers the imported latest attached logo asset, RGBA transparency, 578×578 dimensions, `.logo-mark` image, single-line `Image Prompt Library` text, removal of the old Sparkles placeholder/subtitle, transparent `.logo` container (`background: transparent`, `border: 0`, `box-shadow: none`, `padding: 0`), and 64×64 logo sizing; browser DOM QA confirmed the latest image natural size, transparent container styles, and 64×64 image dimensions.
-- Global Explore viewport/preview direction: fix the whole-page scroll issue in global Explore so the screen fits the viewport, while preserving Cards-mode scrolling; then add desktop hover/focus preview enlargement for global thumbnails with touch-safe behavior and no layout mutation.
+- Global Explore viewport/preview implemented: Explore mode now uses a viewport-fit app shell with whole-page scrolling hidden while the constellation remains in-screen; Cards mode remains document-scrollable for masonry browsing. Desktop hover/focus preview uses CSS-only transform scaling (`scale(1.42)`) under `(hover: hover) and (pointer: fine)` in both global and focused Explore, keeps touch behavior safe, preserves node coordinates/rotation via `--node-rotation`, and does not mutate layout or rerun constellation positioning.
+- Browser QA confirmed Explore global view `documentElement.scrollHeight == innerHeight` and `body.scrollHeight == innerHeight` at the tested viewport, `.app` was `explore-mode` with `overflow: hidden`, and Cards mode switched back to normal scroll with `252` cards and a much taller document height. Browser vision confirmed the Explore canvas fits in the viewport and the constellation layout remains intact.
 - Browser QA confirmed the filter drawer title is `Collections`, the previous helper sentence is absent, and collection search filters the list, e.g. `科技` only shows `科技科幻`.
 - Browser QA confirmed Explore-mode collection selection focuses the selected cluster: `科技科幻` produced a focus panel with `14 references · 14 visible` and kept Explore active.
 - Browser QA confirmed Cards-mode collection selection filters cards: selecting `人物肖像` showed `84 references` and 84 cards while Cards stayed active.

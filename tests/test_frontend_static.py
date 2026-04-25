@@ -105,6 +105,36 @@ def test_explore_uses_real_thumbnails_not_dots_or_originals():
     assert ".orbit-node.lod-dot" not in css
 
 
+def test_global_explore_fits_viewport_and_cards_remain_scrollable():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    compact_css = css.replace(" ", "")
+    assert "className={`app ${view === 'explore' ? 'explore-mode' : 'cards-mode'}`}" in app
+    assert "<main className=\"app-main\">" in app
+    assert ".app.explore-mode{height:100vh;overflow:hidden;display:flex;flex-direction:column}" in compact_css
+    assert ".app.explore-mode .app-main{flex:1;min-height:0;width:100%;padding:" in css
+    assert ".app.explore-mode .thumbnail-constellation{height:100%;min-height:0}" in css
+    assert ".app.cards-mode" not in css
+    assert "main{max-width:1680px;margin:0auto;padding:26px30px88px}" in compact_css
+
+
+def test_explore_has_lightweight_hover_preview_without_layout_mutation():
+    explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    compact_css = css.replace(" ", "")
+    assert "'--node-rotation': `${node.rotation}deg`" in explore
+    assert "transform: `translate(-50%, -50%) rotate(${node.rotation}deg)`" not in explore
+    assert "transform:translate(-50%,-50%)rotate(var(--node-rotation,0deg))" in compact_css
+    assert "@media(hover:hover)and(pointer:fine)" in compact_css
+    assert ".thumbnail-constellation .constellation-thumb-card:hover" in css
+    assert ".thumbnail-constellation .constellation-thumb-card:focus-visible" in css
+    assert ".thumbnail-constellation:not(.is-focused) .constellation-thumb-card:hover" not in css
+    assert "scale(1.42)" in css
+    assert "will-change:transform" in css
+    assert "width:" not in css.split("@media (hover: hover) and (pointer: fine)", 1)[-1].split("}", 1)[0]
+    assert "height:" not in css.split("@media (hover: hover) and (pointer: fine)", 1)[-1].split("}", 1)[0]
+
+
 def test_explore_has_static_repulsive_relaxation_and_tap_drag_threshold():
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
     assert "TAP_DRAG_THRESHOLD" in explore
@@ -135,7 +165,7 @@ def test_explore_has_static_repulsive_relaxation_and_tap_drag_threshold():
     assert "resolveConstellationNodeOverlaps" in explore
     assert "placeWithoutGlobalOverlap" in explore
     assert "attempt <= 1800" in explore
-    assert "rotate(${node.rotation}deg)" in explore
+    assert "'--node-rotation': `${node.rotation}deg`" in explore
     assert "continuous physics" not in explore.lower()
 
 

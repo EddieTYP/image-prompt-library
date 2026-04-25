@@ -1,4 +1,4 @@
-import { useMemo, useState, type PointerEvent } from 'react';
+import { useMemo, useState, type CSSProperties, type PointerEvent } from 'react';
 import { Minus, Plus, RotateCcw } from 'lucide-react';
 import { mediaUrl } from '../api/client';
 import type { ClusterRecord, ItemSummary } from '../types';
@@ -509,7 +509,13 @@ export default function ExploreView({
             <button
               key={`${cluster.id}-${node.item.id}`}
               className={`constellation-thumb-card ${node.item.favorite ? 'favorite' : ''}`}
-              style={{ left: node.x, top: node.y, width: node.width, height: node.height, transform: `translate(-50%, -50%) rotate(${node.rotation}deg)` }}
+              style={{
+                left: node.x,
+                top: node.y,
+                width: node.width,
+                height: node.height,
+                '--node-rotation': `${node.rotation}deg`,
+              } as CSSProperties}
               onPointerDown={(event) => beginTap(event, { type: 'item', item: node.item })}
               onPointerMove={moveTap}
               onPointerUp={endTap}
