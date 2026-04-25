@@ -123,6 +123,24 @@ def test_cards_keep_adaptive_masonry_and_actions():
     assert "break-inside:avoid" in css.replace(" ", "")
 
 
+def test_cards_reserve_image_aspect_ratio_before_lazy_decode():
+    card = (ROOT / "frontend" / "src" / "components" / "ItemCard.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    assert "imageAspectRatio" in card
+    assert "item.first_image?.width" in card
+    assert "item.first_image?.height" in card
+    assert "aspectRatio: imageAspectRatio" in card
+    assert "card-image-frame" in card
+    assert "has-reserved-ratio" in card
+    assert "natural-ratio" in card
+    assert "width={item.first_image?.width || undefined}" in card
+    assert "height={item.first_image?.height || undefined}" in card
+    assert ".card-image-frame" in css
+    assert "aspect-ratio:var(--card-image-ratio" in css.replace(" ", "")
+    assert ".card-image-frame img" in css
+    assert "height:100%" in css
+
+
 def test_copy_prompt_uses_shared_preferred_language_resolver():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
@@ -196,6 +214,19 @@ def test_filters_and_explore_budget_controls_match_vista_style():
     assert ".filter-empty" in css
     assert ".range-setting" in css
     assert ".range-ticks" in css
+
+
+def test_drawer_close_buttons_use_shared_polished_panel_close_style():
+    filters = (ROOT / "frontend" / "src" / "components" / "FiltersPanel.tsx").read_text()
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    assert "className=\"panel-close\"" in filters
+    assert "className=\"panel-close\"" in config
+    assert ".panel-close" in css
+    assert "width:38px" in css
+    assert "border-radius:999px" in css
+    assert "aria-label=\"Close filters\"" in filters
+    assert "aria-label=\"Close config\"" in config
 
 
 def test_copy_prompt_has_insecure_lan_clipboard_fallback():

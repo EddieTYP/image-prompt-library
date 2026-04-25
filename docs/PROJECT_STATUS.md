@@ -83,10 +83,10 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
 
 ### P1 / High priority
 
-2. **Cards view lazy image/order stability bug** — newly reported, next likely priority
+2. **Cards view lazy image/order stability bug** — implemented
    - Repro described by Edward: open the library, switch to Cards view, scroll down; some cards appear/load midway and the perceived card order reloads/shifts.
-   - Working hypothesis before investigation: image intrinsic dimensions are not reserved before lazy images decode inside CSS-column masonry, so cards reflow as images load. Need reproduce with browser QA/performance evidence before fixing.
-   - Desired outcome: stable Cards ordering/scroll position while images load, without losing the accepted masonry/template-marketplace feel.
+   - Root cause confirmed by browser QA: DOM order stayed stable, but lazy images without reserved dimensions expanded after decode inside CSS-column masonry, shifting later cards.
+   - `ItemCard` now reserves each first-image aspect ratio from stored `width`/`height`, passes image `width`/`height` attributes, and keeps the accepted masonry/template-marketplace feel. Missing-dimension images keep natural-height rendering as a fallback.
 
 3. **Detail modal duplicate/two images** — implemented
    - Detail modal now deduplicates image records by displayed image path before rendering.
@@ -99,8 +99,8 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
 
 ### P2 / Medium priority
 
-5. **Drawer close button cosmetics**
-   - Close buttons in the Filters drawer and Config section look ugly and should be restyled in the next cosmetic pass.
+5. **Drawer close button cosmetics** — implemented
+   - Filters drawer and Config now share a smaller rounded `panel-close` treatment with warm surface, subtle border, shadow, and hover state.
 
 6. **Real logo / branding**
    - Replace placeholder logo/brand area with a real logo or more intentional mark.
@@ -203,7 +203,12 @@ Logged on 2026-04-25 for the collection drawer / shared-toast pass:
 - Edward said the shared toast is better but still does not fully fit the expected theme; keep it as a low-priority revisit, not the next focus.
 - Edward flagged cosmetic ugliness in the Filters drawer and Config close buttons.
 - Edward reported a possible Cards view bug: after opening the library, switching to Cards, and scrolling down, some cards appear/load midway and the card order seems to reload. Treat this as the next likely bug investigation, with a current hypothesis around image-load reflow in CSS masonry.
-- Test/build verification passed: `.venv/bin/python -m pytest -q` reported `27 passed`; `npm run build` passed; `git diff --check` passed.
+- Cards global-view inspection confirmed the likely root cause: DOM order stayed stable across scroll/load, but unloaded lazy images started with fallback/min heights and expanded after decode, which shifted later cards in the CSS-column masonry. Example: `粉色少女风珍珠奶茶特写广告` changed from card height `244` to `322` after image decode (`natural 336x420`); subsequent cards shifted down by the accumulated height delta while DOM order remained stable. API item summaries already include original image `width`/`height`, but `ItemCard` did not pass width/height attributes or reserve an aspect-ratio wrapper.
+- Cards stability fix implemented: `ItemCard` now wraps images in a `card-image-frame`, reserves aspect ratio from `first_image.width`/`height`, and passes `width`/`height` attributes while preserving CSS-column masonry. Images without stored dimensions fall back to natural image height instead of being forced into a cropped 4:3 box.
+- Post-fix browser QA on global Cards view showed `251` cards, `251` aspect-ratio frames, `251` reserved-ratio frames, `0` natural fallback frames for the current complete dataset, `0` images missing dimension attributes, stable first-40 DOM order, and no sampled card top/height changes after scroll/decode (`changed: []`).
+- Independent Codex Spark read-only review found no critical TypeScript/CSS regressions. Its main medium concern was missing-dimension image cropping; the implementation now keeps missing-dimension images on natural-height fallback instead of forcing a 4:3 crop.
+- Filters and Config close buttons now use the shared `panel-close` style; browser DOM QA confirmed two visible 38×38 rounded buttons for `Close filters` and `Close config`.
+- Test/build verification passed after the Cards/close-button fix: `.venv/bin/python -m pytest -q` reported `29 passed`; `npm run build` passed; `git diff --check` passed.
 - Browser QA confirmed the filter drawer title is `Collections`, the previous helper sentence is absent, and collection search filters the list, e.g. `科技` only shows `科技科幻`.
 - Browser QA confirmed Explore-mode collection selection focuses the selected cluster: `科技科幻` produced a focus panel with `14 references · 14 visible` and kept Explore active.
 - Browser QA confirmed Cards-mode collection selection filters cards: selecting `人物肖像` showed `84 references` and 84 cards while Cards stayed active.
