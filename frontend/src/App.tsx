@@ -40,6 +40,7 @@ export default function App() {
   useEffect(() => { refreshClusters(); }, []);
   const selectCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('cards'); setFiltersOpen(false); };
   const focusCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('explore'); setFiltersOpen(false); };
+  const openClusterAsCards = (c: ClusterRecord) => { setClusterId(c.id); setView('cards'); setFiltersOpen(false); };
   const clearCluster = () => setClusterId(undefined);
   const saved = () => { refreshClusters(); setItemsReloadKey(k => k + 1); };
   const updatePreferredLanguage = (language: PromptLanguage) => {
@@ -60,7 +61,7 @@ export default function App() {
       {loading && <div className="loading">Loading…</div>}
       {error && <div className="error">{error}</div>}
       {view === 'explore'
-        ? <ExploreView clusters={clusters} items={data.items} focusedClusterId={clusterId} onFocusCluster={focusCluster} onOpen={setDetailId} />
+        ? <ExploreView clusters={clusters} items={data.items} focusedClusterId={clusterId} onFocusCluster={focusCluster} onOpenClusterCards={openClusterAsCards} onOpen={setDetailId} />
         : <CardsView items={data.items} onOpen={setDetailId} onFavorite={favorite} onEdit={editSummary} onCopyPrompt={copyPrompt} />}
     </main>
     <button className="fab" onClick={() => { setEditing(undefined); setEditorOpen(true); }}><Plus/> Add</button>

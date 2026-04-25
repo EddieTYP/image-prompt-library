@@ -40,10 +40,15 @@ Committed checkpoints:
 - `732d52f Fix prompt copy language preference`
 - `3c1fcc1 Avoid Hermes WebUI port for app dev server`
 - `a95b7ad Fix copy prompt on LAN HTTP`
+- Batch 2 Explore UX/performance commit pending in this working tree.
 
-Current state after `a95b7ad`:
+Current state after Batch 2:
 
-- Explore is a spatial pan/zoom orbit map with cluster labels and image nodes.
+- Explore is a spatial pan/zoom orbit map with cluster labels and ordered ring/lane item nodes.
+- Default global view uses dot LOD at the initial zoom to reduce image clutter.
+- Mid/near zoom uses thumbnails; focused cluster mode uses previews. Explore avoids `original_path` in map nodes.
+- Cluster click focuses that cluster inside Explore rather than switching directly to Cards.
+- Focus mode fades inactive clusters, shows up to `24` representative nodes, and includes an **Open as Cards** CTA.
 - Default visible nodes per cluster: `12`.
 - Focused cluster cap: `24`.
 - Node priority: favorite first, then rating, then image availability, then deterministic title order.
@@ -68,12 +73,16 @@ Current state after `a95b7ad`:
   - Browser QA verified card copy for Traditional/Simplified/English/fallback and detail-modal selected-tab copy.
   - Independent review passed after fixing the detail-modal selected-tab copy mismatch.
 
-Known issues from review:
+- Batch 2 verification passed:
+  - `.venv/bin/python -m pytest -q` → `23 passed`.
+  - `npm run build` → passed.
+  - Browser QA on LAN verified global dot LOD readability, focused cluster panel/CTA, inactive cluster fade, ordered preview rings, Cards CTA switching, and a clean console.
+  - Independent review approved with no critical or important issues.
 
-- Explore images still feel visually cluttered and not sufficiently ordered around clusters.
-- Orbit map performance can feel weak when many image nodes are displayed.
-- Explore node image source currently resolves `thumb_path → preview_path → original_path`; original is only used as fallback, but map should avoid using original images in normal browsing.
+Known issues / future polish:
+
 - Copy prompt language preference and LAN HTTP clipboard fallback are now fixed; remaining copy UX polish could add visible copied/error feedback later.
+- Explore can later add Esc/back-to-map keyboard handling, smoother animated focus transitions, and further cap tuning once the dataset grows.
 
 ## Explore orbit map requirements
 
@@ -231,42 +240,43 @@ Tasks:
    - browser test card copy behavior and modal copy behavior.
 7. Commit as a standalone functional fix.
 
-### Batch 2 — Explore orbit UX/performance
+### Batch 2 — Explore orbit UX/performance — completed
 
 Goal: make Explore feel like an ordered orbit map, not a cluttered scatter plot.
 
-Tasks:
+Status: completed in the current Batch 2 commit.
 
-1. Refactor orbit layout into deterministic cluster-local geometry:
+Tasks completed:
+
+1. Refactored orbit layout into deterministic cluster-local geometry:
    - cluster center
    - label exclusion zone
    - ring/lane placement
    - stable angular ordering
-2. Add focus mode:
+2. Added focus mode:
    - click cluster to focus inside Explore
-   - focused cluster expands to occupy most of viewport
-   - non-focused clusters fade/hide
-   - add Back to map / Reset focus control
-   - add Open as Cards CTA
-3. Add adaptive image level-of-detail:
-   - far: dots/small thumbs/collage badges
-   - mid: thumbs
+   - focused cluster occupies the map center
+   - non-focused clusters fade and their item nodes are hidden
+   - Reset returns the view/camera to the default map framing
+   - Open as Cards CTA switches to Cards with the focused cluster filter
+3. Added adaptive image level-of-detail:
+   - far/default: dots, no image requests
+   - mid: thumbnails
    - near/focused: previews
    - modal only: original
-4. Tune node caps:
-   - global default around `12`
-   - focused cluster initially `24`, maybe tune up after performance check
-5. Add/update tests/static guards:
-   - focus mode exists
+4. Kept node caps:
+   - global default `12`
+   - focused cluster `24`
+5. Added static guards:
+   - focus mode remains in map
    - Open as Cards CTA exists
-   - image resolver avoids original path in map where possible
+   - orbit image resolver avoids original paths
    - LOD-related code/classes exist
-6. Verify:
-   - `.venv/bin/python -m pytest -q`
-   - `npm run build`
-   - browser visual QA for global Explore, focused cluster, Cards, and console errors.
-7. Run independent Codex Spark review before committing.
-8. Commit as a standalone Explore UX/performance improvement.
+6. Verified:
+   - `.venv/bin/python -m pytest -q` → `23 passed`
+   - `npm run build` → passed
+   - browser visual QA for global Explore, focused cluster, Cards CTA, and console errors.
+7. Independent review approved before committing.
 
 ## Future scoring system idea
 

@@ -41,6 +41,35 @@ def test_explore_is_spatial_orbit_map_with_cluster_caps():
     assert ".cluster-orbit{" not in css
 
 
+def test_explore_focus_mode_stays_in_map_and_has_cards_cta():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    assert "const focusCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('explore')" in app
+    assert "const openClusterAsCards = (c: ClusterRecord) => { setClusterId(c.id); setView('cards')" in app
+    assert "onOpenClusterCards={openClusterAsCards}" in app
+    assert "focusedClusterId" in explore
+    assert "Open as Cards" in explore
+    assert "onOpenClusterCards(cluster)" in explore
+    assert "orbit-focus-panel" in explore
+    assert ".orbit-focus-panel" in css
+
+
+def test_explore_uses_ordered_rings_and_lod_image_paths():
+    explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    assert "function getOrbitImagePath" in explore
+    assert "lod: 'dot' | 'thumb' | 'preview'" in explore
+    assert "scale < 0.54" in explore
+    assert "first_image?.original_path" not in explore
+    assert "ringIndex" in explore and "laneIndex" in explore
+    assert "const ringGap" in explore
+    assert "className={`orbit-node ${node.item.favorite ? 'favorite' : ''} lod-${node.lod}`}" in explore
+    assert "node.lod !== 'dot' && node.imagePath" in explore
+    assert ".orbit-node.lod-dot" in css
+    assert ".orbit-node.lod-preview" in css
+
+
 def test_cards_keep_adaptive_masonry_and_actions():
     cards = (ROOT / "frontend" / "src" / "components" / "CardsView.tsx").read_text()
     card = (ROOT / "frontend" / "src" / "components" / "ItemCard.tsx").read_text()
