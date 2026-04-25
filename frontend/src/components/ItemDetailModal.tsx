@@ -28,23 +28,23 @@ export default function ItemDetailModal({
   id,
   preferredLanguage,
   onClose,
+  onCopyPrompt,
   onEdit,
 }: {
   id?: string;
   preferredLanguage: PromptLanguage;
   onClose: () => void;
+  onCopyPrompt: (success: boolean) => void;
   onEdit: (item: ItemDetail) => void;
 }) {
   const [item, setItem] = useState<ItemDetail>();
   const [lang, setLang] = useState<string>(preferredLanguage);
-  const [copyFeedback, setCopyFeedback] = useState<string>();
 
   useEffect(() => { setLang(preferredLanguage); }, [preferredLanguage, id]);
 
   useEffect(() => {
     if (!id) return;
     setItem(undefined);
-    setCopyFeedback(undefined);
     api.item(id).then(setItem);
   }, [id]);
 
@@ -56,8 +56,7 @@ export default function ItemDetailModal({
   const primaryImage = uniqueImages[0];
   const handleCopyPrompt = async () => {
     const copied = await copyTextToClipboard(copyText);
-    setCopyFeedback(copied ? 'Copied prompt' : 'Copy failed');
-    window.setTimeout(() => setCopyFeedback(undefined), 1800);
+    onCopyPrompt(copied);
   };
 
   return (
@@ -108,7 +107,7 @@ export default function ItemDetailModal({
 
               <div className="actions modal-actions">
                 <button onClick={handleCopyPrompt}>
-                  <Copy size={16} /> {copyFeedback || 'Copy prompt'}
+                  <Copy size={16} /> Copy prompt
                 </button>
                 <button onClick={() => api.favorite(item.id).then(setItem)}>
                   <Heart size={16} /> {item.favorite ? 'Saved' : 'Favorite'}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Check, Plus, XCircle } from 'lucide-react';
 import { api } from './api/client';
 import TopBar from './components/TopBar';
 import FiltersPanel from './components/FiltersPanel';
@@ -45,13 +45,14 @@ export default function App() {
   const [preferredLanguage, setPreferredLanguage] = useState<PromptLanguage>(loadPreferredLanguage);
   const [globalThumbnailBudget, setGlobalThumbnailBudget] = useState(() => loadNumberSetting(GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 50, 150));
   const [focusThumbnailBudget, setFocusThumbnailBudget] = useState(() => loadNumberSetting(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 24, 100));
-  const [copyFeedback, setCopyFeedback] = useState<string>();
+  const [toast, setToast] = useState<{ title: string; tone: 'success' | 'error' }>();
   const { data, loading, error } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
   const selectedCluster = useMemo(() => clusters.find(c => c.id === clusterId), [clusters, clusterId]);
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
   useEffect(() => { refreshClusters(); }, []);
   const selectCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('cards'); setFiltersOpen(false); };
   const focusCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('explore'); setFiltersOpen(false); };
+  const handleFilterSelect = (c: ClusterRecord) => { view === 'explore' ? focusCluster(c) : selectCluster(c); };
   const openClusterAsCards = (c: ClusterRecord) => { setClusterId(c.id); setView('cards'); setFiltersOpen(false); };
   const clearCluster = () => setClusterId(undefined);
   const saved = () => { refreshClusters(); setItemsReloadKey(k => k + 1); };
@@ -67,20 +68,20 @@ export default function App() {
     setFocusThumbnailBudget(budget);
     window.localStorage.setItem(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, String(budget));
   };
-  const showCopyFeedback = (success: boolean) => {
-    setCopyFeedback(success ? 'Copied prompt' : 'Copy failed');
-    window.setTimeout(() => setCopyFeedback(undefined), 1800);
+  const showCopyToast = (success: boolean) => {
+    setToast({ title: success ? 'Prompt copied' : 'Copy failed', tone: success ? 'success' : 'error' });
+    window.setTimeout(() => setToast(undefined), 1800);
   };
   const copyPrompt = async (item: ItemSummary) => {
     const text = resolvePromptText(item.prompts, preferredLanguage, item.title);
     const copied = await copyTextToClipboard(text);
-    showCopyFeedback(copied);
+    showCopyToast(copied);
   };
   const favorite = (id: string) => { api.favorite(id).then(saved).catch(() => undefined); };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   return <div className="app">
     <TopBar q={q} onQ={setQ} view={view} onView={setView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={data.total} clusterName={selectedCluster?.name} clearCluster={clearCluster} />
-    <FiltersPanel open={filtersOpen} clusters={clusters} selected={clusterId} onSelect={selectCluster} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
+    <FiltersPanel open={filtersOpen} clusters={clusters} selected={clusterId} onSelect={handleFilterSelect} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
     <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} />
     <main>
       {loading && <div className="loading">Loading…</div>}
@@ -90,8 +91,8 @@ export default function App() {
         : <CardsView items={data.items} onOpen={setDetailId} onFavorite={favorite} onEdit={editSummary} onCopyPrompt={copyPrompt} />}
     </main>
     <button className="fab" onClick={() => { setEditing(undefined); setEditorOpen(true); }}><Plus/> Add</button>
-    <ItemDetailModal id={detailId} preferredLanguage={preferredLanguage} onClose={() => setDetailId(undefined)} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} />
-    {copyFeedback && <div className="toast copy-toast" role="status">{copyFeedback}</div>}
+    <ItemDetailModal id={detailId} preferredLanguage={preferredLanguage} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} />
+    {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
     {editorOpen && <ItemEditorModal item={editing} onClose={() => setEditorOpen(false)} onSaved={saved} />}
   </div>
 }

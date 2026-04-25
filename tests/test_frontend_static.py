@@ -138,17 +138,21 @@ def test_copy_prompt_uses_shared_preferred_language_resolver():
     assert "preferred_prompt_language" in app
     assert "zh_hant" in config and "zh_hans" in config and "en" in config
     assert "onCopyPrompt" in card and "prompt_snippet || item.title" not in card
-    assert "copyFeedback" in app
-    assert "showCopyFeedback" in app
-    assert "Copied prompt" in app
+    assert "toast" in app
+    assert "showCopyToast" in app
+    assert "Prompt copied" in app
     assert "Copy failed" in app
-    assert "toast copy-toast" in app
-    assert ".copy-toast" in css
+    assert "toast copy-toast elegant-toast" in app
+    assert "toast-icon" in app and "toast-title" in app
+    assert ".elegant-toast" in css
+    assert "backdrop-filter:blur" in css
+    assert "@keyframes toast-in" in css
     assert "resolvePromptText" in detail
     assert "preferredLanguage" in detail
     assert "const copyText = prompt?.text || resolvePromptText" in detail
-    assert "handleCopyPrompt" in detail
-    assert "Copied prompt" in detail
+    assert "onCopyPrompt" in detail
+    assert "copyTextToClipboard(copyText)" in detail
+    assert "setCopyFeedback" not in detail
 
 
 def test_detail_modal_dedupes_image_rail_and_hides_single_image_rail():
@@ -170,9 +174,16 @@ def test_filters_and_explore_budget_controls_match_vista_style():
     assert "filter-drawer" in filters
     assert "filter-search" in filters
     assert "filter-pill-grid" in filters
+    assert "Collections" in filters
     assert "All references" in filters
-    assert "Use clusters as quick filter chips" in filters
+    assert "collectionQuery" in filters
+    assert "filteredClusters" in filters
+    assert "No collections found" in filters
+    assert "Use clusters as quick filter chips" not in filters
+    assert "Templates</h2>" not in filters
     assert "onClear" in filters and "clearCluster" in app
+    assert "handleFilterSelect" in app
+    assert "view === 'explore' ? focusCluster(c) : selectCluster(c)" in app
     assert "type=\"range\"" in config
     assert "range-setting" in config
     assert "range-ticks" in config
@@ -182,6 +193,7 @@ def test_filters_and_explore_budget_controls_match_vista_style():
     assert "FOCUS_BUDGET_MAX = 100" in config
     assert ".filter-drawer" in css
     assert ".filter-pill-grid" in css
+    assert ".filter-empty" in css
     assert ".range-setting" in css
     assert ".range-ticks" in css
 

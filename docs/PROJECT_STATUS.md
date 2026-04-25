@@ -50,8 +50,9 @@ Committed checkpoints:
 - `520a2da Implement explore thumbnail constellation graph`
 - `8602654 Add static repulsion to explore constellation`
 - `77bb0c0 Tune explore constellation overlap handling`
+- `9686d8d Polish filters modal images and copy feedback`
 
-Current state after `77bb0c0`:
+Current state after `9686d8d` plus the current collection/toast polish pass:
 
 - Explore has been rebuilt as a thumbnail constellation graph.
 - Global Explore:
@@ -74,40 +75,51 @@ Current state after `77bb0c0`:
 
 ### P0 / First priority
 
-1. **Filter drawer / slider controls polish** — implemented in current uncommitted work
-   - Filters drawer now follows the VistaCreate templates pattern more closely: sliding drawer, search-like control, selected all-references chip, and count pills.
-   - Config thumbnail budgets are now real range sliders with visible values and descriptive ticks instead of only segmented preset buttons.
+1. **Filter drawer / slider controls polish** — implemented
+   - Filters drawer now uses the `Collections` wording, functional collection search, selected all-references chip, and count pills.
+   - Collection selection is view-aware: Explore focuses the selected cluster; Cards filters the card list to the selected collection.
+   - The old helper sentence about VistaCreate quick filter chips has been removed from the UI.
+   - Config thumbnail budgets are real range sliders with visible values and descriptive ticks instead of only segmented preset buttons.
 
 ### P1 / High priority
 
-2. **Detail modal duplicate/two images** — implemented in current uncommitted work
+2. **Cards view lazy image/order stability bug** — newly reported, next likely priority
+   - Repro described by Edward: open the library, switch to Cards view, scroll down; some cards appear/load midway and the perceived card order reloads/shifts.
+   - Working hypothesis before investigation: image intrinsic dimensions are not reserved before lazy images decode inside CSS-column masonry, so cards reflow as images load. Need reproduce with browser QA/performance evidence before fixing.
+   - Desired outcome: stable Cards ordering/scroll position while images load, without losing the accepted masonry/template-marketplace feel.
+
+3. **Detail modal duplicate/two images** — implemented
    - Detail modal now deduplicates image records by displayed image path before rendering.
    - Thumbnail rail is hidden when only one unique image remains, so a single-image item shows only the hero image.
 
-3. **Copied toast / visible copy feedback** — implemented in current uncommitted work
-   - Card Copy prompt now shows a bottom toast for success/failure.
-   - Detail modal Copy prompt now changes the button state to `Copied prompt` / `Copy failed`.
+4. **Copied toast / visible copy feedback** — implemented; cosmetic fit is low priority revisit
+   - Card Copy prompt and detail modal Copy prompt both use the same bottom toast behavior for success/failure.
+   - The toast is now a bottom-center glass pill with icon, blur, accent state, and subtle slide/fade animation.
+   - Edward confirmed this is better, but still not fully matching the desired theme; revisit later as low priority.
 
 ### P2 / Medium priority
 
-4. **Real logo / branding**
+5. **Drawer close button cosmetics**
+   - Close buttons in the Filters drawer and Config section look ugly and should be restyled in the next cosmetic pass.
+
+6. **Real logo / branding**
    - Replace placeholder logo/brand area with a real logo or more intentional mark.
 
 ### P3 / Low priority
 
-5. **Global Explore hover enlarge**
+7. **Global Explore hover enlarge**
    - Add hover enlargement / preview affordance for global thumbnails.
    - Low priority; should not disturb the accepted focus view.
 
-6. **Minor Explore fine tuning**
+8. **Minor Explore fine tuning**
    - Possible later tweaks only.
    - Lowest priority because focus view is currently liked and global overlap is solved.
 
-7. **Detail modal / Edit modal polish**
+9. **Detail modal / Edit modal polish**
    - Existing modal polish is better but can continue to improve.
    - Inspect prompt readability, image rail, action placement, and spacing after fixing the duplicate-image issue.
 
-8. **Future scoring/ranking system**
+10. **Future scoring/ranking system**
    - Current priority order is favorite → rating → image availability → deterministic title order.
    - Future scoring can include source quality, prompt completeness, image quality/representativeness, usage/copy count, and recency.
 
@@ -181,9 +193,23 @@ Current behavior:
   4. Title only as final fallback.
 - Detail modal shows language tabs and copies the currently selected/visible prompt first.
 - Copy prompt uses a shared clipboard helper with textarea/`execCommand('copy')` fallback for LAN HTTP origins where `navigator.clipboard` is unavailable.
-- Visible feedback is now present: card copy uses a toast; detail modal copy uses temporary button-state feedback.
+- Visible feedback is now shared: card copy and detail modal copy both use the same modern bottom toast.
 
 ## Latest QA / review notes
+
+Logged on 2026-04-25 for the collection drawer / shared-toast pass:
+
+- Edward confirmed the filter drawer and collection selection behavior are okay.
+- Edward said the shared toast is better but still does not fully fit the expected theme; keep it as a low-priority revisit, not the next focus.
+- Edward flagged cosmetic ugliness in the Filters drawer and Config close buttons.
+- Edward reported a possible Cards view bug: after opening the library, switching to Cards, and scrolling down, some cards appear/load midway and the card order seems to reload. Treat this as the next likely bug investigation, with a current hypothesis around image-load reflow in CSS masonry.
+- Test/build verification passed: `.venv/bin/python -m pytest -q` reported `27 passed`; `npm run build` passed; `git diff --check` passed.
+- Browser QA confirmed the filter drawer title is `Collections`, the previous helper sentence is absent, and collection search filters the list, e.g. `科技` only shows `科技科幻`.
+- Browser QA confirmed Explore-mode collection selection focuses the selected cluster: `科技科幻` produced a focus panel with `14 references · 14 visible` and kept Explore active.
+- Browser QA confirmed Cards-mode collection selection filters cards: selecting `人物肖像` showed `84 references` and 84 cards while Cards stayed active.
+- Browser QA confirmed card Copy prompt and detail modal Copy prompt both show the shared `Prompt copied` bottom toast with `toast copy-toast elegant-toast success`; detail modal copy button text stays stable as `Copy prompt`.
+- Browser QA reconfirmed detail modal image dedupe: modal duplicate image sources were `[]`.
+- Browser console had no JS errors.
 
 Logged on 2026-04-25 before and after the filter/modal/copy pass:
 
