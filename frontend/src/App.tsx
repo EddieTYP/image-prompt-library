@@ -11,6 +11,7 @@ import ConfigPanel from './components/ConfigPanel';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
 import type { ClusterRecord, ItemDetail, ItemSummary, ViewMode } from './types';
+import { copyTextToClipboard } from './utils/clipboard';
 import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptLanguage } from './utils/prompts';
 
 const PROMPT_LANGUAGE_STORAGE_KEY = 'image-prompt-library.preferred_prompt_language';
@@ -47,7 +48,7 @@ export default function App() {
   };
   const copyPrompt = (item: ItemSummary) => {
     const text = resolvePromptText(item.prompts, preferredLanguage, item.title);
-    void navigator.clipboard?.writeText(text);
+    void copyTextToClipboard(text);
   };
   const favorite = (id: string) => { api.favorite(id).then(saved).catch(() => undefined); };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };

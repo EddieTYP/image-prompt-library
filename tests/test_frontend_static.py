@@ -61,8 +61,10 @@ def test_copy_prompt_uses_shared_preferred_language_resolver():
     card = (ROOT / "frontend" / "src" / "components" / "ItemCard.tsx").read_text()
     detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
     utils = (ROOT / "frontend" / "src" / "utils" / "prompts.ts").read_text()
+    clipboard = (ROOT / "frontend" / "src" / "utils" / "clipboard.ts").read_text()
     assert "PromptLanguage" in utils
     assert "resolvePromptText" in utils
+    assert "copyTextToClipboard" in clipboard
     assert "preferredLanguage" in app
     assert "preferred_prompt_language" in app
     assert "zh_hant" in config and "zh_hans" in config and "en" in config
@@ -70,7 +72,18 @@ def test_copy_prompt_uses_shared_preferred_language_resolver():
     assert "resolvePromptText" in detail
     assert "preferredLanguage" in detail
     assert "const copyText = prompt?.text || resolvePromptText" in detail
-    assert "navigator.clipboard?.writeText(copyText)" in detail
+    assert "copyTextToClipboard(copyText)" in detail
+
+
+def test_copy_prompt_has_insecure_lan_clipboard_fallback():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+    clipboard = (ROOT / "frontend" / "src" / "utils" / "clipboard.ts").read_text()
+    assert "navigator.clipboard?.writeText" not in app
+    assert "navigator.clipboard?.writeText" not in detail
+    assert "navigator.clipboard?.writeText" in clipboard
+    assert "document.execCommand('copy')" in clipboard
+    assert "textarea.select()" in clipboard
 
 
 def test_gallery_visuals_are_polished():

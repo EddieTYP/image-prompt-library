@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Copy, ExternalLink, Heart, Pencil, X } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import type { ItemDetail } from '../types';
+import { copyTextToClipboard } from '../utils/clipboard';
 import { PROMPT_LANGUAGE_LABELS, resolvePromptText, type PromptLanguage } from '../utils/prompts';
 
 const LANG_LABELS: Record<string, string> = {
@@ -84,7 +85,7 @@ export default function ItemDetailModal({
               </div>
 
               <div className="actions modal-actions">
-                <button onClick={() => navigator.clipboard?.writeText(copyText)}>
+                <button onClick={() => { void copyTextToClipboard(copyText); }}>
                   <Copy size={16} /> Copy prompt
                 </button>
                 <button onClick={() => api.favorite(item.id).then(setItem)}>
