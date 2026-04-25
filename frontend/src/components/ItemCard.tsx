@@ -1,0 +1,4 @@
+import { Copy, Heart } from 'lucide-react';
+import { mediaUrl } from '../api/client';
+import type { ItemSummary } from '../types';
+export default function ItemCard({item,onOpen}:{item:ItemSummary; onOpen:(id:string)=>void}) { const copy=(e:React.MouseEvent)=>{e.stopPropagation(); navigator.clipboard?.writeText(item.prompt_snippet || item.title)}; return <article className="item-card" onClick={()=>onOpen(item.id)}>{item.first_image ? <img src={mediaUrl(item.first_image.thumb_path || item.first_image.preview_path || item.first_image.original_path)} loading="lazy" decoding="async"/> : <div className="placeholder">No image</div>}<div className="card-body"><h3>{item.title}</h3><p>{item.cluster?.name || 'Unclustered'} · {item.source_name || item.model} {item.favorite && <Heart size={13} fill="currentColor"/>}</p></div><button className="hover-action" onClick={copy}><Copy size={16}/> Copy</button></article> }

@@ -1,0 +1,3 @@
+import { X } from 'lucide-react';
+import type { ClusterRecord } from '../types';
+export default function FiltersPanel({open, clusters, selected, onSelect, onClose}:{open:boolean; clusters:ClusterRecord[]; selected?:string; onSelect:(c:ClusterRecord)=>void; onClose:()=>void}) { return <aside className={`drawer ${open?'open':''}`}><div className="drawer-head"><h2>Filters</h2><button onClick={onClose}><X/></button></div><p className="muted">Cluster MVP</p><div className="cluster-list">{clusters.map(c=><button key={c.id} className={selected===c.id?'selected':''} onClick={()=>onSelect(c)}><span>{c.name}</span><b>{c.count}</b></button>)}</div></aside> }
