@@ -85,11 +85,27 @@ def test_explore_has_static_repulsive_relaxation_and_tap_drag_threshold():
     assert "doesCollide" in explore
     assert "spiralStep" in explore
     assert "relaxConstellationNodes" in explore
-    assert "RELAXATION_ITERATIONS" in explore
-    assert "REPULSION_STRENGTH" in explore
-    assert "SPRING_STRENGTH" in explore
+    assert "RELAXATION_ITERATIONS = 120" in explore
+    assert "REPULSION_STRENGTH = 0.42" in explore
+    assert "CLUSTER_REPULSION_STRENGTH = 0.52" in explore
+    assert "SPRING_STRENGTH = 0.025" in explore
+    assert "const collisionPadding = 18" in explore
+    assert "const baseRadius = focused ? 220 : 146" in explore
+    assert "const radiusStep = focused ? 23 : 14" in explore
     assert "repelAgainstClusterHubs" in explore
     assert "clampRelaxedNode" in explore
+    assert "GLOBAL_THUMB_WIDTH = 88" in explore
+    assert "GLOBAL_THUMB_HEIGHT = 112" in explore
+    assert "buildCompactFocusSlots" in explore
+    assert "FOCUS_SLOT_GAP = 16" in explore
+    assert "slotStepX" in explore and "slotStepY" in explore
+    assert "Math.hypot((x - pos.x) * 0.78, (y - pos.y) * 1.35)" in explore
+    assert "rotation: 0" in explore
+    assert "displayedClusters = focusedClusterId ? constellation.filter(cluster => !cluster.inactive) : constellation" in explore
+    assert "resolveConstellationNodeOverlaps" in explore
+    assert "placeWithoutGlobalOverlap" in explore
+    assert "attempt <= 1800" in explore
+    assert "rotate(${node.rotation}deg)" in explore
     assert "continuous physics" not in explore.lower()
 
 

@@ -12,14 +12,15 @@ const CENTER_Y = CANVAS_HEIGHT / 2;
 const TAP_DRAG_THRESHOLD = 7;
 const CLUSTER_CARD_WIDTH = 178;
 const CLUSTER_CARD_HEIGHT = 96;
-const GLOBAL_THUMB_WIDTH = 104;
-const GLOBAL_THUMB_HEIGHT = 130;
+const GLOBAL_THUMB_WIDTH = 88;
+const GLOBAL_THUMB_HEIGHT = 112;
 const FOCUS_THUMB_WIDTH = 118;
 const FOCUS_THUMB_HEIGHT = 148;
-const RELAXATION_ITERATIONS = 90;
-const REPULSION_STRENGTH = 0.34;
-const CLUSTER_REPULSION_STRENGTH = 0.42;
-const SPRING_STRENGTH = 0.035;
+const FOCUS_SLOT_GAP = 16;
+const RELAXATION_ITERATIONS = 120;
+const REPULSION_STRENGTH = 0.42;
+const CLUSTER_REPULSION_STRENGTH = 0.52;
+const SPRING_STRENGTH = 0.025;
 const RELAXATION_DAMPING = 0.78;
 
 type TapTarget =
@@ -45,6 +46,7 @@ type ConstellationNode = {
   width: number;
   height: number;
   angle: number;
+  rotation: number;
   index: number;
 };
 
@@ -150,8 +152,9 @@ function doesCollide(candidate: CollisionBox, boxes: CollisionBox[]) {
 }
 
 function overlapVector(a: CollisionBox, b: CollisionBox) {
-  const minX = (a.width + b.width) / 2 + 14;
-  const minY = (a.height + b.height) / 2 + 14;
+  const collisionPadding = 18;
+  const minX = (a.width + b.width) / 2 + collisionPadding;
+  const minY = (a.height + b.height) / 2 + collisionPadding;
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   const overlapX = minX - Math.abs(dx);
@@ -217,6 +220,7 @@ function relaxConstellationNodes(nodes: ConstellationNode[], center: { x: number
       width: node.width,
       height: node.height,
       angle: node.angle,
+      rotation: node.rotation,
       index: node.index,
     }))
     .sort((a, b) => Math.hypot(a.x - center.x, a.y - center.y) - Math.hypot(b.x - center.x, b.y - center.y));
@@ -247,13 +251,53 @@ function settleCollisionAwarePositions(seeds: ConstellationNode[], center: { x: 
   return relaxed;
 }
 
+function buildCompactFocusSlots(visible: ItemSummary[], pos: { x: number; y: number }) {
+  const width = FOCUS_THUMB_WIDTH;
+  const height = FOCUS_THUMB_HEIGHT;
+  const slotStepX = width + FOCUS_SLOT_GAP;
+  const slotStepY = height + FOCUS_SLOT_GAP;
+  const hubBox = { x: pos.x, y: pos.y, width: CLUSTER_CARD_WIDTH + 34, height: CLUSTER_CARD_HEIGHT + 32 };
+  const slots: Array<{ x: number; y: number; angle: number; distance: number }> = [];
+  const maxCols = Math.ceil((CANVAS_WIDTH - 180) / slotStepX);
+  const maxRows = Math.ceil((CANVAS_HEIGHT - 180) / slotStepY);
+  for (let row = -maxRows; row <= maxRows; row += 1) {
+    for (let col = -maxCols; col <= maxCols; col += 1) {
+      const stagger = Math.abs(row) % 2 ? slotStepX / 2 : 0;
+      const x = pos.x + col * slotStepX + stagger;
+      const y = pos.y + row * slotStepY;
+      if (x < width / 2 + 36 || x > CANVAS_WIDTH - width / 2 - 36) continue;
+      if (y < height / 2 + 36 || y > CANVAS_HEIGHT - height / 2 - 36) continue;
+      if (doesCollide({ x, y, width, height }, [hubBox])) continue;
+      const angle = Math.atan2(y - pos.y, x - pos.x);
+      const distance = Math.hypot((x - pos.x) * 0.78, (y - pos.y) * 1.35);
+      slots.push({ x, y, angle, distance });
+    }
+  }
+  slots.sort((a, b) => a.distance - b.distance || a.angle - b.angle);
+  return visible.map((item, index) => {
+    const slot = slots[index] || slots[slots.length - 1] || { x: pos.x, y: pos.y + 240, angle: Math.PI / 2, distance: 240 };
+    return {
+      item,
+      imagePath: getConstellationImagePath(item),
+      x: slot.x,
+      y: slot.y,
+      width,
+      height,
+      angle: slot.angle,
+      rotation: 0,
+      index,
+    };
+  });
+}
+
 function buildClusterNodes(allItems: ItemSummary[], cap: number, pos: { x: number; y: number }, focused: boolean, reserved: CollisionBox[]) {
   const visible = scoreItems(allItems).slice(0, cap);
-  const width = focused ? FOCUS_THUMB_WIDTH : GLOBAL_THUMB_WIDTH;
-  const height = focused ? FOCUS_THUMB_HEIGHT : GLOBAL_THUMB_HEIGHT;
+  if (focused) return buildCompactFocusSlots(visible, pos);
+  const width = GLOBAL_THUMB_WIDTH;
+  const height = GLOBAL_THUMB_HEIGHT;
   const goldenAngle = Math.PI * (3 - Math.sqrt(5));
-  const baseRadius = focused ? 188 : 146;
-  const radiusStep = focused ? 19 : 14;
+  const baseRadius = focused ? 220 : 146;
+  const radiusStep = focused ? 23 : 14;
   const seeds = visible.map((item, index) => {
     const angle = index * goldenAngle - Math.PI / 2;
     const ring = Math.floor(Math.sqrt(index));
@@ -266,10 +310,41 @@ function buildClusterNodes(allItems: ItemSummary[], cap: number, pos: { x: numbe
       width,
       height,
       angle,
+      rotation: 0,
       index,
     };
   });
   return settleCollisionAwarePositions(seeds, pos, reserved);
+}
+
+function placeWithoutGlobalOverlap(node: ConstellationNode, placed: CollisionBox[]) {
+  const fitsAt = (x: number, y: number) => {
+    const box = { x, y, width: node.width, height: node.height };
+    return !doesCollide(box, placed);
+  };
+  if (fitsAt(node.x, node.y)) return node;
+  const spiralStep = 10;
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  for (let attempt = 1; attempt <= 1800; attempt += 1) {
+    const radius = Math.ceil(attempt / 12) * spiralStep;
+    const angle = attempt * goldenAngle + node.angle;
+    const x = Math.max(node.width / 2 + 36, Math.min(CANVAS_WIDTH - node.width / 2 - 36, node.x + Math.cos(angle) * radius));
+    const y = Math.max(node.height / 2 + 36, Math.min(CANVAS_HEIGHT - node.height / 2 - 36, node.y + Math.sin(angle) * radius));
+    if (fitsAt(x, y)) return { ...node, x, y };
+  }
+  return node;
+}
+
+function resolveConstellationNodeOverlaps(clusters: ConstellationCluster[]) {
+  const placed: CollisionBox[] = clusters.map(cluster => ({ x: cluster.x, y: cluster.y, width: cluster.width + 24, height: cluster.height + 24 }));
+  return clusters.map(cluster => {
+    const nodes = cluster.nodes.map(node => {
+      const positioned = placeWithoutGlobalOverlap(node, placed);
+      placed.push({ x: positioned.x, y: positioned.y, width: positioned.width, height: positioned.height });
+      return positioned;
+    });
+    return { ...cluster, nodes };
+  });
 }
 
 function buildConstellation(clusters: ClusterRecord[], items: ItemSummary[], focusedClusterId: string | undefined, globalThumbnailBudget: number, focusThumbnailBudget: number): ConstellationCluster[] {
@@ -291,7 +366,7 @@ function buildConstellation(clusters: ClusterRecord[], items: ItemSummary[], foc
     return { x: pos.x, y: pos.y, width: CLUSTER_CARD_WIDTH + 30, height: CLUSTER_CARD_HEIGHT + 28 };
   });
 
-  return sortedClusters.map((cluster) => {
+  const rawConstellation = sortedClusters.map((cluster) => {
     const focused = cluster.id === focusedClusterId;
     const inactive = !!focusedClusterId && !focused;
     const allItems = itemsByCluster.get(cluster.id) || [];
@@ -309,8 +384,8 @@ function buildConstellation(clusters: ClusterRecord[], items: ItemSummary[], foc
       inactive,
     };
   });
+  return focusedClusterId ? rawConstellation : resolveConstellationNodeOverlaps(rawConstellation);
 }
-
 export default function ExploreView({
   clusters,
   items,
@@ -339,6 +414,7 @@ export default function ExploreView({
     [clusters, items, focusedClusterId, globalThumbnailBudget, focusThumbnailBudget],
   );
   const focusedCluster = constellation.find(cluster => cluster.id === focusedClusterId);
+  const displayedClusters = focusedClusterId ? constellation.filter(cluster => !cluster.inactive) : constellation;
 
   if (!clusters.length) {
     return (
@@ -413,7 +489,7 @@ export default function ExploreView({
               <line key={`${cluster.id}-${node.item.id}-link`} x1={cluster.x} y1={cluster.y} x2={node.x} y2={node.y} />
             )))}
           </svg>
-          {constellation.map(cluster => (
+          {displayedClusters.map(cluster => (
             <button
               key={cluster.id}
               className={`constellation-cluster-card ${cluster.id === focusedClusterId ? 'focused' : ''} ${cluster.inactive ? 'inactive' : ''}`}
@@ -433,7 +509,7 @@ export default function ExploreView({
             <button
               key={`${cluster.id}-${node.item.id}`}
               className={`constellation-thumb-card ${node.item.favorite ? 'favorite' : ''}`}
-              style={{ left: node.x, top: node.y, width: node.width, height: node.height, transform: `translate(-50%, -50%) rotate(${Math.sin(node.angle) * 3.5}deg)` }}
+              style={{ left: node.x, top: node.y, width: node.width, height: node.height, transform: `translate(-50%, -50%) rotate(${node.rotation}deg)` }}
               onPointerDown={(event) => beginTap(event, { type: 'item', item: node.item })}
               onPointerMove={moveTap}
               onPointerUp={endTap}
