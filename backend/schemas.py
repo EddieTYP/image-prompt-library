@@ -80,6 +80,7 @@ class ItemSummary(BaseModel):
     source_url: Optional[str] = None
     cluster: Optional[ClusterRecord] = None
     tags: List[TagRecord] = Field(default_factory=list)
+    prompts: List[PromptRecord] = Field(default_factory=list)
     prompt_snippet: Optional[str] = None
     first_image: Optional[ImageRecord] = None
     rating: int = 0
@@ -89,7 +90,6 @@ class ItemSummary(BaseModel):
     created_at: str
 
 class ItemDetail(ItemSummary):
-    prompts: List[PromptRecord] = Field(default_factory=list)
     images: List[ImageRecord] = Field(default_factory=list)
     notes: Optional[str] = None
     author: Optional[str] = None

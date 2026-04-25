@@ -20,7 +20,7 @@ def create_app(library_path: Path | str | None = None) -> FastAPI:
     @app.get("/api/health")
     def health(): return {"ok": True, "version": APP_VERSION}
     @app.get("/api/config")
-    def config(): return {"version": APP_VERSION, "library_path": str(library), "database_path": str(get_db_path(library))}
+    def config(): return {"version": APP_VERSION, "library_path": str(library), "database_path": str(get_db_path(library)), "preferred_prompt_language": "zh_hant"}
     @app.get("/media/{media_path:path}")
     def media(media_path: str):
         safe_roots = {"originals", "thumbs", "previews"}

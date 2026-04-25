@@ -32,6 +32,11 @@ def test_create_get_search_and_filter_item(tmp_path):
 
     detail = c.get(f"/api/items/{created['id']}").json()
     assert len(detail["prompts"]) == 2
+    listed = c.get("/api/items").json()["items"][0]
+    assert {p["language"]: p["text"] for p in listed["prompts"]} == {
+        "zh_hant": "夢幻玻璃茶室，晨光穿過霧氣",
+        "en": "A dreamy glass teahouse in morning mist",
+    }
 
     assert c.get("/api/items", params={"q": "Teahouse"}).json()["total"] == 1
     assert c.get("/api/items", params={"q": "玻璃茶室"}).json()["total"] == 1

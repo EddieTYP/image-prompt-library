@@ -8,16 +8,18 @@ export default function ItemCard({
   onOpen,
   onFavorite,
   onEdit,
+  onCopyPrompt,
 }: {
   item: ItemSummary;
   onOpen: (id: string) => void;
   onFavorite: (id: string) => void;
   onEdit: (item: ItemSummary) => void;
+  onCopyPrompt: (item: ItemSummary) => void;
 }) {
   const imagePath = item.first_image?.thumb_path || item.first_image?.preview_path || item.first_image?.original_path;
   const copyPrompt = (event: MouseEvent) => {
     event.stopPropagation();
-    void navigator.clipboard?.writeText(item.prompt_snippet || item.title);
+    onCopyPrompt(item);
   };
   const favorite = (event: MouseEvent) => {
     event.stopPropagation();

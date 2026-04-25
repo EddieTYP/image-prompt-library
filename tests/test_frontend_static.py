@@ -55,6 +55,24 @@ def test_cards_keep_adaptive_masonry_and_actions():
     assert "break-inside:avoid" in css.replace(" ", "")
 
 
+def test_copy_prompt_uses_shared_preferred_language_resolver():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+    card = (ROOT / "frontend" / "src" / "components" / "ItemCard.tsx").read_text()
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+    utils = (ROOT / "frontend" / "src" / "utils" / "prompts.ts").read_text()
+    assert "PromptLanguage" in utils
+    assert "resolvePromptText" in utils
+    assert "preferredLanguage" in app
+    assert "preferred_prompt_language" in app
+    assert "zh_hant" in config and "zh_hans" in config and "en" in config
+    assert "onCopyPrompt" in card and "prompt_snippet || item.title" not in card
+    assert "resolvePromptText" in detail
+    assert "preferredLanguage" in detail
+    assert "const copyText = prompt?.text || resolvePromptText" in detail
+    assert "navigator.clipboard?.writeText(copyText)" in detail
+
+
 def test_gallery_visuals_are_polished():
     detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
     editor = (ROOT / "frontend" / "src" / "components" / "ItemEditorModal.tsx").read_text()

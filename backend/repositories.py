@@ -167,14 +167,14 @@ class ItemRepository:
     def _summary_from_row(self, conn, row) -> ItemSummary:
         prompts = self._prompts(conn, row["id"])
         images = self._images(conn, row["id"])
-        return ItemSummary(id=row["id"], title=row["title"], slug=row["slug"], model=row["model"], source_name=row["source_name"], source_url=row["source_url"], cluster=self._cluster_from_row(row), tags=self._tags(conn,row["id"]), prompt_snippet=(prompts[0].text[:220] if prompts else None), first_image=(images[0] if images else None), rating=row["rating"], favorite=bool(row["favorite"]), archived=bool(row["archived"]), updated_at=row["updated_at"], created_at=row["created_at"])
+        return ItemSummary(id=row["id"], title=row["title"], slug=row["slug"], model=row["model"], source_name=row["source_name"], source_url=row["source_url"], cluster=self._cluster_from_row(row), tags=self._tags(conn,row["id"]), prompts=prompts, prompt_snippet=(prompts[0].text[:220] if prompts else None), first_image=(images[0] if images else None), rating=row["rating"], favorite=bool(row["favorite"]), archived=bool(row["archived"]), updated_at=row["updated_at"], created_at=row["created_at"])
 
     def get_item(self, item_id: str) -> ItemDetail:
         with connect(self.library_path) as conn:
             row = conn.execute("""SELECT i.*, c.id cluster_id, c.name cluster_name, c.description cluster_description, c.sort_order cluster_sort_order FROM items i LEFT JOIN clusters c ON c.id=i.cluster_id WHERE i.id=?""", (item_id,)).fetchone()
             if not row: raise KeyError(item_id)
             summary = self._summary_from_row(conn, row)
-            return ItemDetail(**summary.model_dump(), prompts=self._prompts(conn,item_id), images=self._images(conn,item_id), notes=row["notes"], author=row["author"])
+            return ItemDetail(**summary.model_dump(), images=self._images(conn,item_id), notes=row["notes"], author=row["author"])
 
     def list_items(self, q: str | None=None, cluster: str | None=None, tag: str | None=None, favorite: bool | None=None, archived: bool | None=False, sort: str="updated_desc", limit: int=100, offset: int=0) -> ItemList:
         where=[]; params=[]

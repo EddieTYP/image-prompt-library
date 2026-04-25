@@ -10,7 +10,15 @@ import ItemEditorModal from './components/ItemEditorModal';
 import ConfigPanel from './components/ConfigPanel';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
-import type { ClusterRecord, ItemDetail, ViewMode } from './types';
+import type { ClusterRecord, ItemDetail, ItemSummary, ViewMode } from './types';
+import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptLanguage } from './utils/prompts';
+
+const PROMPT_LANGUAGE_STORAGE_KEY = 'image-prompt-library.preferred_prompt_language';
+
+function loadPreferredLanguage(): PromptLanguage {
+  if (typeof window === 'undefined') return DEFAULT_PROMPT_LANGUAGE;
+  return normalizePromptLanguage(window.localStorage.getItem(PROMPT_LANGUAGE_STORAGE_KEY));
+}
 
 export default function App() {
   const [q, setQ] = useState('');
@@ -24,6 +32,7 @@ export default function App() {
   const [editing, setEditing] = useState<ItemDetail | undefined>();
   const [editorOpen, setEditorOpen] = useState(false);
   const [itemsReloadKey, setItemsReloadKey] = useState(0);
+  const [preferredLanguage, setPreferredLanguage] = useState<PromptLanguage>(loadPreferredLanguage);
   const { data, loading, error } = useItemsQuery(debouncedQ, clusterId, undefined, 300, itemsReloadKey);
   const selectedCluster = useMemo(() => clusters.find(c => c.id === clusterId), [clusters, clusterId]);
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
@@ -32,21 +41,29 @@ export default function App() {
   const focusCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('explore'); setFiltersOpen(false); };
   const clearCluster = () => setClusterId(undefined);
   const saved = () => { refreshClusters(); setItemsReloadKey(k => k + 1); };
+  const updatePreferredLanguage = (language: PromptLanguage) => {
+    setPreferredLanguage(language);
+    window.localStorage.setItem(PROMPT_LANGUAGE_STORAGE_KEY, language);
+  };
+  const copyPrompt = (item: ItemSummary) => {
+    const text = resolvePromptText(item.prompts, preferredLanguage, item.title);
+    void navigator.clipboard?.writeText(text);
+  };
   const favorite = (id: string) => { api.favorite(id).then(saved).catch(() => undefined); };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   return <div className="app">
     <TopBar q={q} onQ={setQ} view={view} onView={setView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={data.total} clusterName={selectedCluster?.name} clearCluster={clearCluster} />
     <FiltersPanel open={filtersOpen} clusters={clusters} selected={clusterId} onSelect={selectCluster} onClose={() => setFiltersOpen(false)} />
-    <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} />
+    <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} />
     <main>
       {loading && <div className="loading">Loading…</div>}
       {error && <div className="error">{error}</div>}
       {view === 'explore'
         ? <ExploreView clusters={clusters} items={data.items} focusedClusterId={clusterId} onFocusCluster={focusCluster} onOpen={setDetailId} />
-        : <CardsView items={data.items} onOpen={setDetailId} onFavorite={favorite} onEdit={editSummary} />}
+        : <CardsView items={data.items} onOpen={setDetailId} onFavorite={favorite} onEdit={editSummary} onCopyPrompt={copyPrompt} />}
     </main>
     <button className="fab" onClick={() => { setEditing(undefined); setEditorOpen(true); }}><Plus/> Add</button>
-    <ItemDetailModal id={detailId} onClose={() => setDetailId(undefined)} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} />
+    <ItemDetailModal id={detailId} preferredLanguage={preferredLanguage} onClose={() => setDetailId(undefined)} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} />
     {editorOpen && <ItemEditorModal item={editing} onClose={() => setEditorOpen(false)} onSaved={saved} />}
   </div>
 }

@@ -6,11 +6,13 @@ export default function CardsView({
   onOpen,
   onFavorite,
   onEdit,
+  onCopyPrompt,
 }: {
   items: ItemSummary[];
   onOpen: (id: string) => void;
   onFavorite: (id: string) => void;
   onEdit: (item: ItemSummary) => void;
+  onCopyPrompt: (item: ItemSummary) => void;
 }) {
   if (!items.length) {
     return (
@@ -24,7 +26,7 @@ export default function CardsView({
   return (
     <section className="cards-grid masonry-like">
       {items.map(item => (
-        <ItemCard key={item.id} item={item} onOpen={onOpen} onFavorite={onFavorite} onEdit={onEdit} />
+        <ItemCard key={item.id} item={item} onOpen={onOpen} onFavorite={onFavorite} onEdit={onEdit} onCopyPrompt={onCopyPrompt} />
       ))}
     </section>
   );

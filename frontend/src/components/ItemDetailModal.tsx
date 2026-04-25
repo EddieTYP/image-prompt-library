@@ -2,25 +2,28 @@ import { useEffect, useState } from 'react';
 import { Copy, ExternalLink, Heart, Pencil, X } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import type { ItemDetail } from '../types';
+import { PROMPT_LANGUAGE_LABELS, resolvePromptText, type PromptLanguage } from '../utils/prompts';
 
 const LANG_LABELS: Record<string, string> = {
-  zh_hant: '繁體中文',
-  en: 'English',
+  ...PROMPT_LANGUAGE_LABELS,
   original: 'Original',
-  zh_hans: '簡體',
 };
 
 export default function ItemDetailModal({
   id,
+  preferredLanguage,
   onClose,
   onEdit,
 }: {
   id?: string;
+  preferredLanguage: PromptLanguage;
   onClose: () => void;
   onEdit: (item: ItemDetail) => void;
 }) {
   const [item, setItem] = useState<ItemDetail>();
-  const [lang, setLang] = useState('zh_hant');
+  const [lang, setLang] = useState<string>(preferredLanguage);
+
+  useEffect(() => { setLang(preferredLanguage); }, [preferredLanguage, id]);
 
   useEffect(() => {
     if (!id) return;
@@ -30,7 +33,8 @@ export default function ItemDetailModal({
 
   if (!id) return null;
 
-  const prompt = item?.prompts.find(p => p.language === lang) || item?.prompts[0];
+  const prompt = item?.prompts.find(p => p.language === lang) || item?.prompts.find(p => p.language === preferredLanguage) || item?.prompts.find(p => p.language === 'en') || item?.prompts[0];
+  const copyText = prompt?.text || resolvePromptText(item?.prompts, preferredLanguage, item?.title || '');
   const primaryImage = item?.images[0];
 
   return (
@@ -68,7 +72,7 @@ export default function ItemDetailModal({
               <p className="muted">{item.model || 'ChatGPT Image'} · {item.source_name || 'Local reference'}</p>
 
               <div className="tabs prompt-tabs" aria-label="Prompt language">
-                {['zh_hant', 'en', 'original', 'zh_hans'].map(l => (
+                {Array.from(new Set([preferredLanguage, 'zh_hant', 'en', 'original', 'zh_hans'])).map(l => (
                   <button key={l} className={lang === l ? 'active' : ''} onClick={() => setLang(l)}>
                     {LANG_LABELS[l] || l}
                   </button>
@@ -80,7 +84,7 @@ export default function ItemDetailModal({
               </div>
 
               <div className="actions modal-actions">
-                <button onClick={() => navigator.clipboard?.writeText(prompt?.text || '')}>
+                <button onClick={() => navigator.clipboard?.writeText(copyText)}>
                   <Copy size={16} /> Copy prompt
                 </button>
                 <button onClick={() => api.favorite(item.id).then(setItem)}>
