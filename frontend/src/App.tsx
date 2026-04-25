@@ -15,10 +15,18 @@ import { copyTextToClipboard } from './utils/clipboard';
 import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptLanguage } from './utils/prompts';
 
 const PROMPT_LANGUAGE_STORAGE_KEY = 'image-prompt-library.preferred_prompt_language';
+const GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY = 'image-prompt-library.global_thumbnail_budget';
+const FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY = 'image-prompt-library.focus_thumbnail_budget';
 
 function loadPreferredLanguage(): PromptLanguage {
   if (typeof window === 'undefined') return DEFAULT_PROMPT_LANGUAGE;
   return normalizePromptLanguage(window.localStorage.getItem(PROMPT_LANGUAGE_STORAGE_KEY));
+}
+
+function loadNumberSetting(key: string, fallback: number, allowed: number[]) {
+  if (typeof window === 'undefined') return fallback;
+  const raw = Number(window.localStorage.getItem(key));
+  return allowed.includes(raw) ? raw : fallback;
 }
 
 export default function App() {
@@ -34,7 +42,9 @@ export default function App() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [itemsReloadKey, setItemsReloadKey] = useState(0);
   const [preferredLanguage, setPreferredLanguage] = useState<PromptLanguage>(loadPreferredLanguage);
-  const { data, loading, error } = useItemsQuery(debouncedQ, clusterId, undefined, 300, itemsReloadKey);
+  const [globalThumbnailBudget, setGlobalThumbnailBudget] = useState(() => loadNumberSetting(GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY, 100, [50, 75, 100, 150]));
+  const [focusThumbnailBudget, setFocusThumbnailBudget] = useState(() => loadNumberSetting(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, 100, [24, 48, 72, 100]));
+  const { data, loading, error } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
   const selectedCluster = useMemo(() => clusters.find(c => c.id === clusterId), [clusters, clusterId]);
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
   useEffect(() => { refreshClusters(); }, []);
@@ -47,6 +57,14 @@ export default function App() {
     setPreferredLanguage(language);
     window.localStorage.setItem(PROMPT_LANGUAGE_STORAGE_KEY, language);
   };
+  const updateGlobalThumbnailBudget = (budget: number) => {
+    setGlobalThumbnailBudget(budget);
+    window.localStorage.setItem(GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY, String(budget));
+  };
+  const updateFocusThumbnailBudget = (budget: number) => {
+    setFocusThumbnailBudget(budget);
+    window.localStorage.setItem(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, String(budget));
+  };
   const copyPrompt = (item: ItemSummary) => {
     const text = resolvePromptText(item.prompts, preferredLanguage, item.title);
     void copyTextToClipboard(text);
@@ -56,12 +74,12 @@ export default function App() {
   return <div className="app">
     <TopBar q={q} onQ={setQ} view={view} onView={setView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={data.total} clusterName={selectedCluster?.name} clearCluster={clearCluster} />
     <FiltersPanel open={filtersOpen} clusters={clusters} selected={clusterId} onSelect={selectCluster} onClose={() => setFiltersOpen(false)} />
-    <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} />
+    <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} />
     <main>
       {loading && <div className="loading">Loading…</div>}
       {error && <div className="error">{error}</div>}
       {view === 'explore'
-        ? <ExploreView clusters={clusters} items={data.items} focusedClusterId={clusterId} onFocusCluster={focusCluster} onOpenClusterCards={openClusterAsCards} onOpen={setDetailId} />
+        ? <ExploreView clusters={clusters} items={data.items} focusedClusterId={clusterId} globalThumbnailBudget={globalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusCluster={focusCluster} onOpenClusterCards={openClusterAsCards} onOpen={setDetailId} />
         : <CardsView items={data.items} onOpen={setDetailId} onFavorite={favorite} onEdit={editSummary} onCopyPrompt={copyPrompt} />}
     </main>
     <button className="fab" onClick={() => { setEditing(undefined); setEditorOpen(true); }}><Plus/> Add</button>

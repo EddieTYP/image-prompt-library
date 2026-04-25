@@ -7,7 +7,7 @@ def test_item_save_refreshes_visible_item_query():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     hook = (ROOT / "frontend" / "src" / "hooks" / "useItemsQuery.ts").read_text()
     assert "const [itemsReloadKey, setItemsReloadKey]" in app
-    assert "useItemsQuery(debouncedQ, clusterId, undefined, 300, itemsReloadKey)" in app
+    assert "useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey)" in app
     assert "setItemsReloadKey(k => k + 1)" in app
     assert "reloadKey" in hook
     assert "[q, clusterId, tag, viewLimit, reloadKey]" in hook
@@ -26,18 +26,24 @@ def test_topbar_is_toolbar_search_not_hero_or_keyboard_shortcut():
     assert "metaKey" not in app and "ctrlKey" not in app
 
 
-def test_explore_is_spatial_orbit_map_with_cluster_caps():
+def test_explore_is_thumbnail_constellation_with_configurable_budgets():
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
-    assert "spatial-orbit-map" in explore
-    assert "orbit-canvas" in explore
-    assert "orbit-cluster-label" in explore
-    assert "orbit-node" in explore
-    assert "MAX_VISIBLE_NODES_PER_CLUSTER" in explore
-    assert "FOCUSED_VISIBLE_NODES_PER_CLUSTER" in explore
-    assert "favorite" in explore
-    assert "+{cluster.hiddenCount} more" in explore
-    assert ".spatial-orbit-map" in css
+    assert "thumbnail-constellation" in explore
+    assert "constellation-canvas" in explore
+    assert "constellation-cluster-card" in explore
+    assert "constellation-thumb-card" in explore
+    assert "GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY" in app
+    assert "FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY" in app
+    assert "globalThumbnailBudget" in app and "focusThumbnailBudget" in app
+    assert "Global thumbnail budget" in config
+    assert "Focus thumbnail budget" in config
+    assert "allocateGlobalThumbnailBudget" in explore
+    assert "minimumAllocation" in explore
+    assert ".thumbnail-constellation" in css
+    assert ".constellation-thumb-card" in css
     assert ".cluster-orbit{" not in css
 
 
@@ -51,23 +57,33 @@ def test_explore_focus_mode_stays_in_map_and_has_cards_cta():
     assert "focusedClusterId" in explore
     assert "Open as Cards" in explore
     assert "onOpenClusterCards(cluster)" in explore
-    assert "orbit-focus-panel" in explore
-    assert ".orbit-focus-panel" in css
+    assert "constellation-focus-panel" in explore
+    assert ".constellation-focus-panel" in css
+    assert "centerFocusedCluster" in explore
 
 
-def test_explore_uses_ordered_rings_and_lod_image_paths():
+def test_explore_uses_real_thumbnails_not_dots_or_originals():
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
-    assert "function getOrbitImagePath" in explore
-    assert "lod: 'dot' | 'thumb' | 'preview'" in explore
-    assert "scale < 0.54" in explore
+    assert "function getConstellationImagePath" in explore
+    assert "first_image?.thumb_path || item.first_image?.preview_path" in explore
     assert "first_image?.original_path" not in explore
-    assert "ringIndex" in explore and "laneIndex" in explore
-    assert "const ringGap" in explore
-    assert "className={`orbit-node ${node.item.favorite ? 'favorite' : ''} lod-${node.lod}`}" in explore
-    assert "node.lod !== 'dot' && node.imagePath" in explore
-    assert ".orbit-node.lod-dot" in css
-    assert ".orbit-node.lod-preview" in css
+    assert "lod-dot" not in explore
+    assert "node-placeholder" not in explore
+    assert "loading=\"lazy\"" in explore
+    assert "decoding=\"async\"" in explore
+    assert ".orbit-node.lod-dot" not in css
+
+
+def test_explore_has_collision_aware_layout_and_tap_drag_threshold():
+    explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
+    assert "TAP_DRAG_THRESHOLD" in explore
+    assert "tapTarget" in explore
+    assert "dragged:" in explore
+    assert "Math.hypot" in explore
+    assert "settleCollisionAwarePositions" in explore
+    assert "doesCollide" in explore
+    assert "spiralStep" in explore
 
 
 def test_cards_keep_adaptive_masonry_and_actions():

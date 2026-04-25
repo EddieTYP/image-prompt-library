@@ -1,79 +1,195 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type PointerEvent } from 'react';
 import { Minus, Plus, RotateCcw } from 'lucide-react';
 import { mediaUrl } from '../api/client';
 import type { ClusterRecord, ItemSummary } from '../types';
 
-const MAX_VISIBLE_NODES_PER_CLUSTER = 12;
-const FOCUSED_VISIBLE_NODES_PER_CLUSTER = 24;
-const CANVAS_WIDTH = 1680;
-const CANVAS_HEIGHT = 1120;
-const DEFAULT_SCALE = 0.52;
-const DEFAULT_OFFSET = { x: -12, y: -4 };
+const CANVAS_WIDTH = 2200;
+const CANVAS_HEIGHT = 1500;
+const DEFAULT_SCALE = 0.48;
+const DEFAULT_OFFSET = { x: -18, y: -10 };
 const CENTER_X = CANVAS_WIDTH / 2;
 const CENTER_Y = CANVAS_HEIGHT / 2;
+const TAP_DRAG_THRESHOLD = 7;
+const CLUSTER_CARD_WIDTH = 178;
+const CLUSTER_CARD_HEIGHT = 96;
+const GLOBAL_THUMB_WIDTH = 104;
+const GLOBAL_THUMB_HEIGHT = 130;
+const FOCUS_THUMB_WIDTH = 118;
+const FOCUS_THUMB_HEIGHT = 148;
 
-type OrbitLod = 'dot' | 'thumb' | 'preview';
+type TapTarget =
+  | { type: 'cluster'; cluster: ConstellationCluster }
+  | { type: 'item'; item: ItemSummary }
+  | undefined;
 
-type OrbitNode = {
-  item: ItemSummary;
-  imagePath: string;
-  lod: 'dot' | 'thumb' | 'preview';
+type TapState = {
+  pointerId: number;
   x: number;
   y: number;
-  size: number;
-  angle: number;
-  ringIndex: number;
-  laneIndex: number;
+  dragged: boolean;
+  tapTarget: TapTarget;
 };
 
-type OrbitCluster = ClusterRecord & {
+type DragState = { pointerId: number; x: number; y: number; ox: number; oy: number };
+
+type ConstellationNode = {
+  item: ItemSummary;
+  imagePath: string;
   x: number;
   y: number;
-  radius: number;
-  nodes: OrbitNode[];
+  width: number;
+  height: number;
+  angle: number;
+  index: number;
+};
+
+type ConstellationCluster = ClusterRecord & {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  nodes: ConstellationNode[];
   hiddenCount: number;
   inactive: boolean;
 };
 
-function clusterPosition(index: number, total: number, count: number, focused: boolean) {
-  if (focused) return { x: CENTER_X, y: CENTER_Y + 22 };
-  if (index === 0) return { x: CENTER_X, y: CENTER_Y + 10 };
-  const ring = index <= 6 ? 1 : 2;
-  const ringIndex = ring === 1 ? index - 1 : index - 7;
-  const ringCount = ring === 1 ? Math.min(6, total - 1) : Math.max(1, total - 7);
-  const angle = (-Math.PI / 2) + (ringIndex / ringCount) * Math.PI * 2 + (ring === 2 ? Math.PI / 7 : 0);
-  const distance = ring === 1 ? 350 : 560;
-  const weightNudge = Math.min(70, Math.sqrt(count) * 7);
-  return {
-    x: CENTER_X + Math.cos(angle) * (distance + weightNudge),
-    y: CENTER_Y + Math.sin(angle) * (distance * 0.58 + weightNudge * 0.42),
-  };
-}
+type CollisionBox = { x: number; y: number; width: number; height: number };
 
-function getOrbitImagePath(item: ItemSummary, lod: OrbitLod) {
-  if (lod === 'preview') return item.first_image?.preview_path || item.first_image?.thumb_path || '';
-  if (lod === 'thumb') return item.first_image?.thumb_path || item.first_image?.preview_path || '';
-  return '';
+function getConstellationImagePath(item: ItemSummary) {
+  return item.first_image?.thumb_path || item.first_image?.preview_path || '';
 }
 
 function scoreItems(items: ItemSummary[]) {
   return [...items].sort((a, b) => {
     if (a.favorite !== b.favorite) return a.favorite ? -1 : 1;
     if ((b.rating || 0) !== (a.rating || 0)) return (b.rating || 0) - (a.rating || 0);
-    const aImage = getOrbitImagePath(a, 'thumb') ? 1 : 0;
-    const bImage = getOrbitImagePath(b, 'thumb') ? 1 : 0;
+    const aImage = getConstellationImagePath(a) ? 1 : 0;
+    const bImage = getConstellationImagePath(b) ? 1 : 0;
     if (aImage !== bImage) return bImage - aImage;
     return a.title.localeCompare(b.title, 'zh-Hant');
   });
 }
 
-function orbitLod(scale: number, focused: boolean): OrbitLod {
-  if (!focused && scale < 0.54) return 'dot';
-  if (focused || scale > 0.86) return 'preview';
-  return 'thumb';
+function clusterPosition(index: number, total: number, count: number, focused: boolean) {
+  if (focused) return centerFocusedCluster();
+  if (total <= 1) return { x: CENTER_X, y: CENTER_Y };
+  const ring = index < 6 ? 0 : 1;
+  const indexInRing = ring === 0 ? index : index - 6;
+  const ringCount = ring === 0 ? Math.min(6, total) : Math.max(1, total - 6);
+  const angle = (-Math.PI / 2) + (indexInRing / ringCount) * Math.PI * 2 + (ring ? Math.PI / 9 : 0);
+  const distance = ring === 0 ? 470 : 760;
+  const nudge = Math.min(70, Math.sqrt(count) * 6);
+  return {
+    x: CENTER_X + Math.cos(angle) * (distance + nudge),
+    y: CENTER_Y + Math.sin(angle) * (distance * 0.68 + nudge * 0.36),
+  };
 }
 
-function buildOrbit(clusters: ClusterRecord[], items: ItemSummary[], focusedClusterId: string | undefined, scale: number): OrbitCluster[] {
+function centerFocusedCluster() {
+  return { x: CENTER_X, y: CENTER_Y };
+}
+
+function allocateGlobalThumbnailBudget(clusters: ClusterRecord[], itemsByCluster: Map<string, ItemSummary[]>, budget: number) {
+  const allocations = new Map<string, number>();
+  const nonEmpty = clusters.filter(cluster => (itemsByCluster.get(cluster.id) || []).length > 0);
+  if (!nonEmpty.length || budget <= 0) return allocations;
+
+  const minimumAllocation = Math.max(1, Math.min(2, Math.floor(budget / nonEmpty.length) || 1));
+  let used = 0;
+  for (const cluster of nonEmpty) {
+    const count = itemsByCluster.get(cluster.id)?.length || 0;
+    const allocation = Math.min(minimumAllocation, count, Math.max(0, budget - used));
+    allocations.set(cluster.id, allocation);
+    used += allocation;
+  }
+
+  let remaining = Math.max(0, budget - used);
+  const totalRemainderDemand = nonEmpty.reduce((sum, cluster) => {
+    const count = itemsByCluster.get(cluster.id)?.length || 0;
+    return sum + Math.max(0, count - (allocations.get(cluster.id) || 0));
+  }, 0);
+
+  for (const cluster of nonEmpty) {
+    if (remaining <= 0 || totalRemainderDemand <= 0) break;
+    const count = itemsByCluster.get(cluster.id)?.length || 0;
+    const current = allocations.get(cluster.id) || 0;
+    const demand = Math.max(0, count - current);
+    const share = Math.floor((demand / totalRemainderDemand) * remaining);
+    const add = Math.min(demand, share);
+    allocations.set(cluster.id, current + add);
+  }
+
+  let distributed = Array.from(allocations.values()).reduce((sum, value) => sum + value, 0);
+  while (distributed < budget) {
+    let changed = false;
+    for (const cluster of nonEmpty) {
+      if (distributed >= budget) break;
+      const count = itemsByCluster.get(cluster.id)?.length || 0;
+      const current = allocations.get(cluster.id) || 0;
+      if (current < count) {
+        allocations.set(cluster.id, current + 1);
+        distributed += 1;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+
+  return allocations;
+}
+
+function doesCollide(candidate: CollisionBox, boxes: CollisionBox[]) {
+  const padding = 12;
+  return boxes.some(box => Math.abs(candidate.x - box.x) < (candidate.width + box.width) / 2 + padding && Math.abs(candidate.y - box.y) < (candidate.height + box.height) / 2 + padding);
+}
+
+function settleCollisionAwarePositions(seeds: ConstellationNode[], center: { x: number; y: number }, reserved: CollisionBox[]) {
+  const boxes = reserved;
+  const spiralStep = 16;
+  return seeds.map(seed => {
+    let x = seed.x;
+    let y = seed.y;
+    let box = { x, y, width: seed.width, height: seed.height };
+    for (let attempt = 0; attempt < 70 && doesCollide(box, boxes); attempt += 1) {
+      const angle = seed.angle + attempt * 0.76;
+      const radius = spiralStep * (1 + attempt * 0.34);
+      x = seed.x + Math.cos(angle) * radius;
+      y = seed.y + Math.sin(angle) * radius;
+      x = Math.max(70, Math.min(CANVAS_WIDTH - 70, x));
+      y = Math.max(80, Math.min(CANVAS_HEIGHT - 80, y));
+      box = { x, y, width: seed.width, height: seed.height };
+    }
+    boxes.push(box);
+    return { ...seed, x, y };
+  }).sort((a, b) => Math.hypot(a.x - center.x, a.y - center.y) - Math.hypot(b.x - center.x, b.y - center.y));
+}
+
+function buildClusterNodes(allItems: ItemSummary[], cap: number, pos: { x: number; y: number }, focused: boolean, reserved: CollisionBox[]) {
+  const visible = scoreItems(allItems).slice(0, cap);
+  const width = focused ? FOCUS_THUMB_WIDTH : GLOBAL_THUMB_WIDTH;
+  const height = focused ? FOCUS_THUMB_HEIGHT : GLOBAL_THUMB_HEIGHT;
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const baseRadius = focused ? 188 : 146;
+  const radiusStep = focused ? 19 : 14;
+  const seeds = visible.map((item, index) => {
+    const angle = index * goldenAngle - Math.PI / 2;
+    const ring = Math.floor(Math.sqrt(index));
+    const radius = baseRadius + ring * radiusStep + (index % 5) * 4;
+    return {
+      item,
+      imagePath: getConstellationImagePath(item),
+      x: pos.x + Math.cos(angle) * radius,
+      y: pos.y + Math.sin(angle) * radius * (focused ? 0.9 : 0.82),
+      width,
+      height,
+      angle,
+      index,
+    };
+  });
+  return settleCollisionAwarePositions(seeds, pos, reserved);
+}
+
+function buildConstellation(clusters: ClusterRecord[], items: ItemSummary[], focusedClusterId: string | undefined, globalThumbnailBudget: number, focusThumbnailBudget: number): ConstellationCluster[] {
   const itemsByCluster = new Map<string, ItemSummary[]>();
   for (const item of items) {
     const id = item.cluster?.id;
@@ -83,56 +199,41 @@ function buildOrbit(clusters: ClusterRecord[], items: ItemSummary[], focusedClus
     itemsByCluster.set(id, list);
   }
 
-  return [...clusters]
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant'))
-    .map((cluster, index, arr) => {
-      const focused = cluster.id === focusedClusterId;
-      const inactive = !!focusedClusterId && !focused;
-      const cap = focused ? FOCUSED_VISIBLE_NODES_PER_CLUSTER : MAX_VISIBLE_NODES_PER_CLUSTER;
-      const allItems = scoreItems(itemsByCluster.get(cluster.id) || []);
-      const visible = inactive ? [] : allItems.slice(0, cap);
-      const pos = clusterPosition(index, arr.length, cluster.count, focused);
-      const radius = Math.max(136, Math.min(282, 106 + Math.sqrt(cluster.count) * 14 + (focused ? 82 : 0)));
-      const lod = orbitLod(scale, focused);
-      const ringCapacity = focused ? 8 : 6;
-      const ringGap = focused ? 54 : 38;
-      const nodes = visible.map((item, nodeIndex) => {
-        const ringIndex = Math.floor(nodeIndex / ringCapacity);
-        const laneIndex = nodeIndex % ringCapacity;
-        const nodesInRing = Math.min(ringCapacity, visible.length - ringIndex * ringCapacity);
-        const laneOffset = ringIndex % 2 ? Math.PI / Math.max(6, nodesInRing) : 0;
-        const angle = (-Math.PI / 2) + (laneIndex / Math.max(1, nodesInRing)) * Math.PI * 2 + laneOffset;
-        const nodeRadius = radius + ringIndex * ringGap;
-        const baseSize = lod === 'dot' ? 28 : focused ? 112 : 86;
-        const size = Math.round(Math.max(22, Math.min(focused ? 142 : 112, baseSize + (item.favorite ? 12 : 0) + (item.rating || 0) * 2 - ringIndex * 5)));
-        return {
-          item,
-          imagePath: getOrbitImagePath(item, lod),
-          lod,
-          x: pos.x + Math.cos(angle) * nodeRadius,
-          y: pos.y + Math.sin(angle) * nodeRadius * 0.74,
-          size,
-          angle,
-          ringIndex,
-          laneIndex,
-        };
-      });
-      return {
-        ...cluster,
-        x: pos.x,
-        y: pos.y,
-        radius,
-        nodes,
-        hiddenCount: inactive ? 0 : Math.max(0, allItems.length - visible.length),
-        inactive,
-      };
-    });
+  const sortedClusters = [...clusters].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-Hant'));
+  const allocations = allocateGlobalThumbnailBudget(sortedClusters, itemsByCluster, globalThumbnailBudget);
+  const clusterPositions = new Map<string, { x: number; y: number }>();
+  sortedClusters.forEach((cluster, index) => clusterPositions.set(cluster.id, clusterPosition(index, sortedClusters.length, cluster.count, cluster.id === focusedClusterId)));
+  const sharedCollisionBoxes: CollisionBox[] = sortedClusters.map(cluster => {
+    const pos = clusterPositions.get(cluster.id) || centerFocusedCluster();
+    return { x: pos.x, y: pos.y, width: CLUSTER_CARD_WIDTH + 30, height: CLUSTER_CARD_HEIGHT + 28 };
+  });
+
+  return sortedClusters.map((cluster) => {
+    const focused = cluster.id === focusedClusterId;
+    const inactive = !!focusedClusterId && !focused;
+    const allItems = itemsByCluster.get(cluster.id) || [];
+    const pos = clusterPositions.get(cluster.id) || centerFocusedCluster();
+    const cap = focused ? focusThumbnailBudget : (allocations.get(cluster.id) || 0);
+    const nodes = inactive ? [] : buildClusterNodes(allItems, cap, pos, focused, sharedCollisionBoxes);
+    return {
+      ...cluster,
+      x: pos.x,
+      y: pos.y,
+      width: CLUSTER_CARD_WIDTH,
+      height: CLUSTER_CARD_HEIGHT,
+      nodes,
+      hiddenCount: inactive ? 0 : Math.max(0, allItems.length - nodes.length),
+      inactive,
+    };
+  });
 }
 
 export default function ExploreView({
   clusters,
   items,
   focusedClusterId,
+  globalThumbnailBudget,
+  focusThumbnailBudget,
   onFocusCluster,
   onOpenClusterCards,
   onOpen,
@@ -140,15 +241,21 @@ export default function ExploreView({
   clusters: ClusterRecord[];
   items: ItemSummary[];
   focusedClusterId?: string;
+  globalThumbnailBudget: number;
+  focusThumbnailBudget: number;
   onFocusCluster: (c: ClusterRecord) => void;
   onOpenClusterCards: (c: ClusterRecord) => void;
   onOpen: (id: string) => void;
 }) {
   const [scale, setScale] = useState(DEFAULT_SCALE);
   const [offset, setOffset] = useState(DEFAULT_OFFSET);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number; ox: number; oy: number }>();
-  const orbit = useMemo(() => buildOrbit(clusters, items, focusedClusterId, scale), [clusters, items, focusedClusterId, scale]);
-  const focusedCluster = orbit.find(cluster => cluster.id === focusedClusterId);
+  const [dragStart, setDragStart] = useState<DragState>();
+  const [tapState, setTapState] = useState<TapState>();
+  const constellation = useMemo(
+    () => buildConstellation(clusters, items, focusedClusterId, globalThumbnailBudget, focusThumbnailBudget),
+    [clusters, items, focusedClusterId, globalThumbnailBudget, focusThumbnailBudget],
+  );
+  const focusedCluster = constellation.find(cluster => cluster.id === focusedClusterId);
 
   if (!clusters.length) {
     return (
@@ -160,73 +267,99 @@ export default function ExploreView({
   }
 
   const reset = () => { setScale(DEFAULT_SCALE); setOffset(DEFAULT_OFFSET); };
-  const handleOpenClusterCards = (cluster: OrbitCluster) => onOpenClusterCards(cluster);
+  const handleOpenClusterCards = (cluster: ConstellationCluster) => onOpenClusterCards(cluster);
+  const beginTap = (event: PointerEvent<HTMLElement>, tapTarget: TapTarget) => {
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setTapState({ pointerId: event.pointerId, x: event.clientX, y: event.clientY, dragged: false, tapTarget });
+  };
+  const moveTap = (event: PointerEvent<HTMLElement>) => {
+    if (!tapState || tapState.pointerId !== event.pointerId) return;
+    const distance = Math.hypot(event.clientX - tapState.x, event.clientY - tapState.y);
+    if (distance > TAP_DRAG_THRESHOLD && !tapState.dragged) setTapState({ ...tapState, dragged: true });
+  };
+  const endTap = (event: PointerEvent<HTMLElement>) => {
+    if (!tapState || tapState.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    const target = tapState.tapTarget;
+    const shouldActivate = !tapState.dragged;
+    setTapState(undefined);
+    if (!shouldActivate || !target) return;
+    if (target.type === 'cluster') onFocusCluster(target.cluster);
+    if (target.type === 'item') onOpen(target.item.id);
+  };
 
   return (
-    <section className={`spatial-orbit-map ${focusedClusterId ? 'is-focused' : ''}`} aria-label="Prompt clusters spatial orbit map">
-      <div className="orbit-toolbar" aria-label="Orbit map controls">
+    <section className={`thumbnail-constellation ${focusedClusterId ? 'is-focused' : ''}`} aria-label="Prompt clusters thumbnail constellation graph">
+      <div className="constellation-toolbar" aria-label="Constellation controls">
         <button onClick={() => setScale(s => Math.max(0.42, s - 0.08))} aria-label="Zoom out"><Minus size={16} /></button>
-        <button onClick={() => setScale(s => Math.min(1.45, s + 0.08))} aria-label="Zoom in"><Plus size={16} /></button>
+        <button onClick={() => setScale(s => Math.min(1.35, s + 0.08))} aria-label="Zoom in"><Plus size={16} /></button>
         <button onClick={reset}><RotateCcw size={16} /> Reset</button>
-        <span>{focusedClusterId ? `${FOCUSED_VISIBLE_NODES_PER_CLUSTER} focused nodes · rings ordered` : `${MAX_VISIBLE_NODES_PER_CLUSTER} shown per cluster · adaptive LOD`}</span>
+        <span>{focusedClusterId ? `${focusThumbnailBudget} focus thumbnail budget` : `${globalThumbnailBudget} global thumbnail budget`}</span>
       </div>
       {focusedCluster && (
-        <div className="orbit-focus-panel">
+        <div className="constellation-focus-panel">
           <strong>{focusedCluster.name}</strong>
           <span>{focusedCluster.count} references · {focusedCluster.nodes.length} visible</span>
           <button onClick={() => handleOpenClusterCards(focusedCluster)}>Open as Cards</button>
         </div>
       )}
       <div
-        className="orbit-viewport"
+        className="constellation-viewport"
         onWheel={(event) => {
           event.preventDefault();
-          setScale(s => Math.max(0.42, Math.min(1.45, s + (event.deltaY < 0 ? 0.06 : -0.06))));
+          setScale(s => Math.max(0.42, Math.min(1.35, s + (event.deltaY < 0 ? 0.06 : -0.06))));
         }}
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
-          setDragStart({ x: event.clientX, y: event.clientY, ox: offset.x, oy: offset.y });
+          setDragStart({ pointerId: event.pointerId, x: event.clientX, y: event.clientY, ox: offset.x, oy: offset.y });
         }}
         onPointerMove={(event) => {
-          if (!dragStart) return;
+          if (!dragStart || dragStart.pointerId !== event.pointerId) return;
           setOffset({ x: dragStart.ox + event.clientX - dragStart.x, y: dragStart.oy + event.clientY - dragStart.y });
         }}
         onPointerUp={() => setDragStart(undefined)}
-        onPointerCancel={() => setDragStart(undefined)}
+        onPointerCancel={() => { setDragStart(undefined); setTapState(undefined); }}
       >
         <div
-          className="orbit-canvas"
+          className="constellation-canvas"
           style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `translate(-50%, -50%) translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})` }}
         >
-          <svg className="orbit-links" viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`} aria-hidden="true">
-            {orbit.flatMap(cluster => cluster.nodes.map(node => (
+          <svg className="constellation-links" viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`} aria-hidden="true">
+            {constellation.flatMap(cluster => cluster.nodes.map(node => (
               <line key={`${cluster.id}-${node.item.id}-link`} x1={cluster.x} y1={cluster.y} x2={node.x} y2={node.y} />
             )))}
           </svg>
-          {orbit.map(cluster => (
+          {constellation.map(cluster => (
             <button
               key={cluster.id}
-              className={`orbit-cluster-label ${cluster.id === focusedClusterId ? 'focused' : ''} ${cluster.inactive ? 'inactive' : ''}`}
-              style={{ left: cluster.x, top: cluster.y }}
-              onClick={(event) => { event.stopPropagation(); onFocusCluster(cluster); }}
+              className={`constellation-cluster-card ${cluster.id === focusedClusterId ? 'focused' : ''} ${cluster.inactive ? 'inactive' : ''}`}
+              style={{ left: cluster.x, top: cluster.y, width: cluster.width, minHeight: cluster.height }}
+              onPointerDown={(event) => beginTap(event, { type: 'cluster', cluster })}
+              onPointerMove={moveTap}
+              onPointerUp={endTap}
+              onPointerCancel={() => setTapState(undefined)}
               title={`${cluster.count} references`}
             >
               <strong>{cluster.name}</strong>
-              <span>{cluster.count}</span>
+              <span>{cluster.count} references</span>
               {cluster.hiddenCount > 0 && <em>+{cluster.hiddenCount} more</em>}
             </button>
           ))}
-          {orbit.flatMap(cluster => cluster.nodes.map(node => (
+          {constellation.flatMap(cluster => cluster.nodes.map(node => (
             <button
               key={`${cluster.id}-${node.item.id}`}
-              className={`orbit-node ${node.item.favorite ? 'favorite' : ''} lod-${node.lod}`}
-              style={{ left: node.x, top: node.y, width: node.size, height: Math.round(node.size * (node.lod === 'dot' ? 1 : 1.25)), transform: `translate(-50%, -50%) rotate(${Math.sin(node.angle) * 5}deg)` }}
-              onClick={(event) => { event.stopPropagation(); onOpen(node.item.id); }}
+              className={`constellation-thumb-card ${node.item.favorite ? 'favorite' : ''}`}
+              style={{ left: node.x, top: node.y, width: node.width, height: node.height, transform: `translate(-50%, -50%) rotate(${Math.sin(node.angle) * 3.5}deg)` }}
+              onPointerDown={(event) => beginTap(event, { type: 'item', item: node.item })}
+              onPointerMove={moveTap}
+              onPointerUp={endTap}
+              onPointerCancel={() => setTapState(undefined)}
               title={node.item.title}
               aria-label={node.item.title}
             >
-              {node.lod !== 'dot' && node.imagePath ? <img src={mediaUrl(node.imagePath)} alt={node.item.title} loading="lazy" decoding="async" /> : <span className="node-placeholder" />}
-              {node.lod !== 'dot' && <span>{node.item.title}</span>}
+              {node.imagePath ? <img src={mediaUrl(node.imagePath)} alt={node.item.title} loading="lazy" decoding="async" /> : <span className="thumb-fallback">No image</span>}
+              <span>{node.item.title}</span>
             </button>
           )))}
         </div>

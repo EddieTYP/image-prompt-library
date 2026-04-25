@@ -45,6 +45,16 @@ def test_create_get_search_and_filter_item(tmp_path):
     assert c.get("/api/items", params={"cluster": created["cluster"]["id"]}).json()["total"] == 1
 
 
+def test_items_list_limit_allows_gallery_overview_scale(tmp_path):
+    c = client(tmp_path)
+    for idx in range(230):
+        c.post("/api/items", json=create_payload(title=f"Overview Item {idx}", cluster_name=f"Cluster {idx % 7}"))
+    listed = c.get("/api/items", params={"limit": 300}).json()
+    assert listed["total"] == 230
+    assert listed["limit"] == 300
+    assert len(listed["items"]) == 230
+
+
 def test_patch_favorite_and_archive_item(tmp_path):
     c = client(tmp_path)
     created = c.post("/api/items", json=create_payload()).json()
