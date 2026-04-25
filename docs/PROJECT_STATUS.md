@@ -87,12 +87,13 @@ Current state after `8f46c69`:
 Known issues / next Explore target:
 
 - Copy prompt language preference and LAN HTTP clipboard fallback are now fixed; remaining copy UX polish could add visible copied/error feedback later.
-- Replace the current Explore ring/orbit implementation with the agreed thumbnail constellation graph model:
+- Batch 3 thumbnail constellation graph is implemented and committed as `520a2da Implement explore thumbnail constellation graph`:
   - no dot-only main representation
   - configurable global and focus thumbnail budgets
   - stable cluster-card + image-thumbnail graph layout
   - reliable tap-vs-drag interaction handling
   - preserve Cards mode and existing copy/favorite/edit actions.
+- Next refinement: add **static post-layout repulsion relaxation** for image cards. The current layout uses one-pass collision-aware spiral placement, which reduces overlap but can still leave dense focus-mode thumbnails stuck together. Preferred Option A is to keep the deterministic/static layout, then run a bounded relaxation pass where thumbnail nodes repel other thumbnail nodes and cluster hub boxes, while a light spring pulls each thumbnail back toward its owning cluster. The result should settle once and remain static; do not introduce continuous live physics/jitter unless explicitly requested later.
 
 ## Explore thumbnail constellation requirements
 

@@ -75,7 +75,7 @@ def test_explore_uses_real_thumbnails_not_dots_or_originals():
     assert ".orbit-node.lod-dot" not in css
 
 
-def test_explore_has_collision_aware_layout_and_tap_drag_threshold():
+def test_explore_has_static_repulsive_relaxation_and_tap_drag_threshold():
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
     assert "TAP_DRAG_THRESHOLD" in explore
     assert "tapTarget" in explore
@@ -84,6 +84,13 @@ def test_explore_has_collision_aware_layout_and_tap_drag_threshold():
     assert "settleCollisionAwarePositions" in explore
     assert "doesCollide" in explore
     assert "spiralStep" in explore
+    assert "relaxConstellationNodes" in explore
+    assert "RELAXATION_ITERATIONS" in explore
+    assert "REPULSION_STRENGTH" in explore
+    assert "SPRING_STRENGTH" in explore
+    assert "repelAgainstClusterHubs" in explore
+    assert "clampRelaxedNode" in explore
+    assert "continuous physics" not in explore.lower()
 
 
 def test_cards_keep_adaptive_masonry_and_actions():

@@ -16,6 +16,11 @@ const GLOBAL_THUMB_WIDTH = 104;
 const GLOBAL_THUMB_HEIGHT = 130;
 const FOCUS_THUMB_WIDTH = 118;
 const FOCUS_THUMB_HEIGHT = 148;
+const RELAXATION_ITERATIONS = 90;
+const REPULSION_STRENGTH = 0.34;
+const CLUSTER_REPULSION_STRENGTH = 0.42;
+const SPRING_STRENGTH = 0.035;
+const RELAXATION_DAMPING = 0.78;
 
 type TapTarget =
   | { type: 'cluster'; cluster: ConstellationCluster }
@@ -54,6 +59,7 @@ type ConstellationCluster = ClusterRecord & {
 };
 
 type CollisionBox = { x: number; y: number; width: number; height: number };
+type RelaxedNode = ConstellationNode & { anchorX: number; anchorY: number; vx: number; vy: number };
 
 function getConstellationImagePath(item: ItemSummary) {
   return item.first_image?.thumb_path || item.first_image?.preview_path || '';
@@ -143,14 +149,88 @@ function doesCollide(candidate: CollisionBox, boxes: CollisionBox[]) {
   return boxes.some(box => Math.abs(candidate.x - box.x) < (candidate.width + box.width) / 2 + padding && Math.abs(candidate.y - box.y) < (candidate.height + box.height) / 2 + padding);
 }
 
+function overlapVector(a: CollisionBox, b: CollisionBox) {
+  const minX = (a.width + b.width) / 2 + 14;
+  const minY = (a.height + b.height) / 2 + 14;
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const overlapX = minX - Math.abs(dx);
+  const overlapY = minY - Math.abs(dy);
+  if (overlapX <= 0 || overlapY <= 0) return { x: 0, y: 0 };
+  const directionX = dx === 0 ? 1 : Math.sign(dx);
+  const directionY = dy === 0 ? 1 : Math.sign(dy);
+  if (overlapX < overlapY) return { x: directionX * overlapX, y: 0 };
+  return { x: 0, y: directionY * overlapY };
+}
+
+function boxForNode(node: Pick<ConstellationNode, 'x' | 'y' | 'width' | 'height'>): CollisionBox {
+  return { x: node.x, y: node.y, width: node.width, height: node.height };
+}
+
+function clampRelaxedNode(node: RelaxedNode) {
+  const marginX = Math.max(70, node.width / 2 + 18);
+  const marginY = Math.max(80, node.height / 2 + 18);
+  node.x = Math.max(marginX, Math.min(CANVAS_WIDTH - marginX, node.x));
+  node.y = Math.max(marginY, Math.min(CANVAS_HEIGHT - marginY, node.y));
+}
+
+function repelAgainstClusterHubs(node: RelaxedNode, hubs: CollisionBox[]) {
+  for (const hub of hubs) {
+    const vector = overlapVector(boxForNode(node), hub);
+    node.vx += vector.x * CLUSTER_REPULSION_STRENGTH;
+    node.vy += vector.y * CLUSTER_REPULSION_STRENGTH;
+  }
+}
+
+function relaxConstellationNodes(nodes: ConstellationNode[], center: { x: number; y: number }, hubs: CollisionBox[]) {
+  const relaxed: RelaxedNode[] = nodes.map(node => ({ ...node, anchorX: node.x, anchorY: node.y, vx: 0, vy: 0 }));
+  for (let iteration = 0; iteration < RELAXATION_ITERATIONS; iteration += 1) {
+    for (let i = 0; i < relaxed.length; i += 1) {
+      const a = relaxed[i];
+      a.vx += (a.anchorX - a.x) * SPRING_STRENGTH;
+      a.vy += (a.anchorY - a.y) * SPRING_STRENGTH;
+      repelAgainstClusterHubs(a, hubs);
+      for (let j = i + 1; j < relaxed.length; j += 1) {
+        const b = relaxed[j];
+        const vector = overlapVector(boxForNode(a), boxForNode(b));
+        if (!vector.x && !vector.y) continue;
+        a.vx += vector.x * REPULSION_STRENGTH;
+        a.vy += vector.y * REPULSION_STRENGTH;
+        b.vx -= vector.x * REPULSION_STRENGTH;
+        b.vy -= vector.y * REPULSION_STRENGTH;
+      }
+    }
+    for (const node of relaxed) {
+      node.x += node.vx;
+      node.y += node.vy;
+      node.vx *= RELAXATION_DAMPING;
+      node.vy *= RELAXATION_DAMPING;
+      clampRelaxedNode(node);
+    }
+  }
+  return relaxed
+    .map(node => ({
+      item: node.item,
+      imagePath: node.imagePath,
+      x: node.x,
+      y: node.y,
+      width: node.width,
+      height: node.height,
+      angle: node.angle,
+      index: node.index,
+    }))
+    .sort((a, b) => Math.hypot(a.x - center.x, a.y - center.y) - Math.hypot(b.x - center.x, b.y - center.y));
+}
+
 function settleCollisionAwarePositions(seeds: ConstellationNode[], center: { x: number; y: number }, reserved: CollisionBox[]) {
-  const boxes = reserved;
+  const staticObstacles = [...reserved];
+  const placed: CollisionBox[] = [];
   const spiralStep = 16;
-  return seeds.map(seed => {
+  const initiallySettled = seeds.map(seed => {
     let x = seed.x;
     let y = seed.y;
     let box = { x, y, width: seed.width, height: seed.height };
-    for (let attempt = 0; attempt < 70 && doesCollide(box, boxes); attempt += 1) {
+    for (let attempt = 0; attempt < 70 && doesCollide(box, [...staticObstacles, ...placed]); attempt += 1) {
       const angle = seed.angle + attempt * 0.76;
       const radius = spiralStep * (1 + attempt * 0.34);
       x = seed.x + Math.cos(angle) * radius;
@@ -159,9 +239,12 @@ function settleCollisionAwarePositions(seeds: ConstellationNode[], center: { x: 
       y = Math.max(80, Math.min(CANVAS_HEIGHT - 80, y));
       box = { x, y, width: seed.width, height: seed.height };
     }
-    boxes.push(box);
+    placed.push(box);
     return { ...seed, x, y };
-  }).sort((a, b) => Math.hypot(a.x - center.x, a.y - center.y) - Math.hypot(b.x - center.x, b.y - center.y));
+  });
+  const relaxed = relaxConstellationNodes(initiallySettled, center, staticObstacles);
+  reserved.push(...relaxed.map(boxForNode));
+  return relaxed;
 }
 
 function buildClusterNodes(allItems: ItemSummary[], cap: number, pos: { x: number; y: number }, focused: boolean, reserved: CollisionBox[]) {
