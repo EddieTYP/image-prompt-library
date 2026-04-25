@@ -23,10 +23,11 @@ function loadPreferredLanguage(): PromptLanguage {
   return normalizePromptLanguage(window.localStorage.getItem(PROMPT_LANGUAGE_STORAGE_KEY));
 }
 
-function loadNumberSetting(key: string, fallback: number, allowed: number[]) {
+function loadNumberSetting(key: string, fallback: number, min: number, max: number) {
   if (typeof window === 'undefined') return fallback;
   const raw = Number(window.localStorage.getItem(key));
-  return allowed.includes(raw) ? raw : fallback;
+  if (!Number.isFinite(raw)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(raw)));
 }
 
 export default function App() {
@@ -42,8 +43,9 @@ export default function App() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [itemsReloadKey, setItemsReloadKey] = useState(0);
   const [preferredLanguage, setPreferredLanguage] = useState<PromptLanguage>(loadPreferredLanguage);
-  const [globalThumbnailBudget, setGlobalThumbnailBudget] = useState(() => loadNumberSetting(GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY, 100, [50, 75, 100, 150]));
-  const [focusThumbnailBudget, setFocusThumbnailBudget] = useState(() => loadNumberSetting(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, 100, [24, 48, 72, 100]));
+  const [globalThumbnailBudget, setGlobalThumbnailBudget] = useState(() => loadNumberSetting(GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 50, 150));
+  const [focusThumbnailBudget, setFocusThumbnailBudget] = useState(() => loadNumberSetting(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 24, 100));
+  const [copyFeedback, setCopyFeedback] = useState<string>();
   const { data, loading, error } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
   const selectedCluster = useMemo(() => clusters.find(c => c.id === clusterId), [clusters, clusterId]);
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
@@ -65,15 +67,20 @@ export default function App() {
     setFocusThumbnailBudget(budget);
     window.localStorage.setItem(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, String(budget));
   };
-  const copyPrompt = (item: ItemSummary) => {
+  const showCopyFeedback = (success: boolean) => {
+    setCopyFeedback(success ? 'Copied prompt' : 'Copy failed');
+    window.setTimeout(() => setCopyFeedback(undefined), 1800);
+  };
+  const copyPrompt = async (item: ItemSummary) => {
     const text = resolvePromptText(item.prompts, preferredLanguage, item.title);
-    void copyTextToClipboard(text);
+    const copied = await copyTextToClipboard(text);
+    showCopyFeedback(copied);
   };
   const favorite = (id: string) => { api.favorite(id).then(saved).catch(() => undefined); };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   return <div className="app">
     <TopBar q={q} onQ={setQ} view={view} onView={setView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={data.total} clusterName={selectedCluster?.name} clearCluster={clearCluster} />
-    <FiltersPanel open={filtersOpen} clusters={clusters} selected={clusterId} onSelect={selectCluster} onClose={() => setFiltersOpen(false)} />
+    <FiltersPanel open={filtersOpen} clusters={clusters} selected={clusterId} onSelect={selectCluster} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
     <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} />
     <main>
       {loading && <div className="loading">Loading…</div>}
@@ -84,6 +91,7 @@ export default function App() {
     </main>
     <button className="fab" onClick={() => { setEditing(undefined); setEditorOpen(true); }}><Plus/> Add</button>
     <ItemDetailModal id={detailId} preferredLanguage={preferredLanguage} onClose={() => setDetailId(undefined)} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} />
+    {copyFeedback && <div className="toast copy-toast" role="status">{copyFeedback}</div>}
     {editorOpen && <ItemEditorModal item={editing} onClose={() => setEditorOpen(false)} onSaved={saved} />}
   </div>
 }

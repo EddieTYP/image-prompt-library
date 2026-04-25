@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Copy, ExternalLink, Heart, Pencil, X } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
-import type { ItemDetail } from '../types';
+import type { ImageRecord, ItemDetail } from '../types';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { PROMPT_LANGUAGE_LABELS, resolvePromptText, type PromptLanguage } from '../utils/prompts';
 
@@ -9,6 +9,20 @@ const LANG_LABELS: Record<string, string> = {
   ...PROMPT_LANGUAGE_LABELS,
   original: 'Original',
 };
+
+function getImageIdentity(image: ImageRecord) {
+  return image.thumb_path || image.preview_path || image.original_path || image.id;
+}
+
+function dedupeImages(images: ImageRecord[]) {
+  const seenImageKeys = new Set<string>();
+  return images.filter(image => {
+    const key = getImageIdentity(image);
+    if (seenImageKeys.has(key)) return false;
+    seenImageKeys.add(key);
+    return true;
+  });
+}
 
 export default function ItemDetailModal({
   id,
@@ -23,12 +37,14 @@ export default function ItemDetailModal({
 }) {
   const [item, setItem] = useState<ItemDetail>();
   const [lang, setLang] = useState<string>(preferredLanguage);
+  const [copyFeedback, setCopyFeedback] = useState<string>();
 
   useEffect(() => { setLang(preferredLanguage); }, [preferredLanguage, id]);
 
   useEffect(() => {
     if (!id) return;
     setItem(undefined);
+    setCopyFeedback(undefined);
     api.item(id).then(setItem);
   }, [id]);
 
@@ -36,7 +52,13 @@ export default function ItemDetailModal({
 
   const prompt = item?.prompts.find(p => p.language === lang) || item?.prompts.find(p => p.language === preferredLanguage) || item?.prompts.find(p => p.language === 'en') || item?.prompts[0];
   const copyText = prompt?.text || resolvePromptText(item?.prompts, preferredLanguage, item?.title || '');
-  const primaryImage = item?.images[0];
+  const uniqueImages = dedupeImages(item?.images || []);
+  const primaryImage = uniqueImages[0];
+  const handleCopyPrompt = async () => {
+    const copied = await copyTextToClipboard(copyText);
+    setCopyFeedback(copied ? 'Copied prompt' : 'Copy failed');
+    window.setTimeout(() => setCopyFeedback(undefined), 1800);
+  };
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -58,10 +80,10 @@ export default function ItemDetailModal({
               ) : (
                 <div className="placeholder hero-image">No image</div>
               )}
-              {item.images.length > 1 && (
+              {uniqueImages.length > 1 && (
                 <div className="rail glass-rail">
-                  {item.images.map(img => (
-                    <img key={img.id} src={mediaUrl(img.thumb_path || img.original_path)} alt="" />
+                  {uniqueImages.map(img => (
+                    <img key={getImageIdentity(img)} src={mediaUrl(img.thumb_path || img.original_path)} alt="" />
                   ))}
                 </div>
               )}
@@ -85,8 +107,8 @@ export default function ItemDetailModal({
               </div>
 
               <div className="actions modal-actions">
-                <button onClick={() => { void copyTextToClipboard(copyText); }}>
-                  <Copy size={16} /> Copy prompt
+                <button onClick={handleCopyPrompt}>
+                  <Copy size={16} /> {copyFeedback || 'Copy prompt'}
                 </button>
                 <button onClick={() => api.favorite(item.id).then(setItem)}>
                   <Heart size={16} /> {item.favorite ? 'Saved' : 'Favorite'}

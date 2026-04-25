@@ -130,6 +130,7 @@ def test_copy_prompt_uses_shared_preferred_language_resolver():
     detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
     utils = (ROOT / "frontend" / "src" / "utils" / "prompts.ts").read_text()
     clipboard = (ROOT / "frontend" / "src" / "utils" / "clipboard.ts").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
     assert "PromptLanguage" in utils
     assert "resolvePromptText" in utils
     assert "copyTextToClipboard" in clipboard
@@ -137,10 +138,52 @@ def test_copy_prompt_uses_shared_preferred_language_resolver():
     assert "preferred_prompt_language" in app
     assert "zh_hant" in config and "zh_hans" in config and "en" in config
     assert "onCopyPrompt" in card and "prompt_snippet || item.title" not in card
+    assert "copyFeedback" in app
+    assert "showCopyFeedback" in app
+    assert "Copied prompt" in app
+    assert "Copy failed" in app
+    assert "toast copy-toast" in app
+    assert ".copy-toast" in css
     assert "resolvePromptText" in detail
     assert "preferredLanguage" in detail
     assert "const copyText = prompt?.text || resolvePromptText" in detail
-    assert "copyTextToClipboard(copyText)" in detail
+    assert "handleCopyPrompt" in detail
+    assert "Copied prompt" in detail
+
+
+def test_detail_modal_dedupes_image_rail_and_hides_single_image_rail():
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+    assert "uniqueImages" in detail
+    assert "getImageIdentity" in detail
+    assert "seenImageKeys" in detail
+    assert "primaryImage = uniqueImages[0]" in detail
+    assert "uniqueImages.length > 1" in detail
+    assert "uniqueImages.map" in detail
+    assert "item.images.map" not in detail
+
+
+def test_filters_and_explore_budget_controls_match_vista_style():
+    filters = (ROOT / "frontend" / "src" / "components" / "FiltersPanel.tsx").read_text()
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    assert "filter-drawer" in filters
+    assert "filter-search" in filters
+    assert "filter-pill-grid" in filters
+    assert "All references" in filters
+    assert "Use clusters as quick filter chips" in filters
+    assert "onClear" in filters and "clearCluster" in app
+    assert "type=\"range\"" in config
+    assert "range-setting" in config
+    assert "range-ticks" in config
+    assert "GLOBAL_BUDGET_MIN = 50" in config
+    assert "GLOBAL_BUDGET_MAX = 150" in config
+    assert "FOCUS_BUDGET_MIN = 24" in config
+    assert "FOCUS_BUDGET_MAX = 100" in config
+    assert ".filter-drawer" in css
+    assert ".filter-pill-grid" in css
+    assert ".range-setting" in css
+    assert ".range-ticks" in css
 
 
 def test_copy_prompt_has_insecure_lan_clipboard_fallback():

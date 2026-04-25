@@ -454,7 +454,7 @@ export default function ExploreView({
         <button onClick={() => setScale(s => Math.max(0.42, s - 0.08))} aria-label="Zoom out"><Minus size={16} /></button>
         <button onClick={() => setScale(s => Math.min(1.35, s + 0.08))} aria-label="Zoom in"><Plus size={16} /></button>
         <button onClick={reset}><RotateCcw size={16} /> Reset</button>
-        <span>{focusedClusterId ? `${focusThumbnailBudget} focus thumbnail budget` : `${globalThumbnailBudget} global thumbnail budget`}</span>
+        <span>{focusedClusterId ? `${focusThumbnailBudget} focus thumbnails` : `${globalThumbnailBudget} thumbnails visible`}</span>
       </div>
       {focusedCluster && (
         <div className="constellation-focus-panel">
