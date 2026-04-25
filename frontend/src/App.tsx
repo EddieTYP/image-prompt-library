@@ -24,20 +24,26 @@ export default function App() {
   const [editing, setEditing] = useState<ItemDetail | undefined>();
   const [editorOpen, setEditorOpen] = useState(false);
   const [itemsReloadKey, setItemsReloadKey] = useState(0);
-  const { data, loading, error } = useItemsQuery(debouncedQ, clusterId, undefined, 100, itemsReloadKey);
+  const { data, loading, error } = useItemsQuery(debouncedQ, clusterId, undefined, 300, itemsReloadKey);
   const selectedCluster = useMemo(() => clusters.find(c => c.id === clusterId), [clusters, clusterId]);
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
   useEffect(() => { refreshClusters(); }, []);
   const selectCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('cards'); setFiltersOpen(false); };
+  const focusCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('explore'); setFiltersOpen(false); };
+  const clearCluster = () => setClusterId(undefined);
   const saved = () => { refreshClusters(); setItemsReloadKey(k => k + 1); };
+  const favorite = (id: string) => { api.favorite(id).then(saved).catch(() => undefined); };
+  const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   return <div className="app">
-    <TopBar q={q} onQ={setQ} view={view} onView={setView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={data.total} clusterName={selectedCluster?.name} clearCluster={() => setClusterId(undefined)} />
+    <TopBar q={q} onQ={setQ} view={view} onView={setView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={data.total} clusterName={selectedCluster?.name} clearCluster={clearCluster} />
     <FiltersPanel open={filtersOpen} clusters={clusters} selected={clusterId} onSelect={selectCluster} onClose={() => setFiltersOpen(false)} />
     <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} />
     <main>
       {loading && <div className="loading">Loading…</div>}
       {error && <div className="error">{error}</div>}
-      {view === 'explore' ? <ExploreView clusters={clusters} onSelect={selectCluster} /> : <CardsView items={data.items} onOpen={setDetailId} />}
+      {view === 'explore'
+        ? <ExploreView clusters={clusters} items={data.items} focusedClusterId={clusterId} onFocusCluster={focusCluster} onOpen={setDetailId} />
+        : <CardsView items={data.items} onOpen={setDetailId} onFavorite={favorite} onEdit={editSummary} />}
     </main>
     <button className="fab" onClick={() => { setEditing(undefined); setEditorOpen(true); }}><Plus/> Add</button>
     <ItemDetailModal id={detailId} onClose={() => setDetailId(undefined)} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} />

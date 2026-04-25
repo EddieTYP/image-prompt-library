@@ -4,9 +4,13 @@ import ItemCard from './ItemCard';
 export default function CardsView({
   items,
   onOpen,
+  onFavorite,
+  onEdit,
 }: {
   items: ItemSummary[];
   onOpen: (id: string) => void;
+  onFavorite: (id: string) => void;
+  onEdit: (item: ItemSummary) => void;
 }) {
   if (!items.length) {
     return (
@@ -20,7 +24,7 @@ export default function CardsView({
   return (
     <section className="cards-grid masonry-like">
       {items.map(item => (
-        <ItemCard key={item.id} item={item} onOpen={onOpen} />
+        <ItemCard key={item.id} item={item} onOpen={onOpen} onFavorite={onFavorite} onEdit={onEdit} />
       ))}
     </section>
   );
