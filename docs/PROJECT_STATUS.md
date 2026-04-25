@@ -37,8 +37,10 @@ Committed checkpoints:
 
 - `16fe431 Polish toolbar and modal planning checkpoint`
 - `214fe6a Implement orbit explore and masonry cards`
+- `732d52f Fix prompt copy language preference`
+- `3c1fcc1 Avoid Hermes WebUI port for app dev server`
 
-Current state after `214fe6a`:
+Current state after `3c1fcc1`:
 
 - Explore is a spatial pan/zoom orbit map with cluster labels and image nodes.
 - Default visible nodes per cluster: `12`.
@@ -46,13 +48,30 @@ Current state after `214fe6a`:
 - Node priority: favorite first, then rating, then image availability, then deterministic title order.
 - Cards mode uses adaptive masonry via CSS columns.
 - Card hover actions exist for Copy prompt, Favorite, and Edit.
+- Batch 1 is complete and committed:
+  - Card-level Copy prompt uses full prompt text from item summaries, not `prompt_snippet || title`.
+  - Config panel supports preferred prompt copy language: Traditional Chinese, Simplified Chinese, and English.
+  - Current code values are normalized as `zh_hant`, `zh_hans`, and `en`.
+  - Default preferred language is Traditional Chinese (`zh_hant`).
+  - Shared resolver fallback order is preferred language → English → any available prompt → title.
+  - Detail modal copy copies the currently selected/visible prompt tab first, then falls back to the shared resolver.
+- Development port convention is now explicit:
+  - Backend API uses `127.0.0.1:8000`.
+  - Vite frontend uses `127.0.0.1:5177`.
+  - Do not use `8787`; it is reserved for Hermes WebUI.
+- Batch 1 verification passed:
+  - `.venv/bin/python -m pytest -q` → `20 passed`.
+  - `npm run build` → passed.
+  - Backend `py_compile` → passed.
+  - Browser QA verified card copy for Traditional/Simplified/English/fallback and detail-modal selected-tab copy.
+  - Independent review passed after fixing the detail-modal selected-tab copy mismatch.
 
 Known issues from review:
 
 - Explore images still feel visually cluttered and not sufficiently ordered around clusters.
 - Orbit map performance can feel weak when many image nodes are displayed.
 - Explore node image source currently resolves `thumb_path → preview_path → original_path`; original is only used as fallback, but map should avoid using original images in normal browsing.
-- Copy prompt action is functionally wrong: it currently copies `prompt_snippet || title`, not the full prompt in the desired language.
+- Copy prompt language preference is now fixed; remaining copy UX polish could add visible copied/error feedback later.
 
 ## Explore orbit map requirements
 
@@ -155,25 +174,24 @@ Implementation notes:
 - Keep action affordances available on cards: copy prompt, favorite, edit/open.
 - Current Cards mode is visually acceptable and should not be destabilized while working on Explore.
 
-## Copy prompt / language preference requirements
+## Copy prompt / language preference behavior
 
-Current bug:
+Status: implemented in Batch 1 and committed as `732d52f`.
 
-- Card Copy prompt currently copies `prompt_snippet || title`, not the full prompt.
+Current behavior:
 
-Desired behavior:
-
-- Config should let the user choose preferred prompt language:
-  - Traditional Chinese: `zh-Hant`
-  - Simplified Chinese: `zh-Hans`
+- Config lets the user choose preferred prompt language:
+  - Traditional Chinese: `zh_hant`
+  - Simplified Chinese: `zh_hans`
   - English: `en`
-- Copy prompt should resolve prompt text in this order:
+- Card Copy prompt resolves prompt text in this order:
   1. Preferred language prompt.
   2. English prompt.
   3. Any available full prompt.
   4. Title only as final fallback.
-- Card and Detail modal should share the same prompt resolver so behavior is consistent.
-- The resolver should work with normalized Traditional Chinese prompts generated during import/create/update.
+- Detail modal shows language tabs and copies the currently selected/visible prompt first.
+- Detail modal falls back to the shared resolver if the selected tab has no prompt.
+- The resolver works with normalized Traditional Chinese prompts generated during import/create/update.
 
 Implementation options to inspect:
 
@@ -186,9 +204,11 @@ Implementation options to inspect:
 
 Implement in two commits/batches rather than one large mixed change.
 
-### Batch 1 — functional correctness: copy prompt language preference
+### Batch 1 — functional correctness: copy prompt language preference — completed
 
 Goal: fix Copy prompt before deeper visual work.
+
+Status: completed and committed as `732d52f Fix prompt copy language preference`.
 
 Tasks:
 
