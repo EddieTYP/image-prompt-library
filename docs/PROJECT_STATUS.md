@@ -71,6 +71,55 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
 - Prompt copy language preference and LAN HTTP clipboard fallback are implemented.
 - Detail modal copy uses the selected prompt-language tab first, then fallback resolver.
 
+## GitHub public local-install MVP roadmap
+
+Goal: make the project useful for other people to clone from GitHub and run on their own device as a local-first prompt/image reference manager, not just as Edward's local working copy.
+
+Current assessment:
+
+- Product/local-use MVP: roughly 75–80% there.
+- Public GitHub self-host/local-install MVP: roughly 55–65% there.
+- The main remaining gap is not more visual polish; it is installability, first-run behavior, data safety, docs, and release hygiene.
+
+### GitHub MVP checklist
+
+1. **Public README pass**
+   - Remove Edward-specific absolute paths from public setup/import instructions.
+   - Explain what the app is, who it is for, and that it is local-first/private by default.
+   - Document requirements, quick start, dev run, import flow, add-your-own-prompt flow, verification commands, troubleshooting, and limitations.
+   - Add screenshots or short demo GIFs before public release.
+
+2. **Fresh clone / first-run experience**
+   - Verify setup from a clean checkout with an empty `library/` directory.
+   - Ensure DB migrations initialize automatically and empty Explore/Cards states are friendly.
+   - Make the Add prompt CTA obvious when no data exists.
+   - Browser-QA the empty-library path separately from Edward's imported OpenNana dataset.
+
+3. **Install and run scripts**
+   - Add or improve one-command setup/start scripts, e.g. `scripts/setup.sh`, `scripts/start.sh`, and `scripts/smoke-test.sh`.
+   - Keep dev ports documented (`8000` backend, `5177` frontend) while avoiding `8787` because it is reserved for Hermes WebUI on Edward's machine.
+   - Consider a production-ish single-service local mode where FastAPI serves the built frontend from `frontend/dist`, so users do not need to run two dev servers for normal local use.
+
+4. **Configuration story**
+   - Add `.env.example` or equivalent docs for library path, host, and ports.
+   - Keep repo-local `library/` as the simplest default, but document how users can move data to a durable location such as `~/ImagePromptLibrary/` later.
+   - Make clear which files are user data and must be backed up.
+
+5. **Backup / restore story**
+   - Add a backup command or script that archives `library/db.sqlite`, `library/originals/`, `library/thumbs/`, and `library/previews/` into a timestamped backup file.
+   - Document restore instructions and local-first privacy/security expectations.
+   - Reconfirm `.gitignore` excludes runtime DB/media artifacts and SQLite sidecar files.
+
+6. **Correctness hardening before public MVP**
+   - Complete image-role hardening follow-ups: role-aware result-image checks, result-image hero preference, DB-level role validation, and upload-failure cleanup/rollback.
+   - Keep `/media` locked down so DB/config/internal files cannot be served.
+   - Verify OpenNana import idempotency and fresh manual add/edit/delete/copy/search flows.
+
+7. **Public repo hygiene**
+   - Add/verify `LICENSE`, `CONTRIBUTING.md`, `ROADMAP.md`, and concise issue/bug-report guidance.
+   - Decide whether to include sample/demo data or only screenshots; do not commit Edward's runtime `library/` data.
+   - Tag a first public alpha release, e.g. `v0.1.0-alpha`, only after fresh-install smoke tests pass.
+
 ## Outstanding priorities
 
 ### P0 / First priority
@@ -122,25 +171,31 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
    - Image upload UI distinguishes mandatory result image from optional reference photo; uploads persist `result_image` vs `reference_image` roles in the DB/API.
    - Existing items expose a guarded Delete reference action; it calls the existing archive/delete API, hides the item from active lists, refreshes collections/items, and keeps archived recovery possible via the existing `archived=true` API filter.
 
-9. **Full interface language setting**
+9. **Image role hardening follow-ups**
+   - Make the frontend existing-result-image check role-aware: treat only images with `role === 'result_image'` as satisfying the required result image, so reference-only items still require a result image.
+   - Prefer `result_image` for card/detail hero image selection; reference images should not accidentally become the primary gallery/detail image just because they sort first.
+   - Add DB-level role validation in a future migration, e.g. a `CHECK(role IN ('result_image', 'reference_image'))` constraint or equivalent SQLite-safe table rebuild.
+   - Make new item creation plus required result-image upload atomic, or add cleanup/rollback if the image upload fails after item creation.
+
+10. **Full interface language setting**
    - Add a UI language setting for Traditional Chinese, Simplified Chinese, and English.
    - Scope includes visible chrome/navigation/actions/settings labels, not prompt language content itself.
    - Should coexist with the existing prompt-copy language preference.
 
 ### P3 / Low priority
 
-10. **Copied toast theme revisit**
+11. **Copied toast theme revisit**
    - Current toast is better but still not fully matching the desired theme; revisit later as low priority.
 
-11. **Minor Explore fine tuning**
+12. **Minor Explore fine tuning**
    - Possible later tweaks only.
    - Lowest priority because focus view is currently liked and global overlap is solved.
 
-12. **Detail modal polish beyond editor improvements**
+13. **Detail modal polish beyond editor improvements**
    - Existing modal polish is better but can continue to improve.
    - Inspect prompt readability, image rail, action placement, and spacing after higher-priority browsing/editor work.
 
-13. **Future scoring/ranking system**
+14. **Future scoring/ranking system**
    - Current priority order is favorite → rating → image availability → deterministic title order.
    - Future scoring can include source quality, prompt completeness, image quality/representativeness, usage/copy count, and recency.
 
