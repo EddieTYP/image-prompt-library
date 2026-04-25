@@ -39,8 +39,9 @@ Committed checkpoints:
 - `214fe6a Implement orbit explore and masonry cards`
 - `732d52f Fix prompt copy language preference`
 - `3c1fcc1 Avoid Hermes WebUI port for app dev server`
+- `a95b7ad Fix copy prompt on LAN HTTP`
 
-Current state after `3c1fcc1`:
+Current state after `a95b7ad`:
 
 - Explore is a spatial pan/zoom orbit map with cluster labels and image nodes.
 - Default visible nodes per cluster: `12`.
@@ -55,12 +56,13 @@ Current state after `3c1fcc1`:
   - Default preferred language is Traditional Chinese (`zh_hant`).
   - Shared resolver fallback order is preferred language → English → any available prompt → title.
   - Detail modal copy copies the currently selected/visible prompt tab first, then falls back to the shared resolver.
+  - Copy prompt now uses a shared clipboard helper with a textarea/`execCommand('copy')` fallback so LAN HTTP testing works even when `navigator.clipboard` is unavailable.
 - Development port convention is now explicit:
   - Backend API uses `127.0.0.1:8000`.
   - Vite frontend uses `127.0.0.1:5177`.
   - Do not use `8787`; it is reserved for Hermes WebUI.
 - Batch 1 verification passed:
-  - `.venv/bin/python -m pytest -q` → `20 passed`.
+  - `.venv/bin/python -m pytest -q` → `21 passed`.
   - `npm run build` → passed.
   - Backend `py_compile` → passed.
   - Browser QA verified card copy for Traditional/Simplified/English/fallback and detail-modal selected-tab copy.
@@ -71,7 +73,7 @@ Known issues from review:
 - Explore images still feel visually cluttered and not sufficiently ordered around clusters.
 - Orbit map performance can feel weak when many image nodes are displayed.
 - Explore node image source currently resolves `thumb_path → preview_path → original_path`; original is only used as fallback, but map should avoid using original images in normal browsing.
-- Copy prompt language preference is now fixed; remaining copy UX polish could add visible copied/error feedback later.
+- Copy prompt language preference and LAN HTTP clipboard fallback are now fixed; remaining copy UX polish could add visible copied/error feedback later.
 
 ## Explore orbit map requirements
 
@@ -198,7 +200,7 @@ Implementation options to inspect:
 - Add prompt data or a precomputed preferred prompt field to item summaries returned by `/api/items`.
 - Keep full prompts on item detail endpoint for modal.
 - Add frontend config state/API for preferred language.
-- Ensure copy action uses Clipboard API and provides visible success/failure feedback if practical.
+- Ensure copy action uses the shared clipboard helper. It should try the async Clipboard API first, then fall back to textarea selection plus `document.execCommand('copy')` for LAN HTTP origins where `navigator.clipboard` is unavailable.
 
 ## Next implementation plan
 
