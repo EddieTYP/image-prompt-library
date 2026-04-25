@@ -6,10 +6,11 @@ Last updated: 2026-04-25
 
 The app has two distinct browsing modes:
 
-1. **Explore mode = spatial orbit map**
-   - Similar to the previous OpenNana `html-gallery` experience.
-   - Cluster labels are visible anchors on a large pan/zoom canvas.
-   - Image/item thumbnails should orbit around cluster names in an ordered way, not scatter randomly.
+1. **Explore mode = thumbnail constellation graph**
+   - Similar to an Obsidian graph-view mental model, but with visual cards: cluster cards are hub nodes and image thumbnails are connected item nodes.
+   - It must keep real **cluster cards** and real **image thumbnails**; do not degrade the main Explore experience into abstract dots.
+   - Global Explore should show multiple cluster-card constellations with a configurable overall thumbnail budget, not a fixed per-cluster thumbnail count.
+   - Focus Explore should center the selected cluster card and let image thumbnails radiate outward in a stable, collision-aware constellation.
    - This is a knowledge-map / galaxy browsing mode, not a normal grid and not one card per cluster.
 
 2. **Cards mode = masonry/template marketplace browsing**
@@ -40,18 +41,22 @@ Committed checkpoints:
 - `732d52f Fix prompt copy language preference`
 - `3c1fcc1 Avoid Hermes WebUI port for app dev server`
 - `a95b7ad Fix copy prompt on LAN HTTP`
-- Batch 2 Explore UX/performance commit pending in this working tree.
+- `8f46c69 Polish explore orbit focus mode`
 
-Current state after Batch 2:
+Current state after `8f46c69`:
 
-- Explore is a spatial pan/zoom orbit map with cluster labels and ordered ring/lane item nodes.
-- Default global view uses dot LOD at the initial zoom to reduce image clutter.
-- Mid/near zoom uses thumbnails; focused cluster mode uses previews. Explore avoids `original_path` in map nodes.
-- Cluster click focuses that cluster inside Explore rather than switching directly to Cards.
-- Focus mode fades inactive clusters, shows up to `24` representative nodes, and includes an **Open as Cards** CTA.
-- Default visible nodes per cluster: `12`.
-- Focused cluster cap: `24`.
-- Node priority: favorite first, then rating, then image availability, then deterministic title order.
+- Explore currently uses a spatial pan/zoom orbit map with cluster labels and ring/lane item nodes.
+- Batch 2 added dot LOD, focus mode, inactive cluster fade, and an **Open as Cards** CTA, but user feedback showed the direction is not yet right:
+  - Default Explore still feels visually packed together.
+  - Dot LOD is not acceptable as the main Explore representation because the user wants real image thumbnails.
+  - Focus mode still reads as a messy ring/wreath rather than thumbnails radiating from a cluster card.
+  - Cluster click can feel unreliable because normal `onClick` is mixed with pan/drag gestures.
+- Next Explore direction is to replace the ring/orbit layout with a **thumbnail constellation graph**:
+  - cluster cards remain visible hub nodes
+  - image thumbnails remain image cards
+  - thumbnails connect/radiate from their cluster card
+  - layout is stable/deterministic after calculation, not continuously animated
+  - visible item counts are controlled by configurable caps/budgets
 - Cards mode uses adaptive masonry via CSS columns.
 - Card hover actions exist for Copy prompt, Favorite, and Edit.
 - Batch 1 is complete and committed:
@@ -79,32 +84,36 @@ Current state after Batch 2:
   - Browser QA on LAN verified global dot LOD readability, focused cluster panel/CTA, inactive cluster fade, ordered preview rings, Cards CTA switching, and a clean console.
   - Independent review approved with no critical or important issues.
 
-Known issues / future polish:
+Known issues / next Explore target:
 
 - Copy prompt language preference and LAN HTTP clipboard fallback are now fixed; remaining copy UX polish could add visible copied/error feedback later.
-- Explore can later add Esc/back-to-map keyboard handling, smoother animated focus transitions, and further cap tuning once the dataset grows.
+- Replace the current Explore ring/orbit implementation with the agreed thumbnail constellation graph model:
+  - no dot-only main representation
+  - configurable global and focus thumbnail budgets
+  - stable cluster-card + image-thumbnail graph layout
+  - reliable tap-vs-drag interaction handling
+  - preserve Cards mode and existing copy/favorite/edit actions.
 
-## Explore orbit map requirements
+## Explore thumbnail constellation requirements
 
 ### Core layout
 
-- Cluster labels should be rendered as in-canvas anchors with name and count.
-- Image/item nodes should be positioned around the relevant cluster label in ordered rings/lanes.
-- The user should be able to visually understand cluster scale and topic neighborhoods.
-- Avoid random-looking scatter. Each cluster should have clear local structure:
-  - center label / cluster card
-  - exclusion zone around the label
-  - one or more orbit rings
-  - stable lane assignment for item nodes
-  - reduced overlap between thumbnails
+- Explore should use a thumbnail constellation graph metaphor, similar to Obsidian graph view in structure but **not** in visual abstraction.
+- Cluster cards are hub nodes with readable name/count/overflow metadata.
+- Image/item nodes are real image thumbnails, not dots, and should visually connect or radiate from their owning cluster card.
+- Global Explore should show many cluster-card constellations across a large pan/zoom canvas.
+- Focus Explore should center the selected cluster card and arrange that cluster's visible thumbnails outward in a stable, collision-aware constellation.
+- Avoid the current messy circular wreath/ring look. Thumbnails should feel like they radiate from the cluster card along natural graph-like spokes or force-like separation.
+- The layout may calculate once on load/focus and then stay static. Continuous physics animation is not required and should be avoided unless explicitly desired later.
 
 ### Interaction
 
 - Pan the canvas.
 - Wheel/pinch zoom the canvas.
 - Reset view.
-- Click an image node to open the detail modal.
-- Search/filter should hide or de-emphasize non-matching nodes.
+- Tap/click an image thumbnail to open the detail modal.
+- Search/filter should hide or de-emphasize non-matching thumbnails.
+- Cluster/item activation should use a tap-vs-drag threshold so slight pointer movement does not make cluster click/focus feel unreliable.
 
 ### Cluster click/focus behavior
 
@@ -125,22 +134,25 @@ Rationale:
 - Directly switching to Cards on cluster click would make Explore feel like a category menu instead of a map.
 - A focus mode lets users inspect one cluster visually before deciding whether to open the full filtered masonry list.
 
-### Maximum visible nodes per cluster
+### Visible thumbnail budgets / caps
 
-Showing every item around every cluster is not practical for usability or performance.
+Showing every image thumbnail globally is not practical for usability or performance, but the main Explore representation should still use thumbnails rather than dots.
 
-Current baseline:
+Planned cap model:
 
-- Default max visible nodes per cluster: `12`.
-- Focused cluster max visible nodes: `24`.
-- Tiny clusters can show all items if count is below the cap.
-- The cluster label should show the total cluster count.
-- If a cluster has hidden overflow, show a subtle indicator such as `+67 more`.
-
-Future tuning:
-
-- Focused cluster could increase to `36` or `48` once layout/performance is improved.
-- Very zoomed-out mode may show fewer than `12`, or use dots/collage instead of full thumbnails.
+- Global Explore uses an **overall configurable thumbnail budget**, not a fixed per-cluster cap.
+- Default global thumbnail budget: `100` total thumbnails across all clusters.
+- Global allocation should preserve small clusters and still reflect large-cluster scale:
+  1. Give each non-empty cluster a small minimum allocation first, e.g. `min(2, cluster item count)`.
+  2. Allocate remaining global budget proportionally by cluster size / visible matched item count.
+  3. Apply a soft per-cluster maximum if needed to prevent a very large cluster from dominating the overview.
+- Focus Explore uses a **configurable focus thumbnail budget**.
+- Focus budget target/default can be `100` if the layout stays readable; otherwise keep the setting available and tune the default after browser QA.
+- The UI should expose caps in Config, initially as simple settings:
+  - `Global thumbnail budget` (for example `50 / 75 / 100 / 150`)
+  - `Focus thumbnail budget` (for example `24 / 48 / 72 / 100`)
+- Budget settings can be localStorage/frontend config first; backend-persisted config can come later.
+- Cluster cards should show total cluster count and hidden overflow such as `+67 more`.
 
 ### Node prioritization
 
@@ -153,29 +165,27 @@ Current priority order:
 
 Future scoring/ranking system can replace this without redesigning the UI.
 
-### Adaptive image level-of-detail / performance
+### Thumbnail level-of-detail / performance
 
-Implement seamless adaptive display based on zoom/focus distance:
+Explore should preserve real thumbnails as the main visual representation.
 
-- **Far / global zoomed-out**:
-  - Use tiny thumbnails, abstract dots, or mini-collage badges.
-  - Avoid rendering many large images.
-  - Do not use original images.
-- **Mid zoom**:
-  - Use `thumb_path` images.
-  - Show more item shape/detail but keep node count capped.
-- **Near / focused cluster**:
-  - Use `preview_path` for larger visible nodes if available.
-  - Increase representative node cap after performance is acceptable.
+- **Global Explore**:
+  - Render real thumbnail cards using `thumb_path` within the global thumbnail budget.
+  - Do not use dot-only LOD as the primary default view.
+  - Avoid original images.
+- **Focus Explore**:
+  - Render real thumbnail cards within the focus budget.
+  - Prefer `thumb_path` for the first implementation if focus cap is high (`100`), then consider `preview_path` selectively for hovered/selected/larger cards.
+  - Avoid original images.
 - **Detail modal / explicit high-res view only**:
   - Use `original_path`.
 
 Implementation notes:
 
-- Add a single image source resolver for map nodes, e.g. `getOrbitImagePath(item, zoomLevel, focused)`.
-- Avoid fallback to `original_path` in the map except as a last resort or placeholder case.
-- Consider lazy loading, `decoding="async"`, and potentially conditional rendering of offscreen/far nodes.
-- Browser QA should check smooth pan/zoom and console cleanliness.
+- Add a single image source resolver for Explore thumbnail nodes, e.g. `getExploreThumbnailPath(item, mode)`.
+- Avoid fallback to `original_path` in Explore.
+- Use `loading="lazy"`, `decoding="async"`, capped DOM counts, and lightweight shadows/filters.
+- Browser QA should check smooth pan/zoom, focus transition readability, image loading behavior, and console cleanliness.
 
 ## Cards masonry requirements
 
@@ -277,6 +287,42 @@ Tasks completed:
    - `npm run build` → passed
    - browser visual QA for global Explore, focused cluster, Cards CTA, and console errors.
 7. Independent review approved before committing.
+
+### Batch 3 — Explore thumbnail constellation graph — planned
+
+Goal: replace the current ring/dot orbit implementation with a stable thumbnail graph that keeps cluster cards and image thumbnails as first-class visuals.
+
+Requirements:
+
+1. Preserve visual node types:
+   - Cluster card = hub node with name/count/hidden overflow.
+   - Image item = thumbnail card, not dot.
+2. Global Explore:
+   - Use an overall configurable thumbnail budget, default `100`.
+   - Allocate budget across clusters with a minimum for small clusters and proportional distribution for large clusters.
+   - Spread cluster-card constellations across the canvas; avoid the current compressed central blob.
+3. Focus Explore:
+   - Click/tap a cluster to focus inside Explore.
+   - Center the selected cluster card.
+   - Show up to configurable focus budget, target/default `100` if browser QA stays readable.
+   - Arrange thumbnails as a graph-like constellation radiating from the cluster card, with collision avoidance and minimal overlap.
+   - The layout can calculate once on focus and then remain static; no continuous physics/jitter required.
+   - Keep **Open as Cards** CTA for deep browsing in Cards mode.
+4. Config:
+   - Add Config controls for `Global thumbnail budget` and `Focus thumbnail budget`.
+   - Frontend/localStorage persistence is acceptable for the first version.
+5. Interaction:
+   - Implement tap-vs-drag threshold so cluster focus and item open feel like normal clicks inside a pannable canvas.
+   - Pan/zoom/reset should continue to work.
+6. Media/performance:
+   - Use `thumb_path` for Explore thumbnails initially, especially when caps are high.
+   - Do not use `original_path` in Explore.
+   - Keep modal/detail as the high-res path.
+7. Verification:
+   - Add/update static guards for thumbnail graph direction, configurable caps, no dot-only default, no original-path Explore fallback, and tap-vs-drag threshold.
+   - Run `.venv/bin/python -m pytest -q` and `npm run build`.
+   - Browser QA on LAN: default global readability, focus readability/overlap, click reliability, Cards unchanged, console clean.
+   - Run independent review before commit.
 
 ## Future scoring system idea
 
