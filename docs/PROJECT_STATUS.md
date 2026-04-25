@@ -83,11 +83,10 @@ Current assessment:
 
 ### GitHub MVP checklist
 
-1. **Public README pass**
-   - Remove Edward-specific absolute paths from public setup/import instructions.
-   - Explain what the app is, who it is for, and that it is local-first/private by default.
-   - Document requirements, quick start, dev run, import flow, add-your-own-prompt flow, verification commands, troubleshooting, and limitations.
-   - Add screenshots or short demo GIFs before public release.
+1. **Public README pass** — initial public MVP pass implemented
+   - README now uses generic clone/setup/start instructions instead of Edward-specific absolute paths.
+   - It explains the local-first/private model, requirements, quick start, development mode, configuration, data layout, adding prompts, OpenNana import, backup, verification, privacy, troubleshooting, and status.
+   - Screenshots or short demo GIFs are still pending before a polished public release.
 
 2. **Fresh clone / first-run experience**
    - Verify setup from a clean checkout with an empty `library/` directory.
@@ -95,18 +94,18 @@ Current assessment:
    - Make the Add prompt CTA obvious when no data exists.
    - Browser-QA the empty-library path separately from Edward's imported OpenNana dataset.
 
-3. **Install and run scripts**
-   - Add or improve one-command setup/start scripts, e.g. `scripts/setup.sh`, `scripts/start.sh`, and `scripts/smoke-test.sh`.
+3. **Install and run scripts** — initial public MVP pass implemented
+   - Added/improved setup/start/dev/smoke helper scripts: `scripts/setup.sh`, `scripts/start.sh`, `scripts/dev.sh`, and `scripts/smoke-test.sh`.
    - Keep dev ports documented (`8000` backend, `5177` frontend) while avoiding `8787` because it is reserved for Hermes WebUI on Edward's machine.
-   - Consider a production-ish single-service local mode where FastAPI serves the built frontend from `frontend/dist`, so users do not need to run two dev servers for normal local use.
+   - FastAPI can serve the built frontend from `frontend/dist`, so normal local use can run as one backend service after `npm run build`.
 
-4. **Configuration story**
-   - Add `.env.example` or equivalent docs for library path, host, and ports.
+4. **Configuration story** — initial public MVP pass implemented
+   - Added `.env.example` for library path, backend host/port, frontend dev port, and backup directory.
    - Keep repo-local `library/` as the simplest default, but document how users can move data to a durable location such as `~/ImagePromptLibrary/` later.
    - Make clear which files are user data and must be backed up.
 
-5. **Backup / restore story**
-   - Add a backup command or script that archives `library/db.sqlite`, `library/originals/`, `library/thumbs/`, and `library/previews/` into a timestamped backup file.
+5. **Backup / restore story** — initial public MVP pass implemented
+   - Added `scripts/backup.sh` to archive `library/db.sqlite`, `library/originals/`, `library/thumbs/`, and `library/previews/` into a timestamped backup file.
    - Document restore instructions and local-first privacy/security expectations.
    - Reconfirm `.gitignore` excludes runtime DB/media artifacts and SQLite sidecar files.
 
@@ -115,8 +114,8 @@ Current assessment:
    - Keep `/media` locked down so DB/config/internal files cannot be served.
    - Verify OpenNana import idempotency and fresh manual add/edit/delete/copy/search flows.
 
-7. **Public repo hygiene**
-   - Add/verify `LICENSE`, `CONTRIBUTING.md`, `ROADMAP.md`, and concise issue/bug-report guidance.
+7. **Public repo hygiene** — initial public MVP pass implemented
+   - Added `LICENSE`, `CONTRIBUTING.md`, and `ROADMAP.md`; concise issue/bug-report guidance lives in `CONTRIBUTING.md`.
    - Decide whether to include sample/demo data or only screenshots; do not commit Edward's runtime `library/` data.
    - Tag a first public alpha release, e.g. `v0.1.0-alpha`, only after fresh-install smoke tests pass.
 

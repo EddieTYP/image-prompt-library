@@ -12,10 +12,11 @@ fi
 export IMAGE_PROMPT_LIBRARY_PATH="${IMAGE_PROMPT_LIBRARY_PATH:-./library}"
 export BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
 export BACKEND_PORT="${BACKEND_PORT:-8000}"
-export FRONTEND_PORT="${FRONTEND_PORT:-5177}"
 
-trap 'kill 0' EXIT
-PYTHON="${PYTHON:-python3}"
-if [ -x .venv/bin/python ]; then PYTHON=.venv/bin/python; fi
-"$PYTHON" -m uvicorn backend.main:app --reload --host "$BACKEND_HOST" --port "$BACKEND_PORT" &
-npm run dev -- --host 127.0.0.1 --port "$FRONTEND_PORT"
+PYTHON_BIN="${PYTHON:-python3}"
+if [ -x .venv/bin/python ]; then
+  PYTHON_BIN=.venv/bin/python
+fi
+
+npm run build
+exec "$PYTHON_BIN" -m uvicorn backend.main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT"

@@ -1,168 +1,206 @@
 # Image Prompt Library
 
-Local-first web app for collecting, browsing, searching, categorizing, and reusing high-quality AI image prompts and generated images.
+A local-first web app for collecting, browsing, searching, categorizing, and reusing AI image prompts together with their generated/reference images.
 
-Planning source: `/Users/edwardtsoi/hermes-agent/.hermes/plans/2026-04-25_113449-local-first-image-prompt-library-webapp.md`
+The app is designed for people who want a private prompt/image reference library on their own device: no accounts, no cloud sync, and no hosted database required.
 
-## What it is
+## Features
 
-Image Prompt Library is a personal desktop-browser reference tool for:
+- Local SQLite database and local image files.
+- Image storage with originals, previews, and thumbnails.
+- Explore mode: thumbnail constellation view for visual browsing.
+- Cards mode: masonry/Pinterest-style prompt gallery.
+- Search across titles, prompts, tags, collections, sources, and notes.
+- Collections and tags for organizing references.
+- Detail modal with prompt language tabs and copy feedback.
+- Add/edit modal with Traditional Chinese, Simplified Chinese, and English prompt fields.
+- Result image and optional reference image uploads.
+- OpenNana/ChatGPT prompt-gallery import path for bootstrapping a library.
 
-- importing the existing OpenNana / ChatGPT Image2 prompt gallery;
-- keeping prompts in Traditional Chinese, Simplified Chinese, English, or original text;
-- browsing prompt/image references by cluster and card grid;
-- searching across titles, prompts, tags, clusters, sources, and notes;
-- opening a detail view and copying prompts quickly;
-- adding new local image prompt references with uploaded images.
+## Requirements
 
-The app is intentionally local-first. Code lives in git; runtime library data lives in a repo-local ignored `library/` directory.
+- Python 3.9+
+- Node.js 20+ recommended
+- npm
 
-## Stack
-
-- Backend: FastAPI, SQLite, Pydantic, Pillow
-- Frontend: React, Vite, TypeScript, Tailwind CSS, Radix Dialog/Tabs, Lucide icons
-- Storage: `library/db.sqlite`, `library/originals/`, `library/thumbs/`, `library/previews/`
-- Tests: pytest for backend/import/storage/API coverage
-
-## Repository layout
-
-```text
-backend/                 FastAPI app, SQLite migrations, repositories, services, routers
-frontend/                Vite/React app
-library/                 Local runtime data (ignored except .gitkeep files)
-scripts/dev.sh           Starts backend + frontend dev servers
-scripts/import-opennana.sh
-tests/                   Backend test suite
-```
-
-## Setup
-
-From the repo root:
+## Quick start
 
 ```bash
-cd /Users/edwardtsoi/image-prompt-library
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e '.[dev]'
-npm install
+git clone https://github.com/<your-user>/image-prompt-library.git
+cd image-prompt-library
+./scripts/setup.sh
+./scripts/start.sh
 ```
 
-## Run in development
+Open <http://127.0.0.1:8000/>.
 
-One-command dev mode:
+`scripts/start.sh` builds the frontend and serves the built app through FastAPI, so normal local use only needs one server.
+
+## Development mode
+
+For frontend/backend development with Vite hot reload:
 
 ```bash
-source .venv/bin/activate
 ./scripts/dev.sh
 ```
 
-Or run the two servers separately:
+Open <http://127.0.0.1:5177/>.
+
+Default development ports:
+
+- Backend API: <http://127.0.0.1:8000>
+- Vite frontend: <http://127.0.0.1:5177>
+
+## Configuration
+
+Copy `.env.example` to `.env` and edit if needed:
 
 ```bash
-# Terminal 1: backend API on http://127.0.0.1:8000
-source .venv/bin/activate
-python -m uvicorn backend.main:app --reload --port 8000
-
-# Terminal 2: frontend on http://127.0.0.1:5177
-npm run dev -- --host 127.0.0.1 --port 5177
+cp .env.example .env
 ```
 
-Open: <http://127.0.0.1:5177/>
+Important settings:
 
-## Import existing OpenNana gallery
+```bash
+IMAGE_PROMPT_LIBRARY_PATH=./library
+BACKEND_HOST=127.0.0.1
+BACKEND_PORT=8000
+FRONTEND_PORT=5177
+BACKUP_DIR=./backups
+```
 
-The importer copies source images into the local library and creates thumbnails/previews.
+`IMAGE_PROMPT_LIBRARY_PATH` controls where your private database and images live. The default `./library` is repo-local and intentionally ignored by git. For long-term personal use, you may prefer a durable path such as `~/ImagePromptLibrary`.
+
+## Data layout
+
+Runtime data lives under `IMAGE_PROMPT_LIBRARY_PATH`:
+
+```text
+library/db.sqlite       SQLite metadata and full-text search index
+library/originals/      original uploaded/imported images
+library/previews/       generated preview images
+library/thumbs/         generated thumbnail images
+```
+
+Do not commit runtime `library/` data to git. It is your private prompt/image collection.
+
+## Add your own prompts
+
+1. Start the app.
+2. Click `+ Add`.
+3. Add a title, prompt text, collection, optional tags, and a required result image.
+4. Save the card.
+5. Use Cards/Explore, search, filters, and detail view to browse and copy prompts later.
+
+## Import an OpenNana gallery export
+
+If you have an OpenNana gallery JSON export, import it with:
 
 ```bash
 source .venv/bin/activate
 python -m backend.services.import_opennana \
-  --source /Users/edwardtsoi/hermes-agent/.local-work/data/opennana-chatgpt-gallery/data/gallery.json \
-  --library ./library
+  --source /path/to/gallery.json \
+  --library "${IMAGE_PROMPT_LIBRARY_PATH:-./library}"
 ```
 
-Convenience script:
+Convenience script for the default expected local export location:
 
 ```bash
-source .venv/bin/activate
 ./scripts/import-opennana.sh
 ```
 
-The import is duplicate-aware by slug, so rerunning it after a completed import should add `0` new items.
+The importer is duplicate-aware by slug, so rerunning a completed import should not create duplicate items.
 
-Current verified local import baseline:
+## Backup
 
-- source `items`: 251
-- source `nodes`: 271
-- imported DB `items`: 251
-- imported DB `images`: 542
-- imported DB `clusters`: 14
-- imported DB `prompts`: 745
+Create a timestamped backup archive:
+
+```bash
+./scripts/backup.sh
+```
+
+The backup includes:
+
+- `library/db.sqlite`
+- `library/originals/`
+- `library/thumbs/`
+- `library/previews/`
+
+Restore by stopping the app, extracting the archive, and replacing the corresponding library directory contents. Keep backups somewhere outside the repo if the library matters to you.
 
 ## Verification
 
-Backend tests:
+Run backend/API/static tests:
 
 ```bash
 source .venv/bin/activate
 python -m pytest -q
 ```
 
-Frontend build:
+Build the frontend:
 
 ```bash
 npm run build
 ```
 
-API smoke check:
+Smoke-test a running local server:
 
 ```bash
-source .venv/bin/activate
-python -m uvicorn backend.main:app --port 8000
-curl http://127.0.0.1:8000/api/health
-curl 'http://127.0.0.1:8000/api/items?limit=3'
+./scripts/smoke-test.sh
 ```
 
-Browser smoke flow:
+## Privacy and security model
 
-1. Open <http://127.0.0.1:5177/>.
-2. Confirm default Explore view loads.
-3. Click a cluster card and confirm Cards view opens.
-4. Search for a title/prompt/tag and confirm visible results update.
-5. Open a card detail modal and copy a prompt.
-6. Open Add, create an item with an image, and confirm it appears.
-7. Open Config and confirm the placeholder/library path renders.
-8. Confirm browser console has no errors.
+- The app is local-first and stores data on your device.
+- There are no user accounts or built-in cloud sync.
+- The `/media` route only serves image media directories and should not expose the SQLite database or internal files.
+- Binding to `127.0.0.1` keeps the app local to your machine. Only change the host if you understand the LAN exposure implications.
 
-## Data and backup notes
+## Troubleshooting
 
-`library/` is intentionally ignored by git. Before relying on the app as the only copy of important prompts/images, back up at least:
+### `./scripts/start.sh` cannot find Python dependencies
+
+Run setup first:
+
+```bash
+./scripts/setup.sh
+```
+
+### Port already in use
+
+Change `.env`:
+
+```bash
+BACKEND_PORT=8001
+FRONTEND_PORT=5178
+```
+
+Then restart the app.
+
+### Empty library after first start
+
+That is expected for a fresh install. Click `+ Add` to create your first prompt card, or import an OpenNana export JSON.
+
+### Images or database missing after moving folders
+
+Check `IMAGE_PROMPT_LIBRARY_PATH` in `.env`. Your database and image folders must stay together.
+
+## Project status
+
+This is an early local-first MVP / alpha. Core browse/search/add/edit/copy/import flows exist, but public packaging, backup/restore polish, and installation docs are still improving.
+
+See `docs/PROJECT_STATUS.md` for the current roadmap.
+
+## Repository layout
 
 ```text
-library/db.sqlite
-library/originals/
-library/thumbs/
-library/previews/
+backend/                 FastAPI app, SQLite migrations, repositories, services, routers
+frontend/                Vite/React app
+library/                 Local runtime data, ignored except .gitkeep placeholders
+scripts/dev.sh           Backend + Vite development mode
+scripts/setup.sh         Local setup helper
+scripts/start.sh         Single-service local mode
+scripts/backup.sh        Timestamped local data backup
+scripts/smoke-test.sh    Basic running-server smoke test
+tests/                   Backend/API/static regression tests
 ```
-
-A later export/backup command should package these into a timestamped archive or sync target.
-
-## MVP status
-
-Implemented vertical slice:
-
-- SQLite schema and migrations
-- item repository and FTS search rebuild
-- image storage with thumbnails/previews
-- FastAPI item/image/cluster/tag/import routes
-- OpenNana importer
-- React top chrome, filters panel, Explore view, Cards view, detail modal, add/edit modal, config placeholder
-- real OpenNana import into local `library/`
-
-Deferred by design:
-
-- cloud sync / accounts / public sharing
-- semantic/vector search
-- advanced Orbit/graph UI
-- full mobile polish
-- robust backup/export workflow

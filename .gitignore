@@ -6,6 +6,8 @@ library/previews/*
 !library/originals/.gitkeep
 !library/thumbs/.gitkeep
 !library/previews/.gitkeep
+.env
+backups/
 node_modules/
 .venv/
 __pycache__/
