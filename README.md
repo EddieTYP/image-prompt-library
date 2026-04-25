@@ -60,9 +60,9 @@ source .venv/bin/activate
 Or run the two servers separately:
 
 ```bash
-# Terminal 1: backend API on http://127.0.0.1:8787
+# Terminal 1: backend API on http://127.0.0.1:8000
 source .venv/bin/activate
-python -m uvicorn backend.main:app --reload --port 8787
+python -m uvicorn backend.main:app --reload --port 8000
 
 # Terminal 2: frontend on http://127.0.0.1:5177
 npm run dev -- --host 127.0.0.1 --port 5177
@@ -118,9 +118,9 @@ API smoke check:
 
 ```bash
 source .venv/bin/activate
-python -m uvicorn backend.main:app --port 8787
-curl http://127.0.0.1:8787/api/health
-curl 'http://127.0.0.1:8787/api/items?limit=3'
+python -m uvicorn backend.main:app --port 8000
+curl http://127.0.0.1:8000/api/health
+curl 'http://127.0.0.1:8000/api/items?limit=3'
 ```
 
 Browser smoke flow:
