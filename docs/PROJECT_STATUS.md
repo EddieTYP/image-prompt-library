@@ -102,24 +102,43 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
 5. **Drawer close button cosmetics** — implemented
    - Filters drawer and Config now share a smaller rounded `panel-close` treatment with warm surface, subtle border, shadow, and hover state.
 
-6. **Real logo / branding**
-   - Replace placeholder logo/brand area with a real logo or more intentional mark.
+6. **Add header logo branding** — implemented
+   - Uses Edward's newer transparent image-cards logo as the left-side header mark.
+   - Header brand lockup is simple: larger logo on the left, `Image Prompt Library` text on the right.
+   - The `.logo` container is fully transparent with no background, border, or shadow.
+   - Kept as toolbar branding, not a hero section or large marketing banner.
+   - Logo source currently uses Edward's latest attached 578×578 PNG at `frontend/src/assets/header-logo.png`, preserving its transparency; runtime media/database artifacts remain excluded.
+
+7. **Polish global Explore viewport and hover preview** — next implementation target
+   - Fix Global Explore so the page/screen itself fits the viewport instead of allowing whole-page scroll; Cards mode should still remain scrollable for masonry browsing.
+   - Add hover enlargement / preview affordance for global thumbnails.
+   - Should improve creative browsing without disturbing the accepted focus view or zero-overlap layout.
+   - Keep it lightweight: hover/focus preview for desktop, tap-safe behavior for touch, no live physics or layout mutation.
+
+8. **Edit modal data-entry improvements**
+   - Prompt edit should support separate Traditional Chinese, Simplified Chinese, and English editing fields/tabs.
+   - Collection input should offer a smart existing-cluster suggestion list while typing for quick fill/selection.
+   - Image editing should distinguish mandatory result/upload image from optional referenced photo(s): result image required, reference image optional.
+
+9. **Full interface language setting**
+   - Add a UI language setting for Traditional Chinese, Simplified Chinese, and English.
+   - Scope includes visible chrome/navigation/actions/settings labels, not prompt language content itself.
+   - Should coexist with the existing prompt-copy language preference.
 
 ### P3 / Low priority
 
-7. **Global Explore hover enlarge**
-   - Add hover enlargement / preview affordance for global thumbnails.
-   - Low priority; should not disturb the accepted focus view.
+10. **Copied toast theme revisit**
+   - Current toast is better but still not fully matching the desired theme; revisit later as low priority.
 
-8. **Minor Explore fine tuning**
+11. **Minor Explore fine tuning**
    - Possible later tweaks only.
    - Lowest priority because focus view is currently liked and global overlap is solved.
 
-9. **Detail modal / Edit modal polish**
+12. **Detail modal polish beyond editor improvements**
    - Existing modal polish is better but can continue to improve.
-   - Inspect prompt readability, image rail, action placement, and spacing after fixing the duplicate-image issue.
+   - Inspect prompt readability, image rail, action placement, and spacing after higher-priority browsing/editor work.
 
-10. **Future scoring/ranking system**
+13. **Future scoring/ranking system**
    - Current priority order is favorite → rating → image availability → deterministic title order.
    - Future scoring can include source quality, prompt completeness, image quality/representativeness, usage/copy count, and recency.
 
@@ -209,6 +228,10 @@ Logged on 2026-04-25 for the collection drawer / shared-toast pass:
 - Independent Codex Spark read-only review found no critical TypeScript/CSS regressions. Its main medium concern was missing-dimension image cropping; the implementation now keeps missing-dimension images on natural-height fallback instead of forcing a 4:3 crop.
 - Filters and Config close buttons now use the shared `panel-close` style; browser DOM QA confirmed two visible 38×38 rounded buttons for `Close filters` and `Close config`.
 - Test/build verification passed after the Cards/close-button fix: `.venv/bin/python -m pytest -q` reported `29 passed`; `npm run build` passed; `git diff --check` passed.
+- New roadmap notes from Edward: Add header logo branding was completed as the first implementation target, followed by polishing the Global Explore viewport and hover preview; toast theme should be revisited later only; editor improvements should add separate Traditional/Simplified/English prompt editing, smart existing-cluster suggestions while typing Collection, mandatory result image upload plus optional reference photo upload; full interface UI language setting should support Traditional Chinese, Simplified Chinese, and English separately from prompt-copy language.
+- Header logo implemented and revised: `TopBar` now uses Edward's newer transparent image-cards logo on the left and `Image Prompt Library` text on the right; after trying a cropped/optimized derivative and then the larger original, Edward asked to swap again, so `frontend/src/assets/header-logo.png` now preserves the latest attached 578×578 transparent PNG, displayed at 64×64.
+- Header logo QA: static regression covers the imported latest attached logo asset, RGBA transparency, 578×578 dimensions, `.logo-mark` image, single-line `Image Prompt Library` text, removal of the old Sparkles placeholder/subtitle, transparent `.logo` container (`background: transparent`, `border: 0`, `box-shadow: none`, `padding: 0`), and 64×64 logo sizing; browser DOM QA confirmed the latest image natural size, transparent container styles, and 64×64 image dimensions.
+- Global Explore viewport/preview direction: fix the whole-page scroll issue in global Explore so the screen fits the viewport, while preserving Cards-mode scrolling; then add desktop hover/focus preview enlargement for global thumbnails with touch-safe behavior and no layout mutation.
 - Browser QA confirmed the filter drawer title is `Collections`, the previous helper sentence is absent, and collection search filters the list, e.g. `科技` only shows `科技科幻`.
 - Browser QA confirmed Explore-mode collection selection focuses the selected cluster: `科技科幻` produced a focus panel with `14 references · 14 visible` and kept Explore active.
 - Browser QA confirmed Cards-mode collection selection filters cards: selecting `人物肖像` showed `84 references` and 84 cards while Cards stayed active.

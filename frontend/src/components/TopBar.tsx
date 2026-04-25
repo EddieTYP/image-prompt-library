@@ -1,4 +1,5 @@
-import { Filter, Search, Settings, Sparkles } from 'lucide-react';
+import { Filter, Search, Settings } from 'lucide-react';
+import headerLogo from '../assets/header-logo.png';
 import type { ViewMode } from '../types';
 import ViewToggle from './ViewToggle';
 
@@ -43,12 +44,9 @@ export default function TopBar({
           />
         </label>
 
-        <div className="logo" aria-label="Prompt Library home">
-          <Sparkles size={22} />
-          <div>
-            <b>Prompt Library</b>
-            <span>ChatGPT Image2 reference</span>
-          </div>
+        <div className="logo" aria-label="Image Prompt Library home">
+          <img className="logo-mark" src={headerLogo} alt="" aria-hidden="true" />
+          <b>Image Prompt Library</b>
         </div>
 
         <button className="iconbtn" onClick={onConfig} aria-label="Config">

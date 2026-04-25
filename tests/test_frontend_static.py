@@ -26,6 +26,36 @@ def test_topbar_is_toolbar_search_not_hero_or_keyboard_shortcut():
     assert "metaKey" not in app and "ctrlKey" not in app
 
 
+def test_topbar_uses_attached_header_logo_branding():
+    topbar = (ROOT / "frontend" / "src" / "components" / "TopBar.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    logo_asset = ROOT / "frontend" / "src" / "assets" / "header-logo.png"
+    assert "../assets/header-logo.png" in topbar
+    assert "className=\"logo-mark\"" in topbar
+    assert "alt=\"\"" in topbar
+    assert "Image Prompt Library" in topbar
+    assert "<b>Prompt Library</b>" not in topbar
+    assert "ChatGPT Image2 reference" not in topbar
+    assert "Sparkles" not in topbar
+    assert logo_asset.exists()
+    # Edward explicitly asked to use the latest attached logo image, not a cropped/optimized derivative.
+    assert logo_asset.stat().st_size > 80_000
+    try:
+        from PIL import Image
+    except ImportError:  # pragma: no cover - Pillow is available in the project test env.
+        Image = None
+    if Image is not None:
+        with Image.open(logo_asset) as img:
+            assert img.size == (578, 578)
+            assert img.mode == "RGBA"
+            assert img.getchannel("A").getextrema()[0] == 0
+    compact_css = css.replace(" ", "")
+    assert ".logo{display:flex;align-items:center;gap:12px;padding:0;background:transparent;border:0;box-shadow:none;white-space:nowrap}" in compact_css
+    assert ".logo-mark" in css
+    assert "width:64px" in css
+    assert "height:64px" in css
+
+
 def test_explore_is_thumbnail_constellation_with_configurable_budgets():
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()

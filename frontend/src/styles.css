@@ -21,10 +21,9 @@ button{color:inherit}
 .app{min-height:100vh}
 .chrome{position:sticky;top:0;z-index:20;padding:16px 30px 14px;background:linear-gradient(180deg,rgba(255,255,255,.96),rgba(250,249,244,.92));backdrop-filter:blur(22px);border-bottom:1px solid rgba(226,221,208,.75)}
 .nav-row{display:grid;grid-template-columns:auto minmax(340px,1fr) auto auto;gap:14px;align-items:center;max-width:1680px;margin:0 auto}
-.logo{display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:18px;background:rgba(255,255,255,.72);border:1px solid rgba(226,221,208,.9);box-shadow:var(--shadow-soft);white-space:nowrap}
-.logo svg{color:var(--accent)}
-.logo b{display:block;font-size:15px;letter-spacing:-.02em}
-.logo span{display:block;font-size:12px;color:var(--muted);margin-top:1px}
+.logo{display:flex;align-items:center;gap:12px;padding:0;background:transparent;border:0;box-shadow:none;white-space:nowrap}
+.logo-mark{width:64px;height:64px;display:block;object-fit:contain}
+.logo b{display:block;font-size:18px;font-weight:900;letter-spacing:-.03em}
 .vista-button,.iconbtn,.toggle button,.chip,.actions button,.actions a,.primary,.secondary{border:0;border-radius:16px;background:var(--surface-warm);box-shadow:none;padding:10px 15px;color:var(--ink);display:inline-flex;gap:8px;align-items:center;justify-content:center;cursor:pointer;text-decoration:none;transition:background .16s ease,transform .16s ease,box-shadow .16s ease}
 .vista-button:hover,.iconbtn:hover,.chip:hover,.toggle button:hover,.actions button:hover,.actions a:hover,.secondary:hover{background:#e1dccf;transform:translateY(-1px)}
 .filter-button{font-weight:800;height:46px}
