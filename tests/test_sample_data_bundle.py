@@ -49,7 +49,7 @@ def test_sample_data_attribution_documents_third_party_license_boundary():
     assert "No additional restrictions" in attribution
     assert "The Image Prompt Library code license does not apply" in attribution
     assert "GitHub Release asset" in readme
-    assert "./scripts/install-sample-data.sh zh_hant" in readme
+    assert "./scripts/install-sample-data.sh en" in readme
 
 
 def test_import_sample_bundle_loads_manifest_assets_and_is_idempotent(tmp_path: Path):
@@ -93,6 +93,12 @@ def test_import_sample_bundle_loads_manifest_assets_and_is_idempotent(tmp_path: 
     assert items[0].cluster.name == "視覺設計"
     assert items[0].first_image is not None
     assert items[0].prompts[0].language == "zh_hant"
+    detail = ItemRepository(tmp_path / "library").get_item(items[0].id)
+    assert detail is not None
+    assert "CC BY 4.0" in (detail.notes or "")
+    assert "Original source URL" not in (detail.notes or "")
+    assert "Original source file" not in (detail.notes or "")
+    assert len(detail.notes or "") < 180
 
 
 def test_install_sample_data_script_supports_local_zip_override(tmp_path: Path):

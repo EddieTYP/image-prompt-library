@@ -84,7 +84,7 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
 - Detail prompt tabs are `ENG → 繁中 → 簡中`; long prompts scroll inside the prompt panel, and copy/edit controls operate on the active tab.
 - Tag unlink controls are floating mini buttons at the top-right of each tag chip on desktop hover/focus, with persistent touch/mobile visibility.
 - Add/Edit now uses prompt order English → Traditional Chinese → Simplified Chinese and includes generated-from/model, author, source URL, and notes fields.
-- README now positions OpenNana as an optional local-export adapter and uses `wuyoscar/gpt_image_2_skill` as the public CC BY 4.0 sample screenshot/demo dataset candidate instead of bundling real OpenNana data; screenshots/demo GIFs should preserve attribution and keep imported demo libraries out of git.
+- README now positions OpenNana only as an optional local-export adapter and uses `wuyoscar/gpt_image_2_skill` as the public CC BY 4.0 screenshot/demo dataset source; screenshots/demo GIFs should preserve attribution, keep imported demo libraries out of git, and default to the English `gpt-image-2-skill-v1-en` sample for the first public-facing demo.
 - Direction changed for `wuyoscar/gpt_image_2_skill` sample data: public `import-gpt-image-2-skill*.sh` scripts have been removed and live upstream importing is replaced by a curated optional sample bundle. Current bundle metadata has 162 image records, 10 Image Prompt Library collections with localized English/Simplified/Traditional collection names, original English prompts retained, Chinese prompt fields only when source Chinese text exists, and source/license attribution preserved. Distribution remains metadata in git plus image bundle as a GitHub Release asset with `scripts/install-sample-data.sh <en|zh_hans|zh_hant>`; direct-in-repo images remain acceptable only with documented sparse checkout/partial clone guidance.
 - Explore blank-space drag/pan is restored for the viewport/canvas/SVG link layer while card/button taps remain protected by tap-vs-drag handling.
 - Explore filter selection now auto-fits the focused constellation content to the viewport instead of leaving the previous global pan/zoom transform active.
@@ -137,7 +137,7 @@ Current assessment:
 6. **Correctness hardening before public MVP**
    - Image-role hardening follow-ups are now implemented: role-aware result-image checks, result-image hero preference, DB-level role validation, cluster preview primary-image de-dupe, and new-item upload-failure cleanup/rollback.
    - Keep `/media` locked down so DB/config/internal files cannot be served.
-   - Verify OpenNana import idempotency and fresh manual add/edit/delete/copy/search flows.
+   - Verify sample bundle import idempotency and fresh manual add/edit/delete/copy/search flows.
 
 7. **Public repo hygiene** — initial public MVP pass implemented
    - `LICENSE` now uses AGPL-3.0-or-later for the core application code, with a commercial license option for organizations that need terms outside the AGPL.

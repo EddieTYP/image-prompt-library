@@ -15,7 +15,7 @@ The manifests in `sample-data/manifests/` are kept in git. The image files shoul
 For local QA before the release asset exists, point the installer at a local image ZIP:
 
 ```bash
-IMAGE_PROMPT_LIBRARY_PATH=.local-work/sample-demo SAMPLE_DATA_IMAGE_ZIP=.local-work/image-prompt-library-sample-images-v1.zip ./scripts/install-sample-data.sh zh_hant
+IMAGE_PROMPT_LIBRARY_PATH=.local-work/sample-demo SAMPLE_DATA_IMAGE_ZIP=.local-work/image-prompt-library-sample-images-v1.zip ./scripts/install-sample-data.sh en
 ```
 
 The current curated sample source is `wuyoscar/gpt_image_2_skill`. Preserve attribution and review the upstream license before publishing screenshots, demo GIFs, or release assets.

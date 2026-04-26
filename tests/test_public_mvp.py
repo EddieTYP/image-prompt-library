@@ -114,12 +114,16 @@ def test_public_python_version_requirement_matches_runtime_syntax():
 
 def test_public_repo_hygiene_files_exist():
     license_text = (ROOT / "LICENSE").read_text()
+    notice = (ROOT / "NOTICE").read_text()
     contributing = (ROOT / "CONTRIBUTING.md").read_text()
     roadmap = (ROOT / "ROADMAP.md").read_text()
     gitignore = (ROOT / ".gitignore").read_text()
 
     assert "GNU AFFERO GENERAL PUBLIC LICENSE" in license_text
     assert "Version 3" in license_text
+    assert "Copyright (C) 2026 Edward Tsoi" in notice
+    assert "AGPL-3.0-or-later" in notice
+    assert "Sample data and third-party assets are licensed separately" in notice
     assert "AGPL-3.0-or-later" in contributing
     assert "alternative/commercial licensing terms" in contributing
     assert "Local-first" in contributing

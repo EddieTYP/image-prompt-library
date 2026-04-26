@@ -98,22 +98,14 @@ def _already_imported(library_path: Path, slug: str) -> bool:
 
 def _notes(manifest: dict[str, Any], item: dict[str, Any]) -> str:
     source = manifest.get("source") if isinstance(manifest.get("source"), dict) else {}
-    parts = [
-        f"Installed from Image Prompt Library sample manifest: {_clean_text(manifest.get('id')) or 'sample-data'}.",
-    ]
+    manifest_id = _clean_text(manifest.get("id")) or "sample-data"
     source_name = _clean_text(item.get("source_name")) or _clean_text(source.get("name"))
     license_name = _clean_text(item.get("license")) or _clean_text(source.get("license"))
-    if source_name:
-        parts.append(f"Original source: {source_name}.")
+    if source_name and license_name:
+        return f"Sample demo item from {source_name} ({license_name}); preserve attribution when publishing screenshots or fixtures. Manifest: {manifest_id}."
     if license_name:
-        parts.append(f"Sample data license: {license_name}. Preserve attribution for screenshots, demo GIFs, and redistributed sample data.")
-    source_url = _clean_text(item.get("source_url"))
-    if source_url:
-        parts.append(f"Original source URL: {source_url}")
-    source_file = _clean_text(item.get("source_file"))
-    if source_file:
-        parts.append(f"Original source file: {source_file}")
-    return "\n".join(parts)
+        return f"Sample demo item ({license_name}); preserve attribution when publishing screenshots or fixtures. Manifest: {manifest_id}."
+    return f"Sample demo item. Manifest: {manifest_id}."
 
 
 def import_sample_bundle(manifest_path: Path | str, assets_dir: Path | str, library: Path | str) -> ImportResult:

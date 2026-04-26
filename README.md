@@ -118,7 +118,7 @@ This source is a good fit for a screenshot/demo pass, and it is distributed as a
 Install shape:
 
 ```bash
-./scripts/install-sample-data.sh zh_hant
+./scripts/install-sample-data.sh en
 ```
 
 Until a release asset is published, local QA can point the installer at a local image ZIP:
@@ -126,7 +126,7 @@ Until a release asset is published, local QA can point the installer at a local 
 ```bash
 IMAGE_PROMPT_LIBRARY_PATH=.local-work/sample-demo \
 SAMPLE_DATA_IMAGE_ZIP=.local-work/image-prompt-library-sample-images-v1.zip \
-./scripts/install-sample-data.sh zh_hant
+./scripts/install-sample-data.sh en
 ```
 
 Open <http://127.0.0.1:8000/> after installing a sample bundle. The curated bundle should use the original English prompts from `wuyoscar/gpt_image_2_skill`; only include Simplified/Traditional Chinese prompt fields when the source has Chinese text or an explicit translation has been reviewed. Do not force an English prompt into a Chinese prompt field. Collection names can be localized across English, Simplified Chinese, and Traditional Chinese while keeping source/license attribution metadata from the original project.
@@ -192,7 +192,7 @@ Smoke-test a running local server:
 
 ## License and allowed use
 
-Image Prompt Library's core application code is open source under **AGPL-3.0-or-later**. See `LICENSE` for the full AGPL text.
+Image Prompt Library's core application code is open source under **AGPL-3.0-or-later**. Copyright (C) 2026 Edward Tsoi. See `NOTICE` for the project copyright notice and `LICENSE` for the full AGPL text.
 
 Commercial licenses are available for organizations that want to use, modify, or host Image Prompt Library under terms outside the AGPL. Contact the maintainer if you need proprietary hosted-product terms or other non-AGPL licensing.
 
