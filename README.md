@@ -1,8 +1,52 @@
 # Image Prompt Library
 
-A local-first web app for collecting, browsing, searching, categorizing, and reusing AI image prompts together with their generated/reference images.
+ChatGPT image generation has become good enough that the prompts are worth keeping. The problem is that once you start saving great outputs, screenshots, and variations, there still is not a simple private tool for managing image prompts like a real reference library.
 
-The app is designed for people who want a private prompt/image reference library on their own device: no accounts, no cloud sync, and no hosted database required.
+**Image Prompt Library** is a local-first web app for collecting generated images and the prompts behind them. When you create an image worth reusing, save it into your own self-hosted library, add the prompt, organize it into collections and tags, and search it later as a quick visual reference.
+
+Your library stays on your own machine: local SQLite, local image files, no accounts, no cloud sync, and no hosted database required.
+
+![Image Prompt Library Cards view](docs/assets/screenshots/card-view-all.png)
+
+## What it does
+
+- Save generated/reference images together with the prompt text that created them.
+- Organize references into collections and tags so good prompts are easy to find again.
+- Browse visually in **Explore view**, a thumbnail constellation that spreads images by collection in a style inspired by graph tools like Obsidian.
+- Browse densely in **Cards view**, a masonry gallery for scanning many prompt references quickly.
+- Search across titles, prompts, tags, collections, sources, and notes.
+- Filter by collection, open a detail view, and copy the prompt with one click.
+- Keep everything local for privacy and long-term ownership.
+
+## Screenshots
+
+### Explore your prompt library visually
+
+Explore view gives you a spatial overview of your library. Collections become visual hubs, with image thumbnails arranged around them so you can scan patterns, styles, and prompt families at a glance.
+
+![Explore view showing the full sample library](docs/assets/screenshots/explore-view-home.png)
+
+### Focus on one collection
+
+Filters let you focus the same visual map on a single collection while keeping the search bar, collection chip, and view switcher close at hand.
+
+![Explore view filtered to a technical diagrams collection](docs/assets/screenshots/explore-view-filtered.png)
+
+### Browse with masonry cards
+
+Cards view is designed for fast visual browsing. It keeps the library image-first, while still showing the title, collection, source, and quick actions.
+
+![Cards view showing the full sample library](docs/assets/screenshots/card-view-all.png)
+
+### Filter down to a reusable reference set
+
+Use collection filters or search terms in either view when you want to find a specific type of prompt you have used before.
+
+### Keep the prompt beside the image
+
+The detail view keeps the large image preview, prompt, language tabs, attribution, notes, tags, favorite/edit actions, and one-click prompt copy in one place.
+
+![Reference item detail modal](docs/assets/screenshots/reference-item-detail.png)
 
 ## Features
 
@@ -15,7 +59,6 @@ The app is designed for people who want a private prompt/image reference library
 - Detail modal with lightweight inline editing, prompt language tabs, and copy feedback.
 - Add/edit modal with English, Traditional Chinese, and Simplified Chinese prompt fields plus metadata.
 - Result image and optional reference image uploads.
-- Optional import adapters for bootstrapping a library from supported local/exported sources.
 
 ## Requirements
 
@@ -32,7 +75,7 @@ The app is designed for people who want a private prompt/image reference library
 ## Quick start
 
 ```bash
-git clone https://github.com/<your-user>/image-prompt-library.git
+git clone https://github.com/EddieTYP/image-prompt-library.git
 cd image-prompt-library
 ./scripts/setup.sh
 ./scripts/start.sh
@@ -100,57 +143,19 @@ Do not commit runtime `library/` data to git. It is your private prompt/image co
 
 ## Import and example data
 
-This app intentionally does not ship third-party prompt-gallery data or generated images. Runtime library data is private/user-owned and should stay outside git.
+The app starts with an empty private library. Your own `library/` folder contains personal prompt data and images, so it is intentionally ignored by git.
 
-### Sample screenshot/demo dataset
+### Try the sample library
 
-For public screenshots and demo GIFs, prefer a clearly licensed sample source instead of Edward's private library or an OpenNana scrape. The current demo-data source is [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill), whose repository `LICENSE` states **Attribution 4.0 International (CC BY 4.0)** and preserves individual prompt attributions. The planned optional sample bundle should contain the full 162-reference gallery, organized into roughly 10 Image Prompt Library collections with English, Simplified Chinese, and Traditional Chinese collection metadata.
-
-If you load this source into a local demo library:
-
-- keep the installed sample library out of git unless it is part of the curated sample bundle release process;
-- preserve attribution/source metadata on imported or bundled records where possible;
-- mention `wuyoscar/gpt_image_2_skill` and **CC BY 4.0** near any public screenshots, demo GIFs, or demo fixtures;
-- review the source repository's latest license before publishing screenshots or sample data, because third-party licensing can change.
-
-This source is a good fit for a screenshot/demo pass, and it is distributed as an explicit optional sample bundle rather than as live scraping/import instructions. Packaging is: keep curated metadata in git, publish the image bundle as a GitHub Release asset, and use `scripts/install-sample-data.sh zh_hant` / `zh_hans` / `en` to download or copy the selected bundle into the user's configured local library. If images are committed directly to the repository later, document sparse checkout / partial clone instructions so users can avoid the sample asset directory when they only want the app.
-
-Install shape:
+If you want to see the app with example content, install the optional sample library:
 
 ```bash
 ./scripts/install-sample-data.sh en
 ```
 
-Until a release asset is published, local QA can point the installer at a local image ZIP:
+Then start the app and open <http://127.0.0.1:8000/>.
 
-```bash
-IMAGE_PROMPT_LIBRARY_PATH=.local-work/sample-demo \
-SAMPLE_DATA_IMAGE_ZIP=.local-work/image-prompt-library-sample-images-v1.zip \
-./scripts/install-sample-data.sh en
-```
-
-Open <http://127.0.0.1:8000/> after installing a sample bundle. The curated bundle should use the original English prompts from `wuyoscar/gpt_image_2_skill`; only include Simplified/Traditional Chinese prompt fields when the source has Chinese text or an explicit translation has been reviewed. Do not force an English prompt into a Chinese prompt field. Collection names can be localized across English, Simplified Chinese, and Traditional Chinese while keeping source/license attribution metadata from the original project.
-
-### Import an OpenNana gallery export
-
-OpenNana support is an optional adapter for a local OpenNana gallery JSON export. It is not a universal webpage scraper and it does not download directly from arbitrary gallery pages.
-
-Import with:
-
-```bash
-source .venv/bin/activate
-python -m backend.services.import_opennana \
-  --source /path/to/gallery.json \
-  --library "${IMAGE_PROMPT_LIBRARY_PATH:-./library}"
-```
-
-Convenience script:
-
-```bash
-./scripts/import-opennana.sh /path/to/gallery.json "${IMAGE_PROMPT_LIBRARY_PATH:-./library}"
-```
-
-The importer is duplicate-aware by slug, so rerunning a completed import should not create duplicate items.
+The sample library is based on [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill), licensed under **CC BY 4.0**. It is included only as demo/sample content; your own prompt library data remains private and is not part of the sample bundle.
 
 ## Backup
 
@@ -230,7 +235,7 @@ Then restart the app.
 
 ### Empty library after first start
 
-That is expected for a fresh install. Click `+ Add` to create your first prompt card, or import a supported local/exported source through an adapter such as the OpenNana JSON importer.
+That is expected for a fresh install. Click `+ Add` to create your first prompt card, or install the optional sample library if you want demo content first.
 
 ### Images or database missing after moving folders
 

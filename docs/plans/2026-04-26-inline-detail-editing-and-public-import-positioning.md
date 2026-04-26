@@ -2,7 +2,7 @@
 
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
-**Goal:** Turn the item detail modal into the primary lightweight editing surface, align the Add/Edit form with the same metadata model, and reposition public bulk import examples around a generic format plus `wuyoscar/gpt_image_2_skill` rather than bundled OpenNana data.
+**Goal:** Turn the item detail modal into the primary lightweight editing surface, align the Add/Edit form with the same metadata model, and reposition public example data around `wuyoscar/gpt_image_2_skill` rather than source-specific gallery imports.
 
 **Architecture:** Keep the existing FastAPI/SQLite item model and React modal architecture. Use focused inline edit controls in `ItemDetailModal` for small item changes, while keeping `ItemEditorModal` as the structured create/advanced edit form. Treat importers as source-specific adapters into a canonical item/prompt/image shape.
 
@@ -24,7 +24,7 @@
 - Empty notes should not consume space: show only a faint `Add note` affordance.
 - Public README should not mention the private one-click generation preview for now.
 - Use `wuyoscar/gpt_image_2_skill` as the public example source because it is a public GitHub prompt gallery with CC BY 4.0 attribution requirements.
-- Keep OpenNana as an optional local-export adapter; do not bundle OpenNana data/media.
+- Do not ship source-specific gallery importer workflows in the public README path; use the optional sample library instead.
 
 ---
 
@@ -189,16 +189,13 @@ Browser QA:
 
 ---
 
-## Task 5: Update public import documentation and script positioning
+## Task 5: Update public example-data positioning
 
-**Objective:** Make the public GitHub story explain bulk import without implying OpenNana is the universal or bundled source.
+**Objective:** Make the public GitHub story point users to manual Add and the optional sample library, without documenting source-specific gallery importers.
 
 **Files:**
 - Modify: `README.md`
 - Modify: `docs/PROJECT_STATUS.md`
-- Modify: `scripts/import-opennana.sh`
-- Optionally create: `docs/import-format.md`
-- Optionally create future plan placeholder: `docs/plans/2026-04-26-gpt-image-skill-import-adapter.md`
 
 **Changes:**
 1. Document the current canonical item structure:
@@ -208,10 +205,8 @@ Browser QA:
    - tags
    - collection
    - source attribution
-2. Explain that OpenNana importer is an optional local-export adapter and that this repo does not bundle OpenNana data/media.
-3. Replace the hardcoded absolute path in `scripts/import-opennana.sh` with a required `OPENNANA_GALLERY_JSON` or positional path argument.
-4. Use `wuyoscar/gpt_image_2_skill` as the public example source because it is a public GitHub prompt gallery with CC BY 4.0 license; state attribution requirements clearly.
-5. Do not mention private one-click generation preview in public README.
+2. Use `wuyoscar/gpt_image_2_skill` as the public example source because it is a public GitHub prompt gallery with CC BY 4.0 license; state attribution requirements clearly.
+3. Do not mention private one-click generation preview in public README.
 
 **Verification:**
 
@@ -225,7 +220,7 @@ Manual review:
 - README contains no Edward-specific absolute paths.
 - README does not imply third-party data is bundled.
 - README does not mention private generation preview.
-- Import script fails with a helpful message if no source path is provided.
+- README does not document source-specific gallery importer workflows.
 
 ---
 

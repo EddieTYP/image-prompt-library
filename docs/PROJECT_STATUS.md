@@ -1,6 +1,6 @@
 # Image Prompt Library Project Status
 
-Last updated: 2026-04-26
+Last updated: 2026-04-27
 
 ## Current direction
 
@@ -29,7 +29,7 @@ The app has two distinct browsing modes:
 - Detail prompt UI should be a single tabbed prompt panel (`ENG → 繁中 → 簡中`), not three expanded prompt blocks. Prompt copy/edit controls act on the active tab, with long prompts scrolling inside the panel.
 - Tags remain at the bottom. Desktop shows each tag's floating top-right unlink `×` on hover; touch/mobile shows unlink controls persistently. A final `+` chip adds tags with smart suggestions.
 - Empty notes should show only a faint `Add note` affordance so notes do not consume space when unused.
-- Public import positioning: use `wuyoscar/gpt_image_2_skill` as the public example source with CC BY 4.0 attribution, keep OpenNana as an optional local-export adapter, and do not bundle third-party gallery data/media.
+- Public import/example positioning: use `wuyoscar/gpt_image_2_skill` as the public example source with CC BY 4.0 attribution. Public README and empty-state copy should point users to manual Add or the optional sample library, not source-specific gallery importers.
 - Private one-click generation preview remains private/feature-gated and should not be mentioned in the public README for now.
 - Release/license positioning: open-source core under AGPL-3.0-or-later, with commercial licenses available for organizations that need terms outside the AGPL.
 - Cards mode masonry is visually acceptable; avoid destabilizing it while working on Explore.
@@ -84,7 +84,7 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
 - Detail prompt tabs are `ENG → 繁中 → 簡中`; long prompts scroll inside the prompt panel, and copy/edit controls operate on the active tab.
 - Tag unlink controls are floating mini buttons at the top-right of each tag chip on desktop hover/focus, with persistent touch/mobile visibility.
 - Add/Edit now uses prompt order English → Traditional Chinese → Simplified Chinese and includes generated-from/model, author, source URL, and notes fields.
-- README now positions OpenNana only as an optional local-export adapter and uses `wuyoscar/gpt_image_2_skill` as the public CC BY 4.0 screenshot/demo dataset source; screenshots/demo GIFs should preserve attribution, keep imported demo libraries out of git, and default to the English `gpt-image-2-skill-v1-en` sample for the first public-facing demo.
+- README now uses `wuyoscar/gpt_image_2_skill` as the public CC BY 4.0 sample/demo source; screenshots are committed under `docs/assets/screenshots/` using the English sample library and should preserve attribution, keep imported demo libraries out of git, and default to the English `gpt-image-2-skill-v1-en` sample for the first public-facing demo. Source-specific gallery importer copy has been removed from the public README and empty-state wording.
 - Direction changed for `wuyoscar/gpt_image_2_skill` sample data: public `import-gpt-image-2-skill*.sh` scripts have been removed and live upstream importing is replaced by a curated optional sample bundle. Current bundle metadata has 162 image records, 10 Image Prompt Library collections with localized English/Simplified/Traditional collection names, original English prompts retained, Chinese prompt fields only when source Chinese text exists, and source/license attribution preserved. Distribution remains metadata in git plus image bundle as a GitHub Release asset with `scripts/install-sample-data.sh <en|zh_hans|zh_hant>`; direct-in-repo images remain acceptable only with documented sparse checkout/partial clone guidance.
 - Explore blank-space drag/pan is restored for the viewport/canvas/SVG link layer while card/button taps remain protected by tap-vs-drag handling.
 - Explore filter selection now auto-fits the focused constellation content to the viewport instead of leaving the previous global pan/zoom transform active.
@@ -104,10 +104,11 @@ Current assessment:
 
 ### GitHub MVP checklist
 
-1. **Public README pass** — initial public MVP pass implemented
-   - README now uses generic clone/setup/start instructions instead of Edward-specific absolute paths.
-   - It explains the local-first/private model, requirements, quick start, development mode, configuration, data layout, adding prompts, optional import adapters, backup, verification, privacy, troubleshooting, and status.
-   - Screenshots or short demo GIFs are still pending before a polished public release.
+1. **Public README pass** — screenshot/content pass implemented
+   - README now opens with the ChatGPT image-generation prompt-management story and a clear local-first/private positioning.
+   - It explains the local-first/private model, core Explore/Cards/detail workflows, requirements, quick start, development mode, configuration, data layout, adding prompts, sample library, backup, verification, privacy, troubleshooting, and status.
+   - English sample screenshots for Cards, Explore, one filtered Explore view, and detail modal are committed under `docs/assets/screenshots/`.
+   - Remaining release polish: decide whether to further shorten visible source labels in cards/detail or keep them as explicit attribution.
 
 2. **Fresh clone / first-run experience** — current QA pass implemented
    - Clean-checkout setup was tested from a temp copy with an empty external library path.
@@ -363,7 +364,7 @@ Logged on 2026-04-26 for detail-editing/import-positioning planning:
 - Edward confirmed inline detail editing direction: subtle hover affordances, explicit confirm/cancel controls, icon-only Heart and Pencil header actions, copy icon in each prompt block, tag unlink on hover for desktop and persistent unlink controls for touch/mobile, and faint `Add note` when notes are empty.
 - Add/Edit form should keep the structured create/advanced edit role, but add/surface Image generated from/model, Author defaulting to `User`, optional Source URL, and Notes; prompt field order should become English, Traditional Chinese, Simplified Chinese.
 - Prompt copy/display language preference remains independent from edit/display order and should continue to follow the user setting.
-- Public import example should shift from OpenNana to `wuyoscar/gpt_image_2_skill` where practical because it is a public CC BY 4.0 prompt gallery; OpenNana remains an optional local-export adapter with no bundled data/media.
+- Public import/example direction shifted to `wuyoscar/gpt_image_2_skill` because it is a public CC BY 4.0 prompt gallery; source-specific gallery importer workflows should not be part of the public README/empty-state path.
 - Private one-click generation preview remains intentionally private and should not be documented in the public README for now.
 
 Logged on 2026-04-26 for the fresh clone / empty-library first-run pass:

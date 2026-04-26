@@ -31,17 +31,40 @@ def test_public_docs_do_not_use_edward_specific_setup_paths():
 def test_public_import_and_example_data_section_prefers_attributed_demo_source():
     readme = (ROOT / "README.md").read_text()
 
-    assert "Sample screenshot/demo dataset" in readme
+    assert "Try the sample library" in readme
     assert "wuyoscar/gpt_image_2_skill" in readme
-    assert "162" in readme
-    assert "English, Simplified Chinese, and Traditional Chinese" in readme
-    assert "optional sample bundle" in readme
-    assert "GitHub Release asset" in readme
-    assert "scripts/install-sample-data.sh" in readme
+    assert "optional sample library" in readme
+    assert "scripts/install-sample-data.sh en" in readme
     assert "CC BY 4.0" in readme
-    assert "OpenNana scrape" in readme
-    assert "not a universal webpage scraper" in readme
-    assert "does not ship third-party prompt-gallery data" in readme
+    assert "demo/sample content" in readme
+    assert "your own prompt library data remains private" in readme
+    assert "Sample screenshot/demo dataset" not in readme
+    assert "OpenNana" not in readme
+    assert "OpenNana scrape" not in readme
+    assert "GitHub Release asset" not in readme
+    assert "bootstrapping a library" not in readme
+    assert "local/exported source" not in readme
+
+
+def test_public_readme_includes_product_story_and_screenshots():
+    readme = (ROOT / "README.md").read_text()
+
+    assert "ChatGPT image generation has become good enough" in readme
+    assert "local SQLite, local image files, no accounts, no cloud sync" in readme
+    assert "Explore view" in readme
+    assert "Cards view" in readme
+    assert "one-click prompt copy" in readme
+
+    screenshots = [
+        "card-view-all.png",
+        "explore-view-home.png",
+        "explore-view-filtered.png",
+        "reference-item-detail.png",
+    ]
+    for filename in screenshots:
+        relative_path = f"docs/assets/screenshots/{filename}"
+        assert relative_path in readme
+        assert (ROOT / relative_path).exists()
 
 
 def test_gpt_image_2_skill_public_import_scripts_are_not_shipped():
@@ -53,6 +76,26 @@ def test_gpt_image_2_skill_public_import_scripts_are_not_shipped():
     ]
     for filename in removed_scripts:
         assert not (ROOT / "scripts" / filename).exists()
+
+
+def test_opennana_importer_is_not_shipped_or_exposed(tmp_path, monkeypatch):
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_PATH", str(tmp_path / "library"))
+    app = create_app()
+    client = TestClient(app)
+
+    assert not (ROOT / "scripts" / "import-opennana.sh").exists()
+    assert not (ROOT / "backend" / "services" / "import_opennana.py").exists()
+    assert not (ROOT / "backend" / "routers" / "importers.py").exists()
+
+    response = client.post("/api/import/opennana", json={"path": "/tmp/gallery.json"})
+    assert response.status_code == 404
+
+    readme = (ROOT / "README.md").read_text()
+    project_status = (ROOT / "docs" / "PROJECT_STATUS.md").read_text()
+    roadmap = (ROOT / "ROADMAP.md").read_text()
+    assert "OpenNana" not in readme
+    assert "OpenNana" not in project_status
+    assert "OpenNana" not in roadmap
 
 
 def test_public_install_helper_files_exist_and_document_local_data():

@@ -23,7 +23,7 @@ Goal: make Image Prompt Library easy for someone to clone from GitHub, run on th
 - Treat only `result_image` as satisfying required result-image checks.
 - Add DB-level validation for image roles.
 - Clean up or roll back prompt-only items if required image upload fails.
-- Verify OpenNana import idempotency.
+- Verify optional sample-library install idempotency.
 
 ### Nice-to-have after public alpha
 

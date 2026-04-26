@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from .config import APP_VERSION, resolve_library_path
 from .db import get_db_path, init_db
-from .routers import clusters, images, importers, items, tags
+from .routers import clusters, images, items, tags
 
 DEFAULT_FRONTEND_DIST_PATH = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 
@@ -21,11 +21,13 @@ def create_app(library_path: Path | str | None = None, frontend_dist_path: Path 
     app.include_router(images.router, prefix="/api")
     app.include_router(clusters.router, prefix="/api")
     app.include_router(tags.router, prefix="/api")
-    app.include_router(importers.router, prefix="/api")
     @app.get("/api/health")
     def health(): return {"ok": True, "version": APP_VERSION}
     @app.get("/api/config")
     def config(): return {"version": APP_VERSION, "library_path": str(library), "database_path": str(get_db_path(library)), "preferred_prompt_language": "zh_hant"}
+    @app.api_route("/api/{api_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
+    def unknown_api(api_path: str):
+        raise HTTPException(status_code=404)
     @app.get("/media/{media_path:path}")
     def media(media_path: str):
         safe_roots = {"originals", "thumbs", "previews"}
