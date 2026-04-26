@@ -31,6 +31,7 @@ The app has two distinct browsing modes:
 - Empty notes should show only a faint `Add note` affordance so notes do not consume space when unused.
 - Public import positioning: use `wuyoscar/gpt_image_2_skill` as the public example source with CC BY 4.0 attribution, keep OpenNana as an optional local-export adapter, and do not bundle third-party gallery data/media.
 - Private one-click generation preview remains private/feature-gated and should not be mentioned in the public README for now.
+- Release/license positioning: open-source core under AGPL-3.0-or-later, with commercial licenses available for organizations that need terms outside the AGPL.
 - Cards mode masonry is visually acceptable; avoid destabilizing it while working on Explore.
 - Explore focus view is now liked by Edward; only minor tuning should be considered later.
 - Runtime data/media/database files must not be committed:
@@ -84,16 +85,18 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
 - Tag unlink controls are floating mini buttons at the top-right of each tag chip on desktop hover/focus, with persistent touch/mobile visibility.
 - Add/Edit now uses prompt order English → Traditional Chinese → Simplified Chinese and includes generated-from/model, author, source URL, and notes fields.
 - README now positions OpenNana as an optional local-export adapter and uses `wuyoscar/gpt_image_2_skill` as the public CC BY 4.0 sample screenshot/demo dataset candidate instead of bundling real OpenNana data; screenshots/demo GIFs should preserve attribution and keep imported demo libraries out of git.
-- Added an optional `wuyoscar/gpt_image_2_skill` sample importer (`backend.services.import_gpt_image_2_skill` plus `scripts/import-gpt-image-2-skill.sh`) that reads a local clone's `docs/community-prompt-picks.json`, imports records into a chosen local library, and preserves source/license attribution without shipping the upstream content in this repo.
+- Direction changed for `wuyoscar/gpt_image_2_skill` sample data: public `import-gpt-image-2-skill*.sh` scripts have been removed and live upstream importing is replaced by a curated optional sample bundle. Current bundle metadata has 162 image records, 10 Image Prompt Library collections with localized English/Simplified/Traditional collection names, original English prompts retained, Chinese prompt fields only when source Chinese text exists, and source/license attribution preserved. Distribution remains metadata in git plus image bundle as a GitHub Release asset with `scripts/install-sample-data.sh <en|zh_hans|zh_hant>`; direct-in-repo images remain acceptable only with documented sparse checkout/partial clone guidance.
+- Explore blank-space drag/pan is restored for the viewport/canvas/SVG link layer while card/button taps remain protected by tap-vs-drag handling.
+- Explore filter selection now auto-fits the focused constellation content to the viewport instead of leaving the previous global pan/zoom transform active.
 
-## GitHub public local-install MVP roadmap
+## GitHub AGPL local-install MVP roadmap
 
-Goal: make the project useful for other people to clone from GitHub and run on their own device as a local-first prompt/image reference manager, not just as Edward's local working copy.
+Goal: make the project useful for other people to clone from GitHub and run on their own device as a local-first prompt/image reference manager, not just as Edward's local working copy. This is an AGPL-3.0-or-later open-source release target for the core app, with commercial licenses available for organizations that need terms outside the AGPL.
 
 Current assessment:
 
 - Product/local-use MVP: roughly 75–80% there.
-- Public GitHub self-host/local-install MVP: roughly 55–65% there.
+- Public AGPL GitHub self-host/local-install MVP: roughly 55–65% there.
 - The main remaining gap is not more visual polish; it is installability, first-run behavior, data safety, docs, and release hygiene.
 
 ### GitHub MVP checklist
@@ -134,7 +137,8 @@ Current assessment:
    - Verify OpenNana import idempotency and fresh manual add/edit/delete/copy/search flows.
 
 7. **Public repo hygiene** — initial public MVP pass implemented
-   - Added `LICENSE`, `CONTRIBUTING.md`, and `ROADMAP.md`; concise issue/bug-report guidance lives in `CONTRIBUTING.md`.
+   - `LICENSE` now uses AGPL-3.0-or-later for the core application code, with a commercial license option for organizations that need terms outside the AGPL.
+   - Added `CONTRIBUTING.md` and `ROADMAP.md`; concise issue/bug-report guidance lives in `CONTRIBUTING.md`.
    - Decide whether to include sample/demo data or only screenshots; do not commit Edward's runtime `library/` data.
    - Tag a first public alpha release, e.g. `v0.1.0-alpha`, only after fresh-install smoke tests pass.
 

@@ -20,6 +20,12 @@ def test_public_docs_do_not_use_edward_specific_setup_paths():
     assert "Windows" in readme
     assert "WSL" in readme
     assert "IMAGE_PROMPT_LIBRARY_PATH" in readme
+    assert "AGPL-3.0-or-later" in readme
+    assert "Commercial licenses" in readme
+    assert "Sample data and third-party assets are licensed separately" in readme
+    assert "source-available" not in readme.lower()
+    assert "not open-source" not in readme.lower()
+    assert "not licensed for redistribution" not in readme.lower()
 
 
 def test_public_import_and_example_data_section_prefers_attributed_demo_source():
@@ -27,13 +33,26 @@ def test_public_import_and_example_data_section_prefers_attributed_demo_source()
 
     assert "Sample screenshot/demo dataset" in readme
     assert "wuyoscar/gpt_image_2_skill" in readme
-    assert "import-gpt-image-2-skill.sh" in readme
-    assert "IMAGE_PROMPT_LIBRARY_PATH=.local-work/demo-library" in readme
+    assert "162" in readme
+    assert "English, Simplified Chinese, and Traditional Chinese" in readme
+    assert "optional sample bundle" in readme
+    assert "GitHub Release asset" in readme
+    assert "scripts/install-sample-data.sh" in readme
     assert "CC BY 4.0" in readme
-    assert "Attribution" in readme
-    assert "OpenNana" in readme
+    assert "OpenNana scrape" in readme
     assert "not a universal webpage scraper" in readme
     assert "does not ship third-party prompt-gallery data" in readme
+
+
+def test_gpt_image_2_skill_public_import_scripts_are_not_shipped():
+    removed_scripts = [
+        "import-gpt-image-2-skill.sh",
+        "import-gpt-image-2-skill-en.sh",
+        "import-gpt-image-2-skill-zh-hans.sh",
+        "import-gpt-image-2-skill-zh-hant.sh",
+    ]
+    for filename in removed_scripts:
+        assert not (ROOT / "scripts" / filename).exists()
 
 
 def test_public_install_helper_files_exist_and_document_local_data():
@@ -99,10 +118,14 @@ def test_public_repo_hygiene_files_exist():
     roadmap = (ROOT / "ROADMAP.md").read_text()
     gitignore = (ROOT / ".gitignore").read_text()
 
-    assert "MIT License" in license_text
+    assert "GNU AFFERO GENERAL PUBLIC LICENSE" in license_text
+    assert "Version 3" in license_text
+    assert "AGPL-3.0-or-later" in contributing
+    assert "alternative/commercial licensing terms" in contributing
     assert "Local-first" in contributing
     assert "Run tests" in contributing
-    assert "Public local-install MVP" in roadmap
+    assert "Public AGPL local-install MVP" in roadmap
+    assert "commercial licenses" in roadmap.lower()
     assert "runtime data" in roadmap
     assert ".env" in gitignore
     assert "backups/" in gitignore

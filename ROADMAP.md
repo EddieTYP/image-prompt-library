@@ -1,8 +1,8 @@
 # Roadmap
 
-## Public local-install MVP
+## Public AGPL local-install MVP
 
-Goal: make Image Prompt Library easy for someone to clone from GitHub, run on their own device, and use as a private local prompt/image manager.
+Goal: make Image Prompt Library easy for someone to clone from GitHub, run on their own device, and use as an open-source local-first prompt/image manager under AGPL-3.0-or-later. Commercial licenses are available for organizations that need terms outside the AGPL.
 
 ### Must-have before public alpha
 
@@ -14,6 +14,7 @@ Goal: make Image Prompt Library easy for someone to clone from GitHub, run on th
 - Smoke-test script for a running local instance.
 - Tests/build passing from a fresh checkout.
 - Runtime data ignored by git.
+- AGPL-3.0-or-later license wording plus clear commercial license option for non-AGPL terms.
 - `/media` route must not expose database, config, or internal files.
 
 ### Correctness hardening

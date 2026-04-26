@@ -104,30 +104,32 @@ This app intentionally does not ship third-party prompt-gallery data or generate
 
 ### Sample screenshot/demo dataset
 
-For public screenshots and demo GIFs, prefer a clearly licensed sample source instead of Edward's private library or an OpenNana scrape. The current demo-data candidate is [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill), whose repository `LICENSE` states **Attribution 4.0 International (CC BY 4.0)** and preserves individual prompt attributions.
+For public screenshots and demo GIFs, prefer a clearly licensed sample source instead of Edward's private library or an OpenNana scrape. The current demo-data source is [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill), whose repository `LICENSE` states **Attribution 4.0 International (CC BY 4.0)** and preserves individual prompt attributions. The planned optional sample bundle should contain the full 162-reference gallery, organized into roughly 10 Image Prompt Library collections with English, Simplified Chinese, and Traditional Chinese collection metadata.
 
 If you load this source into a local demo library:
 
-- keep the imported demo library out of git;
-- preserve attribution/source metadata on imported records where possible;
+- keep the installed sample library out of git unless it is part of the curated sample bundle release process;
+- preserve attribution/source metadata on imported or bundled records where possible;
 - mention `wuyoscar/gpt_image_2_skill` and **CC BY 4.0** near any public screenshots, demo GIFs, or demo fixtures;
 - review the source repository's latest license before publishing screenshots or sample data, because third-party licensing can change.
 
-This source is a good fit for a screenshot/demo pass, but it is not bundled with Image Prompt Library and should not be treated as the app's canonical built-in dataset.
+This source is a good fit for a screenshot/demo pass, and it is distributed as an explicit optional sample bundle rather than as live scraping/import instructions. Packaging is: keep curated metadata in git, publish the image bundle as a GitHub Release asset, and use `scripts/install-sample-data.sh zh_hant` / `zh_hans` / `en` to download or copy the selected bundle into the user's configured local library. If images are committed directly to the repository later, document sparse checkout / partial clone instructions so users can avoid the sample asset directory when they only want the app.
 
-Try it with a separate local demo library:
+Install shape:
 
 ```bash
-git clone https://github.com/wuyoscar/gpt_image_2_skill.git .local-work/gpt_image_2_skill
-
-IMAGE_PROMPT_LIBRARY_PATH=.local-work/demo-library \
-  ./scripts/import-gpt-image-2-skill.sh .local-work/gpt_image_2_skill
-
-IMAGE_PROMPT_LIBRARY_PATH=.local-work/demo-library \
-  ./scripts/start.sh
+./scripts/install-sample-data.sh zh_hant
 ```
 
-Open <http://127.0.0.1:8000/>. The importer reads `docs/community-prompt-picks.json`, copies referenced image files into your selected local library, stores each record's prompt as English, uses the record category as the collection, and keeps source/license attribution in item metadata/notes.
+Until a release asset is published, local QA can point the installer at a local image ZIP:
+
+```bash
+IMAGE_PROMPT_LIBRARY_PATH=.local-work/sample-demo \
+SAMPLE_DATA_IMAGE_ZIP=.local-work/image-prompt-library-sample-images-v1.zip \
+./scripts/install-sample-data.sh zh_hant
+```
+
+Open <http://127.0.0.1:8000/> after installing a sample bundle. The curated bundle should use the original English prompts from `wuyoscar/gpt_image_2_skill`; only include Simplified/Traditional Chinese prompt fields when the source has Chinese text or an explicit translation has been reviewed. Do not force an English prompt into a Chinese prompt field. Collection names can be localized across English, Simplified Chinese, and Traditional Chinese while keeping source/license attribution metadata from the original project.
 
 ### Import an OpenNana gallery export
 
@@ -187,6 +189,16 @@ Smoke-test a running local server:
 ```bash
 ./scripts/smoke-test.sh
 ```
+
+## License and allowed use
+
+Image Prompt Library's core application code is open source under **AGPL-3.0-or-later**. See `LICENSE` for the full AGPL text.
+
+Commercial licenses are available for organizations that want to use, modify, or host Image Prompt Library under terms outside the AGPL. Contact the maintainer if you need proprietary hosted-product terms or other non-AGPL licensing.
+
+Sample data and third-party assets are licensed separately and retain their original attribution/license terms. The optional sample bundle currently preserves `wuyoscar/gpt_image_2_skill` / **CC BY 4.0** attribution; do not treat sample prompts/images as part of the app-code AGPL grant.
+
+Your own local prompt library data remains yours and should not be committed to this repository.
 
 ## Privacy and security model
 

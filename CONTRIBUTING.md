@@ -4,6 +4,13 @@ Thanks for considering a contribution to Image Prompt Library.
 
 This project is a Local-first prompt/image reference manager. Please preserve the privacy-first design: user runtime data belongs on the user's device and should not be committed, uploaded, or sent to third-party services by default.
 
+## License model
+
+The core application code is licensed under **AGPL-3.0-or-later**. By contributing, you agree that your contribution is submitted under AGPL-3.0-or-later and may be included in versions distributed under alternative/commercial licensing terms by the project maintainer.
+
+Sample data and third-party assets are licensed separately and retain their original attribution/license terms.
+
+
 ## Local setup
 
 ```bash

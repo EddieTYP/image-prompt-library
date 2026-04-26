@@ -66,6 +66,13 @@ type ConstellationCluster = ClusterRecord & {
 type CollisionBox = { x: number; y: number; width: number; height: number };
 type RelaxedNode = ConstellationNode & { anchorX: number; anchorY: number; vx: number; vy: number };
 
+function isBlankConstellationPointerTarget(target: EventTarget | null, viewport: HTMLElement) {
+  if (target === viewport) return true;
+  if (!(target instanceof Element)) return false;
+  if (target.closest('.constellation-thumb-card, .constellation-cluster-card, button, a, input, textarea, select')) return false;
+  return Boolean(target.closest('.constellation-canvas, .constellation-links'));
+}
+
 function getConstellationImagePath(item: ItemSummary) {
   const primaryImage = selectPrimaryImage([item.first_image]);
   return imageThumbnailPath(primaryImage);
@@ -351,6 +358,42 @@ function resolveConstellationNodeOverlaps(clusters: ConstellationCluster[]) {
   });
 }
 
+function getConstellationBounds(displayedClusters: ConstellationCluster[]) {
+  const boxes: CollisionBox[] = [];
+  for (const cluster of displayedClusters) {
+    boxes.push({ x: cluster.x, y: cluster.y, width: cluster.width + 38, height: cluster.height + 34 });
+    for (const node of cluster.nodes) boxes.push({ x: node.x, y: node.y, width: node.width + 18, height: node.height + 18 });
+  }
+  if (!boxes.length) return undefined;
+  return boxes.reduce(
+    (bounds, box) => ({
+      minX: Math.min(bounds.minX, box.x - box.width / 2),
+      minY: Math.min(bounds.minY, box.y - box.height / 2),
+      maxX: Math.max(bounds.maxX, box.x + box.width / 2),
+      maxY: Math.max(bounds.maxY, box.y + box.height / 2),
+    }),
+    { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
+  );
+}
+
+function computeFitTransform(bounds: NonNullable<ReturnType<typeof getConstellationBounds>>, viewport: DOMRect) {
+  const padding = 76;
+  const boundsWidth = Math.max(1, bounds.maxX - bounds.minX);
+  const boundsHeight = Math.max(1, bounds.maxY - bounds.minY);
+  const availableWidth = Math.max(320, viewport.width - padding * 2);
+  const availableHeight = Math.max(260, viewport.height - padding * 2);
+  const nextScale = Math.min(1.15, Math.max(0.42, Math.min(availableWidth / boundsWidth, availableHeight / boundsHeight)));
+  const contentCenterX = (bounds.minX + bounds.maxX) / 2;
+  const contentCenterY = (bounds.minY + bounds.maxY) / 2;
+  return {
+    scale: nextScale,
+    offset: {
+      x: (CENTER_X - contentCenterX) * nextScale,
+      y: (CENTER_Y - contentCenterY) * nextScale,
+    },
+  };
+}
+
 function buildConstellation(clusters: ClusterRecord[], items: ItemSummary[], focusedClusterId: string | undefined, globalThumbnailBudget: number, focusThumbnailBudget: number): ConstellationCluster[] {
   const itemsByCluster = new Map<string, ItemSummary[]>();
   for (const item of items) {
@@ -415,6 +458,7 @@ export default function ExploreView({
 }) {
   const [scale, setScale] = useState(DEFAULT_SCALE);
   const [offset, setOffset] = useState(DEFAULT_OFFSET);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const gestureRef = useRef<GestureState | undefined>(undefined);
   const suppressNextClickRef = useRef(false);
   const [gesture, setGestureState] = useState<GestureState | undefined>();
@@ -428,15 +472,30 @@ export default function ExploreView({
     [clusters, items, focusedClusterId, globalThumbnailBudget, focusThumbnailBudget],
   );
   const focusedCluster = constellation.find(cluster => cluster.id === focusedClusterId);
-  const displayedClusters = focusedClusterId ? constellation.filter(cluster => !cluster.inactive) : constellation;
+  const displayedClusters = useMemo(
+    () => (focusedClusterId ? constellation.filter(cluster => !cluster.inactive) : constellation),
+    [constellation, focusedClusterId],
+  );
+
+  const fitConstellationToViewport = () => {
+    const viewport = viewportRef.current?.getBoundingClientRect();
+    const bounds = getConstellationBounds(displayedClusters);
+    if (!viewport || !bounds) {
+      setScale(DEFAULT_SCALE);
+      setOffset(DEFAULT_OFFSET);
+      return;
+    }
+    const next = computeFitTransform(bounds, viewport);
+    setScale(next.scale);
+    setOffset(next.offset);
+  };
 
   useEffect(() => {
     setIsFocusAnimating(true);
-    setScale(DEFAULT_SCALE);
-    setOffset(DEFAULT_OFFSET);
+    fitConstellationToViewport();
     const timer = window.setTimeout(() => setIsFocusAnimating(false), FOCUS_TRANSITION_MS);
     return () => window.clearTimeout(timer);
-  }, [focusedClusterId]);
+  }, [focusedClusterId, displayedClusters]);
 
   if (!clusters.length) {
     return (
@@ -453,7 +512,11 @@ export default function ExploreView({
   const reset = () => { setScale(DEFAULT_SCALE); setOffset(DEFAULT_OFFSET); };
   const handleOpenClusterCards = (cluster: ConstellationCluster) => onOpenClusterCards(cluster);
   const startGesture = (event: PointerEvent<HTMLElement>, tapTarget: TapTarget) => {
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic QA events may not have an active browser pointer; real pointer input still captures normally.
+    }
     setGesture({
       pointerId: event.pointerId,
       x: event.clientX,
@@ -512,13 +575,14 @@ export default function ExploreView({
         </div>
       )}
       <div
+        ref={viewportRef}
         className="constellation-viewport"
         onWheel={(event) => {
           event.preventDefault();
           setScale(s => Math.max(0.42, Math.min(1.35, s + (event.deltaY < 0 ? 0.06 : -0.06))));
         }}
         onPointerDown={(event) => {
-          if (event.target !== event.currentTarget) return;
+          if (!isBlankConstellationPointerTarget(event.target, event.currentTarget)) return;
           startGesture(event, undefined);
         }}
         onPointerMove={moveGesture}

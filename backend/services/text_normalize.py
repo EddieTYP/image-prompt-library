@@ -1,7 +1,19 @@
-def to_traditional(text: str) -> str:
-    try:
-        from opencc import OpenCC
-        return OpenCC("s2t").convert(text)
-    except Exception:
-        table = str.maketrans({"红":"紅","龙":"龍","图":"圖","画":"畫","风":"風","华":"華","汉":"漢","语":"語","体":"體","云":"雲","发":"發","后":"後"})
-        return text.translate(table)
+from __future__ import annotations
+
+import re
+import unicodedata
+
+from opencc import OpenCC
+
+_TRADITIONAL_CONVERTER = OpenCC("s2t")
+
+
+def normalize_text(value: str) -> str:
+    """Normalize user-provided/searchable text without changing its language."""
+    normalized = unicodedata.normalize("NFKC", value)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def to_traditional(value: str) -> str:
+    """Convert Simplified Chinese text to Traditional Chinese."""
+    return _TRADITIONAL_CONVERTER.convert(value)

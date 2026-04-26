@@ -162,7 +162,7 @@ def test_explore_has_static_repulsive_relaxation_and_tap_drag_threshold():
     assert "slotStepX" in explore and "slotStepY" in explore
     assert "Math.hypot((x - pos.x) * 0.78, (y - pos.y) * 1.35)" in explore
     assert "rotation: 0" in explore
-    assert "displayedClusters = focusedClusterId ? constellation.filter(cluster => !cluster.inactive) : constellation" in explore
+    assert "() => (focusedClusterId ? constellation.filter(cluster => !cluster.inactive) : constellation)" in explore
     assert "resolveConstellationNodeOverlaps" in explore
     assert "placeWithoutGlobalOverlap" in explore
     assert "attempt <= 1800" in explore
@@ -209,6 +209,15 @@ def test_constellation_card_drag_pans_viewport_and_disables_native_image_drag():
     assert "user-select:none" in css.replace(" ", "")
 
 
+def test_constellation_blank_canvas_and_svg_drag_start_pan_without_stealing_card_taps():
+    explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
+    assert "function isBlankConstellationPointerTarget" in explore
+    assert "target.closest('.constellation-thumb-card, .constellation-cluster-card, button, a, input, textarea, select')" in explore
+    assert "target.closest('.constellation-canvas, .constellation-links')" in explore
+    assert "if (!isBlankConstellationPointerTarget(event.target, event.currentTarget)) return;" in explore
+    assert "event.target !== event.currentTarget" not in explore
+
+
 def test_modal_and_explore_focus_use_reduced_motion_safe_transitions():
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
@@ -218,6 +227,12 @@ def test_modal_and_explore_focus_use_reduced_motion_safe_transitions():
     assert "window.setTimeout" in explore
     assert "centerFocusedCluster" in explore
     assert "className={`constellation-canvas ${isFocusAnimating ? 'focus-animation' : ''}`}" in explore
+    assert "viewportRef" in explore
+    assert "getConstellationBounds(displayedClusters)" in explore
+    assert "computeFitTransform" in explore
+    assert "fitConstellationToViewport" in explore
+    assert "Math.min(1.15, Math.max(0.42" in explore
+    assert "[focusedClusterId, displayedClusters]" in explore
     assert "@keyframes modal-backdrop-in" in css
     assert "@keyframes modal-panel-in" in css
     assert "@keyframes modal-content-in" in css

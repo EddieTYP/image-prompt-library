@@ -10,6 +10,7 @@ dependencies = [
   "python-multipart>=0.0.9",
   "pillow>=10",
   "httpx>=0.27",
+  "opencc-python-reimplemented>=0.1.7",
 ]
 
 [project.optional-dependencies]
