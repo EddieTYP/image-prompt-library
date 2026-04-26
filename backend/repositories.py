@@ -224,6 +224,8 @@ class ItemRepository:
 
     def list_clusters(self) -> list[ClusterRecord]:
         with connect(self.library_path) as conn:
+            self.delete_empty_clusters(conn)
+            conn.commit()
             rows = conn.execute("""SELECT c.*, COUNT(i.id) count FROM clusters c LEFT JOIN items i ON i.cluster_id=c.id AND i.archived=0 GROUP BY c.id HAVING count > 0 ORDER BY c.sort_order, c.name""").fetchall()
             out=[]
             for r in rows:

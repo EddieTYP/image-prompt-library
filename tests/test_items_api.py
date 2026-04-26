@@ -204,6 +204,25 @@ def test_editing_last_item_out_of_collection_removes_empty_collection(tmp_path):
     with connect(tmp_path / "library") as conn:
         assert conn.execute("SELECT name FROM clusters").fetchall()[0]["name"] == "New Collection"
 
+
+def test_listing_clusters_removes_existing_archived_only_collections(tmp_path):
+    c = client(tmp_path)
+    created = c.post("/api/items", json=create_payload(cluster_name="Legacy Empty Collection")).json()
+    c.delete(f"/api/items/{created['id']}")
+    with connect(tmp_path / "library") as conn:
+        archived_cluster_id = conn.execute("SELECT cluster_id FROM items WHERE id=?", (created["id"],)).fetchone()["cluster_id"]
+        old_name = "Legacy Empty Collection"
+        conn.execute("INSERT INTO clusters(id, name, created_at, updated_at) VALUES(?, ?, datetime('now'), datetime('now'))", (archived_cluster_id or "clu_legacy_empty", old_name))
+        conn.execute("UPDATE items SET cluster_id=? WHERE id=?", (archived_cluster_id or "clu_legacy_empty", created["id"]))
+        conn.commit()
+        assert conn.execute("SELECT COUNT(*) FROM clusters WHERE name=?", (old_name,)).fetchone()[0] == 1
+
+    assert c.get("/api/clusters").json() == []
+    with connect(tmp_path / "library") as conn:
+        assert conn.execute("SELECT COUNT(*) FROM clusters WHERE name=?", (old_name,)).fetchone()[0] == 0
+        assert conn.execute("SELECT cluster_id FROM items WHERE id=?", (created["id"],)).fetchone()["cluster_id"] is None
+
+
 def test_create_simplified_prompt_adds_traditional_prompt(tmp_path):
     c = client(tmp_path)
     created = c.post("/api/items", json=create_payload(prompts=[{"language": "zh_hans", "text": "红龙云图"}])).json()

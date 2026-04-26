@@ -190,6 +190,7 @@ Current assessment:
 11. **Empty collection cleanup** — implemented
    - Collections with zero active items are hidden from `/api/clusters`, so archived/deleted items no longer leave empty collections visible in the sidebar/Explore metadata.
    - Editing the last item out of a collection removes now-unreferenced collection rows, so old collections do not remain after moving the item to another collection.
+   - Listing clusters also cleans up pre-existing archived-only collection rows, clearing archived item references first so older empty collections disappear after an upgrade/restart.
 
 ### P3 / Low priority
 
