@@ -16,6 +16,7 @@ type TranslationKey =
   | 'deleteReference' | 'deleteReferenceConfirm' | 'cancel' | 'saving' | 'saveReference' | 'saveFailed'
   | 'primaryNavigation' | 'appHome' | 'currentFilters' | 'preferredPromptLanguage' | 'globalThumbnailBudget' | 'focusThumbnailBudget'
   | 'collectionFilters' | 'itemActions' | 'promptLanguage' | 'promptText' | 'source' | 'defaultModel' | 'localReference'
+  | 'imageGeneratedFrom' | 'author' | 'sourceUrl' | 'notes' | 'addNote'
   | 'constellationGraph' | 'constellationControls' | 'zoomOut' | 'zoomIn' | 'resetView' | 'focusThumbnailsVisible' | 'thumbnailsVisible' | 'visible' | 'references' | 'more';
 
 export const UI_LANGUAGE_LABELS: Record<UiLanguage, string> = {
@@ -48,6 +49,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     deleteReference: '刪除參考', deleteReferenceConfirm: '刪除此參考？它將會被封存並從 library 隱藏。', cancel: '取消', saving: '儲存中…', saveReference: '儲存參考', saveFailed: '儲存失敗，請再試一次。',
     primaryNavigation: '主要導覽', appHome: 'Image Prompt Library 首頁', currentFilters: '目前篩選', preferredPromptLanguage: '偏好 prompt 語言', globalThumbnailBudget: '全域縮圖數量', focusThumbnailBudget: '焦點縮圖數量',
     collectionFilters: 'Collection 篩選', itemActions: '項目操作', promptLanguage: 'Prompt 語言', promptText: 'Prompt 文字', source: '來源', defaultModel: 'ChatGPT Image', localReference: '本機參考',
+    imageGeneratedFrom: 'Image generated from', author: '作者', sourceUrl: '來源 URL', notes: '備註', addNote: '新增備註',
     constellationGraph: 'Prompt clusters 縮圖星座圖', constellationControls: '星座圖控制', zoomOut: '縮小', zoomIn: '放大', resetView: '重設', focusThumbnailsVisible: '張焦點縮圖', thumbnailsVisible: '張縮圖顯示中', visible: '顯示中', references: '個參考', more: '更多',
   },
   zh_hans: {
@@ -66,6 +68,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     deleteReference: '删除参考', deleteReferenceConfirm: '删除此参考？它将会被归档并从 library 隐藏。', cancel: '取消', saving: '保存中…', saveReference: '保存参考', saveFailed: '保存失败，请再试一次。',
     primaryNavigation: '主要导航', appHome: 'Image Prompt Library 首页', currentFilters: '当前筛选', preferredPromptLanguage: '偏好 prompt 语言', globalThumbnailBudget: '全局缩图数量', focusThumbnailBudget: '焦点缩图数量',
     collectionFilters: 'Collection 筛选', itemActions: '项目操作', promptLanguage: 'Prompt 语言', promptText: 'Prompt 文字', source: '来源', defaultModel: 'ChatGPT Image', localReference: '本地参考',
+    imageGeneratedFrom: 'Image generated from', author: '作者', sourceUrl: '来源 URL', notes: '备注', addNote: '新增备注',
     constellationGraph: 'Prompt clusters 缩图星座图', constellationControls: '星座图控制', zoomOut: '缩小', zoomIn: '放大', resetView: '重置', focusThumbnailsVisible: '张焦点缩图', thumbnailsVisible: '张缩图显示中', visible: '显示中', references: '个参考', more: '更多',
   },
   en: {
@@ -84,6 +87,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     deleteReference: 'Delete reference', deleteReferenceConfirm: 'Delete this reference? It will be archived and hidden from the library.', cancel: 'Cancel', saving: 'Saving…', saveReference: 'Save reference', saveFailed: 'Save failed. Please try again.',
     primaryNavigation: 'Primary navigation', appHome: 'Image Prompt Library home', currentFilters: 'Current filters', preferredPromptLanguage: 'Preferred prompt language', globalThumbnailBudget: 'Global thumbnail budget', focusThumbnailBudget: 'Focus thumbnail budget',
     collectionFilters: 'Collection filters', itemActions: 'Item actions', promptLanguage: 'Prompt language', promptText: 'Prompt text', source: 'Source', defaultModel: 'ChatGPT Image', localReference: 'Local reference',
+    imageGeneratedFrom: 'Image generated from', author: 'Author', sourceUrl: 'Source URL', notes: 'Notes', addNote: 'Add note',
     constellationGraph: 'Prompt clusters thumbnail constellation graph', constellationControls: 'Constellation controls', zoomOut: 'Zoom out', zoomIn: 'Zoom in', resetView: 'Reset', focusThumbnailsVisible: 'focus thumbnails', thumbnailsVisible: 'thumbnails visible', visible: 'visible', references: 'references', more: 'more',
   },
 };

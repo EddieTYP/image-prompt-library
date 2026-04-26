@@ -30,6 +30,10 @@ export default function ItemEditorModal({
   onDeleted: () => void;
 }) {
   const [title, setTitle] = useState(item?.title || '');
+  const [model, setModel] = useState(item?.model || 'ChatGPT');
+  const [author, setAuthor] = useState(item?.author || 'User');
+  const [sourceUrl, setSourceUrl] = useState(item?.source_url || '');
+  const [notes, setNotes] = useState(item?.notes || '');
   const [cluster, setCluster] = useState(item?.cluster?.name || '');
   const [tags, setTags] = useState(item?.tags.map(t => t.name).join(', ') || '');
   const [zhHantPrompt, setZhHantPrompt] = useState(initialTraditionalPrompt(item));
@@ -69,12 +73,16 @@ export default function ItemEditorModal({
     setSaveError('');
     try {
       const prompts = [
-        { language: 'zh_hant', text: zhHantPrompt.trim(), is_primary: true },
-        { language: 'zh_hans', text: zhHansPrompt.trim(), is_primary: !zhHantPrompt.trim() },
-        { language: 'en', text: englishPrompt.trim(), is_primary: !zhHantPrompt.trim() && !zhHansPrompt.trim() },
+        { language: 'en', text: englishPrompt.trim(), is_primary: true },
+        { language: 'zh_hant', text: zhHantPrompt.trim(), is_primary: !englishPrompt.trim() },
+        { language: 'zh_hans', text: zhHansPrompt.trim(), is_primary: !englishPrompt.trim() && !zhHantPrompt.trim() },
       ].filter(prompt => prompt.text);
       const payload = {
         title: title.trim(),
+        model: model.trim() || undefined,
+        author: author.trim() || 'User',
+        source_url: sourceUrl.trim() || undefined,
+        notes: notes.trim() || undefined,
         cluster_name: cluster.trim() || undefined,
         tags: tags.split(',').map(t => t.trim()).filter(Boolean),
         prompts,
@@ -134,6 +142,18 @@ export default function ItemEditorModal({
               {filteredClusters.map(collection => <option key={collection.id} value={collection.name} />)}
             </datalist>
           </label>
+          <label className="field">
+            <span>{t('imageGeneratedFrom')}</span>
+            <input placeholder={t('defaultModel')} value={model} onChange={e => setModel(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>{t('author')}</span>
+            <input placeholder="User" value={author} onChange={e => setAuthor(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>{t('sourceUrl')}</span>
+            <input type="url" placeholder="https://…" value={sourceUrl} onChange={e => setSourceUrl(e.target.value)} />
+          </label>
           <label className="field tag-field">
             <span>{t('tags')}</span>
             <input list="tag-suggestions" placeholder={t('tagsPlaceholder')} value={tags} onChange={e => setTags(e.target.value)} />
@@ -147,6 +167,10 @@ export default function ItemEditorModal({
             )}
           </label>
           <label className="field prompt-field">
+            <span>{t('englishPrompt')}</span>
+            <textarea placeholder={t('englishPromptPlaceholder')} value={englishPrompt} onChange={e => setEnglishPrompt(e.target.value)} />
+          </label>
+          <label className="field prompt-field">
             <span>{t('traditionalChinesePrompt')}</span>
             <textarea placeholder={t('traditionalPromptPlaceholder')} value={zhHantPrompt} onChange={e => setZhHantPrompt(e.target.value)} />
           </label>
@@ -155,8 +179,8 @@ export default function ItemEditorModal({
             <textarea placeholder={t('simplifiedPromptPlaceholder')} value={zhHansPrompt} onChange={e => setZhHansPrompt(e.target.value)} />
           </label>
           <label className="field prompt-field">
-            <span>{t('englishPrompt')}</span>
-            <textarea placeholder={t('englishPromptPlaceholder')} value={englishPrompt} onChange={e => setEnglishPrompt(e.target.value)} />
+            <span>{t('notes')}</span>
+            <textarea placeholder={t('addNote')} value={notes} onChange={e => setNotes(e.target.value)} />
           </label>
           <label className={`drop-zone ${missingRequiredImage ? 'required' : ''}`}>
             <ImagePlus size={24} />

@@ -108,7 +108,7 @@ export default function App() {
         : <CardsView t={t} items={data.items} onOpen={setDetailId} onFavorite={favorite} onEdit={editSummary} onCopyPrompt={copyPrompt} onAdd={openNewItemEditor} />}
     </main>
     <button className="fab" onClick={openNewItemEditor}><Plus/> {t('add')}</button>
-    <ItemDetailModal t={t} id={detailId} preferredLanguage={preferredLanguage} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} />
+    <ItemDetailModal t={t} id={detailId} preferredLanguage={preferredLanguage} clusters={clusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} />
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
     {editorOpen && <ItemEditorModal t={t} item={editing} clusters={clusters} tags={tags} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} />}
   </div>

@@ -23,6 +23,14 @@ The app has two distinct browsing modes:
 - No hero section. The top search bar is enough.
 - Keep the top toolbar search, logo area, filters entry, config entry, active filter/status strip, Explore/Cards toggle, and floating Add button.
 - No `⌘K` / `Ctrl+K` search shortcut for now.
+- Detail modal should become the primary lightweight editing surface: title, collection, metadata, prompt blocks, tags, and notes can be edited in place with subtle hover affordance and explicit confirm/cancel controls.
+- Detail modal action row should live inside the right-hand detail column above the collection/title: Heart/Favorite and Pencil/Edit aligned left, Close aligned right, all icon-only with polished hover/focus states.
+- Prompt block layout order should be English → Traditional Chinese → Simplified Chinese. This is only the editing/display order; copy/display preferred language still follows the user's prompt language setting.
+- Detail prompt UI should be a single tabbed prompt panel (`ENG → 繁中 → 簡中`), not three expanded prompt blocks. Prompt copy/edit controls act on the active tab, with long prompts scrolling inside the panel.
+- Tags remain at the bottom. Desktop shows each tag's floating top-right unlink `×` on hover; touch/mobile shows unlink controls persistently. A final `+` chip adds tags with smart suggestions.
+- Empty notes should show only a faint `Add note` affordance so notes do not consume space when unused.
+- Public import positioning: use `wuyoscar/gpt_image_2_skill` as the public example source with CC BY 4.0 attribution, keep OpenNana as an optional local-export adapter, and do not bundle third-party gallery data/media.
+- Private one-click generation preview remains private/feature-gated and should not be mentioned in the public README for now.
 - Cards mode masonry is visually acceptable; avoid destabilizing it while working on Explore.
 - Explore focus view is now liked by Edward; only minor tuning should be considered later.
 - Runtime data/media/database files must not be committed:
@@ -70,6 +78,12 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
 - Cards mode remains masonry/template-marketplace style.
 - Prompt copy language preference and LAN HTTP clipboard fallback are implemented.
 - Detail modal copy uses the selected prompt-language tab first, then fallback resolver.
+- Detail modal now supports lightweight inline editing for title, collection, generated-from/model metadata, author, a single tabbed prompt panel, notes, and tags.
+- Detail modal action row is inside the right-hand detail column: Heart/Favorite and Pencil/Edit on the left, Close on the right, aligned above the collection/title.
+- Detail prompt tabs are `ENG → 繁中 → 簡中`; long prompts scroll inside the prompt panel, and copy/edit controls operate on the active tab.
+- Tag unlink controls are floating mini buttons at the top-right of each tag chip on desktop hover/focus, with persistent touch/mobile visibility.
+- Add/Edit now uses prompt order English → Traditional Chinese → Simplified Chinese and includes generated-from/model, author, source URL, and notes fields.
+- README now positions OpenNana as an optional local-export adapter and uses `wuyoscar/gpt_image_2_skill` as the public CC BY 4.0 example-data candidate instead of bundling real OpenNana data.
 
 ## GitHub public local-install MVP roadmap
 
@@ -85,7 +99,7 @@ Current assessment:
 
 1. **Public README pass** — initial public MVP pass implemented
    - README now uses generic clone/setup/start instructions instead of Edward-specific absolute paths.
-   - It explains the local-first/private model, requirements, quick start, development mode, configuration, data layout, adding prompts, OpenNana import, backup, verification, privacy, troubleshooting, and status.
+   - It explains the local-first/private model, requirements, quick start, development mode, configuration, data layout, adding prompts, optional import adapters, backup, verification, privacy, troubleshooting, and status.
    - Screenshots or short demo GIFs are still pending before a polished public release.
 
 2. **Fresh clone / first-run experience** — current QA pass implemented
@@ -121,6 +135,34 @@ Current assessment:
    - Added `LICENSE`, `CONTRIBUTING.md`, and `ROADMAP.md`; concise issue/bug-report guidance lives in `CONTRIBUTING.md`.
    - Decide whether to include sample/demo data or only screenshots; do not commit Edward's runtime `library/` data.
    - Tag a first public alpha release, e.g. `v0.1.0-alpha`, only after fresh-install smoke tests pass.
+
+## Next planned implementation: inline detail editing and public import positioning
+
+Plan saved at `docs/plans/2026-04-26-inline-detail-editing-and-public-import-positioning.md`.
+
+Scope agreed on 2026-04-26:
+
+1. **Detail modal as lightweight editor**
+   - Add subtle hover affordances to editable title, collection, metadata, prompt, tag, and note areas.
+   - Inline edits use small confirm/cancel controls; avoid blur auto-save to prevent accidental edits.
+   - Modal header uses icon-only Heart/Favorite and Pencil/Edit buttons aligned left, with Close aligned right and improved hover/focus feedback.
+   - Metadata row displays image generator/model, author, and source URL as an icon-only link after the author.
+   - Prompt blocks are ordered English → Traditional Chinese → Simplified Chinese, each with an icon-only copy action in the top-right and inline edit support.
+   - Tags stay at the bottom with hover/touch-aware unlink controls and a final add-tag `+` chip with suggestions.
+   - Notes are separate from prompts; empty notes show only a faint `Add note` affordance.
+
+2. **Add/Edit modal alignment**
+   - Keep Add/Edit as the structured create/advanced-edit form.
+   - Reorder prompt fields to English → Traditional Chinese → Simplified Chinese.
+   - Surface `Image generated from`/model, `Author` defaulting to `User`, optional `Source URL`, and optional Notes.
+   - Preserve required result image and optional reference image behavior.
+
+3. **Public import story**
+   - Explain the canonical bulk import item structure in public docs.
+   - Treat OpenNana as an optional source-specific local-export adapter; do not bundle OpenNana data/media.
+   - Use `wuyoscar/gpt_image_2_skill` as the public example source, with clear CC BY 4.0 attribution requirements.
+   - Remove or parameterize any Edward-specific hardcoded import paths before public release.
+   - Do not mention the private one-click generation preview in public README.
 
 ## Outstanding priorities
 
@@ -167,7 +209,7 @@ Current assessment:
    - The preview is transform-only (`scale(1.42)`) and preserves node coordinates/rotation through a CSS variable; it does not mutate layout, rerun positioning, or add live physics.
 
 8. **Edit modal data-entry improvements** — implemented
-   - Add/Edit modal now has separate Traditional Chinese, Simplified Chinese, and English prompt fields; legacy `original` prompts prefill the Traditional Chinese field for older imported items.
+   - Add/Edit modal now has separate English, Traditional Chinese, and Simplified Chinese prompt fields; legacy `original` prompts prefill the Traditional Chinese field for older imported items.
    - Collection input offers existing collection suggestions via datalist while still allowing typed new collections; tag input now also offers existing tag suggestions/chips.
    - Detail and edit modals no longer expose a separate `Original` prompt tab/field; legacy `original` content is folded into Traditional Chinese editing when needed.
    - Image upload UI distinguishes mandatory result image from optional reference photo; uploads persist `result_image` vs `reference_image` roles in the DB/API.
@@ -282,6 +324,14 @@ Current behavior:
 - Visible feedback is now shared: card copy and detail modal copy both use the same modern bottom toast.
 
 ## Latest QA / review notes
+
+Logged on 2026-04-26 for detail-editing/import-positioning planning:
+
+- Edward confirmed inline detail editing direction: subtle hover affordances, explicit confirm/cancel controls, icon-only Heart and Pencil header actions, copy icon in each prompt block, tag unlink on hover for desktop and persistent unlink controls for touch/mobile, and faint `Add note` when notes are empty.
+- Add/Edit form should keep the structured create/advanced edit role, but add/surface Image generated from/model, Author defaulting to `User`, optional Source URL, and Notes; prompt field order should become English, Traditional Chinese, Simplified Chinese.
+- Prompt copy/display language preference remains independent from edit/display order and should continue to follow the user setting.
+- Public import example should shift from OpenNana to `wuyoscar/gpt_image_2_skill` where practical because it is a public CC BY 4.0 prompt gallery; OpenNana remains an optional local-export adapter with no bundled data/media.
+- Private one-click generation preview remains intentionally private and should not be documented in the public README for now.
 
 Logged on 2026-04-26 for the fresh clone / empty-library first-run pass:
 

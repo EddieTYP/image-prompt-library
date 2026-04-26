@@ -245,7 +245,7 @@ def test_copy_prompt_uses_shared_preferred_language_resolver():
     assert "preferredLanguage" in detail
     assert "const copyText = prompt?.text || resolvePromptText" in detail
     assert "onCopyPrompt" in detail
-    assert "copyTextToClipboard(copyText)" in detail
+    assert "copyTextToClipboard(text)" in detail
     assert "setCopyFeedback" not in detail
 
 
@@ -365,10 +365,87 @@ def test_gallery_visuals_are_polished():
     detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
     editor = (ROOT / "frontend" / "src" / "components" / "ItemEditorModal.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
-    assert "modal-hero" in detail and "prompt-panel" in detail
+    assert "modal-hero" in detail and "prompt-block" in detail
     assert "editor-grid" in editor and "drop-zone" in editor
     assert "--surface-warm" in css
     assert ".fab{position:fixed;right:32px;bottom:32px" in css.replace("\n", "")
+
+
+def test_detail_modal_supports_inline_editing_contract():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    compact_css = css.replace(" ", "")
+    assert "onChanged" in detail and "onChanged={saved}" in app
+    assert "detail-side-actions" in detail
+    assert "detail-side-primary-actions" in detail
+    assert "modal-icon-button favorite-button" in detail
+    assert "modal-icon-button edit-button" in detail
+    assert "modal-icon-button close" in detail
+    assert detail.index("detail-side-actions") < detail.index("collection-inline-edit")
+    assert "aria-label={item.favorite ? t('saved') : t('favorite')}" in detail
+    assert "aria-label={t('edit')}" in detail
+    assert ".modal-icon-button:hover" in css
+    assert ".modal-icon-button:focus-visible" in css
+    assert "InlineEditableField" in detail
+    assert "InlineEditableTextArea" in detail
+    assert "title-inline-edit" in detail
+    assert "collection-inline-edit" in detail
+    assert "metadata-inline-edit" in detail
+    assert "prompt-inline-edit" in detail
+    assert "notes-inline-edit" in detail
+    assert "inline-edit-controls" in css
+    assert "Check" in detail and "X" in detail
+    assert "commitInlineUpdate" in detail
+    assert "api.updateItem(item.id" in detail
+    assert "promptDisplayOrder = ['en', 'zh_hant', 'zh_hans']" in detail
+    assert "prompt-edit-icon" in detail
+    assert "role=\"tablist\"" in detail
+    assert "aria-selected={lang === promptLanguage}" in detail
+    assert "promptDisplayOrder.map(promptLanguage" in detail
+    assert "<section className=\"prompt-block prompt-panel active\">" in detail
+    assert "prompt-edit-controls" in detail and "prompt-edit-controls" in css
+    assert "copyTextToClipboard(text)" in detail
+    assert "add-note-affordance" in detail
+    assert "t('addNote')" in detail
+    assert "source-icon-link" in detail
+    assert "ExternalLink" in detail
+    assert "touch-action:manipulation" in css
+    assert ".close:hover" not in css
+    assert ".modal-icon-button.close" in css
+    assert ".inline-editable:hover" in css
+    assert ".prompt-block" in css
+    assert "prompt-copy-icon" in css
+    assert "prompt-language-tabs" in css
+    assert "background:#fff" in css
+    assert "background:#e8e2d5" in css
+    assert "top:-6px" in css and "right:-6px" in css
+    assert "justify-content:center" in css
+    assert "stroke-width:2.6" in css
+    assert "border:0" in css
+    assert "width:min(94vw,1440px)" in css.replace(" ", "")
+    assert "grid-template-columns:minmax(520px,1.15fr)minmax(420px,.85fr)" in css.replace(" ", "")
+    assert "prompt-panel-body" in css and "max-height:min(34vh,320px)" in css.replace(" ", "")
+    assert "prompt-edit-textarea" in css
+    assert ".detail-side-actions" in css
+
+
+def test_detail_modal_tag_unlink_and_add_controls_are_hover_and_touch_aware():
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    compact_css = css.replace(" ", "")
+    assert "detail-tag-chip" in detail
+    assert "tag-unlink-button" in detail
+    assert "add-tag-chip" in detail
+    assert "tag-add-input" in detail
+    assert "filteredTagSuggestions" in detail
+    assert "api.updateItem(item.id" in detail
+    assert "item.tags.filter" in detail
+    assert ".detail-tag-chip .tag-unlink-button" in css
+    assert ".detail-tag-chip:hover .tag-unlink-button" in css
+    assert "@media(hover:none),(pointer:coarse)" in compact_css
+    assert ".add-tag-chip" in css
+    assert ".tag-add-popover" in css
 
 
 def test_editor_supports_multilingual_prompts_collection_suggestions_and_image_requirements():
@@ -386,12 +463,18 @@ def test_editor_supports_multilingual_prompts_collection_suggestions_and_image_r
     assert "initialTraditionalPrompt" in editor
     assert "promptText(item, 'zh_hant') || promptText(item, 'original')" in editor
     assert "zhHantPrompt" in editor and "zhHansPrompt" in editor and "englishPrompt" in editor
+    assert "language: 'en', text: englishPrompt.trim(), is_primary: true" in editor
     assert "language: 'zh_hant'" in editor
     assert "language: 'zh_hans'" in editor
-    assert "language: 'en'" in editor
-    assert "t('traditionalChinesePrompt')" in editor
-    assert "t('simplifiedChinesePrompt')" in editor
-    assert "t('englishPrompt')" in editor
+    assert editor.index("t('englishPrompt')") < editor.index("t('traditionalChinesePrompt')") < editor.index("t('simplifiedChinesePrompt')")
+    assert "model" in editor and "setModel" in editor
+    assert "author" in editor and "setAuthor" in editor
+    assert "sourceUrl" in editor and "setSourceUrl" in editor
+    assert "notes" in editor and "setNotes" in editor
+    assert "t('imageGeneratedFrom')" in editor
+    assert "t('author')" in editor
+    assert "t('sourceUrl')" in editor
+    assert "t('notes')" in editor
     assert "collection-suggestions" in editor
     assert "filteredClusters" in editor
     assert "list=\"collection-suggestions\"" in editor

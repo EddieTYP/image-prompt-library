@@ -12,10 +12,10 @@ The app is designed for people who want a private prompt/image reference library
 - Cards mode: masonry/Pinterest-style prompt gallery.
 - Search across titles, prompts, tags, collections, sources, and notes.
 - Collections and tags for organizing references.
-- Detail modal with prompt language tabs and copy feedback.
-- Add/edit modal with Traditional Chinese, Simplified Chinese, and English prompt fields.
+- Detail modal with lightweight inline editing, prompt language tabs, and copy feedback.
+- Add/edit modal with English, Traditional Chinese, and Simplified Chinese prompt fields plus metadata.
 - Result image and optional reference image uploads.
-- OpenNana/ChatGPT prompt-gallery import path for bootstrapping a library.
+- Optional import adapters for bootstrapping a library from supported local/exported sources.
 
 ## Requirements
 
@@ -92,9 +92,17 @@ Do not commit runtime `library/` data to git. It is your private prompt/image co
 4. Save the card.
 5. Use Cards/Explore, search, filters, and detail view to browse and copy prompts later.
 
-## Import an OpenNana gallery export
+## Import and example data
 
-If you have an OpenNana gallery JSON export, import it with:
+This app intentionally does not ship third-party prompt-gallery data or generated images. Runtime library data is private/user-owned and should stay outside git.
+
+For public examples, prefer sources with explicit reusable licensing. One candidate is [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill), which is published under **CC BY 4.0** at the time of writing. If you use that content as demo/example data, keep the attribution and license notice with the imported records or demo fixture.
+
+### Import an OpenNana gallery export
+
+OpenNana support is an optional adapter for a local OpenNana gallery JSON export. It is not a universal webpage scraper and it does not download directly from arbitrary gallery pages.
+
+Import with:
 
 ```bash
 source .venv/bin/activate
@@ -103,10 +111,10 @@ python -m backend.services.import_opennana \
   --library "${IMAGE_PROMPT_LIBRARY_PATH:-./library}"
 ```
 
-Convenience script for the default expected local export location:
+Convenience script:
 
 ```bash
-./scripts/import-opennana.sh
+./scripts/import-opennana.sh /path/to/gallery.json "${IMAGE_PROMPT_LIBRARY_PATH:-./library}"
 ```
 
 The importer is duplicate-aware by slug, so rerunning a completed import should not create duplicate items.
@@ -179,7 +187,7 @@ Then restart the app.
 
 ### Empty library after first start
 
-That is expected for a fresh install. Click `+ Add` to create your first prompt card, or import an OpenNana export JSON.
+That is expected for a fresh install. Click `+ Add` to create your first prompt card, or import a supported local/exported source through an adapter such as the OpenNana JSON importer.
 
 ### Images or database missing after moving folders
 
