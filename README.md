@@ -19,7 +19,7 @@ The app is designed for people who want a private prompt/image reference library
 
 ## Requirements
 
-- Python 3.9+
+- Python 3.10+
 - Node.js 20+ recommended
 - npm
 

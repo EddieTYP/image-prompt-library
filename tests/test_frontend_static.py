@@ -169,6 +169,21 @@ def test_explore_has_static_repulsive_relaxation_and_tap_drag_threshold():
     assert "continuous physics" not in explore.lower()
 
 
+def test_empty_library_states_have_inline_first_prompt_cta():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
+    cards = (ROOT / "frontend" / "src" / "components" / "CardsView.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    assert "openNewItemEditor" in app
+    assert "onAdd={openNewItemEditor}" in app
+    assert "Your library is empty" in explore
+    assert "Add your first prompt" in explore
+    assert "onAdd" in explore
+    assert "Add your first prompt" in cards
+    assert "onAdd" in cards
+    assert "empty-actions" in css
+
+
 def test_cards_keep_adaptive_masonry_and_actions():
     cards = (ROOT / "frontend" / "src" / "components" / "CardsView.tsx").read_text()
     card = (ROOT / "frontend" / "src" / "components" / "ItemCard.tsx").read_text()

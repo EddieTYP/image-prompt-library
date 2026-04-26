@@ -41,6 +41,8 @@ def test_public_install_helper_files_exist_and_document_local_data():
     assert "npm run build" in start_script
     assert "backend.main:app" in start_script
     assert "IMAGE_PROMPT_LIBRARY_PATH" in start_script
+    assert "INCOMING_BACKEND_PORT" in start_script
+    assert "INCOMING_IMAGE_PROMPT_LIBRARY_PATH" in start_script
     assert "FRONTEND_PORT" in dev_script
     assert "BACKEND_PORT" in dev_script
     assert "export BACKEND_HOST" in dev_script
@@ -62,6 +64,17 @@ def test_public_install_helper_files_exist_and_document_local_data():
 
     assert "/api/health" in smoke_script
     assert "/media/db.sqlite" in smoke_script
+
+
+def test_public_python_version_requirement_matches_runtime_syntax():
+    pyproject = (ROOT / "pyproject.toml").read_text()
+    setup_script = (ROOT / "scripts" / "setup.sh").read_text()
+    readme = (ROOT / "README.md").read_text()
+
+    assert 'requires-python = ">=3.10"' in pyproject
+    assert "Python 3.10" in readme
+    assert "sys.version_info < (3, 10)" in setup_script
+    assert "requires Python 3.10" in setup_script
 
 
 def test_public_repo_hygiene_files_exist():

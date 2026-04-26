@@ -2,7 +2,7 @@
 name = "image-prompt-library"
 version = "0.1.0"
 description = "Local-first image prompt reference library"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.110",
   "uvicorn>=0.27",

@@ -2,12 +2,18 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+INCOMING_IMAGE_PROMPT_LIBRARY_PATH="${IMAGE_PROMPT_LIBRARY_PATH-}"
+INCOMING_BACKUP_DIR="${BACKUP_DIR-}"
+
 if [ -f .env ]; then
   set -a
   # shellcheck disable=SC1091
   source .env
   set +a
 fi
+
+if [ -n "$INCOMING_IMAGE_PROMPT_LIBRARY_PATH" ]; then IMAGE_PROMPT_LIBRARY_PATH="$INCOMING_IMAGE_PROMPT_LIBRARY_PATH"; fi
+if [ -n "$INCOMING_BACKUP_DIR" ]; then BACKUP_DIR="$INCOMING_BACKUP_DIR"; fi
 
 LIBRARY_PATH="${IMAGE_PROMPT_LIBRARY_PATH:-./library}"
 BACKUP_DIR="${BACKUP_DIR:-./backups}"

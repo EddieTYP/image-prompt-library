@@ -7,18 +7,23 @@ export default function CardsView({
   onFavorite,
   onEdit,
   onCopyPrompt,
+  onAdd,
 }: {
   items: ItemSummary[];
   onOpen: (id: string) => void;
   onFavorite: (id: string) => void;
   onEdit: (item: ItemSummary) => void;
   onCopyPrompt: (item: ItemSummary) => void;
+  onAdd: () => void;
 }) {
   if (!items.length) {
     return (
       <div className="empty">
         <h2>No matching prompts</h2>
-        <p>Try another search or cluster.</p>
+        <p>Try another search, clear filters, or add a new prompt reference.</p>
+        <div className="empty-actions">
+          <button className="empty-primary" onClick={onAdd}>Add your first prompt</button>
+        </div>
       </div>
     );
   }

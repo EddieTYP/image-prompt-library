@@ -1,6 +1,6 @@
 # Image Prompt Library Project Status
 
-Last updated: 2026-04-25
+Last updated: 2026-04-26
 
 ## Current direction
 
@@ -88,26 +88,29 @@ Current assessment:
    - It explains the local-first/private model, requirements, quick start, development mode, configuration, data layout, adding prompts, OpenNana import, backup, verification, privacy, troubleshooting, and status.
    - Screenshots or short demo GIFs are still pending before a polished public release.
 
-2. **Fresh clone / first-run experience**
-   - Verify setup from a clean checkout with an empty `library/` directory.
-   - Ensure DB migrations initialize automatically and empty Explore/Cards states are friendly.
-   - Make the Add prompt CTA obvious when no data exists.
-   - Browser-QA the empty-library path separately from Edward's imported OpenNana dataset.
+2. **Fresh clone / first-run experience** — current QA pass implemented
+   - Clean-checkout setup was tested from a temp copy with an empty external library path.
+   - Python requirement is now explicit: Python 3.10+ is required because the backend uses Python 3.10 runtime syntax (`X | None`). `scripts/setup.sh` fails fast with a clear version error instead of creating a broken venv under macOS system Python 3.9.
+   - DB migrations initialize automatically for an empty library, and single-service smoke passes on a non-`8787` QA port.
+   - Empty Explore/Cards states now use a clearer `Your library is empty` message plus an inline **Add your first prompt** CTA, in addition to the floating Add button.
+   - Browser QA covered manual first prompt add, image upload, edit, detail open, copy prompt, and delete/archive from a fresh empty library.
 
-3. **Install and run scripts** — initial public MVP pass implemented
+3. **Install and run scripts** — current public MVP pass implemented
    - Added/improved setup/start/dev/smoke helper scripts: `scripts/setup.sh`, `scripts/start.sh`, `scripts/dev.sh`, and `scripts/smoke-test.sh`.
    - Keep dev ports documented (`8000` backend, `5177` frontend) while avoiding `8787` because it is reserved for Hermes WebUI on Edward's machine.
    - FastAPI can serve the built frontend from `frontend/dist`, so normal local use can run as one backend service after `npm run build`.
+   - Shell-provided one-shot overrides (`BACKEND_PORT`, `BACKEND_HOST`, `FRONTEND_PORT`, `IMAGE_PROMPT_LIBRARY_PATH`, `BACKUP_DIR`) now take precedence over `.env`, so documented commands like `BACKEND_PORT=8023 IMAGE_PROMPT_LIBRARY_PATH=/tmp/library ./scripts/start.sh` work reliably.
 
 4. **Configuration story** — initial public MVP pass implemented
    - Added `.env.example` for library path, backend host/port, frontend dev port, and backup directory.
    - Keep repo-local `library/` as the simplest default, but document how users can move data to a durable location such as `~/ImagePromptLibrary/` later.
    - Make clear which files are user data and must be backed up.
 
-5. **Backup / restore story** — initial public MVP pass implemented
+5. **Backup / restore story** — current public MVP pass implemented
    - Added `scripts/backup.sh` to archive `library/db.sqlite`, `library/originals/`, `library/thumbs/`, and `library/previews/` into a timestamped backup file.
    - Document restore instructions and local-first privacy/security expectations.
    - Reconfirm `.gitignore` excludes runtime DB/media artifacts and SQLite sidecar files.
+   - Fresh-library QA confirmed `IMAGE_PROMPT_LIBRARY_PATH=... BACKUP_DIR=... ./scripts/backup.sh` writes a timestamped `.tar.gz` backup for the selected library path.
 
 6. **Correctness hardening before public MVP**
    - Complete image-role hardening follow-ups: role-aware result-image checks, result-image hero preference, DB-level role validation, and upload-failure cleanup/rollback.
@@ -271,6 +274,15 @@ Current behavior:
 - Visible feedback is now shared: card copy and detail modal copy both use the same modern bottom toast.
 
 ## Latest QA / review notes
+
+Logged on 2026-04-26 for the fresh clone / empty-library first-run pass:
+
+- Fresh setup surfaced a public-blocking Python mismatch: macOS system `python3` was Python 3.9.6, while backend code already uses Python 3.10 `X | None` syntax. The project now documents and enforces Python 3.10+; `scripts/setup.sh` rejects older Python with a clear error and supports `PYTHON=/path/to/python3.10 ./scripts/setup.sh`.
+- Fresh script QA surfaced `.env` precedence drift: `.env` defaults could override shell one-shot env vars. `scripts/start.sh`, `scripts/dev.sh`, and `scripts/backup.sh` now preserve incoming shell env values over `.env` defaults for documented local-install overrides.
+- Empty-library browser QA now shows a clearer inline first-run CTA: `Your library is empty` plus `Add your first prompt` in both Explore/Cards empty states.
+- Manual fresh-library QA covered adding a first prompt with a result image, editing the title, opening the detail modal, copying the Traditional Chinese prompt text, and deleting/archiving the item. Console QA showed no JavaScript errors.
+- Delete/archive QA found and fixed stale metadata: archived items no longer contribute cluster preview images or active tag counts, preventing empty libraries from showing leftover thumbnail/tag metadata after deletion.
+- Fresh backup QA confirmed `scripts/backup.sh` works with explicit `IMAGE_PROMPT_LIBRARY_PATH` and `BACKUP_DIR`, writing a timestamped `.tar.gz` containing the selected library DB/media paths.
 
 Logged on 2026-04-25 for the collection drawer / shared-toast pass:
 

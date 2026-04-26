@@ -66,6 +66,11 @@ def test_items_list_limit_allows_gallery_overview_scale(tmp_path):
 def test_patch_favorite_and_archive_item(tmp_path):
     c = client(tmp_path)
     created = c.post("/api/items", json=create_payload()).json()
+    c.post(
+        f"/api/items/{created['id']}/images",
+        data={"role": "result_image"},
+        files={"file": ("result.png", png_bytes(), "image/png")},
+    )
     patched = c.patch(f"/api/items/{created['id']}", json={"title": "Updated", "favorite": True, "rating": 4}).json()
     assert patched["title"] == "Updated"
     assert patched["favorite"] is True
@@ -76,6 +81,8 @@ def test_patch_favorite_and_archive_item(tmp_path):
     assert deleted["archived"] is True
     assert c.get("/api/items").json()["total"] == 0
     assert c.get("/api/items", params={"archived": True}).json()["total"] == 1
+    assert c.get("/api/clusters").json()[0]["preview_images"] == []
+    assert {tag["name"]: tag["count"] for tag in c.get("/api/tags").json()} == {"glass": 0, "vista": 0}
 
 
 def test_clusters_tags_and_config(tmp_path):

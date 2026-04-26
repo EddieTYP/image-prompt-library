@@ -395,6 +395,7 @@ export default function ExploreView({
   onFocusCluster,
   onOpenClusterCards,
   onOpen,
+  onAdd,
 }: {
   clusters: ClusterRecord[];
   items: ItemSummary[];
@@ -404,6 +405,7 @@ export default function ExploreView({
   onFocusCluster: (c: ClusterRecord) => void;
   onOpenClusterCards: (c: ClusterRecord) => void;
   onOpen: (id: string) => void;
+  onAdd: () => void;
 }) {
   const [scale, setScale] = useState(DEFAULT_SCALE);
   const [offset, setOffset] = useState(DEFAULT_OFFSET);
@@ -419,8 +421,11 @@ export default function ExploreView({
   if (!clusters.length) {
     return (
       <div className="empty">
-        <h2>No clusters yet</h2>
-        <p>Import OpenNana or add your first prompt to start exploring.</p>
+        <h2>Your library is empty</h2>
+        <p>Add your first prompt or import an OpenNana export to start exploring.</p>
+        <div className="empty-actions">
+          <button className="empty-primary" onClick={onAdd}>Add your first prompt</button>
+        </div>
       </div>
     );
   }

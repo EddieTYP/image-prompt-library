@@ -205,13 +205,13 @@ class ItemRepository:
             rows = conn.execute("""SELECT c.*, COUNT(i.id) count FROM clusters c LEFT JOIN items i ON i.cluster_id=c.id AND i.archived=0 GROUP BY c.id ORDER BY c.sort_order, c.name""").fetchall()
             out=[]
             for r in rows:
-                previews = [x[0] for x in conn.execute("""SELECT COALESCE(img.thumb_path,img.preview_path,img.original_path) FROM images img JOIN items i ON i.id=img.item_id WHERE i.cluster_id=? ORDER BY img.sort_order LIMIT 4""",(r["id"],)).fetchall() if x[0]]
+                previews = [x[0] for x in conn.execute("""SELECT COALESCE(img.thumb_path,img.preview_path,img.original_path) FROM images img JOIN items i ON i.id=img.item_id WHERE i.cluster_id=? AND i.archived=0 ORDER BY img.sort_order LIMIT 4""",(r["id"],)).fetchall() if x[0]]
                 out.append(ClusterRecord(id=r["id"], name=r["name"], description=r["description"], sort_order=r["sort_order"], count=r["count"], preview_images=previews))
             return out
 
     def list_tags(self) -> list[TagRecord]:
         with connect(self.library_path) as conn:
-            rows = conn.execute("""SELECT t.id,t.name,t.kind,COUNT(it.item_id) count FROM tags t LEFT JOIN item_tags it ON it.tag_id=t.id GROUP BY t.id ORDER BY t.name""").fetchall()
+            rows = conn.execute("""SELECT t.id,t.name,t.kind,COUNT(i.id) count FROM tags t LEFT JOIN item_tags it ON it.tag_id=t.id LEFT JOIN items i ON i.id=it.item_id AND i.archived=0 GROUP BY t.id ORDER BY t.name""").fetchall()
             return [TagRecord(**dict(r)) for r in rows]
 
     def rebuild_search(self, conn, item_id: str):
