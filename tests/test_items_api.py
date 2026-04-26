@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 from io import BytesIO
 from PIL import Image
 from backend.main import create_app
+from backend.db import connect
 
 
 def client(tmp_path):
@@ -81,7 +82,9 @@ def test_patch_favorite_and_archive_item(tmp_path):
     assert deleted["archived"] is True
     assert c.get("/api/items").json()["total"] == 0
     assert c.get("/api/items", params={"archived": True}).json()["total"] == 1
-    assert c.get("/api/clusters").json()[0]["preview_images"] == []
+    assert c.get("/api/clusters").json() == []
+    with connect(tmp_path / "library") as conn:
+        assert conn.execute("SELECT COUNT(*) FROM clusters").fetchone()[0] == 0
     assert {tag["name"]: tag["count"] for tag in c.get("/api/tags").json()} == {"glass": 0, "vista": 0}
 
 
@@ -188,6 +191,18 @@ def test_result_image_is_primary_even_when_reference_uploaded_first(tmp_path):
     assert detail["images"][0]["id"] == result["id"]
     assert cluster["preview_images"] == [result["thumb_path"]]
 
+
+def test_editing_last_item_out_of_collection_removes_empty_collection(tmp_path):
+    c = client(tmp_path)
+    created = c.post("/api/items", json=create_payload(cluster_name="Old Collection")).json()
+    assert [cluster["name"] for cluster in c.get("/api/clusters").json()] == ["Old Collection"]
+
+    patched = c.patch(f"/api/items/{created['id']}", json={"cluster_name": "New Collection"}).json()
+
+    assert patched["cluster"]["name"] == "New Collection"
+    assert [cluster["name"] for cluster in c.get("/api/clusters").json()] == ["New Collection"]
+    with connect(tmp_path / "library") as conn:
+        assert conn.execute("SELECT name FROM clusters").fetchall()[0]["name"] == "New Collection"
 
 def test_create_simplified_prompt_adds_traditional_prompt(tmp_path):
     c = client(tmp_path)

@@ -56,7 +56,7 @@ export default function ItemCard({
         <h3>{item.title}</h3>
         <p>{item.cluster?.name || t('unclustered')} · {item.source_name || item.model} {item.favorite && <Heart size={13} fill="currentColor" />}</p>
       </div>
-      <div className="card-actions" aria-label="Item actions">
+      <div className="card-actions" aria-label={t('itemActions')}>
         <button className="hover-action" onClick={copyPrompt}><Copy size={15} /> {t('copyPrompt')}</button>
         <button className="hover-action" onClick={favorite}><Heart size={15} fill={item.favorite ? 'currentColor' : 'none'} /> {t('favorite')}</button>
         <button className="hover-action" onClick={edit}><Pencil size={15} /> {t('edit')}</button>

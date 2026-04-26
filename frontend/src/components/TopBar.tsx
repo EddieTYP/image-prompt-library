@@ -31,7 +31,7 @@ export default function TopBar({
 }: Props) {
   return (
     <header className="chrome">
-      <nav className="nav-row" aria-label="Primary">
+      <nav className="nav-row" aria-label={t('primaryNavigation')}>
         <button className="vista-button filter-button" onClick={onFilters}>
           <Filter size={18} />
           {t('filters')}
@@ -47,7 +47,7 @@ export default function TopBar({
           />
         </label>
 
-        <div className="logo" aria-label="Image Prompt Library home">
+        <div className="logo" aria-label={t('appHome')}>
           <img className="logo-mark" src={headerLogo} alt="" aria-hidden="true" />
           <b>Image Prompt Library</b>
         </div>
@@ -58,7 +58,7 @@ export default function TopBar({
       </nav>
 
       <div className="status-row">
-        <div className="active-filter-strip" aria-label="Current filters">
+        <div className="active-filter-strip" aria-label={t('currentFilters')}>
           <span className="template-count">{count} {t('referencesShown')}</span>
           {q && <span className="chip soft-chip">{t('searchChip')}: “{q}”</span>}
           {clusterName && (

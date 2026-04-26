@@ -68,8 +68,8 @@ def test_explore_is_thumbnail_constellation_with_configurable_budgets():
     assert "GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY" in app
     assert "FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY" in app
     assert "globalThumbnailBudget" in app and "focusThumbnailBudget" in app
-    assert "Global thumbnail budget" in config
-    assert "Focus thumbnail budget" in config
+    assert "t('globalThumbnailBudget')" in config
+    assert "t('focusThumbnailBudget')" in config
     assert "allocateGlobalThumbnailBudget" in explore
     assert "minimumAllocation" in explore
     assert ".thumbnail-constellation" in css
@@ -269,6 +269,29 @@ def test_ui_language_setting_localizes_main_chrome():
     assert "繁體中文" in i18n and "简体中文" in i18n and "English" in i18n
     assert "搜尋所有 prompts、標題、標籤…" in i18n
     assert "Search all prompts, titles, tags…" in i18n
+    assert "嘅" not in i18n and "搵" not in i18n and "吓" not in i18n and "幾多" not in i18n
+    assert "Explore 全部 collection 的整體密度。" in i18n
+
+
+def test_item_editor_uses_ui_language_for_long_tail_strings():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    editor = (ROOT / "frontend" / "src" / "components" / "ItemEditorModal.tsx").read_text()
+    i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
+
+    assert "<ItemEditorModal t={t}" in app
+    assert "t: Translator" in editor
+    assert "t('newReference')" in editor
+    assert "t('editPromptCard')" in editor
+    assert "t('title')" in editor
+    assert "t('traditionalChinesePrompt')" in editor
+    assert "t('resultImageRequired')" in editor
+    assert "t('referencePhotoOptional')" in editor
+    assert "t('deleteReference')" in editor
+    assert "t('saveReference')" in editor
+    assert "Delete reference" not in editor
+    assert "Save reference" not in editor
+    assert "香港" not in i18n
+    assert "完成圖片為必填" in i18n
 
 
 def test_detail_modal_dedupes_image_rail_and_hides_single_image_rail():
@@ -354,6 +377,7 @@ def test_editor_supports_multilingual_prompts_collection_suggestions_and_image_r
     detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
     types = (ROOT / "frontend" / "src" / "types.ts").read_text()
     api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+    i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
 
     assert "clusters={clusters}" in app
     assert "tags={tags}" in app
@@ -365,9 +389,9 @@ def test_editor_supports_multilingual_prompts_collection_suggestions_and_image_r
     assert "language: 'zh_hant'" in editor
     assert "language: 'zh_hans'" in editor
     assert "language: 'en'" in editor
-    assert "Traditional Chinese prompt" in editor
-    assert "Simplified Chinese prompt" in editor
-    assert "English prompt" in editor
+    assert "t('traditionalChinesePrompt')" in editor
+    assert "t('simplifiedChinesePrompt')" in editor
+    assert "t('englishPrompt')" in editor
     assert "collection-suggestions" in editor
     assert "filteredClusters" in editor
     assert "list=\"collection-suggestions\"" in editor
@@ -376,8 +400,8 @@ def test_editor_supports_multilingual_prompts_collection_suggestions_and_image_r
     assert "list=\"tag-suggestions\"" in editor
     assert "Original" not in detail
     assert "'original'" not in detail
-    assert "Result image" in editor and "required" in editor
-    assert "Reference photo" in editor and "optional" in editor
+    assert "t('resultImageRequired')" in editor and "required" in editor
+    assert "t('referencePhotoOptional')" in editor and "optional" in i18n.lower()
     assert "resultFile" in editor and "referenceFile" in editor
     assert "hasExistingResultImage" in editor
     assert "image.role === 'result_image'" in editor
@@ -413,7 +437,7 @@ def test_delete_action_archives_item_and_refreshes_visible_data():
     assert "method: 'DELETE'" in api_client
     assert "onDeleted" in app
     assert "setItemsReloadKey(k => k + 1)" in app
-    assert "Delete reference" in editor
-    assert "confirm('Delete this reference?" in editor
+    assert "t('deleteReference')" in editor
+    assert "confirm(t('deleteReferenceConfirm'))" in editor
     assert "api.deleteItem(item.id)" in editor
     assert "danger" in editor

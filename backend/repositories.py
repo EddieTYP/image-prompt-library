@@ -66,6 +66,21 @@ class ItemRepository:
         conn.execute("INSERT INTO tags(id,name,kind,created_at) VALUES(?,?,?,?)", (tid, clean, kind, now()))
         return tid
 
+    def delete_empty_clusters(self, conn):
+        rows = conn.execute("""
+            SELECT c.id
+            FROM clusters c
+            LEFT JOIN items active_items ON active_items.cluster_id = c.id AND active_items.archived = 0
+            GROUP BY c.id
+            HAVING COUNT(active_items.id) = 0
+        """).fetchall()
+        cluster_ids = [row["id"] for row in rows]
+        if not cluster_ids:
+            return
+        placeholders = ",".join("?" for _ in cluster_ids)
+        conn.execute(f"UPDATE items SET cluster_id=NULL, updated_at=? WHERE cluster_id IN ({placeholders})", (now(), *cluster_ids))
+        conn.execute(f"DELETE FROM clusters WHERE id IN ({placeholders})", cluster_ids)
+
     def _normalized_prompts(self, prompts: list[PromptIn]) -> list[PromptIn]:
         normalized = list(prompts)
         languages = {p.language for p in normalized}
@@ -100,8 +115,10 @@ class ItemRepository:
         data = payload.model_dump(exclude_unset=True)
         scalar = {k:v for k,v in data.items() if k in {"title","model","source_name","source_url","author","rating","notes"}}
         with connect(self.library_path) as conn:
-            if conn.execute("SELECT 1 FROM items WHERE id=?", (item_id,)).fetchone() is None:
+            existing_item = conn.execute("SELECT cluster_id FROM items WHERE id=?", (item_id,)).fetchone()
+            if existing_item is None:
                 raise KeyError(item_id)
+            previous_cluster_id = existing_item["cluster_id"]
             if "cluster_name" in data or "cluster_id" in data:
                 scalar["cluster_id"] = self.ensure_cluster(conn, data.get("cluster_name"), data.get("cluster_id"))
             for bool_key in ("favorite","archived"):
@@ -123,6 +140,8 @@ class ItemRepository:
                     conn.execute("INSERT INTO prompts(id,item_id,language,text,is_primary,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
                         (new_id("prm"), item_id, prompt.language, prompt.text, int(prompt.is_primary or idx == 0), ts, ts))
             self.rebuild_search(conn, item_id)
+            if ("cluster_id" in scalar and scalar["cluster_id"] != previous_cluster_id) or scalar.get("archived") == 1:
+                self.delete_empty_clusters(conn)
             conn.commit()
         return self.get_item(item_id)
 
@@ -205,7 +224,7 @@ class ItemRepository:
 
     def list_clusters(self) -> list[ClusterRecord]:
         with connect(self.library_path) as conn:
-            rows = conn.execute("""SELECT c.*, COUNT(i.id) count FROM clusters c LEFT JOIN items i ON i.cluster_id=c.id AND i.archived=0 GROUP BY c.id ORDER BY c.sort_order, c.name""").fetchall()
+            rows = conn.execute("""SELECT c.*, COUNT(i.id) count FROM clusters c LEFT JOIN items i ON i.cluster_id=c.id AND i.archived=0 GROUP BY c.id HAVING count > 0 ORDER BY c.sort_order, c.name""").fetchall()
             out=[]
             for r in rows:
                 previews = [x[0] for x in conn.execute("""SELECT COALESCE(img.thumb_path,img.preview_path,img.original_path)

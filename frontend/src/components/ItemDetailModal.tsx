@@ -94,9 +94,9 @@ export default function ItemDetailModal({
             <aside className="detail-side">
               <div className="modal-kicker">{item.cluster?.name || t('unclustered')}</div>
               <h2>{item.title}</h2>
-              <p className="muted">{item.model || 'ChatGPT Image'} · {item.source_name || 'Local reference'}</p>
+              <p className="muted">{item.model || t('defaultModel')} · {item.source_name || t('localReference')}</p>
 
-              <div className="tabs prompt-tabs" aria-label="Prompt language">
+              <div className="tabs prompt-tabs" aria-label={t('promptLanguage')}>
                 {Array.from(new Set([preferredLanguage, 'zh_hant', 'en', 'zh_hans'])).map(l => (
                   <button key={l} className={lang === l ? 'active' : ''} onClick={() => setLang(l)}>
                     {LANG_LABELS[l] || l}
@@ -105,7 +105,7 @@ export default function ItemDetailModal({
               </div>
 
               <div className="prompt-panel">
-                <textarea readOnly value={prompt?.text || ''} aria-label="Prompt text" />
+                <textarea readOnly value={prompt?.text || ''} aria-label={t('promptText')} />
               </div>
 
               <div className="actions modal-actions">
@@ -120,7 +120,7 @@ export default function ItemDetailModal({
                 </button>
                 {item.source_url && (
                   <a href={item.source_url} target="_blank" rel="noreferrer">
-                    <ExternalLink size={16} /> Source
+                    <ExternalLink size={16} /> {t('source')}
                   </a>
                 )}
               </div>

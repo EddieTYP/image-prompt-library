@@ -459,17 +459,17 @@ export default function ExploreView({
   };
 
   return (
-    <section className={`thumbnail-constellation ${focusedClusterId ? 'is-focused' : ''}`} aria-label="Prompt clusters thumbnail constellation graph">
-      <div className="constellation-toolbar" aria-label="Constellation controls">
-        <button onClick={() => setScale(s => Math.max(0.42, s - 0.08))} aria-label="Zoom out"><Minus size={16} /></button>
-        <button onClick={() => setScale(s => Math.min(1.35, s + 0.08))} aria-label="Zoom in"><Plus size={16} /></button>
-        <button onClick={reset}><RotateCcw size={16} /> Reset</button>
-        <span>{focusedClusterId ? `${focusThumbnailBudget} focus thumbnails` : `${globalThumbnailBudget} thumbnails visible`}</span>
+    <section className={`thumbnail-constellation ${focusedClusterId ? 'is-focused' : ''}`} aria-label={t('constellationGraph')}>
+      <div className="constellation-toolbar" aria-label={t('constellationControls')}>
+        <button onClick={() => setScale(s => Math.max(0.42, s - 0.08))} aria-label={t('zoomOut')}><Minus size={16} /></button>
+        <button onClick={() => setScale(s => Math.min(1.35, s + 0.08))} aria-label={t('zoomIn')}><Plus size={16} /></button>
+        <button onClick={reset}><RotateCcw size={16} /> {t('resetView')}</button>
+        <span>{focusedClusterId ? `${focusThumbnailBudget} ${t('focusThumbnailsVisible')}` : `${globalThumbnailBudget} ${t('thumbnailsVisible')}`}</span>
       </div>
       {focusedCluster && (
         <div className="constellation-focus-panel">
           <strong>{focusedCluster.name}</strong>
-          <span>{focusedCluster.count} {t('referencesShown')} · {focusedCluster.nodes.length} visible</span>
+          <span>{focusedCluster.count} {t('referencesShown')} · {focusedCluster.nodes.length} {t('visible')}</span>
           <button onClick={() => handleOpenClusterCards(focusedCluster)}>{t('cards')}</button>
         </div>
       )}
@@ -508,11 +508,11 @@ export default function ExploreView({
               onPointerMove={moveTap}
               onPointerUp={endTap}
               onPointerCancel={() => setTapState(undefined)}
-              title={`${cluster.count} references`}
+              title={`${cluster.count} ${t('references')}`}
             >
               <strong>{cluster.name}</strong>
-              <span>{cluster.count} references</span>
-              {cluster.hiddenCount > 0 && <em>+{cluster.hiddenCount} more</em>}
+              <span>{cluster.count} {t('references')}</span>
+              {cluster.hiddenCount > 0 && <em>+{cluster.hiddenCount} {t('more')}</em>}
             </button>
           ))}
           {constellation.flatMap(cluster => cluster.nodes.map(node => (

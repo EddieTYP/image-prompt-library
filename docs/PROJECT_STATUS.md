@@ -180,25 +180,31 @@ Current assessment:
    - Added DB-level SQLite role validation via migration `003_image_role_check.sql` with `CHECK(role IN ('result_image', 'reference_image'))`.
    - New item creation rolls back by archiving the just-created item if result/reference image upload fails before save completes.
 
-10. **Full interface language setting** — implemented for main chrome
+10. **Full interface language setting** — implemented for main chrome and editor long-tail
    - Added a UI language setting for Traditional Chinese, Simplified Chinese, and English in Config.
    - The setting is stored separately from prompt-copy language preference and localizes main navigation/actions/settings/empty-state labels without changing prompt content.
+   - Add/Edit editor long-tail labels, placeholders, required-result/reference-image copy, save/delete/cancel actions, and validation fallback now use the same UI language translator.
+   - Traditional Chinese UI copy now uses formal written wording rather than Hong Kong colloquial phrasing.
    - Browser QA verified live switching between Traditional Chinese, English, and Simplified Chinese with no console errors.
+
+11. **Empty collection cleanup** — implemented
+   - Collections with zero active items are hidden from `/api/clusters`, so archived/deleted items no longer leave empty collections visible in the sidebar/Explore metadata.
+   - Editing the last item out of a collection removes now-unreferenced collection rows, so old collections do not remain after moving the item to another collection.
 
 ### P3 / Low priority
 
-11. **Copied toast theme revisit**
+12. **Copied toast theme revisit**
    - Current toast is better but still not fully matching the desired theme; revisit later as low priority.
 
-12. **Minor Explore fine tuning**
+13. **Minor Explore fine tuning**
    - Possible later tweaks only.
    - Lowest priority because focus view is currently liked and global overlap is solved.
 
-13. **Detail modal polish beyond editor improvements**
+14. **Detail modal polish beyond editor improvements**
    - Existing modal polish is better but can continue to improve.
    - Inspect prompt readability, image rail, action placement, and spacing after higher-priority browsing/editor work.
 
-14. **Future scoring/ranking system**
+15. **Future scoring/ranking system**
    - Current priority order is favorite → rating → image availability → deterministic title order.
    - Future scoring can include source quality, prompt completeness, image quality/representativeness, usage/copy count, and recency.
 

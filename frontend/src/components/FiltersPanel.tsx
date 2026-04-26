@@ -50,7 +50,7 @@ export default function FiltersPanel({
         />
       </label>
 
-      <div className="filter-pill-grid" aria-label="Collection filters">
+      <div className="filter-pill-grid" aria-label={t('collectionFilters')}>
         <button className={!selected ? 'selected' : ''} onClick={onClear}>
           <span>{t('allReferences')}</span>
           <b>{total}</b>

@@ -70,7 +70,7 @@ export default function ConfigPanel({
       <section className="setting-group">
         <h3>{t('promptCopyLanguage')}</h3>
         <p className="muted">{t('promptCopyLanguageHelp')}</p>
-        <div className="segmented-control" aria-label="Preferred prompt language">
+        <div className="segmented-control" aria-label={t('preferredPromptLanguage')}>
           {LANGUAGE_OPTIONS.map(language => (
             <button
               key={language}
@@ -95,7 +95,7 @@ export default function ConfigPanel({
           max={GLOBAL_BUDGET_MAX}
           step={GLOBAL_BUDGET_STEP}
           value={globalThumbnailBudget}
-          aria-label="Global thumbnail budget"
+          aria-label={t('globalThumbnailBudget')}
           onChange={event => onGlobalThumbnailBudget(Number(event.currentTarget.value))}
         />
         <div className="range-ticks"><span>{t('calm')}</span><span>{t('balanced')}</span><span>{t('dense')}</span></div>
@@ -113,7 +113,7 @@ export default function ConfigPanel({
           max={FOCUS_BUDGET_MAX}
           step={FOCUS_BUDGET_STEP}
           value={focusThumbnailBudget}
-          aria-label="Focus thumbnail budget"
+          aria-label={t('focusThumbnailBudget')}
           onChange={event => onFocusThumbnailBudget(Number(event.currentTarget.value))}
         />
         <div className="range-ticks"><span>{t('compact')}</span><span>{t('gallery')}</span><span>{t('full')}</span></div>
