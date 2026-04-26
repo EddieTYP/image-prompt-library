@@ -1,8 +1,10 @@
 import type { ItemSummary } from '../types';
+import type { Translator } from '../utils/i18n';
 import ItemCard from './ItemCard';
 
 export default function CardsView({
   items,
+  t,
   onOpen,
   onFavorite,
   onEdit,
@@ -10,6 +12,7 @@ export default function CardsView({
   onAdd,
 }: {
   items: ItemSummary[];
+  t: Translator;
   onOpen: (id: string) => void;
   onFavorite: (id: string) => void;
   onEdit: (item: ItemSummary) => void;
@@ -19,10 +22,10 @@ export default function CardsView({
   if (!items.length) {
     return (
       <div className="empty">
-        <h2>No matching prompts</h2>
-        <p>Try another search, clear filters, or add a new prompt reference.</p>
+        <h2>{t('noMatchingPrompts')}</h2>
+        <p>{t('noMatchingPromptsHelp')}</p>
         <div className="empty-actions">
-          <button className="empty-primary" onClick={onAdd}>Add your first prompt</button>
+          <button className="empty-primary" onClick={onAdd}>{t('addFirstPrompt')}</button>
         </div>
       </div>
     );
@@ -31,7 +34,7 @@ export default function CardsView({
   return (
     <section className="cards-grid masonry-like">
       {items.map(item => (
-        <ItemCard key={item.id} item={item} onOpen={onOpen} onFavorite={onFavorite} onEdit={onEdit} onCopyPrompt={onCopyPrompt} />
+        <ItemCard key={item.id} t={t} item={item} onOpen={onOpen} onFavorite={onFavorite} onEdit={onEdit} onCopyPrompt={onCopyPrompt} />
       ))}
     </section>
   );

@@ -137,6 +137,8 @@ class ItemRepository:
         return self.update_item(item_id, ItemUpdate(favorite=not bool(row["favorite"])))
 
     def add_image(self, item_id: str, image: StoredImageInput) -> ImageRecord:
+        if image.role not in {"result_image", "reference_image"}:
+            raise ValueError("Invalid image role")
         with connect(self.library_path) as conn:
             iid = new_id("img")
             ts = now()
@@ -163,7 +165,8 @@ class ItemRepository:
         return [PromptRecord(**dict(r)) for r in conn.execute("SELECT * FROM prompts WHERE item_id=? ORDER BY is_primary DESC, created_at", (item_id,)).fetchall()]
 
     def _images(self, conn, item_id: str) -> list[ImageRecord]:
-        return [ImageRecord(**dict(r)) for r in conn.execute("SELECT * FROM images WHERE item_id=? ORDER BY sort_order, created_at", (item_id,)).fetchall()]
+        return [ImageRecord(**dict(r)) for r in conn.execute("""SELECT * FROM images WHERE item_id=?
+            ORDER BY CASE role WHEN 'result_image' THEN 0 ELSE 1 END, sort_order, created_at""", (item_id,)).fetchall()]
 
     def _summary_from_row(self, conn, row) -> ItemSummary:
         prompts = self._prompts(conn, row["id"])
@@ -205,7 +208,18 @@ class ItemRepository:
             rows = conn.execute("""SELECT c.*, COUNT(i.id) count FROM clusters c LEFT JOIN items i ON i.cluster_id=c.id AND i.archived=0 GROUP BY c.id ORDER BY c.sort_order, c.name""").fetchall()
             out=[]
             for r in rows:
-                previews = [x[0] for x in conn.execute("""SELECT COALESCE(img.thumb_path,img.preview_path,img.original_path) FROM images img JOIN items i ON i.id=img.item_id WHERE i.cluster_id=? AND i.archived=0 ORDER BY img.sort_order LIMIT 4""",(r["id"],)).fetchall() if x[0]]
+                previews = [x[0] for x in conn.execute("""SELECT COALESCE(img.thumb_path,img.preview_path,img.original_path)
+                    FROM images img JOIN items i ON i.id=img.item_id
+                    WHERE i.cluster_id=? AND i.archived=0
+                      AND NOT EXISTS (
+                        SELECT 1 FROM images better
+                        WHERE better.item_id=img.item_id AND (
+                          CASE better.role WHEN 'result_image' THEN 0 ELSE 1 END < CASE img.role WHEN 'result_image' THEN 0 ELSE 1 END
+                          OR (CASE better.role WHEN 'result_image' THEN 0 ELSE 1 END = CASE img.role WHEN 'result_image' THEN 0 ELSE 1 END AND better.sort_order < img.sort_order)
+                          OR (CASE better.role WHEN 'result_image' THEN 0 ELSE 1 END = CASE img.role WHEN 'result_image' THEN 0 ELSE 1 END AND better.sort_order = img.sort_order AND better.created_at < img.created_at)
+                        )
+                      )
+                    ORDER BY CASE img.role WHEN 'result_image' THEN 0 ELSE 1 END, img.sort_order LIMIT 4""",(r["id"],)).fetchall() if x[0]]
                 out.append(ClusterRecord(id=r["id"], name=r["name"], description=r["description"], sort_order=r["sort_order"], count=r["count"], preview_images=previews))
             return out
 

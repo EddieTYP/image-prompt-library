@@ -163,6 +163,32 @@ def test_image_upload_persists_result_and_reference_roles(tmp_path):
     assert [image["role"] for image in detail["images"]] == ["result_image", "reference_image"]
 
 
+def test_result_image_is_primary_even_when_reference_uploaded_first(tmp_path):
+    c = client(tmp_path)
+    item = c.post("/api/items", json=create_payload()).json()
+    reference = c.post(
+        f"/api/items/{item['id']}/images",
+        data={"role": "reference_image"},
+        files={"file": ("reference.png", png_bytes(color=(1, 2, 3)), "image/png")},
+    ).json()
+    result = c.post(
+        f"/api/items/{item['id']}/images",
+        data={"role": "result_image"},
+        files={"file": ("result.png", png_bytes(color=(4, 5, 6)), "image/png")},
+    ).json()
+
+    listed = c.get("/api/items").json()["items"][0]
+    detail = c.get(f"/api/items/{item['id']}").json()
+    cluster = c.get("/api/clusters").json()[0]
+
+    assert reference["role"] == "reference_image"
+    assert result["role"] == "result_image"
+    assert listed["first_image"]["id"] == result["id"]
+    assert detail["first_image"]["id"] == result["id"]
+    assert detail["images"][0]["id"] == result["id"]
+    assert cluster["preview_images"] == [result["thumb_path"]]
+
+
 def test_create_simplified_prompt_adds_traditional_prompt(tmp_path):
     c = client(tmp_path)
     created = c.post("/api/items", json=create_payload(prompts=[{"language": "zh_hans", "text": "红龙云图"}])).json()

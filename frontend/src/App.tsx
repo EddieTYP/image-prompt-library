@@ -12,8 +12,10 @@ import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
 import type { ClusterRecord, ItemDetail, ItemSummary, TagRecord, ViewMode } from './types';
 import { copyTextToClipboard } from './utils/clipboard';
+import { DEFAULT_UI_LANGUAGE, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
 import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptLanguage } from './utils/prompts';
 
+const UI_LANGUAGE_STORAGE_KEY = 'image-prompt-library.ui_language';
 const PROMPT_LANGUAGE_STORAGE_KEY = 'image-prompt-library.preferred_prompt_language';
 const GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY = 'image-prompt-library.global_thumbnail_budget';
 const FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY = 'image-prompt-library.focus_thumbnail_budget';
@@ -21,6 +23,11 @@ const FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY = 'image-prompt-library.focus_thumbnail
 function loadPreferredLanguage(): PromptLanguage {
   if (typeof window === 'undefined') return DEFAULT_PROMPT_LANGUAGE;
   return normalizePromptLanguage(window.localStorage.getItem(PROMPT_LANGUAGE_STORAGE_KEY));
+}
+
+function loadUiLanguage(): UiLanguage {
+  if (typeof window === 'undefined') return DEFAULT_UI_LANGUAGE;
+  return normalizeUiLanguage(window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY));
 }
 
 function loadNumberSetting(key: string, fallback: number, min: number, max: number) {
@@ -43,12 +50,14 @@ export default function App() {
   const [editing, setEditing] = useState<ItemDetail | undefined>();
   const [editorOpen, setEditorOpen] = useState(false);
   const [itemsReloadKey, setItemsReloadKey] = useState(0);
+  const [uiLanguage, setUiLanguage] = useState<UiLanguage>(loadUiLanguage);
   const [preferredLanguage, setPreferredLanguage] = useState<PromptLanguage>(loadPreferredLanguage);
   const [globalThumbnailBudget, setGlobalThumbnailBudget] = useState(() => loadNumberSetting(GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 50, 150));
   const [focusThumbnailBudget, setFocusThumbnailBudget] = useState(() => loadNumberSetting(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 24, 100));
   const [toast, setToast] = useState<{ title: string; tone: 'success' | 'error' }>();
   const { data, loading, error } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
   const selectedCluster = useMemo(() => clusters.find(c => c.id === clusterId), [clusters, clusterId]);
+  const t = useMemo(() => makeTranslator(uiLanguage), [uiLanguage]);
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
   const refreshTags = () => api.tags().then(setTags).catch(() => setTags([]));
   useEffect(() => { refreshClusters(); refreshTags(); }, []);
@@ -63,6 +72,10 @@ export default function App() {
     setPreferredLanguage(language);
     window.localStorage.setItem(PROMPT_LANGUAGE_STORAGE_KEY, language);
   };
+  const updateUiLanguage = (language: UiLanguage) => {
+    setUiLanguage(language);
+    window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, language);
+  };
   const updateGlobalThumbnailBudget = (budget: number) => {
     setGlobalThumbnailBudget(budget);
     window.localStorage.setItem(GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY, String(budget));
@@ -72,7 +85,7 @@ export default function App() {
     window.localStorage.setItem(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, String(budget));
   };
   const showCopyToast = (success: boolean) => {
-    setToast({ title: success ? 'Prompt copied' : 'Copy failed', tone: success ? 'success' : 'error' });
+    setToast({ title: success ? t('copySuccess') : t('copyFailed'), tone: success ? 'success' : 'error' });
     window.setTimeout(() => setToast(undefined), 1800);
   };
   const copyPrompt = async (item: ItemSummary) => {
@@ -84,18 +97,18 @@ export default function App() {
   const favorite = (id: string) => { api.favorite(id).then(saved).catch(() => undefined); };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   return <div className={`app ${view === 'explore' ? 'explore-mode' : 'cards-mode'}`}>
-    <TopBar q={q} onQ={setQ} view={view} onView={setView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={data.total} clusterName={selectedCluster?.name} clearCluster={clearCluster} />
-    <FiltersPanel open={filtersOpen} clusters={clusters} selected={clusterId} onSelect={handleFilterSelect} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
-    <ConfigPanel open={configOpen} onClose={() => setConfigOpen(false)} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} />
+    <TopBar t={t} q={q} onQ={setQ} view={view} onView={setView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={data.total} clusterName={selectedCluster?.name} clearCluster={clearCluster} />
+    <FiltersPanel t={t} open={filtersOpen} clusters={clusters} selected={clusterId} onSelect={handleFilterSelect} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
+    <ConfigPanel t={t} open={configOpen} onClose={() => setConfigOpen(false)} uiLanguage={uiLanguage} onUiLanguage={updateUiLanguage} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} />
     <main className="app-main">
-      {loading && <div className="loading">Loading…</div>}
+      {loading && <div className="loading">{t('loading')}</div>}
       {error && <div className="error">{error}</div>}
       {view === 'explore'
-        ? <ExploreView clusters={clusters} items={data.items} focusedClusterId={clusterId} globalThumbnailBudget={globalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusCluster={focusCluster} onOpenClusterCards={openClusterAsCards} onOpen={setDetailId} onAdd={openNewItemEditor} />
-        : <CardsView items={data.items} onOpen={setDetailId} onFavorite={favorite} onEdit={editSummary} onCopyPrompt={copyPrompt} onAdd={openNewItemEditor} />}
+        ? <ExploreView t={t} clusters={clusters} items={data.items} focusedClusterId={clusterId} globalThumbnailBudget={globalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusCluster={focusCluster} onOpenClusterCards={openClusterAsCards} onOpen={setDetailId} onAdd={openNewItemEditor} />
+        : <CardsView t={t} items={data.items} onOpen={setDetailId} onFavorite={favorite} onEdit={editSummary} onCopyPrompt={copyPrompt} onAdd={openNewItemEditor} />}
     </main>
-    <button className="fab" onClick={openNewItemEditor}><Plus/> Add</button>
-    <ItemDetailModal id={detailId} preferredLanguage={preferredLanguage} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} />
+    <button className="fab" onClick={openNewItemEditor}><Plus/> {t('add')}</button>
+    <ItemDetailModal t={t} id={detailId} preferredLanguage={preferredLanguage} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} />
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
     {editorOpen && <ItemEditorModal item={editing} clusters={clusters} tags={tags} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} />}
   </div>

@@ -92,7 +92,7 @@ Current assessment:
    - Clean-checkout setup was tested from a temp copy with an empty external library path.
    - Python requirement is now explicit: Python 3.10+ is required because the backend uses Python 3.10 runtime syntax (`X | None`). `scripts/setup.sh` fails fast with a clear version error instead of creating a broken venv under macOS system Python 3.9.
    - DB migrations initialize automatically for an empty library, and single-service smoke passes on a non-`8787` QA port.
-   - Empty Explore/Cards states now use a clearer `Your library is empty` message plus an inline **Add your first prompt** CTA, in addition to the floating Add button.
+   - Empty Explore/Cards states now have localized empty-state copy plus an inline **Add your first prompt** CTA, in addition to the floating Add button.
    - Browser QA covered manual first prompt add, image upload, edit, detail open, copy prompt, and delete/archive from a fresh empty library.
 
 3. **Install and run scripts** — current public MVP pass implemented
@@ -113,7 +113,7 @@ Current assessment:
    - Fresh-library QA confirmed `IMAGE_PROMPT_LIBRARY_PATH=... BACKUP_DIR=... ./scripts/backup.sh` writes a timestamped `.tar.gz` backup for the selected library path.
 
 6. **Correctness hardening before public MVP**
-   - Complete image-role hardening follow-ups: role-aware result-image checks, result-image hero preference, DB-level role validation, and upload-failure cleanup/rollback.
+   - Image-role hardening follow-ups are now implemented: role-aware result-image checks, result-image hero preference, DB-level role validation, cluster preview primary-image de-dupe, and new-item upload-failure cleanup/rollback.
    - Keep `/media` locked down so DB/config/internal files cannot be served.
    - Verify OpenNana import idempotency and fresh manual add/edit/delete/copy/search flows.
 
@@ -173,16 +173,17 @@ Current assessment:
    - Image upload UI distinguishes mandatory result image from optional reference photo; uploads persist `result_image` vs `reference_image` roles in the DB/API.
    - Existing items expose a guarded Delete reference action; it calls the existing archive/delete API, hides the item from active lists, refreshes collections/items, and keeps archived recovery possible via the existing `archived=true` API filter.
 
-9. **Image role hardening follow-ups**
-   - Make the frontend existing-result-image check role-aware: treat only images with `role === 'result_image'` as satisfying the required result image, so reference-only items still require a result image.
-   - Prefer `result_image` for card/detail hero image selection; reference images should not accidentally become the primary gallery/detail image just because they sort first.
-   - Add DB-level role validation in a future migration, e.g. a `CHECK(role IN ('result_image', 'reference_image'))` constraint or equivalent SQLite-safe table rebuild.
-   - Make new item creation plus required result-image upload atomic, or add cleanup/rollback if the image upload fails after item creation.
+9. **Image role hardening follow-ups** — implemented
+   - Frontend existing-result-image checks are role-aware: only images with `role === 'result_image'` satisfy the required result image, so reference-only items still require a result image.
+   - Backend summary/detail image ordering and frontend primary-image helpers prefer `result_image` for cards, detail hero, and Explore thumbnails.
+   - Cluster preview images now pick one primary image per active item and prefer the result image over reference images.
+   - Added DB-level SQLite role validation via migration `003_image_role_check.sql` with `CHECK(role IN ('result_image', 'reference_image'))`.
+   - New item creation rolls back by archiving the just-created item if result/reference image upload fails before save completes.
 
-10. **Full interface language setting**
-   - Add a UI language setting for Traditional Chinese, Simplified Chinese, and English.
-   - Scope includes visible chrome/navigation/actions/settings labels, not prompt language content itself.
-   - Should coexist with the existing prompt-copy language preference.
+10. **Full interface language setting** — implemented for main chrome
+   - Added a UI language setting for Traditional Chinese, Simplified Chinese, and English in Config.
+   - The setting is stored separately from prompt-copy language preference and localizes main navigation/actions/settings/empty-state labels without changing prompt content.
+   - Browser QA verified live switching between Traditional Chinese, English, and Simplified Chinese with no console errors.
 
 ### P3 / Low priority
 

@@ -2,7 +2,7 @@ import sqlite3
 from pathlib import Path
 from .config import resolve_library_path
 
-MIGRATIONS = ["001_initial.sql", "002_image_roles.sql"]
+MIGRATIONS = ["001_initial.sql", "002_image_roles.sql", "003_image_role_check.sql"]
 
 def get_db_path(library_path=None) -> Path:
     return resolve_library_path(library_path) / "db.sqlite"

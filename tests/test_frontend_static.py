@@ -85,7 +85,7 @@ def test_explore_focus_mode_stays_in_map_and_has_cards_cta():
     assert "const openClusterAsCards = (c: ClusterRecord) => { setClusterId(c.id); setView('cards')" in app
     assert "onOpenClusterCards={openClusterAsCards}" in app
     assert "focusedClusterId" in explore
-    assert "Open as Cards" in explore
+    assert "t('cards')" in explore
     assert "onOpenClusterCards(cluster)" in explore
     assert "constellation-focus-panel" in explore
     assert ".constellation-focus-panel" in css
@@ -96,7 +96,8 @@ def test_explore_uses_real_thumbnails_not_dots_or_originals():
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
     assert "function getConstellationImagePath" in explore
-    assert "first_image?.thumb_path || item.first_image?.preview_path" in explore
+    assert "selectPrimaryImage([item.first_image])" in explore
+    assert "imageThumbnailPath(primaryImage)" in explore
     assert "first_image?.original_path" not in explore
     assert "lod-dot" not in explore
     assert "node-placeholder" not in explore
@@ -176,10 +177,10 @@ def test_empty_library_states_have_inline_first_prompt_cta():
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
     assert "openNewItemEditor" in app
     assert "onAdd={openNewItemEditor}" in app
-    assert "Your library is empty" in explore
-    assert "Add your first prompt" in explore
+    assert "t('libraryEmptyTitle')" in explore
+    assert "t('addFirstPrompt')" in explore
     assert "onAdd" in explore
-    assert "Add your first prompt" in cards
+    assert "t('addFirstPrompt')" in cards
     assert "onAdd" in cards
     assert "empty-actions" in css
 
@@ -190,9 +191,9 @@ def test_cards_keep_adaptive_masonry_and_actions():
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
     assert "masonry-like" in cards
     assert "breakInside" in card
-    assert "Copy prompt" in card
-    assert "Favorite" in card
-    assert "Edit" in card
+    assert "t('copyPrompt')" in card
+    assert "t('favorite')" in card
+    assert "t('edit')" in card
     assert "onFavorite" in card and "onEdit" in card
     assert "column-width:var(--card-min)" in css.replace(" ", "")
     assert "break-inside:avoid" in css.replace(" ", "")
@@ -202,14 +203,14 @@ def test_cards_reserve_image_aspect_ratio_before_lazy_decode():
     card = (ROOT / "frontend" / "src" / "components" / "ItemCard.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
     assert "imageAspectRatio" in card
-    assert "item.first_image?.width" in card
-    assert "item.first_image?.height" in card
+    assert "primaryImage?.width" in card
+    assert "primaryImage?.height" in card
     assert "aspectRatio: imageAspectRatio" in card
     assert "card-image-frame" in card
     assert "has-reserved-ratio" in card
     assert "natural-ratio" in card
-    assert "width={item.first_image?.width || undefined}" in card
-    assert "height={item.first_image?.height || undefined}" in card
+    assert "width={primaryImage?.width || undefined}" in card
+    assert "height={primaryImage?.height || undefined}" in card
     assert ".card-image-frame" in css
     assert "aspect-ratio:var(--card-image-ratio" in css.replace(" ", "")
     assert ".card-image-frame img" in css
@@ -233,8 +234,8 @@ def test_copy_prompt_uses_shared_preferred_language_resolver():
     assert "onCopyPrompt" in card and "prompt_snippet || item.title" not in card
     assert "toast" in app
     assert "showCopyToast" in app
-    assert "Prompt copied" in app
-    assert "Copy failed" in app
+    assert "copySuccess" in app
+    assert "copyFailed" in app
     assert "toast copy-toast elegant-toast" in app
     assert "toast-icon" in app and "toast-title" in app
     assert ".elegant-toast" in css
@@ -248,12 +249,34 @@ def test_copy_prompt_uses_shared_preferred_language_resolver():
     assert "setCopyFeedback" not in detail
 
 
+def test_ui_language_setting_localizes_main_chrome():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+    topbar = (ROOT / "frontend" / "src" / "components" / "TopBar.tsx").read_text()
+    cards = (ROOT / "frontend" / "src" / "components" / "CardsView.tsx").read_text()
+    i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
+
+    assert "UI_LANGUAGE_STORAGE_KEY" in app
+    assert "loadUiLanguage" in app
+    assert "uiLanguage" in app and "setUiLanguage" in app
+    assert "onUiLanguage" in config
+    assert "t('uiLanguage')" in config
+    assert "t={t}" in app
+    assert "t('filters')" in topbar
+    assert "t('searchPlaceholder')" in topbar
+    assert "t('noMatchingPrompts')" in cards
+    assert "export type UiLanguage = 'zh_hant' | 'zh_hans' | 'en'" in i18n
+    assert "繁體中文" in i18n and "简体中文" in i18n and "English" in i18n
+    assert "搜尋所有 prompts、標題、標籤…" in i18n
+    assert "Search all prompts, titles, tags…" in i18n
+
+
 def test_detail_modal_dedupes_image_rail_and_hides_single_image_rail():
     detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
     assert "uniqueImages" in detail
     assert "getImageIdentity" in detail
     assert "seenImageKeys" in detail
-    assert "primaryImage = uniqueImages[0]" in detail
+    assert "selectPrimaryImage(uniqueImages)" in detail
     assert "uniqueImages.length > 1" in detail
     assert "uniqueImages.map" in detail
     assert "item.images.map" not in detail
@@ -268,10 +291,10 @@ def test_filters_and_explore_budget_controls_match_vista_style():
     assert "filter-search" in filters
     assert "filter-pill-grid" in filters
     assert "Collections" in filters
-    assert "All references" in filters
+    assert "t('allReferences')" in filters
     assert "collectionQuery" in filters
     assert "filteredClusters" in filters
-    assert "No collections found" in filters
+    assert "t('noCollectionsFound')" in filters
     assert "Use clusters as quick filter chips" not in filters
     assert "Templates</h2>" not in filters
     assert "onClear" in filters and "clearCluster" in app
@@ -300,8 +323,8 @@ def test_drawer_close_buttons_use_shared_polished_panel_close_style():
     assert ".panel-close" in css
     assert "width:38px" in css
     assert "border-radius:999px" in css
-    assert "aria-label=\"Close filters\"" in filters
-    assert "aria-label=\"Close config\"" in config
+    assert "aria-label={t('closeFilters')}" in filters
+    assert "aria-label={t('closeConfig')}" in config
 
 
 def test_copy_prompt_has_insecure_lan_clipboard_fallback():
@@ -357,11 +380,28 @@ def test_editor_supports_multilingual_prompts_collection_suggestions_and_image_r
     assert "Reference photo" in editor and "optional" in editor
     assert "resultFile" in editor and "referenceFile" in editor
     assert "hasExistingResultImage" in editor
+    assert "image.role === 'result_image'" in editor
     assert "missingRequiredImage" in editor
+    assert "createdNewItem" in editor
+    assert "api.deleteItem(saved.id)" in editor
     assert "result_image" in types
     assert "reference_image" in types
     assert "role?: UploadImageRole" in types
     assert "fd.set('role', role)" in api_client
+
+
+def test_frontend_prefers_result_image_for_card_and_detail_hero():
+    card = (ROOT / "frontend" / "src" / "components" / "ItemCard.tsx").read_text()
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+    explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
+    image_utils = (ROOT / "frontend" / "src" / "utils" / "images.ts").read_text()
+
+    assert "selectPrimaryImage" in card
+    assert "selectPrimaryImage" in detail
+    assert "selectPrimaryImage" in explore
+    assert "image?.role === 'result_image'" in image_utils
+    assert "item.first_image?.thumb_path" not in card
+    assert "const primaryImage = uniqueImages[0]" not in detail
 
 
 def test_delete_action_archives_item_and_refreshes_visible_data():

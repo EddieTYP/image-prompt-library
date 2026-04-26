@@ -2,6 +2,8 @@ import { useMemo, useState, type CSSProperties, type PointerEvent } from 'react'
 import { Minus, Plus, RotateCcw } from 'lucide-react';
 import { mediaUrl } from '../api/client';
 import type { ClusterRecord, ItemSummary } from '../types';
+import { imageThumbnailPath, selectPrimaryImage } from '../utils/images';
+import type { Translator } from '../utils/i18n';
 
 const CANVAS_WIDTH = 2200;
 const CANVAS_HEIGHT = 1500;
@@ -64,7 +66,8 @@ type CollisionBox = { x: number; y: number; width: number; height: number };
 type RelaxedNode = ConstellationNode & { anchorX: number; anchorY: number; vx: number; vy: number };
 
 function getConstellationImagePath(item: ItemSummary) {
-  return item.first_image?.thumb_path || item.first_image?.preview_path || '';
+  const primaryImage = selectPrimaryImage([item.first_image]);
+  return imageThumbnailPath(primaryImage);
 }
 
 function scoreItems(items: ItemSummary[]) {
@@ -387,6 +390,7 @@ function buildConstellation(clusters: ClusterRecord[], items: ItemSummary[], foc
   return focusedClusterId ? rawConstellation : resolveConstellationNodeOverlaps(rawConstellation);
 }
 export default function ExploreView({
+  t,
   clusters,
   items,
   focusedClusterId,
@@ -397,6 +401,7 @@ export default function ExploreView({
   onOpen,
   onAdd,
 }: {
+  t: Translator;
   clusters: ClusterRecord[];
   items: ItemSummary[];
   focusedClusterId?: string;
@@ -421,10 +426,10 @@ export default function ExploreView({
   if (!clusters.length) {
     return (
       <div className="empty">
-        <h2>Your library is empty</h2>
-        <p>Add your first prompt or import an OpenNana export to start exploring.</p>
+        <h2>{t('libraryEmptyTitle')}</h2>
+        <p>{t('libraryEmptyHelp')}</p>
         <div className="empty-actions">
-          <button className="empty-primary" onClick={onAdd}>Add your first prompt</button>
+          <button className="empty-primary" onClick={onAdd}>{t('addFirstPrompt')}</button>
         </div>
       </div>
     );
@@ -464,8 +469,8 @@ export default function ExploreView({
       {focusedCluster && (
         <div className="constellation-focus-panel">
           <strong>{focusedCluster.name}</strong>
-          <span>{focusedCluster.count} references · {focusedCluster.nodes.length} visible</span>
-          <button onClick={() => handleOpenClusterCards(focusedCluster)}>Open as Cards</button>
+          <span>{focusedCluster.count} {t('referencesShown')} · {focusedCluster.nodes.length} visible</span>
+          <button onClick={() => handleOpenClusterCards(focusedCluster)}>{t('cards')}</button>
         </div>
       )}
       <div
@@ -528,7 +533,7 @@ export default function ExploreView({
               title={node.item.title}
               aria-label={node.item.title}
             >
-              {node.imagePath ? <img src={mediaUrl(node.imagePath)} alt={node.item.title} loading="lazy" decoding="async" /> : <span className="thumb-fallback">No image</span>}
+              {node.imagePath ? <img src={mediaUrl(node.imagePath)} alt={node.item.title} loading="lazy" decoding="async" /> : <span className="thumb-fallback">{t('noImage')}</span>}
               <span>{node.item.title}</span>
             </button>
           )))}

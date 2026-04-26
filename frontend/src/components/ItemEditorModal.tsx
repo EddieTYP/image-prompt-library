@@ -37,9 +37,10 @@ export default function ItemEditorModal({
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const hasExistingResultImage = Boolean(item?.images?.length);
+  const hasExistingResultImage = Boolean(item?.images?.some(image => image.role === 'result_image'));
   const hasPrompt = Boolean(zhHantPrompt.trim() || zhHansPrompt.trim() || englishPrompt.trim());
   const missingRequiredImage = !hasExistingResultImage && !resultFile;
+  const [saveError, setSaveError] = useState('');
   const filteredClusters = useMemo(() => {
     const query = cluster.trim().toLowerCase();
     if (!query) return clusters.slice(0, 8);
@@ -62,6 +63,7 @@ export default function ItemEditorModal({
   const save = async () => {
     if (!title.trim() || !hasPrompt || missingRequiredImage) return;
     setSaving(true);
+    setSaveError('');
     try {
       const prompts = [
         { language: 'zh_hant', text: zhHantPrompt.trim(), is_primary: true },
@@ -74,11 +76,19 @@ export default function ItemEditorModal({
         tags: tags.split(',').map(t => t.trim()).filter(Boolean),
         prompts,
       };
+      const createdNewItem = !item;
       const saved = item ? await api.updateItem(item.id, payload) : await api.createItem(payload);
-      if (resultFile) await api.uploadImage(saved.id, resultFile, 'result_image');
-      if (referenceFile) await api.uploadImage(saved.id, referenceFile, 'reference_image');
+      try {
+        if (resultFile) await api.uploadImage(saved.id, resultFile, 'result_image');
+        if (referenceFile) await api.uploadImage(saved.id, referenceFile, 'reference_image');
+      } catch (uploadError) {
+        if (createdNewItem) await api.deleteItem(saved.id);
+        throw uploadError;
+      }
       onSaved();
       onClose();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Save failed. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -158,6 +168,8 @@ export default function ItemEditorModal({
             <input type="file" accept="image/*" onChange={e => setReferenceFile(e.target.files?.[0])} />
           </label>
         </div>
+
+        {saveError && <p className="form-error" role="alert">{saveError}</p>}
 
         <div className="editor-actions">
           {item && <button className="danger" disabled={deleting || saving} onClick={deleteReference}><Trash2 size={16} /> Delete reference</button>}

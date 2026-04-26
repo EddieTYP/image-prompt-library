@@ -12,6 +12,13 @@ def test_init_db_creates_required_tables(tmp_path: Path):
         assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         image_columns = {row[1] for row in conn.execute("PRAGMA table_info(images)")}
         assert "role" in image_columns
+        images_sql = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='images'").fetchone()[0]
+        assert "CHECK(role IN ('result_image', 'reference_image'))" in images_sql
+        assert {row[0] for row in conn.execute("SELECT version FROM schema_migrations")} == {
+            "001_initial.sql",
+            "002_image_roles.sql",
+            "003_image_role_check.sql",
+        }
 
 
 def test_init_db_is_idempotent(tmp_path: Path):

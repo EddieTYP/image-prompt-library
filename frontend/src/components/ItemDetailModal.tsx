@@ -3,6 +3,8 @@ import { Copy, ExternalLink, Heart, Pencil, X } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import type { ImageRecord, ItemDetail } from '../types';
 import { copyTextToClipboard } from '../utils/clipboard';
+import { imageDisplayPath, imageHeroPath, selectPrimaryImage } from '../utils/images';
+import type { Translator } from '../utils/i18n';
 import { PROMPT_LANGUAGE_LABELS, resolvePromptText, type PromptLanguage } from '../utils/prompts';
 
 const LANG_LABELS: Record<string, string> = {
@@ -25,12 +27,14 @@ function dedupeImages(images: ImageRecord[]) {
 
 export default function ItemDetailModal({
   id,
+  t,
   preferredLanguage,
   onClose,
   onCopyPrompt,
   onEdit,
 }: {
   id?: string;
+  t: Translator;
   preferredLanguage: PromptLanguage;
   onClose: () => void;
   onCopyPrompt: (success: boolean) => void;
@@ -52,7 +56,7 @@ export default function ItemDetailModal({
   const prompt = item?.prompts.find(p => p.language === lang) || item?.prompts.find(p => p.language === preferredLanguage) || item?.prompts.find(p => p.language === 'en') || item?.prompts[0];
   const copyText = prompt?.text || resolvePromptText(item?.prompts, preferredLanguage, item?.title || '');
   const uniqueImages = dedupeImages(item?.images || []);
-  const primaryImage = uniqueImages[0];
+  const primaryImage = selectPrimaryImage(uniqueImages);
   const handleCopyPrompt = async () => {
     const copied = await copyTextToClipboard(copyText);
     onCopyPrompt(copied);
@@ -61,34 +65,34 @@ export default function ItemDetailModal({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="detail modal polished-modal" onClick={e => e.stopPropagation()}>
-        <button className="close" onClick={onClose} aria-label="Close">
+        <button className="close" onClick={onClose} aria-label={t('close')}>
           <X size={20} />
         </button>
         {!item ? (
-          <p className="modal-loading">Loading…</p>
+          <p className="modal-loading">{t('loading')}</p>
         ) : (
           <div className="detail-layout">
             <section className="modal-hero">
               {primaryImage ? (
                 <img
                   className="hero-image"
-                  src={mediaUrl(primaryImage.preview_path || primaryImage.original_path)}
+                  src={mediaUrl(imageHeroPath(primaryImage))}
                   alt={item.title}
                 />
               ) : (
-                <div className="placeholder hero-image">No image</div>
+                <div className="placeholder hero-image">{t('noImage')}</div>
               )}
               {uniqueImages.length > 1 && (
                 <div className="rail glass-rail">
                   {uniqueImages.map(img => (
-                    <img key={getImageIdentity(img)} src={mediaUrl(img.thumb_path || img.original_path)} alt="" />
+                    <img key={getImageIdentity(img)} src={mediaUrl(imageDisplayPath(img))} alt="" />
                   ))}
                 </div>
               )}
             </section>
 
             <aside className="detail-side">
-              <div className="modal-kicker">{item.cluster?.name || 'Unsorted collection'}</div>
+              <div className="modal-kicker">{item.cluster?.name || t('unclustered')}</div>
               <h2>{item.title}</h2>
               <p className="muted">{item.model || 'ChatGPT Image'} · {item.source_name || 'Local reference'}</p>
 
@@ -106,13 +110,13 @@ export default function ItemDetailModal({
 
               <div className="actions modal-actions">
                 <button onClick={handleCopyPrompt}>
-                  <Copy size={16} /> Copy prompt
+                  <Copy size={16} /> {t('copyPrompt')}
                 </button>
                 <button onClick={() => api.favorite(item.id).then(setItem)}>
-                  <Heart size={16} /> {item.favorite ? 'Saved' : 'Favorite'}
+                  <Heart size={16} /> {item.favorite ? t('saved') : t('favorite')}
                 </button>
                 <button onClick={() => onEdit(item)}>
-                  <Pencil size={16} /> Edit
+                  <Pencil size={16} /> {t('edit')}
                 </button>
                 {item.source_url && (
                   <a href={item.source_url} target="_blank" rel="noreferrer">
