@@ -54,18 +54,40 @@ export default function App() {
   const [preferredLanguage, setPreferredLanguage] = useState<PromptLanguage>(loadPreferredLanguage);
   const [globalThumbnailBudget, setGlobalThumbnailBudget] = useState(() => loadNumberSetting(GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 50, 150));
   const [focusThumbnailBudget, setFocusThumbnailBudget] = useState(() => loadNumberSetting(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 24, 100));
+  const [exploreFitRequestKey, setExploreFitRequestKey] = useState(0);
+  const [pendingExploreUnfilterClusterId, setPendingExploreUnfilterClusterId] = useState<string>();
+  const [exploreUnfilterFadePhase, setExploreUnfilterFadePhase] = useState<'out' | 'pre-in' | 'in' | 'idle'>('idle');
   const [toast, setToast] = useState<{ title: string; tone: 'success' | 'error' }>();
-  const { data, loading, initialLoading, refreshing, error } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
+  const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
+  const exploreFocusedClusterId = view === 'explore'
+    ? (clusterId || (dataScope.clusterId === pendingExploreUnfilterClusterId ? pendingExploreUnfilterClusterId : undefined))
+    : clusterId;
   const selectedCluster = useMemo(() => clusters.find(c => c.id === clusterId), [clusters, clusterId]);
   const t = useMemo(() => makeTranslator(uiLanguage), [uiLanguage]);
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
   const refreshTags = () => api.tags().then(setTags).catch(() => setTags([]));
   useEffect(() => { refreshClusters(); refreshTags(); }, []);
-  const selectCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('cards'); setFiltersOpen(false); };
-  const focusCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('explore'); setFiltersOpen(false); };
+  useEffect(() => {
+    if (pendingExploreUnfilterClusterId && dataScope.clusterId !== pendingExploreUnfilterClusterId) {
+      setPendingExploreUnfilterClusterId(undefined);
+      setExploreUnfilterFadePhase('pre-in');
+      window.requestAnimationFrame(() => setExploreUnfilterFadePhase('in'));
+      const timer = window.setTimeout(() => setExploreUnfilterFadePhase('idle'), 180);
+      return () => window.clearTimeout(timer);
+    }
+    return undefined;
+  }, [dataScope.clusterId, pendingExploreUnfilterClusterId]);
+  const selectCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('cards'); setFiltersOpen(false); setPendingExploreUnfilterClusterId(undefined); setExploreUnfilterFadePhase('idle'); };
+  const focusCluster = (c: ClusterRecord) => { setClusterId(c.id); setView('explore'); setFiltersOpen(false); setPendingExploreUnfilterClusterId(undefined); setExploreUnfilterFadePhase('idle'); setExploreFitRequestKey(key => key + 1); };
   const handleFilterSelect = (c: ClusterRecord) => { view === 'explore' ? focusCluster(c) : selectCluster(c); };
-  const openClusterAsCards = (c: ClusterRecord) => { setClusterId(c.id); setView('cards'); setFiltersOpen(false); };
-  const clearCluster = () => setClusterId(undefined);
+  const openClusterAsCards = (c: ClusterRecord) => { setClusterId(c.id); setView('cards'); setFiltersOpen(false); setPendingExploreUnfilterClusterId(undefined); setExploreUnfilterFadePhase('idle'); };
+  const clearCluster = () => {
+    if (view === 'explore' && clusterId) {
+      setPendingExploreUnfilterClusterId(clusterId);
+      setExploreUnfilterFadePhase('out');
+    }
+    setClusterId(undefined);
+  };
   const saved = () => { refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
   const deleted = () => { setDetailId(undefined); setEditing(undefined); refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
   const updatePreferredLanguage = (language: PromptLanguage) => {
@@ -106,7 +128,7 @@ export default function App() {
       {initialLoading && <div className="loading">{t('loading')}</div>}
       {error && <div className="error">{error}</div>}
       {view === 'explore'
-        ? <ExploreView t={t} clusters={clusters} items={data.items} focusedClusterId={clusterId} globalThumbnailBudget={globalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusCluster={focusCluster} onOpenClusterCards={openClusterAsCards} onOpen={setDetailId} onAdd={openNewItemEditor} />
+        ? <ExploreView t={t} clusters={clusters} items={data.items} focusedClusterId={exploreFocusedClusterId} fitRequestKey={exploreFitRequestKey} unfilterTransitionPhase={exploreUnfilterFadePhase} globalThumbnailBudget={globalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusCluster={focusCluster} onOpenClusterCards={openClusterAsCards} onOpen={setDetailId} onAdd={openNewItemEditor} />
         : <CardsView t={t} items={data.items} onOpen={setDetailId} onFavorite={favorite} onEdit={editSummary} onCopyPrompt={copyPrompt} onAdd={openNewItemEditor} />}
     </main>
     <button className="fab" onClick={openNewItemEditor}><Plus/> {t('add')}</button>

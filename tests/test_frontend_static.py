@@ -178,8 +178,28 @@ def test_filter_refresh_keeps_stale_content_without_large_loading_flash():
     assert "refreshing" in hook
     assert "setInitialLoading" in hook
     assert "setRefreshing" in hook
-    assert "return {data, loading, initialLoading, refreshing, error}" in hook.replace(" ", "") or "initialLoading, refreshing" in hook
-    assert "const { data, loading, initialLoading, refreshing, error }" in app
+    assert "dataScope" in hook
+    assert "setDataScope" in hook
+    assert "return { data, loading, initialLoading, refreshing, error, dataScope }" in hook
+    assert "const { data, loading, initialLoading, refreshing, error, dataScope }" in app
+    assert "pendingExploreUnfilterClusterId" in app
+    assert "exploreUnfilterFadePhase" in app
+    assert "'out' | 'pre-in' | 'in' | 'idle'" in app
+    assert "dataScope.clusterId === pendingExploreUnfilterClusterId" in app
+    assert "setPendingExploreUnfilterClusterId(clusterId)" in app
+    assert "setExploreUnfilterFadePhase('out')" in app
+    assert "setExploreUnfilterFadePhase('pre-in')" in app
+    assert "requestAnimationFrame(() => setExploreUnfilterFadePhase('in'))" in app
+    assert "setExploreUnfilterFadePhase('idle')" in app
+    assert "unfilterTransitionPhase={exploreUnfilterFadePhase}" in app
+    assert "useEffect(() => {" in app and "setPendingExploreUnfilterClusterId(undefined)" in app
+    assert "exploreFocusedClusterId" in app
+    assert "dataScope.clusterId" in app
+    assert "exploreFitRequestKey" in app
+    assert "setExploreFitRequestKey" in app
+    assert "clearCluster = () => {" in app
+    clear_body = app.split("const clearCluster = () => {", 1)[1].split("  const saved =", 1)[0]
+    assert "setExploreFitRequestKey" not in clear_body
     assert "app-main ${refreshing ? 'is-refreshing' : ''}" in app
     assert "aria-busy={refreshing}" in app
     assert "initialLoading && <div className=\"loading\">" in app
@@ -232,7 +252,16 @@ def test_modal_and_explore_focus_use_reduced_motion_safe_transitions():
     assert "computeFitTransform" in explore
     assert "fitConstellationToViewport" in explore
     assert "Math.min(1.15, Math.max(0.42" in explore
-    assert "[focusedClusterId, displayedClusters]" in explore
+    assert "useLayoutEffect" in explore
+    assert "[focusedClusterId, displayedClusters, fitRequestKey]" in explore
+    assert "fitRequestKey" in explore
+    assert "lastFitRequestKeyRef" in explore
+    assert "unfilterTransitionPhase" in explore
+    assert "is-unfilter-fade-out" in explore
+    assert "is-unfilter-fade-pre-in" in explore
+    assert "is-unfilter-fade-in" in explore
+    assert "isFocusAnimating" in explore
+    assert "focusedClusterId || fitRequestKey" in explore
     assert "@keyframes modal-backdrop-in" in css
     assert "@keyframes modal-panel-in" in css
     assert "@keyframes modal-content-in" in css
@@ -243,6 +272,9 @@ def test_modal_and_explore_focus_use_reduced_motion_safe_transitions():
     assert ".detail.modal" in css and "min-height:min" in css
     assert "@media (prefers-reduced-motion: reduce)" in css
     assert ".constellation-canvas.focus-animation" in css
+    assert ".thumbnail-constellation.is-unfilter-fade-out .constellation-canvas" in css
+    assert ".thumbnail-constellation.is-unfilter-fade-in .constellation-canvas" in css
+    assert "transition:opacity .14s ease" in css
 
 
 def test_empty_library_states_have_inline_first_prompt_cta():
@@ -318,7 +350,7 @@ def test_copy_prompt_uses_shared_preferred_language_resolver():
     assert "@keyframes toast-in" in css
     assert "resolvePromptText" in detail
     assert "preferredLanguage" in detail
-    assert "const copyText = prompt?.text || resolvePromptText" in detail
+    assert "const copyText = prompt?.text || resolvedPrompt?.text || resolvePromptText" in detail
     assert "onCopyPrompt" in detail
     assert "copyTextToClipboard(text)" in detail
     assert "setCopyFeedback" not in detail
@@ -465,6 +497,8 @@ def test_detail_modal_supports_inline_editing_contract():
     assert "InlineEditableField" in detail
     assert "InlineEditableTextArea" in detail
     assert "title-inline-edit" in detail
+    assert ".title-inline-edit{display:inline-block;min-width:min(100%,260px);font-size:clamp(24px,2.8vw,38px);line-height:1.08;letter-spacing:-.045em}" in compact_css
+    assert ".title-inline-editinput{font-size:inherit;line-height:inherit;letter-spacing:inherit" in compact_css
     assert "collection-inline-edit" in detail
     assert "metadata-inline-edit" in detail
     assert "prompt-inline-edit" in detail
@@ -477,10 +511,23 @@ def test_detail_modal_supports_inline_editing_contract():
     assert "prompt-edit-icon" in detail
     assert "role=\"tablist\"" in detail
     assert "aria-selected={lang === promptLanguage}" in detail
+    assert "availablePromptRecords" in detail
+    assert "resolvePromptRecord" in detail
+    assert "setLang(nextPrompt.language)" in detail
+    assert "const prompt = item?.prompts.find(promptRecord => promptRecord.language === lang)" in detail
+    assert "const resolvedPrompt = resolvePromptRecord(availablePromptRecords, lang, preferredLanguage)" in detail
     assert "promptDisplayOrder.map(promptLanguage" in detail
+    assert "const tabPrompt = item.prompts.find(prompt => prompt.language === promptLanguage)" in detail
+    assert "onClick={() => { setLang(promptLanguage); cancelPromptEdit(); }}" in detail
+    assert "disabled={!tabPrompt?.text.trim()}" not in detail
+    assert "availablePromptRecords.map(promptOption" not in detail
     assert "<section className=\"prompt-block prompt-panel active\">" in detail
     assert "prompt-edit-controls" in detail and "prompt-edit-controls" in css
     assert "copyTextToClipboard(text)" in detail
+    assert "promptRecord?.text ? <p>{promptRecord.text}</p>" not in detail
+    assert "add-note-affordance\">{t('promptText')}" in detail
+    assert "disabled={!prompt?.text}" in detail
+    assert "handleCopyPrompt(prompt?.text || '')" in detail
     assert "add-note-affordance" in detail
     assert "t('addNote')" in detail
     assert "source-icon-link" in detail

@@ -27,6 +27,18 @@ function dedupeImages(images: ImageRecord[]) {
   });
 }
 
+function resolvePromptRecord<T extends { language: string; text: string }>(
+  prompts: T[],
+  selectedLanguage: string,
+  preferredLanguage: PromptLanguage,
+): T | undefined {
+  const usable = prompts.filter(prompt => prompt.text.trim().length > 0);
+  return usable.find(prompt => prompt.language === selectedLanguage)
+    || usable.find(prompt => prompt.language === preferredLanguage)
+    || usable.find(prompt => prompt.language === 'en')
+    || usable[0];
+}
+
 function InlineEditableField({
   className,
   value,
@@ -155,6 +167,18 @@ export default function ItemDetailModal({
     api.item(id).then(setItem);
   }, [id]);
 
+  const availablePromptRecords = useMemo(() => {
+    if (!item) return [];
+    return promptDisplayOrder
+      .map(promptLanguage => item.prompts.find(prompt => prompt.language === promptLanguage && prompt.text.trim().length > 0))
+      .filter((prompt): prompt is NonNullable<typeof prompt> => Boolean(prompt));
+  }, [item]);
+
+  useEffect(() => {
+    const nextPrompt = resolvePromptRecord(availablePromptRecords, preferredLanguage, preferredLanguage);
+    if (nextPrompt) setLang(nextPrompt.language);
+  }, [availablePromptRecords, preferredLanguage, id]);
+
   const filteredTagSuggestions = useMemo(() => {
     if (!item) return [];
     const existing = new Set(item.tags.map(tag => tag.name));
@@ -166,8 +190,9 @@ export default function ItemDetailModal({
 
   if (!id) return null;
 
-  const prompt = item?.prompts.find(p => p.language === lang) || item?.prompts.find(p => p.language === preferredLanguage) || item?.prompts.find(p => p.language === 'en') || item?.prompts[0];
-  const copyText = prompt?.text || resolvePromptText(item?.prompts, preferredLanguage, item?.title || '');
+  const prompt = item?.prompts.find(promptRecord => promptRecord.language === lang);
+  const resolvedPrompt = resolvePromptRecord(availablePromptRecords, lang, preferredLanguage);
+  const copyText = prompt?.text || resolvedPrompt?.text || resolvePromptText(item?.prompts, preferredLanguage, item?.title || '');
   const uniqueImages = dedupeImages(item?.images || []);
   const primaryImage = selectPrimaryImage(uniqueImages);
   const commitInlineUpdate = async (payload: Record<string, unknown>) => {
@@ -281,29 +306,32 @@ export default function ItemDetailModal({
 
                 <div className="prompt-blocks" aria-label={t('promptLanguage')}>
                   {(() => {
-                    const promptRecord = item.prompts.find(p => p.language === lang);
                     return (
                       <section className="prompt-block prompt-panel active">
                         <header className="prompt-block-header">
                           <div className="prompt-language-tabs tabs" role="tablist" aria-label={t('promptLanguage')}>
-                            {promptDisplayOrder.map(promptLanguage => (
-                              <button
-                                type="button"
-                                role="tab"
-                                aria-selected={lang === promptLanguage}
-                                className={`prompt-language-tab ${lang === promptLanguage ? 'active' : ''}`}
-                                onClick={() => { setLang(promptLanguage); cancelPromptEdit(); }}
-                                key={promptLanguage}
-                              >
-                                {LANG_LABELS[promptLanguage] || promptLanguage}
-                              </button>
-                            ))}
+                            {promptDisplayOrder.map(promptLanguage => {
+                              const tabPrompt = item.prompts.find(prompt => prompt.language === promptLanguage);
+                              return (
+                                <button
+                                  type="button"
+                                  role="tab"
+                                  aria-selected={lang === promptLanguage}
+                                  className={`prompt-language-tab ${lang === promptLanguage ? 'active' : ''}`}
+                                  onClick={() => { setLang(promptLanguage); cancelPromptEdit(); }}
+                                  title={tabPrompt?.text.trim() ? undefined : t('promptText')}
+                                  key={promptLanguage}
+                                >
+                                  {LANG_LABELS[promptLanguage] || promptLanguage}
+                                </button>
+                              );
+                            })}
                           </div>
                           <span className="prompt-block-actions">
-                            <button type="button" className="prompt-copy-icon" onClick={() => handleCopyPrompt(promptRecord?.text || '')} aria-label={t('copyPrompt')} disabled={!promptRecord?.text}>
+                            <button type="button" className="prompt-copy-icon" onClick={() => handleCopyPrompt(prompt?.text || '')} aria-label={t('copyPrompt')} disabled={!prompt?.text}>
                               <Copy size={15} />
                             </button>
-                            <button type="button" className="prompt-edit-icon" onClick={() => startPromptEdit(lang, promptRecord?.text || '')} aria-label={t('edit')}>
+                            <button type="button" className="prompt-edit-icon" onClick={() => startPromptEdit(lang, prompt?.text || '')} aria-label={t('edit')}>
                               <Pencil size={15} />
                             </button>
                           </span>
@@ -328,8 +356,8 @@ export default function ItemDetailModal({
                               </span>
                             </>
                           ) : (
-                            <div className={`prompt-inline-edit ${promptRecord?.text ? '' : 'notes-empty'}`} onDoubleClick={() => startPromptEdit(lang, promptRecord?.text || '')} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') startPromptEdit(lang, promptRecord?.text || ''); }}>
-                              {promptRecord?.text ? <p>{promptRecord.text}</p> : <span className="add-note-affordance">{t('promptText')}</span>}
+                            <div className={`prompt-inline-edit ${prompt?.text ? '' : 'notes-empty'}`} onDoubleClick={() => startPromptEdit(lang, prompt?.text || '')} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') startPromptEdit(lang, prompt?.text || ''); }}>
+                              {prompt?.text ? <p>{prompt.text}</p> : <span className="add-note-affordance">{t('promptText')}</span>}
                             </div>
                           )}
                         </div>

@@ -88,6 +88,9 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
 - Direction changed for `wuyoscar/gpt_image_2_skill` sample data: public `import-gpt-image-2-skill*.sh` scripts have been removed and live upstream importing is replaced by a curated optional sample bundle. Current bundle metadata has 162 image records, 10 Image Prompt Library collections with localized English/Simplified/Traditional collection names, original English prompts retained, Chinese prompt fields only when source Chinese text exists, and source/license attribution preserved. Distribution remains metadata in git plus image bundle as a GitHub Release asset with `scripts/install-sample-data.sh <en|zh_hans|zh_hant>`; direct-in-repo images remain acceptable only with documented sparse checkout/partial clone guidance.
 - Explore blank-space drag/pan is restored for the viewport/canvas/SVG link layer while card/button taps remain protected by tap-vs-drag handling.
 - Explore filter selection now auto-fits the focused constellation content to the viewport instead of leaving the previous global pan/zoom transform active.
+- Explore unfilter now keeps the focused constellation visible while the all-items refresh completes, then hard-cuts to the final global fit with only a short opacity fade-out/fade-in; global cluster cards should not visibly shrink or settle after appearing.
+- Detail modal title inline-editing uses a title-specific reduced font scale so the editable title remains prominent without inheriting the oversized full `h2` desktop scale.
+- Detail modal prompt tabs remain visible and clickable in the standard English / Traditional Chinese / Simplified Chinese order. Opening an item selects the preferred prompt language when it has content, otherwise falls back to English/first available content; empty-language tabs stay available for adding a new prompt and show a placeholder/edit affordance when selected.
 
 ## GitHub AGPL local-install MVP roadmap
 

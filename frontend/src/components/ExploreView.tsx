@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { Minus, Plus, RotateCcw } from 'lucide-react';
 import { mediaUrl } from '../api/client';
 import type { ClusterRecord, ItemSummary } from '../types';
@@ -438,6 +438,8 @@ export default function ExploreView({
   clusters,
   items,
   focusedClusterId,
+  fitRequestKey = 0,
+  unfilterTransitionPhase = 'idle',
   globalThumbnailBudget,
   focusThumbnailBudget,
   onFocusCluster,
@@ -449,6 +451,8 @@ export default function ExploreView({
   clusters: ClusterRecord[];
   items: ItemSummary[];
   focusedClusterId?: string;
+  fitRequestKey?: number;
+  unfilterTransitionPhase?: 'idle' | 'out' | 'pre-in' | 'in';
   globalThumbnailBudget: number;
   focusThumbnailBudget: number;
   onFocusCluster: (c: ClusterRecord) => void;
@@ -459,6 +463,7 @@ export default function ExploreView({
   const [scale, setScale] = useState(DEFAULT_SCALE);
   const [offset, setOffset] = useState(DEFAULT_OFFSET);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const lastFitRequestKeyRef = useRef(fitRequestKey);
   const gestureRef = useRef<GestureState | undefined>(undefined);
   const suppressNextClickRef = useRef(false);
   const [gesture, setGestureState] = useState<GestureState | undefined>();
@@ -490,12 +495,14 @@ export default function ExploreView({
     setOffset(next.offset);
   };
 
-  useEffect(() => {
-    setIsFocusAnimating(true);
+  useLayoutEffect(() => {
+    const explicitFitRequested = lastFitRequestKeyRef.current !== fitRequestKey;
+    lastFitRequestKeyRef.current = fitRequestKey;
+    setIsFocusAnimating(Boolean(focusedClusterId || fitRequestKey) && explicitFitRequested);
     fitConstellationToViewport();
     const timer = window.setTimeout(() => setIsFocusAnimating(false), FOCUS_TRANSITION_MS);
     return () => window.clearTimeout(timer);
-  }, [focusedClusterId, displayedClusters]);
+  }, [focusedClusterId, displayedClusters, fitRequestKey]);
 
   if (!clusters.length) {
     return (
@@ -558,9 +565,16 @@ export default function ExploreView({
     if (target.type === 'item') onOpen(target.item.id);
   };
   const cancelGesture = () => setGesture(undefined);
+  const unfilterClass = unfilterTransitionPhase === 'out'
+    ? 'is-unfilter-fade-out'
+    : unfilterTransitionPhase === 'pre-in'
+      ? 'is-unfilter-fade-pre-in'
+      : unfilterTransitionPhase === 'in'
+        ? 'is-unfilter-fade-in'
+        : '';
 
   return (
-    <section className={`thumbnail-constellation ${focusedClusterId ? 'is-focused' : ''} ${gesture?.dragging ? 'is-dragging' : ''}`} aria-label={t('constellationGraph')}>
+    <section className={`thumbnail-constellation ${focusedClusterId ? 'is-focused' : ''} ${gesture?.dragging ? 'is-dragging' : ''} ${unfilterClass}`} aria-label={t('constellationGraph')}>
       <div className="constellation-toolbar" aria-label={t('constellationControls')}>
         <button onClick={() => setScale(s => Math.max(0.42, s - 0.08))} aria-label={t('zoomOut')}><Minus size={16} /></button>
         <button onClick={() => setScale(s => Math.min(1.35, s + 0.08))} aria-label={t('zoomIn')}><Plus size={16} /></button>
