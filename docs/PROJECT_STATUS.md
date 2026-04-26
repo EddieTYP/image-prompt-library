@@ -114,6 +114,7 @@ Current assessment:
    - Keep dev ports documented (`8000` backend, `5177` frontend) while avoiding `8787` because it is reserved for Hermes WebUI on Edward's machine.
    - FastAPI can serve the built frontend from `frontend/dist`, so normal local use can run as one backend service after `npm run build`.
    - Shell-provided one-shot overrides (`BACKEND_PORT`, `BACKEND_HOST`, `FRONTEND_PORT`, `IMAGE_PROMPT_LIBRARY_PATH`, `BACKUP_DIR`) now take precedence over `.env`, so documented commands like `BACKEND_PORT=8023 IMAGE_PROMPT_LIBRARY_PATH=/tmp/library ./scripts/start.sh` work reliably.
+   - Platform note: macOS/Linux are the primary native script targets; Windows is feasible through WSL 2 today, while native PowerShell/CMD scripts or Docker Compose remain future packaging work.
 
 4. **Configuration story** — initial public MVP pass implemented
    - Added `.env.example` for library path, backend host/port, frontend dev port, and backup directory.

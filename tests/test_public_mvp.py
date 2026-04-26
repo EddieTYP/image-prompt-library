@@ -17,6 +17,8 @@ def test_public_docs_do_not_use_edward_specific_setup_paths():
     assert "Privacy" in readme
     assert "Backup" in readme
     assert "Troubleshooting" in readme
+    assert "Windows" in readme
+    assert "WSL" in readme
     assert "IMAGE_PROMPT_LIBRARY_PATH" in readme
 
 

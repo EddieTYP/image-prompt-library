@@ -26,7 +26,7 @@ Goal: make Image Prompt Library easy for someone to clone from GitHub, run on th
 
 ### Nice-to-have after public alpha
 
-- Docker Compose local install path.
+- Native Windows PowerShell scripts or a Docker Compose local install path; WSL 2 is the practical Windows route for now.
 - Sample/demo dataset or screenshots that do not include private runtime data.
 - Export/import backup archive workflow in the UI.
 - Full interface language setting.

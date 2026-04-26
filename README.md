@@ -23,6 +23,12 @@ The app is designed for people who want a private prompt/image reference library
 - Node.js 20+ recommended
 - npm
 
+## Platform support
+
+- macOS and Linux are the primary supported local-install targets today.
+- Windows can run the app stack through **WSL 2** using the same commands as Linux.
+- Native Windows PowerShell/CMD is not a supported quick-start path yet because the current helper scripts are Bash scripts and assume Unix-style virtualenv paths such as `.venv/bin/activate`. Native Windows support should use equivalent PowerShell scripts or a Docker/Compose path in a future pass.
+
 ## Quick start
 
 ```bash
