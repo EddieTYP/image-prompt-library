@@ -83,7 +83,8 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
 - Detail prompt tabs are `ENG → 繁中 → 簡中`; long prompts scroll inside the prompt panel, and copy/edit controls operate on the active tab.
 - Tag unlink controls are floating mini buttons at the top-right of each tag chip on desktop hover/focus, with persistent touch/mobile visibility.
 - Add/Edit now uses prompt order English → Traditional Chinese → Simplified Chinese and includes generated-from/model, author, source URL, and notes fields.
-- README now positions OpenNana as an optional local-export adapter and uses `wuyoscar/gpt_image_2_skill` as the public CC BY 4.0 example-data candidate instead of bundling real OpenNana data.
+- README now positions OpenNana as an optional local-export adapter and uses `wuyoscar/gpt_image_2_skill` as the public CC BY 4.0 sample screenshot/demo dataset candidate instead of bundling real OpenNana data; screenshots/demo GIFs should preserve attribution and keep imported demo libraries out of git.
+- Added an optional `wuyoscar/gpt_image_2_skill` sample importer (`backend.services.import_gpt_image_2_skill` plus `scripts/import-gpt-image-2-skill.sh`) that reads a local clone's `docs/community-prompt-picks.json`, imports records into a chosen local library, and preserves source/license attribution without shipping the upstream content in this repo.
 
 ## GitHub public local-install MVP roadmap
 

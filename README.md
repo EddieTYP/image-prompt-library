@@ -102,7 +102,32 @@ Do not commit runtime `library/` data to git. It is your private prompt/image co
 
 This app intentionally does not ship third-party prompt-gallery data or generated images. Runtime library data is private/user-owned and should stay outside git.
 
-For public examples, prefer sources with explicit reusable licensing. One candidate is [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill), which is published under **CC BY 4.0** at the time of writing. If you use that content as demo/example data, keep the attribution and license notice with the imported records or demo fixture.
+### Sample screenshot/demo dataset
+
+For public screenshots and demo GIFs, prefer a clearly licensed sample source instead of Edward's private library or an OpenNana scrape. The current demo-data candidate is [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill), whose repository `LICENSE` states **Attribution 4.0 International (CC BY 4.0)** and preserves individual prompt attributions.
+
+If you load this source into a local demo library:
+
+- keep the imported demo library out of git;
+- preserve attribution/source metadata on imported records where possible;
+- mention `wuyoscar/gpt_image_2_skill` and **CC BY 4.0** near any public screenshots, demo GIFs, or demo fixtures;
+- review the source repository's latest license before publishing screenshots or sample data, because third-party licensing can change.
+
+This source is a good fit for a screenshot/demo pass, but it is not bundled with Image Prompt Library and should not be treated as the app's canonical built-in dataset.
+
+Try it with a separate local demo library:
+
+```bash
+git clone https://github.com/wuyoscar/gpt_image_2_skill.git .local-work/gpt_image_2_skill
+
+IMAGE_PROMPT_LIBRARY_PATH=.local-work/demo-library \
+  ./scripts/import-gpt-image-2-skill.sh .local-work/gpt_image_2_skill
+
+IMAGE_PROMPT_LIBRARY_PATH=.local-work/demo-library \
+  ./scripts/start.sh
+```
+
+Open <http://127.0.0.1:8000/>. The importer reads `docs/community-prompt-picks.json`, copies referenced image files into your selected local library, stores each record's prompt as English, uses the record category as the collection, and keeps source/license attribution in item metadata/notes.
 
 ### Import an OpenNana gallery export
 

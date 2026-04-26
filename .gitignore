@@ -8,6 +8,7 @@ library/previews/*
 !library/previews/.gitkeep
 .env
 backups/
+.local-work/
 node_modules/
 .venv/
 __pycache__/

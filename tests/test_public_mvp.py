@@ -22,6 +22,20 @@ def test_public_docs_do_not_use_edward_specific_setup_paths():
     assert "IMAGE_PROMPT_LIBRARY_PATH" in readme
 
 
+def test_public_import_and_example_data_section_prefers_attributed_demo_source():
+    readme = (ROOT / "README.md").read_text()
+
+    assert "Sample screenshot/demo dataset" in readme
+    assert "wuyoscar/gpt_image_2_skill" in readme
+    assert "import-gpt-image-2-skill.sh" in readme
+    assert "IMAGE_PROMPT_LIBRARY_PATH=.local-work/demo-library" in readme
+    assert "CC BY 4.0" in readme
+    assert "Attribution" in readme
+    assert "OpenNana" in readme
+    assert "not a universal webpage scraper" in readme
+    assert "does not ship third-party prompt-gallery data" in readme
+
+
 def test_public_install_helper_files_exist_and_document_local_data():
     env_example = (ROOT / ".env.example").read_text()
     setup_script = (ROOT / "scripts" / "setup.sh").read_text()
