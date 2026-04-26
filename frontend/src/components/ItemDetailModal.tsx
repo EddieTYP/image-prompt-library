@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, Copy, ExternalLink, Heart, Pencil, Plus, X } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import type { ClusterRecord, ImageRecord, ItemDetail, TagRecord } from '../types';
@@ -158,6 +158,7 @@ export default function ItemDetailModal({
   const [tagQuery, setTagQuery] = useState('');
   const [editingPromptLanguage, setEditingPromptLanguage] = useState<string>();
   const [promptDraft, setPromptDraft] = useState('');
+  const lastDefaultPromptKeyRef = useRef('');
 
   useEffect(() => { setLang(preferredLanguage); }, [preferredLanguage, id]);
 
@@ -175,9 +176,13 @@ export default function ItemDetailModal({
   }, [item]);
 
   useEffect(() => {
+    if (!item || !id) return;
+    const defaultPromptKey = `${id}:${preferredLanguage}`;
+    if (lastDefaultPromptKeyRef.current === defaultPromptKey) return;
     const nextPrompt = resolvePromptRecord(availablePromptRecords, preferredLanguage, preferredLanguage);
     if (nextPrompt) setLang(nextPrompt.language);
-  }, [availablePromptRecords, preferredLanguage, id]);
+    lastDefaultPromptKeyRef.current = defaultPromptKey;
+  }, [item, availablePromptRecords, preferredLanguage, id]);
 
   const filteredTagSuggestions = useMemo(() => {
     if (!item) return [];

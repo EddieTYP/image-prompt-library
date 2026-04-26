@@ -90,7 +90,7 @@ Current state after `9686d8d` plus the current collection/toast polish pass:
 - Explore filter selection now auto-fits the focused constellation content to the viewport instead of leaving the previous global pan/zoom transform active.
 - Explore unfilter now keeps the focused constellation visible while the all-items refresh completes, then hard-cuts to the final global fit with only a short opacity fade-out/fade-in; global cluster cards should not visibly shrink or settle after appearing.
 - Detail modal title inline-editing uses a title-specific reduced font scale so the editable title remains prominent without inheriting the oversized full `h2` desktop scale.
-- Detail modal prompt tabs remain visible and clickable in the standard English / Traditional Chinese / Simplified Chinese order. Opening an item selects the preferred prompt language when it has content, otherwise falls back to English/first available content; empty-language tabs stay available for adding a new prompt and show a placeholder/edit affordance when selected.
+- Detail modal prompt tabs remain visible and clickable in the standard English / Traditional Chinese / Simplified Chinese order. Opening an item selects the preferred prompt language when it has content, otherwise falls back to English/first available content; empty-language tabs stay available for adding a new prompt, show a placeholder/edit affordance when selected, and remain selected after saving new content.
 
 ## GitHub AGPL local-install MVP roadmap
 

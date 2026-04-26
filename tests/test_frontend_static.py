@@ -513,6 +513,10 @@ def test_detail_modal_supports_inline_editing_contract():
     assert "aria-selected={lang === promptLanguage}" in detail
     assert "availablePromptRecords" in detail
     assert "resolvePromptRecord" in detail
+    assert "lastDefaultPromptKeyRef" in detail
+    assert "const defaultPromptKey = `${id}:${preferredLanguage}`" in detail
+    assert "lastDefaultPromptKeyRef.current === defaultPromptKey" in detail
+    assert "lastDefaultPromptKeyRef.current = defaultPromptKey" in detail
     assert "setLang(nextPrompt.language)" in detail
     assert "const prompt = item?.prompts.find(promptRecord => promptRecord.language === lang)" in detail
     assert "const resolvedPrompt = resolvePromptRecord(availablePromptRecords, lang, preferredLanguage)" in detail
