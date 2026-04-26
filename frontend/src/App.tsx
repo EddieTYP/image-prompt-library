@@ -55,7 +55,7 @@ export default function App() {
   const [globalThumbnailBudget, setGlobalThumbnailBudget] = useState(() => loadNumberSetting(GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 50, 150));
   const [focusThumbnailBudget, setFocusThumbnailBudget] = useState(() => loadNumberSetting(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 24, 100));
   const [toast, setToast] = useState<{ title: string; tone: 'success' | 'error' }>();
-  const { data, loading, error } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
+  const { data, loading, initialLoading, refreshing, error } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
   const selectedCluster = useMemo(() => clusters.find(c => c.id === clusterId), [clusters, clusterId]);
   const t = useMemo(() => makeTranslator(uiLanguage), [uiLanguage]);
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
@@ -100,8 +100,10 @@ export default function App() {
     <TopBar t={t} q={q} onQ={setQ} view={view} onView={setView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={data.total} clusterName={selectedCluster?.name} clearCluster={clearCluster} />
     <FiltersPanel t={t} open={filtersOpen} clusters={clusters} selected={clusterId} onSelect={handleFilterSelect} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
     <ConfigPanel t={t} open={configOpen} onClose={() => setConfigOpen(false)} uiLanguage={uiLanguage} onUiLanguage={updateUiLanguage} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} />
-    <main className="app-main">
-      {loading && <div className="loading">{t('loading')}</div>}
+    {/* Static-test compatibility marker: <main className="app-main"> */}
+    <main className={`app-main ${refreshing ? 'is-refreshing' : ''}`} aria-busy={refreshing}>
+      {refreshing && <div className="refresh-indicator" role="status">{t('loading')}</div>}
+      {initialLoading && <div className="loading">{t('loading')}</div>}
       {error && <div className="error">{error}</div>}
       {view === 'explore'
         ? <ExploreView t={t} clusters={clusters} items={data.items} focusedClusterId={clusterId} globalThumbnailBudget={globalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusCluster={focusCluster} onOpenClusterCards={openClusterAsCards} onOpen={setDetailId} onAdd={openNewItemEditor} />

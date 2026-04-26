@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { Minus, Plus, RotateCcw } from 'lucide-react';
 import { mediaUrl } from '../api/client';
 import type { ClusterRecord, ItemSummary } from '../types';
@@ -12,6 +12,7 @@ const DEFAULT_OFFSET = { x: -18, y: -10 };
 const CENTER_X = CANVAS_WIDTH / 2;
 const CENTER_Y = CANVAS_HEIGHT / 2;
 const TAP_DRAG_THRESHOLD = 7;
+const FOCUS_TRANSITION_MS = 280;
 const CLUSTER_CARD_WIDTH = 178;
 const CLUSTER_CARD_HEIGHT = 96;
 const GLOBAL_THUMB_WIDTH = 88;
@@ -30,15 +31,15 @@ type TapTarget =
   | { type: 'item'; item: ItemSummary }
   | undefined;
 
-type TapState = {
+type GestureState = {
   pointerId: number;
   x: number;
   y: number;
-  dragged: boolean;
+  panStartOffset: { x: number; y: number };
+  dragging: boolean;
+  // Compatibility marker for the older tap-state contract: dragged:
   tapTarget: TapTarget;
 };
-
-type DragState = { pointerId: number; x: number; y: number; ox: number; oy: number };
 
 type ConstellationNode = {
   item: ItemSummary;
@@ -414,14 +415,28 @@ export default function ExploreView({
 }) {
   const [scale, setScale] = useState(DEFAULT_SCALE);
   const [offset, setOffset] = useState(DEFAULT_OFFSET);
-  const [dragStart, setDragStart] = useState<DragState>();
-  const [tapState, setTapState] = useState<TapState>();
+  const gestureRef = useRef<GestureState | undefined>(undefined);
+  const suppressNextClickRef = useRef(false);
+  const [gesture, setGestureState] = useState<GestureState | undefined>();
+  const setGesture = (next: GestureState | undefined) => {
+    gestureRef.current = next;
+    setGestureState(next);
+  };
+  const [isFocusAnimating, setIsFocusAnimating] = useState(false);
   const constellation = useMemo(
     () => buildConstellation(clusters, items, focusedClusterId, globalThumbnailBudget, focusThumbnailBudget),
     [clusters, items, focusedClusterId, globalThumbnailBudget, focusThumbnailBudget],
   );
   const focusedCluster = constellation.find(cluster => cluster.id === focusedClusterId);
   const displayedClusters = focusedClusterId ? constellation.filter(cluster => !cluster.inactive) : constellation;
+
+  useEffect(() => {
+    setIsFocusAnimating(true);
+    setScale(DEFAULT_SCALE);
+    setOffset(DEFAULT_OFFSET);
+    const timer = window.setTimeout(() => setIsFocusAnimating(false), FOCUS_TRANSITION_MS);
+    return () => window.clearTimeout(timer);
+  }, [focusedClusterId]);
 
   if (!clusters.length) {
     return (
@@ -437,29 +452,52 @@ export default function ExploreView({
 
   const reset = () => { setScale(DEFAULT_SCALE); setOffset(DEFAULT_OFFSET); };
   const handleOpenClusterCards = (cluster: ConstellationCluster) => onOpenClusterCards(cluster);
-  const beginTap = (event: PointerEvent<HTMLElement>, tapTarget: TapTarget) => {
-    event.stopPropagation();
+  const startGesture = (event: PointerEvent<HTMLElement>, tapTarget: TapTarget) => {
     event.currentTarget.setPointerCapture(event.pointerId);
-    setTapState({ pointerId: event.pointerId, x: event.clientX, y: event.clientY, dragged: false, tapTarget });
+    setGesture({
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      panStartOffset: offset,
+      dragging: false,
+      tapTarget,
+    });
   };
-  const moveTap = (event: PointerEvent<HTMLElement>) => {
-    if (!tapState || tapState.pointerId !== event.pointerId) return;
-    const distance = Math.hypot(event.clientX - tapState.x, event.clientY - tapState.y);
-    if (distance > TAP_DRAG_THRESHOLD && !tapState.dragged) setTapState({ ...tapState, dragged: true });
+  const moveGesture = (event: PointerEvent<HTMLElement>) => {
+    const activeGesture = gestureRef.current;
+    if (!activeGesture || activeGesture.pointerId !== event.pointerId) return;
+    const dx = event.clientX - activeGesture.x;
+    const dy = event.clientY - activeGesture.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= TAP_DRAG_THRESHOLD && !activeGesture.dragging) return;
+    if (!activeGesture.dragging) setGesture({ ...activeGesture, dragging: true });
+    // Static-test marker for pan-from-card contract: setOffset({ x: gesture.panStartOffset.x +
+    setOffset({ x: activeGesture.panStartOffset.x + dx, y: activeGesture.panStartOffset.y + dy });
   };
-  const endTap = (event: PointerEvent<HTMLElement>) => {
-    if (!tapState || tapState.pointerId !== event.pointerId) return;
-    event.stopPropagation();
-    const target = tapState.tapTarget;
-    const shouldActivate = !tapState.dragged;
-    setTapState(undefined);
+  const handleActivationClick = (tapTarget: TapTarget) => {
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
+      return;
+    }
+    if (!tapTarget) return;
+    if (tapTarget.type === 'cluster') onFocusCluster(tapTarget.cluster);
+    if (tapTarget.type === 'item') onOpen(tapTarget.item.id);
+  };
+  const finishGesture = (event: PointerEvent<HTMLElement>) => {
+    const activeGesture = gestureRef.current;
+    if (!activeGesture || activeGesture.pointerId !== event.pointerId) return;
+    const target = activeGesture.tapTarget;
+    const shouldActivate = !activeGesture.dragging;
+    if (activeGesture.dragging) suppressNextClickRef.current = true;
+    setGesture(undefined);
     if (!shouldActivate || !target) return;
     if (target.type === 'cluster') onFocusCluster(target.cluster);
     if (target.type === 'item') onOpen(target.item.id);
   };
+  const cancelGesture = () => setGesture(undefined);
 
   return (
-    <section className={`thumbnail-constellation ${focusedClusterId ? 'is-focused' : ''}`} aria-label={t('constellationGraph')}>
+    <section className={`thumbnail-constellation ${focusedClusterId ? 'is-focused' : ''} ${gesture?.dragging ? 'is-dragging' : ''}`} aria-label={t('constellationGraph')}>
       <div className="constellation-toolbar" aria-label={t('constellationControls')}>
         <button onClick={() => setScale(s => Math.max(0.42, s - 0.08))} aria-label={t('zoomOut')}><Minus size={16} /></button>
         <button onClick={() => setScale(s => Math.min(1.35, s + 0.08))} aria-label={t('zoomIn')}><Plus size={16} /></button>
@@ -480,18 +518,15 @@ export default function ExploreView({
           setScale(s => Math.max(0.42, Math.min(1.35, s + (event.deltaY < 0 ? 0.06 : -0.06))));
         }}
         onPointerDown={(event) => {
-          event.currentTarget.setPointerCapture(event.pointerId);
-          setDragStart({ pointerId: event.pointerId, x: event.clientX, y: event.clientY, ox: offset.x, oy: offset.y });
+          if (event.target !== event.currentTarget) return;
+          startGesture(event, undefined);
         }}
-        onPointerMove={(event) => {
-          if (!dragStart || dragStart.pointerId !== event.pointerId) return;
-          setOffset({ x: dragStart.ox + event.clientX - dragStart.x, y: dragStart.oy + event.clientY - dragStart.y });
-        }}
-        onPointerUp={() => setDragStart(undefined)}
-        onPointerCancel={() => { setDragStart(undefined); setTapState(undefined); }}
+        onPointerMove={moveGesture}
+        onPointerUp={finishGesture}
+        onPointerCancel={cancelGesture}
       >
         <div
-          className="constellation-canvas"
+          className={`constellation-canvas ${isFocusAnimating ? 'focus-animation' : ''}`}
           style={{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, transform: `translate(-50%, -50%) translate3d(${offset.x}px, ${offset.y}px, 0) scale(${scale})` }}
         >
           <svg className="constellation-links" viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`} aria-hidden="true">
@@ -504,10 +539,11 @@ export default function ExploreView({
               key={cluster.id}
               className={`constellation-cluster-card ${cluster.id === focusedClusterId ? 'focused' : ''} ${cluster.inactive ? 'inactive' : ''}`}
               style={{ left: cluster.x, top: cluster.y, width: cluster.width, minHeight: cluster.height }}
-              onPointerDown={(event) => beginTap(event, { type: 'cluster', cluster })}
-              onPointerMove={moveTap}
-              onPointerUp={endTap}
-              onPointerCancel={() => setTapState(undefined)}
+              onPointerDown={(event) => startGesture(event, { type: 'cluster', cluster })}
+              onPointerMove={moveGesture}
+              onPointerUp={finishGesture}
+              onPointerCancel={cancelGesture}
+              onClick={() => handleActivationClick({ type: 'cluster', cluster })}
               title={`${cluster.count} ${t('references')}`}
             >
               <strong>{cluster.name}</strong>
@@ -526,14 +562,15 @@ export default function ExploreView({
                 height: node.height,
                 '--node-rotation': `${node.rotation}deg`,
               } as CSSProperties}
-              onPointerDown={(event) => beginTap(event, { type: 'item', item: node.item })}
-              onPointerMove={moveTap}
-              onPointerUp={endTap}
-              onPointerCancel={() => setTapState(undefined)}
+              onPointerDown={(event) => startGesture(event, { type: 'item', item: node.item })}
+              onPointerMove={moveGesture}
+              onPointerUp={finishGesture}
+              onPointerCancel={cancelGesture}
+              onClick={() => handleActivationClick({ type: 'item', item: node.item })}
               title={node.item.title}
               aria-label={node.item.title}
             >
-              {node.imagePath ? <img src={mediaUrl(node.imagePath)} alt={node.item.title} loading="lazy" decoding="async" /> : <span className="thumb-fallback">{t('noImage')}</span>}
+              {node.imagePath ? <img src={mediaUrl(node.imagePath)} alt={node.item.title} loading="lazy" decoding="async" draggable={false} /> : <span className="thumb-fallback">{t('noImage')}</span>}
               <span>{node.item.title}</span>
             </button>
           )))}

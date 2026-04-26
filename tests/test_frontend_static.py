@@ -170,6 +170,66 @@ def test_explore_has_static_repulsive_relaxation_and_tap_drag_threshold():
     assert "continuous physics" not in explore.lower()
 
 
+def test_filter_refresh_keeps_stale_content_without_large_loading_flash():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    hook = (ROOT / "frontend" / "src" / "hooks" / "useItemsQuery.ts").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    assert "initialLoading" in hook
+    assert "refreshing" in hook
+    assert "setInitialLoading" in hook
+    assert "setRefreshing" in hook
+    assert "return {data, loading, initialLoading, refreshing, error}" in hook.replace(" ", "") or "initialLoading, refreshing" in hook
+    assert "const { data, loading, initialLoading, refreshing, error }" in app
+    assert "app-main ${refreshing ? 'is-refreshing' : ''}" in app
+    assert "aria-busy={refreshing}" in app
+    assert "initialLoading && <div className=\"loading\">" in app
+    assert "loading && <div className=\"loading\">" not in app
+    assert "refresh-indicator" in app
+    assert ".app-main.is-refreshing" in css
+    assert ".refresh-indicator" in css
+
+
+def test_constellation_card_drag_pans_viewport_and_disables_native_image_drag():
+    explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    assert "type GestureState" in explore
+    assert "panStartOffset" in explore
+    assert "startGesture" in explore
+    assert "moveGesture" in explore
+    assert "finishGesture" in explore
+    assert "setPointerCapture" in explore
+    assert "setOffset({ x: gesture.panStartOffset.x +" in explore
+    assert "dragging: true" in explore
+    assert "draggable={false}" in explore
+    assert "event.stopPropagation()" not in explore
+    assert "onPointerDown={(event) => startGesture(event, { type: 'cluster', cluster })}" in explore
+    assert "onPointerDown={(event) => startGesture(event, { type: 'item', item: node.item })}" in explore
+    assert ".constellation-thumb-card,.constellation-thumb-card img,.constellation-cluster-card" in css
+    assert "-webkit-user-drag:none" in css.replace(" ", "")
+    assert "user-select:none" in css.replace(" ", "")
+
+
+def test_modal_and_explore_focus_use_reduced_motion_safe_transitions():
+    explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    assert "FOCUS_TRANSITION_MS" in explore
+    assert "setIsFocusAnimating" in explore
+    assert "focus-animation" in explore
+    assert "window.setTimeout" in explore
+    assert "centerFocusedCluster" in explore
+    assert "className={`constellation-canvas ${isFocusAnimating ? 'focus-animation' : ''}`}" in explore
+    assert "@keyframes modal-backdrop-in" in css
+    assert "@keyframes modal-panel-in" in css
+    assert "@keyframes modal-content-in" in css
+    assert "modal-content-enter" in (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+    assert "animation:modal-backdrop-in" in css.replace(" ", "")
+    assert "animation:modal-panel-in" in css.replace(" ", "")
+    assert "animation:modal-content-in" in css.replace(" ", "")
+    assert ".detail.modal" in css and "min-height:min" in css
+    assert "@media (prefers-reduced-motion: reduce)" in css
+    assert ".constellation-canvas.focus-animation" in css
+
+
 def test_empty_library_states_have_inline_first_prompt_cta():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()

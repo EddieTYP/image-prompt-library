@@ -225,7 +225,7 @@ export default function ItemDetailModal({
         {!item ? (
           <p className="modal-loading">{t('loading')}</p>
         ) : (
-          <>
+          <div className="modal-content-enter" key={item.id}>
             <div className="detail-layout">
               <section className="modal-hero">
                 {primaryImage ? (
@@ -357,7 +357,7 @@ export default function ItemDetailModal({
                 </div>
               </aside>
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>

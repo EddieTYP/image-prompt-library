@@ -84,3 +84,15 @@ main{max-width:1680px;margin:0 auto;padding:26px 30px 88px}.app.explore-mode{hei
 
 /* Minor detail modal polish v2 */
 .detail-tag-chip .tag-unlink-button{display:flex;align-items:center;justify-content:center;padding:0;line-height:1}.detail-tag-chip .tag-unlink-button svg{display:block;width:11px;height:11px;stroke-width:2.6}.prompt-language-tabs.tabs{border:0;box-shadow:none}
+
+/* Behavior polish: refresh state, constellation drag, modal/focus motion */
+.app-main.is-refreshing{position:relative}
+.app-main.is-refreshing .cards-grid,.app-main.is-refreshing .thumbnail-constellation{filter:saturate(.98);transition:filter .18s ease}
+.refresh-indicator{position:absolute;z-index:12;top:14px;left:50%;transform:translateX(-50%);border:1px solid rgba(226,221,208,.9);border-radius:999px;background:rgba(255,255,255,.9);backdrop-filter:blur(14px);box-shadow:0 12px 28px rgba(33,25,34,.10);padding:7px 12px;color:#5d554a;font-size:12px;font-weight:900;pointer-events:none}
+.constellation-thumb-card,.constellation-thumb-card img,.constellation-cluster-card{user-select:none;-webkit-user-select:none;-webkit-user-drag:none;touch-action:manipulation}
+.constellation-canvas.focus-animation{transition:transform .28s cubic-bezier(.2,.8,.2,1)}
+.detail.modal{min-height:min(760px,88vh);display:flex;flex-direction:column}.detail.modal .modal-loading{flex:1;min-height:min(620px,74vh);display:grid;place-items:center;margin:0;color:var(--muted);font-weight:900}.modal-content-enter{animation:modal-content-in .18s cubic-bezier(.2,.8,.2,1) both}.modal-backdrop{animation:modal-backdrop-in .18s ease-out both}.modal{animation:modal-panel-in .2s cubic-bezier(.2,.8,.2,1) both}
+@keyframes modal-backdrop-in{from{opacity:0}to{opacity:1}}
+@keyframes modal-panel-in{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes modal-content-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@media (prefers-reduced-motion: reduce){.modal-backdrop,.modal,.modal-content-enter,.constellation-canvas.focus-animation,.refresh-indicator{animation:none!important;transition:none!important}.vista-button,.iconbtn,.toggle button,.chip,.actions button,.actions a,.primary,.secondary,.item-card,.constellation-thumb-card{transition:none!important}}

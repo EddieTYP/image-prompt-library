@@ -136,33 +136,43 @@ Current assessment:
    - Decide whether to include sample/demo data or only screenshots; do not commit Edward's runtime `library/` data.
    - Tag a first public alpha release, e.g. `v0.1.0-alpha`, only after fresh-install smoke tests pass.
 
-## Next planned implementation: inline detail editing and public import positioning
+## Recently implemented: behavior polish for loading, drag, and modal motion
 
-Plan saved at `docs/plans/2026-04-26-inline-detail-editing-and-public-import-positioning.md`.
+Plan and verification notes: `docs/plans/2026-04-26-behavior-polish-loading-drag-animation.md`.
 
-Scope agreed on 2026-04-26:
+Implemented on 2026-04-26:
 
-1. **Detail modal as lightweight editor**
-   - Add subtle hover affordances to editable title, collection, metadata, prompt, tag, and note areas.
-   - Inline edits use small confirm/cancel controls; avoid blur auto-save to prevent accidental edits.
-   - Modal header uses icon-only Heart/Favorite and Pencil/Edit buttons aligned left, with Close aligned right and improved hover/focus feedback.
-   - Metadata row displays image generator/model, author, and source URL as an icon-only link after the author.
-   - Prompt blocks are ordered English → Traditional Chinese → Simplified Chinese, each with an icon-only copy action in the top-right and inline edit support.
-   - Tags stay at the bottom with hover/touch-aware unlink controls and a final add-tag `+` chip with suggestions.
-   - Notes are separate from prompts; empty notes show only a faint `Add note` affordance.
+1. **Constellation hold-drag behavior**
+   - Click/tap on a thumbnail still opens the detail modal.
+   - Pointer movement beyond the tap threshold from a thumbnail or cluster card now enters a pan gesture rather than activating the item/cluster.
+   - Constellation thumbnail images use `draggable={false}` and CSS disables native image drag/selection.
+   - The gesture path keeps a `useRef` copy of the active pointer state so fast pointer moves do not read stale React state; card/thumb elements also handle pointer move/up/cancel.
 
-2. **Add/Edit modal alignment**
-   - Keep Add/Edit as the structured create/advanced-edit form.
-   - Reorder prompt fields to English → Traditional Chinese → Simplified Chinese.
-   - Surface `Image generated from`/model, `Author` defaulting to `User`, optional `Source URL`, and optional Notes.
-   - Preserve required result image and optional reference image behavior.
+2. **Modal opening motion**
+   - Added lightweight backdrop fade plus modal opacity/translate/scale entrance.
+   - Added a `prefers-reduced-motion` guard.
+   - No larger detail skeleton/shell refactor was added in this batch.
 
-3. **Public import story**
-   - Explain the canonical bulk import item structure in public docs.
-   - Treat OpenNana as an optional source-specific local-export adapter; do not bundle OpenNana data/media.
-   - Use `wuyoscar/gpt_image_2_skill` as the public example source, with clear CC BY 4.0 attribution requirements.
-   - Remove or parameterize any Edward-specific hardcoded import paths before public release.
-   - Do not mention the private one-click generation preview in public README.
+3. **Explore filter apply/remove smoothness**
+   - `useItemsQuery` now distinguishes `initialLoading` from background `refreshing`.
+   - Existing Explore content stays visible during filter refresh, with a subtle refresh indicator instead of the large `.loading` card.
+   - Explore focus/clear changes use a short canvas transform transition.
+
+4. **Cards filter apply/remove smoothness**
+   - Cards also keep stale content visible during refresh and show only subtle busy feedback.
+   - The accepted masonry layout is preserved.
+
+5. **Sparse Cards collection layout**
+   - Still deferred by Edward.
+   - CSS-column masonry was intentionally left unchanged; no small-collection horizontal grid was added.
+
+Verification recorded for this pass:
+
+- Static/frontend regression suite: `53 passed`.
+- Frontend build: passed.
+- Browser QA confirmed no large `.loading` flash during Explore filter apply/remove and Cards filter apply.
+- Browser QA confirmed modal opens with `modal-backdrop-in` / `modal-panel-in` animations; follow-up fix added a stable detail modal shell plus `modal-content-in` so the loaded content no longer pops in after the shell animation.
+- Browser QA confirmed constellation thumbnail images report `draggable=false`.
 
 ## Outstanding priorities
 
@@ -176,84 +186,89 @@ Scope agreed on 2026-04-26:
 
 ### P1 / High priority
 
-2. **Cards view lazy image/order stability bug** — implemented
+2. **Behavior polish: loading, drag, and modal motion** — implemented
+   - Implemented scope: constellation thumbnail/card hold-drag uses a tap-vs-drag gesture model; native thumbnail image dragging is disabled; modal opening uses a light reduced-motion-safe entrance animation; Explore/Cards filter refreshes keep stale content visible instead of flashing a large loading card; Explore filter apply/remove uses a short focus/overview transition.
+   - Deferred from this batch: sparse Cards collections should not switch to a horizontal grid yet; keep current masonry behavior unchanged.
+   - Plan and QA notes: `docs/plans/2026-04-26-behavior-polish-loading-drag-animation.md`.
+
+3. **Cards view lazy image/order stability bug** — implemented
    - Repro described by Edward: open the library, switch to Cards view, scroll down; some cards appear/load midway and the perceived card order reloads/shifts.
    - Root cause confirmed by browser QA: DOM order stayed stable, but lazy images without reserved dimensions expanded after decode inside CSS-column masonry, shifting later cards.
    - `ItemCard` now reserves each first-image aspect ratio from stored `width`/`height`, passes image `width`/`height` attributes, and keeps the accepted masonry/template-marketplace feel. Missing-dimension images keep natural-height rendering as a fallback.
 
-3. **Detail modal duplicate/two images** — implemented
+4. **Detail modal duplicate/two images** — implemented
    - Detail modal now deduplicates image records by displayed image path before rendering.
    - Thumbnail rail is hidden when only one unique image remains, so a single-image item shows only the hero image.
 
-4. **Copied toast / visible copy feedback** — implemented; cosmetic fit is low priority revisit
+5. **Copied toast / visible copy feedback** — implemented; cosmetic fit is low priority revisit
    - Card Copy prompt and detail modal Copy prompt both use the same bottom toast behavior for success/failure.
    - The toast is now a bottom-center glass pill with icon, blur, accent state, and subtle slide/fade animation.
    - Edward confirmed this is better, but still not fully matching the desired theme; revisit later as low priority.
 
 ### P2 / Medium priority
 
-5. **Drawer close button cosmetics** — implemented
+6. **Drawer close button cosmetics** — implemented
    - Filters drawer and Config now share a smaller rounded `panel-close` treatment with warm surface, subtle border, shadow, and hover state.
 
-6. **Add header logo branding** — implemented
+7. **Add header logo branding** — implemented
    - Uses Edward's newer transparent image-cards logo as the left-side header mark.
    - Header brand lockup is simple: larger logo on the left, `Image Prompt Library` text on the right.
    - The `.logo` container is fully transparent with no background, border, or shadow.
    - Kept as toolbar branding, not a hero section or large marketing banner.
    - Logo source currently uses Edward's latest attached 578×578 PNG at `frontend/src/assets/header-logo.png`, preserving its transparency; retained source copy is `header-logo-source.png`; runtime media/database artifacts remain excluded.
 
-7. **Polish global Explore viewport and hover preview** — implemented
+8. **Polish global Explore viewport and hover preview** — implemented
    - Global Explore now uses an `explore-mode` app shell that fits the viewport and hides whole-page scroll while keeping the constellation canvas inside the screen.
    - Cards mode keeps the normal document flow and masonry page scrolling.
    - Explore thumbnail cards now use the same CSS-only desktop hover/focus preview scale in both global and focused Explore, guarded by `(hover: hover) and (pointer: fine)`, so behavior stays aligned while touch behavior remains safe.
    - The preview is transform-only (`scale(1.42)`) and preserves node coordinates/rotation through a CSS variable; it does not mutate layout, rerun positioning, or add live physics.
 
-8. **Edit modal data-entry improvements** — implemented
+9. **Edit modal data-entry improvements** — implemented
    - Add/Edit modal now has separate English, Traditional Chinese, and Simplified Chinese prompt fields; legacy `original` prompts prefill the Traditional Chinese field for older imported items.
    - Collection input offers existing collection suggestions via datalist while still allowing typed new collections; tag input now also offers existing tag suggestions/chips.
    - Detail and edit modals no longer expose a separate `Original` prompt tab/field; legacy `original` content is folded into Traditional Chinese editing when needed.
    - Image upload UI distinguishes mandatory result image from optional reference photo; uploads persist `result_image` vs `reference_image` roles in the DB/API.
    - Existing items expose a guarded Delete reference action; it calls the existing archive/delete API, hides the item from active lists, refreshes collections/items, and keeps archived recovery possible via the existing `archived=true` API filter.
 
-9. **Image role hardening follow-ups** — implemented
+10. **Image role hardening follow-ups** — implemented
    - Frontend existing-result-image checks are role-aware: only images with `role === 'result_image'` satisfy the required result image, so reference-only items still require a result image.
    - Backend summary/detail image ordering and frontend primary-image helpers prefer `result_image` for cards, detail hero, and Explore thumbnails.
    - Cluster preview images now pick one primary image per active item and prefer the result image over reference images.
    - Added DB-level SQLite role validation via migration `003_image_role_check.sql` with `CHECK(role IN ('result_image', 'reference_image'))`.
    - New item creation rolls back by archiving the just-created item if result/reference image upload fails before save completes.
 
-10. **Full interface language setting** — implemented for main chrome and editor long-tail
+11. **Full interface language setting** — implemented for main chrome and editor long-tail
    - Added a UI language setting for Traditional Chinese, Simplified Chinese, and English in Config.
    - The setting is stored separately from prompt-copy language preference and localizes main navigation/actions/settings/empty-state labels without changing prompt content.
    - Add/Edit editor long-tail labels, placeholders, required-result/reference-image copy, save/delete/cancel actions, and validation fallback now use the same UI language translator.
    - Traditional Chinese UI copy now uses formal written wording rather than Hong Kong colloquial phrasing.
    - Browser QA verified live switching between Traditional Chinese, English, and Simplified Chinese with no console errors.
 
-11. **Empty collection cleanup** — implemented
+12. **Empty collection cleanup** — implemented
    - Collections with zero active items are hidden from `/api/clusters`, so archived/deleted items no longer leave empty collections visible in the sidebar/Explore metadata.
    - Editing the last item out of a collection removes now-unreferenced collection rows, so old collections do not remain after moving the item to another collection.
    - Listing clusters also cleans up pre-existing archived-only collection rows, clearing archived item references first so older empty collections disappear after an upgrade/restart.
 
 ### P3 / Low priority
 
-12. **Copied toast theme revisit**
+13. **Copied toast theme revisit**
    - Current toast is better but still not fully matching the desired theme; revisit later as low priority.
 
-13. **Minor Explore fine tuning**
+14. **Minor Explore fine tuning**
    - Possible later tweaks only.
    - Lowest priority because focus view is currently liked and global overlap is solved.
 
-14. **Detail modal polish beyond editor improvements**
+15. **Detail modal polish beyond editor improvements**
    - Existing modal polish is better but can continue to improve.
    - Inspect prompt readability, image rail, action placement, and spacing after higher-priority browsing/editor work.
 
-15. **Future scoring/ranking system**
+16. **Future scoring/ranking system**
    - Current priority order is favorite → rating → image availability → deterministic title order.
    - Future scoring can include source quality, prompt completeness, image quality/representativeness, usage/copy count, and recency.
 
 ## Discuss-before-action rule
 
-After logging and QA, pause to discuss the remaining priorities and intended approach before implementing the next feature/bugfix. Do not jump directly into fixing the filter slider or modal duplicate-image bug without confirming the desired direction.
+After logging and QA, pause to discuss the remaining priorities and intended approach before implementing the next feature/bugfix. For the next batch, Edward has approved the behavior-polish scope in `docs/plans/2026-04-26-behavior-polish-loading-drag-animation.md`; do not include the deferred sparse Cards layout change unless he asks for it later.
 
 ## Explore thumbnail constellation requirements
 
@@ -275,6 +290,8 @@ After logging and QA, pause to discuss the remaining priorities and intended app
 - Tap/click an image thumbnail to open the detail modal.
 - Search/filter should hide or de-emphasize non-matching thumbnails.
 - Cluster/item activation should use a tap-vs-drag threshold so slight pointer movement does not make cluster click/focus feel unreliable.
+- If a gesture starts on a thumbnail or cluster card and moves beyond the tap threshold, it should become viewport panning rather than native image dragging or item/cluster activation.
+- Constellation thumbnail images should disable native browser drag behavior (`draggable={false}` plus CSS/user-select safeguards).
 
 ### Cluster click/focus behavior
 
@@ -324,6 +341,13 @@ Current behavior:
 - Visible feedback is now shared: card copy and detail modal copy both use the same modern bottom toast.
 
 ## Latest QA / review notes
+
+Logged on 2026-04-26 for behavior-polish planning:
+
+- Edward accepted the proposed fixes for constellation thumbnail/card hold-drag panning, light modal entrance animation option A, Explore filter refresh smoothness, and Cards filter refresh smoothness.
+- Edward explicitly deferred the sparse Cards collection layout change; keep CSS-column masonry unchanged in the next batch even though small collections can currently appear top-to-bottom rather than left-to-right.
+- Inspection root causes: `useItemsQuery()` sets `loading=true` for every query change, `App` inserts a large `.loading` block during filter refresh, constellation thumbnail images still have native `draggable=true`, thumbnail/cluster pointer handlers stop propagation before viewport pan can take over, and detail modal opening currently swaps from immediate loading state to content without an intentional entrance animation.
+- Next plan saved at `docs/plans/2026-04-26-behavior-polish-loading-drag-animation.md`.
 
 Logged on 2026-04-26 for detail-editing/import-positioning planning:
 
