@@ -169,6 +169,8 @@ def test_public_npm_dependencies_are_pinned():
 
     assert '"latest"' not in package_json
     assert '"latest"' not in package_lock
+    assert '"name": "image-prompt-library"' in package_json
+    assert '"name": "image-prompt-library"' in package_lock
     assert '"react": "19.2.5"' in package_json
     assert '"vite": "8.0.10"' in package_json
 
