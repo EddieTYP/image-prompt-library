@@ -7,10 +7,17 @@ The optional Image Prompt Library sample bundle is derived from:
 - Observed license: **Attribution 4.0 International (CC BY 4.0)**
 - Upstream note: prompt patterns in `references/gallery.md` are curated from [`ZeroLu/awesome-gpt-image`](https://github.com/ZeroLu/awesome-gpt-image) under CC BY 4.0, with individual attributions preserved per entry where present.
 
+The second sample package is derived from:
+
+- Source: [`freestylefly/awesome-gpt-image-2`](https://github.com/freestylefly/awesome-gpt-image-2)
+- Observed source commit during curation: `01cfe2a9d656b1cd8d11405545bd41736d15397c`
+- Observed license: **MIT** (notice preserved in `sample-data/licenses/freestylefly-awesome-gpt-image-2-LICENSE`)
+- Permission note: upstream author granted permission to include this repository data as Image Prompt Library sample data. Keep the repository attribution and MIT license notice with redistributed sample assets.
+
 ## License boundary
 
 The Image Prompt Library code license does not apply to third-party sample data. The sample prompts/images remain subject to their own upstream license terms.
 
 CC BY 4.0 includes a **No additional restrictions** condition. Do not apply legal terms or technical measures that legally restrict others from doing anything that CC BY 4.0 permits for the sample-data material.
 
-When publishing screenshots, demo GIFs, fixtures, or a sample-data release asset, include attribution to `wuyoscar/gpt_image_2_skill` and CC BY 4.0.
+When publishing screenshots, demo GIFs, fixtures, or a sample-data release asset, include attribution to `wuyoscar/gpt_image_2_skill` and CC BY 4.0. For the second sample package, include attribution to `freestylefly/awesome-gpt-image-2` and the MIT license notice.

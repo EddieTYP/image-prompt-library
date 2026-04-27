@@ -2,25 +2,49 @@
 set -euo pipefail
 
 LANGUAGE="${1:-}"
+PACKAGE="${2:-gpt-image-2-skill}"
 if [[ -z "$LANGUAGE" ]]; then
-  echo "Usage: $0 <en|zh_hans|zh_hant>" >&2
+  echo "Usage: $0 <en|zh_hans|zh_hant> [gpt-image-2-skill|awesome-gpt-image-2]" >&2
   exit 2
 fi
 case "$LANGUAGE" in
   en|zh_hans|zh_hant) ;;
   *) echo "Unsupported sample language: $LANGUAGE" >&2; exit 2 ;;
 esac
+case "$PACKAGE" in
+  gpt-image-2-skill|awesome-gpt-image-2) ;;
+  *) echo "Unsupported sample package: $PACKAGE" >&2; exit 2 ;;
+esac
+if [[ "$PACKAGE" == "awesome-gpt-image-2" && "$LANGUAGE" != "zh_hant" ]]; then
+  echo "awesome-gpt-image-2 sample package currently ships zh_hant manifests only" >&2
+  exit 2
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 LIBRARY_PATH="${IMAGE_PROMPT_LIBRARY_PATH:-$REPO_ROOT/library}"
-MANIFEST_PATH="${SAMPLE_DATA_MANIFEST:-$REPO_ROOT/sample-data/manifests/$LANGUAGE.json}"
-WORK_DIR="${SAMPLE_DATA_WORK_DIR:-$REPO_ROOT/.local-work/sample-data-installer}"
+if [[ -n "${SAMPLE_DATA_MANIFEST:-}" ]]; then
+  MANIFEST_PATH="$SAMPLE_DATA_MANIFEST"
+elif [[ "$PACKAGE" == "awesome-gpt-image-2" ]]; then
+  MANIFEST_PATH="$REPO_ROOT/sample-data/manifests/awesome-gpt-image-2/$LANGUAGE.json"
+else
+  MANIFEST_PATH="$REPO_ROOT/sample-data/manifests/$LANGUAGE.json"
+fi
+WORK_DIR="${SAMPLE_DATA_WORK_DIR:-$REPO_ROOT/.local-work/sample-data-installer/$PACKAGE}"
 ASSET_DIR="${SAMPLE_DATA_IMAGE_DIR:-}"
 IMAGE_ZIP="${SAMPLE_DATA_IMAGE_ZIP:-}"
-RELEASE_BASE_URL="${SAMPLE_DATA_RELEASE_BASE_URL:-https://github.com/EddieTYP/image-prompt-library/releases/download/sample-data-v1}"
-RELEASE_ASSET_NAME="${SAMPLE_DATA_RELEASE_ASSET_NAME:-image-prompt-library-sample-images-v1.zip}"
-EXPECTED_SHA256="${SAMPLE_DATA_IMAGE_ZIP_SHA256:-8a458f6c8c96079f40fbc46c689e7de0bd2eb464ee7f800f94f3ca60131d5035}"
+if [[ "$PACKAGE" == "awesome-gpt-image-2" ]]; then
+  DEFAULT_RELEASE_TAG="sample-data-awesome-gpt-image-2-v1"
+  DEFAULT_RELEASE_ASSET="image-prompt-library-awesome-gpt-image-2-sample-images-v1.zip"
+  DEFAULT_SHA256="52876b5e051a9b214297b0de7aa403363295f9a478362506dad55ce32755140f"
+else
+  DEFAULT_RELEASE_TAG="sample-data-v1"
+  DEFAULT_RELEASE_ASSET="image-prompt-library-sample-images-v1.zip"
+  DEFAULT_SHA256="8a458f6c8c96079f40fbc46c689e7de0bd2eb464ee7f800f94f3ca60131d5035"
+fi
+RELEASE_BASE_URL="${SAMPLE_DATA_RELEASE_BASE_URL:-https://github.com/EddieTYP/image-prompt-library/releases/download/$DEFAULT_RELEASE_TAG}"
+RELEASE_ASSET_NAME="${SAMPLE_DATA_RELEASE_ASSET_NAME:-$DEFAULT_RELEASE_ASSET}"
+EXPECTED_SHA256="${SAMPLE_DATA_IMAGE_ZIP_SHA256:-$DEFAULT_SHA256}"
 
 sha256_file() {
   local file="$1"

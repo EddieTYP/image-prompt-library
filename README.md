@@ -181,7 +181,13 @@ If you want to see the app with example content, install the optional sample lib
 
 Then start the app and open <http://127.0.0.1:8000/>.
 
-The installer downloads the sample image ZIP from the public `sample-data-v1` release and verifies its SHA256 checksum before import. The sample library is based on [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill), licensed under **CC BY 4.0**. It is included only as demo/sample content; your own prompt library data remains private and is not part of the sample bundle.
+The installer downloads the sample image ZIP from a public sample-data release and verifies its SHA256 checksum before import. The default sample library is based on [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill), licensed under **CC BY 4.0**. A second sample package based on [`freestylefly/awesome-gpt-image-2`](https://github.com/freestylefly/awesome-gpt-image-2), licensed under **MIT**, is available with:
+
+```bash
+./scripts/install-sample-data.sh zh_hant awesome-gpt-image-2
+```
+
+Both are included only as demo/sample content; your own prompt library data remains private and is not part of any sample bundle.
 
 ## Backup
 
