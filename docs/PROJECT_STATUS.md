@@ -149,16 +149,33 @@ Before switching the repository public or tagging an alpha release, verify:
 - empty-library first-run UI has a clear Add action
 - sample installer works after public release assets are reachable without authentication
 
+## Mobile UX direction
+
+The next product polish focus is a mobile-native experience rather than a scaled-down desktop layout:
+
+- Mobile should default to **Cards** when there is no saved user view preference; Cards is the primary mobile browsing mode.
+- Mobile Cards should support dense browsing with narrow phones around two columns and larger phones around three columns, with touch-visible actions for copy/favorite/edit flows.
+- Mobile Explore should be a contained interactive canvas: the page itself should not pinch-zoom or distort while the Explore surface supports one-finger pan and two-finger pinch zoom.
+- Mobile Explore layout should favor a vertical constellation/spine distribution instead of a wide desktop-style map.
+- Mobile detail view should stack image above content. The close control floats at the top-right of the image area; favorite and edit controls float at the image bottom-right; prompt, metadata, tags, and notes sit below.
+- Mobile Filters, Config, and Manage surfaces should use full-height drawers/sheets with internal scrolling and safe-area padding.
+- Mobile management remains in scope: add/edit, result image upload, optional reference image, multilingual prompts, tags, favorite, and archive/delete should be usable on a phone.
+
+Recommended implementation order:
+
+1. Mobile shell and Cards default/columns/actions.
+2. Mobile detail modal stack and copy/favorite/edit controls.
+3. Full-height mobile drawers for Filters, Config, and Manage.
+4. Mobile Explore gesture containment, vertical layout, and mobile thumbnail budgets.
+
 ## Known follow-ups
 
 Public-alpha follow-ups that remain useful:
 
-- retest unauthenticated sample installation immediately after the repository becomes public
-- add checksum verification or prominently document the sample image bundle checksum
 - enable private vulnerability reporting in GitHub settings if available
 - consider native Windows PowerShell scripts or Docker Compose for easier cross-platform setup
 - add export/import backup archive UI
-- improve mobile polish
+- complete the next mobile-native UX polish batch described above
 - consider optional semantic/vector search
 
 ## Maintainer note policy

@@ -15,6 +15,8 @@ Your library stays on your own machine: local SQLite, local image files, no acco
 
 **Alpha release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.1.0-alpha>
 
+**Roadmap:** See [`ROADMAP.md`](ROADMAP.md) for the next-release mobile browsing and management plan.
+
 ![Image Prompt Library Cards view](docs/assets/screenshots/card-view-all.png)
 
 ## What it does
