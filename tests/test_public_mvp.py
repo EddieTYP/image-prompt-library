@@ -60,6 +60,14 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Explore view" in readme
     assert "Cards view" in readme
     assert "one-click prompt copy" in readme
+    assert "The current 0.2 preview is available" in readme
+    assert "mobile browsing preview" not in readme
+    assert "next-release mobile browsing and management plan" not in readme
+    assert "Mobile-first browsing behavior" in readme
+    assert "stable two-column masonry layout" in readme
+    assert "bottom dock instead of crowding the header" in readme
+    assert "current 0.2 preview" in readme
+    assert "archived 0.1 alpha demo" in readme
 
     screenshots = [
         "card-view-all.png",

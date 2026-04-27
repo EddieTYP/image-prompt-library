@@ -11,25 +11,39 @@ ChatGPT image generation has become good enough that the prompts are worth keepi
 
 Your library stays on your own machine: local SQLite, local image files, no accounts, no cloud sync, and no hosted database required.
 
-**Online sandbox:** <https://eddietyp.github.io/image-prompt-library/> — a read-only GitHub Pages version chooser using public sample prompts. Try the 0.2 mobile browsing preview at <https://eddietyp.github.io/image-prompt-library/v0.2/>, or open the archived 0.1 alpha demo at <https://eddietyp.github.io/image-prompt-library/v0.1/>. Sandbox images are compressed for web preview; run the app locally to create your own private full library.
+**Online sandbox:** <https://eddietyp.github.io/image-prompt-library/> — a read-only GitHub Pages version chooser using public sample prompts. The current 0.2 preview is available at <https://eddietyp.github.io/image-prompt-library/v0.2/>, with the original 0.1 alpha archived at <https://eddietyp.github.io/image-prompt-library/v0.1/>. Sandbox images are compressed for web preview; run the app locally to create your own private full library.
 
-**Alpha release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.2.0-alpha>
+**Alpha release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.2.0-alpha> — refreshes Cards browsing, mobile layout behavior, adaptive image display, and versioned public previews.
 
-**Roadmap:** See [`ROADMAP.md`](ROADMAP.md) for the next-release mobile browsing and management plan.
+**Roadmap:** See [`ROADMAP.md`](ROADMAP.md) for follow-up work around mobile Explore, management flows, packaging, and public release polish.
 
 ![Image Prompt Library Cards view](docs/assets/screenshots/card-view-all.png)
+
+The 0.2 preview refreshes the browsing experience across desktop and mobile: image-first Cards, cleaner detail behavior, versioned public demos, and phone-specific layout improvements.
 
 ## What it does
 
 - Save generated/reference images together with the prompt text that created them.
 - Organize references into collections and tags so good prompts are easy to find again.
 - Browse visually in **Explore view**, a thumbnail constellation that spreads images by collection in a style inspired by graph tools like Obsidian.
-- Browse densely in **Cards view**, a masonry gallery for scanning many prompt references quickly.
+- Browse densely in **Cards view**, an image-first masonry gallery for scanning many prompt references quickly on desktop and mobile.
 - Search across titles, prompts, tags, collections, sources, and notes.
 - Filter by collection, open a detail view, and copy the prompt with one click.
 - Keep everything local for privacy and long-term ownership.
 
 ## Screenshots
+
+The screenshots below show the main browsing and detail flows. The 0.2 preview also adds phone-specific behavior for Cards browsing, filtering, and detail viewing.
+
+### Browse with image-first cards
+
+Cards view is designed for fast visual scanning. In the 0.2 preview, cards use an image-first layout with a clean title overlay, quick actions, and adaptive image display for mixed portrait, landscape, and tall reference images.
+
+![Cards view showing the full sample library](docs/assets/screenshots/card-view-all.png)
+
+### Mobile-first browsing behavior
+
+On phones, the app defaults to Cards view, uses a stable two-column masonry layout, keeps quick actions touch-visible, and moves the selected collection into a bottom dock instead of crowding the header.
 
 ### Explore your prompt library visually
 
@@ -39,23 +53,13 @@ Explore view gives you a spatial overview of your library. Collections become vi
 
 ### Focus on one collection
 
-Filters let you focus the same visual map on a single collection while keeping the search bar, collection chip, and view switcher close at hand.
+Filters let you focus the same visual map on a single collection while keeping search, collection context, and the view switcher close at hand.
 
 ![Explore view filtered to a technical diagrams collection](docs/assets/screenshots/explore-view-filtered.png)
 
-### Browse with masonry cards
-
-Cards view is designed for fast visual browsing. It keeps the library image-first with a clean title overlay and quick actions.
-
-![Cards view showing the full sample library](docs/assets/screenshots/card-view-all.png)
-
-### Filter down to a reusable reference set
-
-Use collection filters or search terms in either view when you want to find a specific type of prompt you have used before.
-
 ### Keep the prompt beside the image
 
-The detail view keeps the large image preview, prompt, language tabs, attribution, notes, tags, favorite/edit actions, and one-click prompt copy in one place.
+The detail view keeps the large image preview, prompt, language tabs, attribution, notes, tags, favorite/edit actions, and one-click prompt copy in one place. On mobile, the detail view becomes image-first with floating controls over the image.
 
 ![Reference item detail modal](docs/assets/screenshots/reference-item-detail.png)
 
@@ -64,12 +68,14 @@ The detail view keeps the large image preview, prompt, language tabs, attributio
 - Local SQLite database and local image files.
 - Image storage with originals, previews, and thumbnails.
 - Explore mode: thumbnail constellation view for visual browsing.
-- Cards mode: masonry/Pinterest-style prompt gallery.
+- Cards mode: image-first masonry/Pinterest-style prompt gallery.
 - Search across titles, prompts, tags, collections, sources, and notes.
 - Collections and tags for organizing references.
 - Detail modal with lightweight inline editing, prompt language tabs, and copy feedback.
 - Add/edit modal with English, Traditional Chinese, and Simplified Chinese prompt fields plus metadata.
 - Result image and optional reference image uploads.
+- Phone-friendly Cards behavior: two-column masonry, compact header, touch-visible actions, and bottom selected-collection dock.
+- Adaptive card/detail image display for mixed portrait, landscape, and tall reference images.
 
 ## Requirements
 
@@ -187,13 +193,20 @@ Restore by stopping the app, extracting the archive, and replacing the correspon
 
 ## GitHub Pages sandbox
 
-The repository also ships a static read-only demo for GitHub Pages:
+The repository also ships static read-only demos for GitHub Pages:
 
 ```bash
 npm run build:demo
+npm run build:demo:v0.2
 ```
 
-The demo reads public sample metadata from `frontend/public/demo-data/`, uses compressed WebP preview images, and disables write actions. It is intended only as an online sandbox; run the local app to create and manage your own private prompt library.
+The public Pages deployment is versioned:
+
+- `/` — version chooser
+- `/v0.2/` — current 0.2 preview
+- `/v0.1/` — archived 0.1 alpha demo
+
+The demos read public sample metadata from `frontend/public/demo-data/`, use compressed WebP preview images, and disable write actions. They are intended only as online sandboxes; run the local app to create and manage your own private prompt library.
 
 ## Verification
 
@@ -264,9 +277,9 @@ Check `IMAGE_PROMPT_LIBRARY_PATH` in `.env`. Your database and image folders mus
 
 ## Project status
 
-This is an early local-first MVP / alpha. Core browse/search/add/edit/copy and optional sample-library flows exist, while public packaging, backup/restore polish, and installation docs are still improving.
+This is an alpha local-first app. Core browse/search/filter/detail/copy/add/edit flows exist, the public read-only sandbox is versioned, and the 0.2 preview improves both desktop and mobile browsing. Remaining work includes deeper mobile Explore gestures, management-flow polish, packaging, and public-release hardening.
 
-See `ROADMAP.md` for the current roadmap.
+See `ROADMAP.md` for the current roadmap and follow-up priorities.
 
 ## Repository layout
 
