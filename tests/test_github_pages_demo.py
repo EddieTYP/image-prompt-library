@@ -1,0 +1,78 @@
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_github_pages_demo_mode_uses_static_data_and_base_path():
+    vite_config = (ROOT / "vite.config.ts").read_text()
+    client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+    package_json = (ROOT / "package.json").read_text()
+
+    assert "VITE_BASE_PATH" in vite_config
+    assert "base:" in vite_config
+    assert "VITE_DEMO_MODE" in client
+    assert "DEMO_DATA_BASE" in client
+    assert "demo-data/items.json" in client
+    assert "demo-data/clusters.json" in client
+    assert "demo-data/tags.json" in client
+    assert "mediaUrl = (path?: string)" in client
+    assert "demoUrl" in client
+    assert '"build:demo"' in package_json
+    assert "VITE_DEMO_MODE=true" in package_json
+    assert "VITE_BASE_PATH=/image-prompt-library/" in package_json
+
+
+def test_github_pages_demo_is_read_only_and_discloses_compressed_images():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    cards = (ROOT / "frontend" / "src" / "components" / "CardsView.tsx").read_text()
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+    i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
+
+    assert "isDemoMode" in app
+    assert "demo-banner" in app
+    assert "onlineSandbox" in i18n
+    assert "readOnlySampleLibrary" in i18n
+    assert "compressedForDemo" in i18n
+    assert "runLocallyForPrivateLibrary" in i18n
+    assert "showActions" in cards
+    assert "showMutations" in detail
+    assert "!isDemoMode && <button className=\"fab\"" in app
+    assert "onAdd={isDemoMode ? undefined : openNewItemEditor}" in app
+    assert "onFavorite={isDemoMode ? undefined : favorite}" in app
+    assert "onEdit={isDemoMode ? undefined : editSummary}" in app
+
+
+def test_github_pages_workflow_deploys_demo_build():
+    workflow = ROOT / ".github" / "workflows" / "pages.yml"
+    assert workflow.exists()
+    text = workflow.read_text()
+    assert "actions/configure-pages" in text
+    assert "actions/upload-pages-artifact" in text
+    assert "actions/deploy-pages" in text
+    assert "npm run build:demo" in text
+    assert "frontend/dist" in text
+
+
+def test_demo_export_script_outputs_compact_static_assets():
+    script = ROOT / "scripts" / "export-demo-data.py"
+    assert script.exists()
+    text = script.read_text()
+    assert "frontend/public/demo-data" in text
+    assert "DEMO_IMAGE_MAX_WIDTH" in text
+    assert "DEMO_IMAGE_QUALITY" in text
+    assert "compressed" in text.lower()
+    assert "items.json" in text
+    assert "clusters.json" in text
+    assert "tags.json" in text
+
+
+def test_demo_data_bundle_is_present_and_uses_compressed_media_paths():
+    demo_root = ROOT / "frontend" / "public" / "demo-data"
+    assert (demo_root / "items.json").exists()
+    assert (demo_root / "clusters.json").exists()
+    assert (demo_root / "tags.json").exists()
+    items_text = (demo_root / "items.json").read_text()
+    assert "demo-data/media/" in items_text
+    assert ".webp" in items_text
+    assert "originals/" not in items_text
+    assert "library/db.sqlite" not in items_text

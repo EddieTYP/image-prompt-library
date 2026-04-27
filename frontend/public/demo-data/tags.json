@@ -1,0 +1,80 @@
+[
+  {
+    "id": "tag_20c12a5f91c7419a",
+    "name": "architecture-interiors",
+    "kind": "general",
+    "count": 7
+  },
+  {
+    "id": "tag_d4008beb95264c84",
+    "name": "art-illustration",
+    "kind": "general",
+    "count": 16
+  },
+  {
+    "id": "tag_f9018835f4444f36",
+    "name": "characters-anime",
+    "kind": "general",
+    "count": 26
+  },
+  {
+    "id": "tag_6897eea187bf4e91",
+    "name": "cinematic-storytelling",
+    "kind": "general",
+    "count": 16
+  },
+  {
+    "id": "tag_b4824f79b4b54f6f",
+    "name": "design-typography",
+    "kind": "general",
+    "count": 23
+  },
+  {
+    "id": "tag_3a8fd45a03504c45",
+    "name": "education-infographics",
+    "kind": "general",
+    "count": 16
+  },
+  {
+    "id": "tag_43dad4db86c2476c",
+    "name": "fashion-lifestyle",
+    "kind": "general",
+    "count": 9
+  },
+  {
+    "id": "tag_d0d97c2aee414faf",
+    "name": "full_catalog",
+    "kind": "general",
+    "count": 162
+  },
+  {
+    "id": "tag_120ada9d335c46de",
+    "name": "gpt_image_2_skill",
+    "kind": "general",
+    "count": 162
+  },
+  {
+    "id": "tag_b23d6ea3393e4005",
+    "name": "photo-real-world",
+    "kind": "general",
+    "count": 10
+  },
+  {
+    "id": "tag_e25e01e50059483d",
+    "name": "sample",
+    "kind": "general",
+    "count": 162
+  },
+  {
+    "id": "tag_0a7785767ea14c2a",
+    "name": "technical-research",
+    "kind": "general",
+    "count": 31
+  },
+  {
+    "id": "tag_b23a548f7c404e89",
+    "name": "ui-brand-product",
+    "kind": "general",
+    "count": 8
+  }
+]

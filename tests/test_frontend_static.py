@@ -283,7 +283,8 @@ def test_empty_library_states_have_inline_first_prompt_cta():
     cards = (ROOT / "frontend" / "src" / "components" / "CardsView.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
     assert "openNewItemEditor" in app
-    assert "onAdd={openNewItemEditor}" in app
+    assert "onAdd={isDemoMode ? undefined : openNewItemEditor}" in app
+    assert "!isDemoMode && <button className=\"fab\"" in app
     assert "t('libraryEmptyTitle')" in explore
     assert "t('addFirstPrompt')" in explore
     assert "onAdd" in explore

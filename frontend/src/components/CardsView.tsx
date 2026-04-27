@@ -14,18 +14,19 @@ export default function CardsView({
   items: ItemSummary[];
   t: Translator;
   onOpen: (id: string) => void;
-  onFavorite: (id: string) => void;
-  onEdit: (item: ItemSummary) => void;
+  onFavorite?: (id: string) => void;
+  onEdit?: (item: ItemSummary) => void;
   onCopyPrompt: (item: ItemSummary) => void;
-  onAdd: () => void;
+  onAdd?: () => void;
 }) {
+  const showActions = Boolean(onFavorite && onEdit);
   if (!items.length) {
     return (
       <div className="empty">
         <h2>{t('noMatchingPrompts')}</h2>
         <p>{t('noMatchingPromptsHelp')}</p>
         <div className="empty-actions">
-          <button className="empty-primary" onClick={onAdd}>{t('addFirstPrompt')}</button>
+          {onAdd && <button className="empty-primary" onClick={onAdd}>{t('addFirstPrompt')}</button>}
         </div>
       </div>
     );
@@ -34,7 +35,7 @@ export default function CardsView({
   return (
     <section className="cards-grid masonry-like">
       {items.map(item => (
-        <ItemCard key={item.id} t={t} item={item} onOpen={onOpen} onFavorite={onFavorite} onEdit={onEdit} onCopyPrompt={onCopyPrompt} />
+        <ItemCard key={item.id} t={t} item={item} onOpen={onOpen} onFavorite={onFavorite} onEdit={onEdit} onCopyPrompt={onCopyPrompt} showActions={showActions} />
       ))}
     </section>
   );

@@ -1,0 +1,132 @@
+[
+  {
+    "id": "clu_18c2db3af302411e",
+    "name": "Architecture & Interiors",
+    "description": null,
+    "sort_order": 0,
+    "count": 7,
+    "preview_images": [
+      "demo-data/media/img_5108491cec114c54.webp",
+      "demo-data/media/img_4459cf4001834c5b.webp",
+      "demo-data/media/img_283ee311291a4e9d.webp",
+      "demo-data/media/img_99ea33b72c0d4f43.webp"
+    ]
+  },
+  {
+    "id": "clu_d28ad3fd9e07472d",
+    "name": "Art & Illustration",
+    "description": null,
+    "sort_order": 0,
+    "count": 16,
+    "preview_images": [
+      "demo-data/media/img_a590c55059ef4d09.webp",
+      "demo-data/media/img_7ef2314daba34740.webp",
+      "demo-data/media/img_27086a2daf894e46.webp",
+      "demo-data/media/img_97d1e48efc1245e7.webp"
+    ]
+  },
+  {
+    "id": "clu_261d101866cf4a25",
+    "name": "Characters & Anime",
+    "description": null,
+    "sort_order": 0,
+    "count": 26,
+    "preview_images": [
+      "demo-data/media/img_ff96aadd686046c8.webp",
+      "demo-data/media/img_be443f7384c44861.webp",
+      "demo-data/media/img_d51e9813133542f2.webp",
+      "demo-data/media/img_0389f716791445e4.webp"
+    ]
+  },
+  {
+    "id": "clu_3ec62ee900c84f72",
+    "name": "Cinematic Storytelling",
+    "description": null,
+    "sort_order": 0,
+    "count": 16,
+    "preview_images": [
+      "demo-data/media/img_8789e5730bc44731.webp",
+      "demo-data/media/img_dcc6ebe1f5914bf1.webp",
+      "demo-data/media/img_fb3d420ed971493b.webp",
+      "demo-data/media/img_18f6fa72ccfa42e2.webp"
+    ]
+  },
+  {
+    "id": "clu_c8c76d5b8bde480d",
+    "name": "Design, Posters & Typography",
+    "description": null,
+    "sort_order": 0,
+    "count": 23,
+    "preview_images": [
+      "demo-data/media/img_0f3999b4293d4333.webp",
+      "demo-data/media/img_2a3d75d678494674.webp",
+      "demo-data/media/img_e92dd0e15936458d.webp",
+      "demo-data/media/img_378420e0eb914a7e.webp"
+    ]
+  },
+  {
+    "id": "clu_4a46948c31f84b34",
+    "name": "Education & Infographics",
+    "description": null,
+    "sort_order": 0,
+    "count": 16,
+    "preview_images": [
+      "demo-data/media/img_777837bcfc6a4b0b.webp",
+      "demo-data/media/img_7196e2c3290a4d44.webp",
+      "demo-data/media/img_be95a8a4f7e6467c.webp",
+      "demo-data/media/img_5b7cc243d7fd4c1c.webp"
+    ]
+  },
+  {
+    "id": "clu_88948d1ff86e49f0",
+    "name": "Fashion, Beauty & Lifestyle",
+    "description": null,
+    "sort_order": 0,
+    "count": 9,
+    "preview_images": [
+      "demo-data/media/img_e95570ca1a1a491c.webp",
+      "demo-data/media/img_93a40db5f0334c62.webp",
+      "demo-data/media/img_4fe0621b9b1540fa.webp",
+      "demo-data/media/img_66f642be24564bd0.webp"
+    ]
+  },
+  {
+    "id": "clu_dd91090d117b426f",
+    "name": "Photography & Real-world Screens",
+    "description": null,
+    "sort_order": 0,
+    "count": 10,
+    "preview_images": [
+      "demo-data/media/img_8edb9ac7c336488a.webp",
+      "demo-data/media/img_43c9212e37b042b8.webp",
+      "demo-data/media/img_056c6e7edce14fa6.webp",
+      "demo-data/media/img_c5bd0832eb9c4bd6.webp"
+    ]
+  },
+  {
+    "id": "clu_d0cbece200154f99",
+    "name": "Technical & Research Diagrams",
+    "description": null,
+    "sort_order": 0,
+    "count": 31,
+    "preview_images": [
+      "demo-data/media/img_cad41a1ff1684aa7.webp",
+      "demo-data/media/img_0b7725ee72394808.webp",
+      "demo-data/media/img_09b6bc118d7643a2.webp",
+      "demo-data/media/img_4fddb0311c3b4cae.webp"
+    ]
+  },
+  {
+    "id": "clu_02594c83beca48ce",
+    "name": "UI, Brand & Product",
+    "description": null,
+    "sort_order": 0,
+    "count": 8,
+    "preview_images": [
+      "demo-data/media/img_5b3198ed20654cbc.webp",
+      "demo-data/media/img_5c77cbe191714465.webp",
+      "demo-data/media/img_ea18d0ab8f324b41.webp",
+      "demo-data/media/img_ffd562caec52446b.webp"
+    ]
+  }
+]

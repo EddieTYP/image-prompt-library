@@ -45,6 +45,7 @@ function InlineEditableField({
   placeholder,
   inputList,
   onCommit,
+  editable = true,
   children,
 }: {
   className: string;
@@ -52,6 +53,7 @@ function InlineEditableField({
   placeholder?: string;
   inputList?: string;
   onCommit: (value: string) => void;
+  editable?: boolean;
   children?: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
@@ -81,6 +83,9 @@ function InlineEditableField({
       </span>
     );
   }
+  if (!editable) {
+    return <span className={`inline-editable ${className} is-read-only`}>{value || placeholder}</span>;
+  }
   return (
     <span className={`inline-editable ${className}`} onDoubleClick={() => setEditing(true)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') setEditing(true); }}>
       {value || placeholder}
@@ -93,11 +98,13 @@ function InlineEditableTextArea({
   value,
   placeholder,
   onCommit,
+  editable = true,
 }: {
   className: string;
   value: string;
   placeholder?: string;
   onCommit: (value: string) => void;
+  editable?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -124,6 +131,9 @@ function InlineEditableTextArea({
       </div>
     );
   }
+  if (!editable) {
+    return <div className={`inline-editable ${className} is-read-only ${value ? '' : 'notes-empty'}`}>{value ? <p>{value}</p> : <span className="add-note-affordance">{placeholder}</span>}</div>;
+  }
   return (
     <div className={`inline-editable ${className} ${value ? '' : 'notes-empty'}`} onDoubleClick={() => setEditing(true)} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') setEditing(true); }}>
       {value ? <p>{value}</p> : <span className="add-note-affordance">{placeholder}</span>}
@@ -141,6 +151,7 @@ export default function ItemDetailModal({
   onCopyPrompt,
   onEdit,
   onChanged,
+  showMutations = true,
 }: {
   id?: string;
   t: Translator;
@@ -151,6 +162,7 @@ export default function ItemDetailModal({
   onCopyPrompt: (success: boolean) => void;
   onEdit: (item: ItemDetail) => void;
   onChanged: () => void;
+  showMutations?: boolean;
 }) {
   const [item, setItem] = useState<ItemDetail>();
   const [lang, setLang] = useState<string>(preferredLanguage);
@@ -279,29 +291,29 @@ export default function ItemDetailModal({
               <aside className="detail-side">
                 <div className="detail-side-actions">
                   <span className="detail-side-primary-actions">
-                    <button className="modal-icon-button favorite-button" onClick={() => api.favorite(item.id).then(updated => { setItem(updated); onChanged(); })} aria-label={item.favorite ? t('saved') : t('favorite')}>
+                    {showMutations && <button className="modal-icon-button favorite-button" onClick={() => api.favorite(item.id).then(updated => { setItem(updated); onChanged(); })} aria-label={item.favorite ? t('saved') : t('favorite')}>
                       <Heart size={18} fill={item.favorite ? 'currentColor' : 'none'} />
-                    </button>
-                    <button className="modal-icon-button edit-button" onClick={() => onEdit(item)} aria-label={t('edit')}>
+                    </button>}
+                    {showMutations && <button className="modal-icon-button edit-button" onClick={() => onEdit(item)} aria-label={t('edit')}>
                       <Pencil size={18} />
-                    </button>
+                    </button>}
                   </span>
                   <button className="modal-icon-button close" onClick={onClose} aria-label={t('close')}>
                     <X size={20} />
                   </button>
                 </div>
-                <InlineEditableField className="collection-inline-edit" value={item.cluster?.name || ''} placeholder={t('unclustered')} inputList="detail-collection-suggestions" onCommit={value => commitInlineUpdate({ cluster_name: value.trim() || null })}>
+                <InlineEditableField className="collection-inline-edit" value={item.cluster?.name || ''} placeholder={t('unclustered')} inputList="detail-collection-suggestions" onCommit={value => commitInlineUpdate({ cluster_name: value.trim() || null })} editable={showMutations}>
                   <datalist id="detail-collection-suggestions">
                     {clusters.map(collection => <option key={collection.id} value={collection.name} />)}
                   </datalist>
                 </InlineEditableField>
                 <h2>
-                  <InlineEditableField className="title-inline-edit" value={item.title} placeholder={t('titlePlaceholder')} onCommit={value => commitInlineUpdate({ title: value.trim() || item.title })} />
+                  <InlineEditableField className="title-inline-edit" value={item.title} placeholder={t('titlePlaceholder')} onCommit={value => commitInlineUpdate({ title: value.trim() || item.title })} editable={showMutations} />
                 </h2>
                 <p className="muted metadata-row">
-                  <InlineEditableField className="metadata-inline-edit" value={item.model || t('defaultModel')} placeholder={t('imageGeneratedFrom')} onCommit={value => commitInlineUpdate({ model: value.trim() || item.model })} />
+                  <InlineEditableField className="metadata-inline-edit" value={item.model || t('defaultModel')} placeholder={t('imageGeneratedFrom')} onCommit={value => commitInlineUpdate({ model: value.trim() || item.model })} editable={showMutations} />
                   <span>·</span>
-                  <InlineEditableField className="metadata-inline-edit" value={`@${item.author || 'User'}`} placeholder="@User" onCommit={value => commitInlineUpdate({ author: value.replace(/^@/, '').trim() || 'User' })} />
+                  <InlineEditableField className="metadata-inline-edit" value={`@${item.author || 'User'}`} placeholder="@User" onCommit={value => commitInlineUpdate({ author: value.replace(/^@/, '').trim() || 'User' })} editable={showMutations} />
                   {item.source_url && (
                     <a className="source-icon-link" href={item.source_url} target="_blank" rel="noreferrer" aria-label={t('source')}>
                       <ExternalLink size={16} />
@@ -336,9 +348,9 @@ export default function ItemDetailModal({
                             <button type="button" className="prompt-copy-icon" onClick={() => handleCopyPrompt(prompt?.text || '')} aria-label={t('copyPrompt')} disabled={!prompt?.text}>
                               <Copy size={15} />
                             </button>
-                            <button type="button" className="prompt-edit-icon" onClick={() => startPromptEdit(lang, prompt?.text || '')} aria-label={t('edit')}>
+                            {showMutations && <button type="button" className="prompt-edit-icon" onClick={() => startPromptEdit(lang, prompt?.text || '')} aria-label={t('edit')}>
                               <Pencil size={15} />
-                            </button>
+                            </button>}
                           </span>
                         </header>
                         <div className="prompt-panel-body">
@@ -361,7 +373,7 @@ export default function ItemDetailModal({
                               </span>
                             </>
                           ) : (
-                            <div className={`prompt-inline-edit ${prompt?.text ? '' : 'notes-empty'}`} onDoubleClick={() => startPromptEdit(lang, prompt?.text || '')} tabIndex={0} onKeyDown={event => { if (event.key === 'Enter') startPromptEdit(lang, prompt?.text || ''); }}>
+                            <div className={`prompt-inline-edit ${prompt?.text ? '' : 'notes-empty'} ${showMutations ? '' : 'is-read-only'}`} onDoubleClick={() => { if (showMutations) startPromptEdit(lang, prompt?.text || ''); }} tabIndex={showMutations ? 0 : undefined} onKeyDown={event => { if (showMutations && event.key === 'Enter') startPromptEdit(lang, prompt?.text || ''); }}>
                               {prompt?.text ? <p>{prompt.text}</p> : <span className="add-note-affordance">{t('promptText')}</span>}
                             </div>
                           )}
@@ -371,13 +383,13 @@ export default function ItemDetailModal({
                   })()}
                 </div>
 
-                <InlineEditableTextArea className="notes-inline-edit" value={item.notes || ''} placeholder={t('addNote')} onCommit={value => commitInlineUpdate({ notes: value.trim() || null })} />
+                <InlineEditableTextArea className="notes-inline-edit" value={item.notes || ''} placeholder={t('addNote')} onCommit={value => commitInlineUpdate({ notes: value.trim() || null })} editable={showMutations} />
 
                 <div className="tags detail-tags">
                   {item.tags.map(tag => (
-                    <span className="detail-tag-chip" key={tag.id}>#{tag.name}<button type="button" className="tag-unlink-button" onClick={() => unlinkTag(tag.name)} aria-label={`Remove ${tag.name}`}><X size={12} /></button></span>
+                    <span className="detail-tag-chip" key={tag.id}>#{tag.name}{showMutations && <button type="button" className="tag-unlink-button" onClick={() => unlinkTag(tag.name)} aria-label={`Remove ${tag.name}`}><X size={12} /></button>}</span>
                   ))}
-                  {addingTag ? (
+                  {showMutations && (addingTag ? (
                     <span className="tag-add-popover">
                       <input className="tag-add-input" autoFocus value={tagQuery} onChange={event => setTagQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') addTag(tagQuery); if (event.key === 'Escape') setAddingTag(false); }} placeholder={t('tags')} />
                       <button type="button" className="inline-edit-confirm" onClick={() => addTag(tagQuery)}><Check size={12} /></button>
@@ -386,7 +398,7 @@ export default function ItemDetailModal({
                     </span>
                   ) : (
                     <button type="button" className="add-tag-chip" onClick={() => setAddingTag(true)} aria-label={t('tags')}><Plus size={14} /></button>
-                  )}
+                  ))}
                 </div>
               </aside>
             </div>

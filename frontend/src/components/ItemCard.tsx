@@ -12,13 +12,15 @@ export default function ItemCard({
   onFavorite,
   onEdit,
   onCopyPrompt,
+  showActions = true,
 }: {
   item: ItemSummary;
   t: Translator;
   onOpen: (id: string) => void;
-  onFavorite: (id: string) => void;
-  onEdit: (item: ItemSummary) => void;
+  onFavorite?: (id: string) => void;
+  onEdit?: (item: ItemSummary) => void;
   onCopyPrompt: (item: ItemSummary) => void;
+  showActions?: boolean;
 }) {
   const primaryImage = selectPrimaryImage([item.first_image]);
   const imagePath = imageDisplayPath(primaryImage);
@@ -31,11 +33,11 @@ export default function ItemCard({
   };
   const favorite = (event: MouseEvent) => {
     event.stopPropagation();
-    onFavorite(item.id);
+    onFavorite?.(item.id);
   };
   const edit = (event: MouseEvent) => {
     event.stopPropagation();
-    onEdit(item);
+    onEdit?.(item);
   };
 
   return (
@@ -58,8 +60,8 @@ export default function ItemCard({
       </div>
       <div className="card-actions" aria-label={t('itemActions')}>
         <button className="hover-action" onClick={copyPrompt}><Copy size={15} /> {t('copyPrompt')}</button>
-        <button className="hover-action" onClick={favorite}><Heart size={15} fill={item.favorite ? 'currentColor' : 'none'} /> {t('favorite')}</button>
-        <button className="hover-action" onClick={edit}><Pencil size={15} /> {t('edit')}</button>
+        {showActions && onFavorite && <button className="hover-action" onClick={favorite}><Heart size={15} fill={item.favorite ? 'currentColor' : 'none'} /> {t('favorite')}</button>}
+        {showActions && onEdit && <button className="hover-action" onClick={edit}><Pencil size={15} /> {t('edit')}</button>}
       </div>
     </article>
   );

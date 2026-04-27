@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5177",
     "build": "tsc && vite build",
+    "build:demo": "VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/ tsc && VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/ vite build",
     "preview": "vite preview --host 127.0.0.1 --port 5177"
   },
   "dependencies": {

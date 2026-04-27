@@ -110,6 +110,9 @@ Recent preparation work includes:
 - added tests guarding public docs, install helpers, runtime ignore rules, and media lockdown
 - pinned frontend dependency versions instead of using `latest`
 - added tests preventing npm dependency specs from regressing to `latest`
+- added a GitHub Pages read-only online sandbox build using static JSON and compressed public sample images
+- added demo-mode guards that keep browsing/search/copy available while disabling Add/Edit/Favorite/tag/prompt mutations
+- added a compact demo-data export script for the public sample library and regression tests for the Pages workflow, demo disclosure, and generated static bundle
 - verified tests and frontend build before the latest public-alpha preparation commit
 
 ## Sample data notes

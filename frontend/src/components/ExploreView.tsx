@@ -458,7 +458,7 @@ export default function ExploreView({
   onFocusCluster: (c: ClusterRecord) => void;
   onOpenClusterCards: (c: ClusterRecord) => void;
   onOpen: (id: string) => void;
-  onAdd: () => void;
+  onAdd?: () => void;
 }) {
   const [scale, setScale] = useState(DEFAULT_SCALE);
   const [offset, setOffset] = useState(DEFAULT_OFFSET);
@@ -510,7 +510,7 @@ export default function ExploreView({
         <h2>{t('libraryEmptyTitle')}</h2>
         <p>{t('libraryEmptyHelp')}</p>
         <div className="empty-actions">
-          <button className="empty-primary" onClick={onAdd}>{t('addFirstPrompt')}</button>
+          {onAdd && <button className="empty-primary" onClick={onAdd}>{t('addFirstPrompt')}</button>}
         </div>
       </div>
     );

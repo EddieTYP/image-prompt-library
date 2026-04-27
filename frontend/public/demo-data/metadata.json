@@ -1,0 +1,9 @@
+{
+  "title": "Image Prompt Library online sandbox",
+  "mode": "read-only",
+  "image_note": "Images are compressed for the web demo.",
+  "source": "wuyoscar/gpt_image_2_skill sample data, CC BY 4.0",
+  "item_count": 162,
+  "image_max_width": 760,
+  "image_quality": 58
+}

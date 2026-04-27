@@ -6,6 +6,8 @@ ChatGPT image generation has become good enough that the prompts are worth keepi
 
 Your library stays on your own machine: local SQLite, local image files, no accounts, no cloud sync, and no hosted database required.
 
+**Online sandbox:** <https://eddietyp.github.io/image-prompt-library/> — a read-only GitHub Pages demo using public sample prompts. The sandbox images are compressed for web preview; run the app locally to create your own private full library.
+
 ![Image Prompt Library Cards view](docs/assets/screenshots/card-view-all.png)
 
 ## What it does
@@ -175,6 +177,16 @@ The backup includes:
 - `library/previews/`
 
 Restore by stopping the app, extracting the archive, and replacing the corresponding library directory contents. Keep backups somewhere outside the repo if the library matters to you.
+
+## GitHub Pages sandbox
+
+The repository also ships a static read-only demo for GitHub Pages:
+
+```bash
+npm run build:demo
+```
+
+The demo reads public sample metadata from `frontend/public/demo-data/`, uses compressed WebP preview images, and disables write actions. It is intended only as an online sandbox; run the local app to create and manage your own private prompt library.
 
 ## Verification
 
