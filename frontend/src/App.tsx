@@ -144,6 +144,7 @@ export default function App() {
         <strong>{t('onlineSandbox')}</strong>
         <span>{t('readOnlySampleLibrary')}</span>
         <span>{t('compressedForDemo')}</span>
+        <span>{t('demoEditRequiresLocalInstall')}</span>
         <span>{t('runLocallyForPrivateLibrary')}</span>
         <a href="https://github.com/EddieTYP/image-prompt-library" target="_blank" rel="noreferrer">{t('viewOnGitHub')}</a>
       </div>

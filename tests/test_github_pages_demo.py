@@ -34,6 +34,8 @@ def test_github_pages_demo_is_read_only_and_discloses_compressed_images():
     assert "readOnlySampleLibrary" in i18n
     assert "compressedForDemo" in i18n
     assert "runLocallyForPrivateLibrary" in i18n
+    assert "Add/edit require local install" in i18n
+    assert "新增／編輯需要本機安裝" in i18n
     assert "showActions" in cards
     assert "showMutations" in detail
     assert "!isDemoMode && <button className=\"fab\"" in app
@@ -59,6 +61,8 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert ".pages-artifact/${LEGACY_DEMO_PATH}" in text
     assert "Choose a preview" in text
     assert "Mobile browsing preview" in text
+    assert "Add/edit require local install" in text
+    assert "private library management are local-only" in text
     assert "Original alpha demo" in text
     assert "path: .pages-artifact" in text
 

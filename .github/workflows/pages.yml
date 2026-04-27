@@ -162,6 +162,7 @@ jobs:
                 <h1>Choose a preview</h1>
                 <p class="intro">
                   The online demos are read-only GitHub Pages sandboxes using public sample prompts and compressed preview images.
+                  Add/edit require local install; private library management are local-only.
                   Run the app locally for your own private full library.
                 </p>
                 <section class="versions" aria-label="Demo versions">
