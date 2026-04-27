@@ -1,8 +1,8 @@
 # Image Prompt Library
 
-[![CI](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
-[![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/release/EddieTYP/image-prompt-library?include_prereleases&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.2.0-alpha)
+[![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
+[![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.2.0-alpha)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 ChatGPT image generation has become good enough that the prompts are worth keeping. The problem is that once you start saving great outputs, screenshots, and variations, there still is not a simple private tool for managing image prompts like a real reference library.

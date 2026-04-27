@@ -33,6 +33,17 @@ def test_public_docs_do_not_use_edward_specific_setup_paths():
     assert "not licensed for redistribution" not in readme.lower()
 
 
+def test_public_readme_badges_use_public_status_urls():
+    readme = (ROOT / "README.md").read_text()
+
+    assert "https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg" in readme
+    assert "https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg" in readme
+    assert "actions/workflows/ci.yml/badge.svg" not in readme
+    assert "actions/workflows/pages.yml/badge.svg" not in readme
+    assert "https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release" in readme
+    assert "https://img.shields.io/github/v/release/EddieTYP/image-prompt-library" not in readme
+
+
 def test_public_import_and_example_data_section_prefers_attributed_demo_source():
     readme = (ROOT / "README.md").read_text()
 
