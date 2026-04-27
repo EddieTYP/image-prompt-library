@@ -50,3 +50,28 @@ def test_alpha_release_notes_are_public_safe_and_actionable():
     assert "OpenNana" not in notes
     assert "token" not in notes.lower()
     assert "secret" not in notes.lower()
+
+
+def test_v02_release_notes_describe_mobile_preview_and_versioned_pages():
+    notes_path = ROOT / "docs" / "releases" / "v0.2.0-alpha.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text()
+
+    assert "# Image Prompt Library v0.2.0-alpha" in notes
+    assert "0.2 Mobile browsing preview" in notes
+    assert "https://eddietyp.github.io/image-prompt-library/v0.2/" in notes
+    assert "https://eddietyp.github.io/image-prompt-library/v0.1/" in notes
+    assert "two-column masonry" in notes
+    assert "selected-collection dock" in notes
+    assert "Versioned GitHub Pages" in notes
+    assert "`/` is a lightweight version chooser" in notes
+    assert "read-only online sandboxes" in notes
+    assert "AGPL-3.0-or-later" in notes
+    assert "wuyoscar/gpt_image_2_skill" in notes
+    assert "Python 3.10+" in notes
+
+    assert "/Users/" not in notes
+    assert ".local-work" not in notes
+    assert "OpenNana" not in notes
+    assert "token" not in notes.lower()
+    assert "secret" not in notes.lower()

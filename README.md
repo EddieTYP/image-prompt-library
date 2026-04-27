@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/release/EddieTYP/image-prompt-library?include_prereleases&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.1.0-alpha)
+[![Release](https://img.shields.io/github/v/release/EddieTYP/image-prompt-library?include_prereleases&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.2.0-alpha)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 ChatGPT image generation has become good enough that the prompts are worth keeping. The problem is that once you start saving great outputs, screenshots, and variations, there still is not a simple private tool for managing image prompts like a real reference library.
@@ -11,9 +11,9 @@ ChatGPT image generation has become good enough that the prompts are worth keepi
 
 Your library stays on your own machine: local SQLite, local image files, no accounts, no cloud sync, and no hosted database required.
 
-**Online sandbox:** <https://eddietyp.github.io/image-prompt-library/> — a read-only GitHub Pages demo using public sample prompts. The sandbox images are compressed for web preview; run the app locally to create your own private full library.
+**Online sandbox:** <https://eddietyp.github.io/image-prompt-library/> — a read-only GitHub Pages version chooser using public sample prompts. Try the 0.2 mobile browsing preview at <https://eddietyp.github.io/image-prompt-library/v0.2/>, or open the archived 0.1 alpha demo at <https://eddietyp.github.io/image-prompt-library/v0.1/>. Sandbox images are compressed for web preview; run the app locally to create your own private full library.
 
-**Alpha release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.1.0-alpha>
+**Alpha release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.2.0-alpha>
 
 **Roadmap:** See [`ROADMAP.md`](ROADMAP.md) for the next-release mobile browsing and management plan.
 
@@ -45,7 +45,7 @@ Filters let you focus the same visual map on a single collection while keeping t
 
 ### Browse with masonry cards
 
-Cards view is designed for fast visual browsing. It keeps the library image-first, while still showing the title, collection, source, and quick actions.
+Cards view is designed for fast visual browsing. It keeps the library image-first with a clean title overlay and quick actions.
 
 ![Cards view showing the full sample library](docs/assets/screenshots/card-view-all.png)
 

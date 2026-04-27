@@ -14,12 +14,20 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+env:
+  LEGACY_DEMO_REF: v0.1.0-alpha
+  LEGACY_DEMO_PATH: v0.1
+  MOBILE_PREVIEW_PATH: v0.2
+
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - name: Setup Node
         uses: actions/setup-node@v5
         with:
@@ -27,8 +35,152 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install
-      - name: Build read-only demo
-        run: npm run build:demo
+      - name: Build v0.2 mobile browsing preview
+        run: VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/${MOBILE_PREVIEW_PATH}/ npm run build
+      - name: Stage v0.2 mobile browsing preview
+        run: |
+          mkdir -p .pages-artifact/${MOBILE_PREVIEW_PATH}
+          cp -R frontend/dist/. .pages-artifact/${MOBILE_PREVIEW_PATH}/
+      - name: Build archived v0.1 demo
+        run: |
+          git fetch --tags origin
+          git worktree add .page-build/${LEGACY_DEMO_PATH} ${LEGACY_DEMO_REF}
+          cd .page-build/${LEGACY_DEMO_PATH}
+          npm install
+          VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/${LEGACY_DEMO_PATH}/ npm run build
+      - name: Stage archived v0.1 demo
+        run: |
+          mkdir -p .pages-artifact/${LEGACY_DEMO_PATH}
+          cp -R .page-build/${LEGACY_DEMO_PATH}/frontend/dist/. .pages-artifact/${LEGACY_DEMO_PATH}/
+      - name: Write version chooser landing page
+        run: |
+          cat > .pages-artifact/index.html <<'HTML'
+          <!doctype html>
+          <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1" />
+              <title>Image Prompt Library demos</title>
+              <style>
+                :root {
+                  color: #2c2230;
+                  background: #faf9f4;
+                  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                }
+                body {
+                  min-height: 100vh;
+                  margin: 0;
+                  display: grid;
+                  place-items: center;
+                  padding: 32px;
+                  background:
+                    radial-gradient(circle at top left, rgba(109, 74, 255, .16), transparent 34vw),
+                    linear-gradient(135deg, #fffaf0, #f4f0ff 52%, #faf9f4);
+                }
+                main {
+                  width: min(920px, 100%);
+                  background: rgba(255, 255, 255, .82);
+                  border: 1px solid rgba(99, 80, 64, .12);
+                  border-radius: 32px;
+                  box-shadow: 0 28px 80px rgba(44, 34, 48, .14);
+                  padding: clamp(28px, 5vw, 56px);
+                }
+                .eyebrow {
+                  margin: 0 0 12px;
+                  color: #6d4aff;
+                  font-size: 13px;
+                  font-weight: 800;
+                  letter-spacing: .14em;
+                  text-transform: uppercase;
+                }
+                h1 {
+                  margin: 0;
+                  font-size: clamp(36px, 7vw, 72px);
+                  line-height: .95;
+                  letter-spacing: -.06em;
+                }
+                .intro {
+                  max-width: 680px;
+                  margin: 22px 0 32px;
+                  color: #6c5f6f;
+                  font-size: clamp(17px, 2.4vw, 21px);
+                  line-height: 1.6;
+                }
+                .versions {
+                  display: grid;
+                  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+                  gap: 16px;
+                }
+                a.version-card {
+                  display: block;
+                  min-height: 170px;
+                  padding: 24px;
+                  color: inherit;
+                  text-decoration: none;
+                  background: #fff;
+                  border: 1px solid rgba(44, 34, 48, .1);
+                  border-radius: 24px;
+                  box-shadow: 0 18px 42px rgba(44, 34, 48, .08);
+                  transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
+                }
+                a.version-card:hover,
+                a.version-card:focus-visible {
+                  transform: translateY(-3px);
+                  border-color: rgba(109, 74, 255, .34);
+                  box-shadow: 0 22px 52px rgba(44, 34, 48, .14);
+                  outline: none;
+                }
+                .version-label {
+                  display: inline-flex;
+                  align-items: center;
+                  border-radius: 999px;
+                  padding: 6px 10px;
+                  background: #eee8ff;
+                  color: #4d31d8;
+                  font-size: 12px;
+                  font-weight: 800;
+                }
+                h2 {
+                  margin: 18px 0 10px;
+                  font-size: 26px;
+                  letter-spacing: -.03em;
+                }
+                p {
+                  margin: 0;
+                  color: #756976;
+                  line-height: 1.55;
+                }
+                .stable .version-label {
+                  background: #f1eadf;
+                  color: #655442;
+                }
+              </style>
+            </head>
+            <body>
+              <main>
+                <p class="eyebrow">Image Prompt Library demos</p>
+                <h1>Choose a preview</h1>
+                <p class="intro">
+                  The online demos are read-only GitHub Pages sandboxes using public sample prompts and compressed preview images.
+                  Run the app locally for your own private full library.
+                </p>
+                <section class="versions" aria-label="Demo versions">
+                  <a class="version-card" href="./v0.2/">
+                    <span class="version-label">New · v0.2</span>
+                    <h2>Mobile browsing preview</h2>
+                    <p>Phone-first Cards browsing, two-column masonry, adaptive image display, compact mobile header, and selected-collection dock.</p>
+                  </a>
+                  <a class="version-card stable" href="./v0.1/">
+                    <span class="version-label">Archive · v0.1</span>
+                    <h2>Original alpha demo</h2>
+                    <p>The first public read-only sandbox is preserved as a stable backup/reference.</p>
+                  </a>
+                </section>
+              </main>
+            </body>
+          </html>
+          HTML
+          touch .pages-artifact/.nojekyll
       - name: Configure Pages
         uses: actions/configure-pages@v5
         with:
@@ -36,7 +188,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: frontend/dist
+          path: .pages-artifact
 
   deploy:
     environment:

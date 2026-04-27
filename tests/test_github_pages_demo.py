@@ -42,15 +42,33 @@ def test_github_pages_demo_is_read_only_and_discloses_compressed_images():
     assert "onEdit={isDemoMode ? undefined : editSummary}" in app
 
 
-def test_github_pages_workflow_deploys_demo_build():
+def test_github_pages_workflow_deploys_versioned_demo_builds():
     workflow = ROOT / ".github" / "workflows" / "pages.yml"
     assert workflow.exists()
     text = workflow.read_text()
     assert "actions/configure-pages" in text
     assert "actions/upload-pages-artifact" in text
     assert "actions/deploy-pages" in text
-    assert "npm run build:demo" in text
-    assert "frontend/dist" in text
+    assert "fetch-depth: 0" in text
+    assert "LEGACY_DEMO_REF: v0.1.0-alpha" in text
+    assert "MOBILE_PREVIEW_PATH: v0.2" in text
+    assert "VITE_BASE_PATH=/image-prompt-library/${MOBILE_PREVIEW_PATH}/ npm run build" in text
+    assert "git worktree add .page-build/${LEGACY_DEMO_PATH} ${LEGACY_DEMO_REF}" in text
+    assert "VITE_BASE_PATH=/image-prompt-library/${LEGACY_DEMO_PATH}/ npm run build" in text
+    assert ".pages-artifact/${MOBILE_PREVIEW_PATH}" in text
+    assert ".pages-artifact/${LEGACY_DEMO_PATH}" in text
+    assert "Choose a preview" in text
+    assert "Mobile browsing preview" in text
+    assert "Original alpha demo" in text
+    assert "path: .pages-artifact" in text
+
+
+def test_package_exposes_versioned_demo_build_scripts():
+    package_json = (ROOT / "package.json").read_text()
+    assert '"build:demo:v0.1"' in package_json
+    assert '"build:demo:v0.2"' in package_json
+    assert "VITE_BASE_PATH=/image-prompt-library/v0.1/" in package_json
+    assert "VITE_BASE_PATH=/image-prompt-library/v0.2/" in package_json
 
 
 def test_demo_export_script_outputs_compact_static_assets():
