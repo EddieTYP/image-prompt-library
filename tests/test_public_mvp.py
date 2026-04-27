@@ -68,12 +68,20 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "bottom dock instead of crowding the header" in readme
     assert "current 0.2 preview" in readme
     assert "archived 0.1 alpha demo" in readme
+    assert "The online demo is read-only" in readme
+    assert "install the app locally" in readme
+    assert "Add, edit, and private library management are local-only" in readme
 
     screenshots = [
         "card-view-all.png",
+        "mobile-cards-view.jpg",
+        "mobile-filter-drawer.jpg",
+        "mobile-detail-image.jpg",
+        "mobile-detail-prompt.jpg",
         "explore-view-home.png",
         "explore-view-filtered.png",
         "reference-item-detail.png",
+        "add-prompt-modal.png",
     ]
     for filename in screenshots:
         relative_path = f"docs/assets/screenshots/{filename}"

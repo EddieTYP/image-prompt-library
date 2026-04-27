@@ -11,7 +11,7 @@ ChatGPT image generation has become good enough that the prompts are worth keepi
 
 Your library stays on your own machine: local SQLite, local image files, no accounts, no cloud sync, and no hosted database required.
 
-**Online sandbox:** <https://eddietyp.github.io/image-prompt-library/> — a read-only GitHub Pages version chooser using public sample prompts. The current 0.2 preview is available at <https://eddietyp.github.io/image-prompt-library/v0.2/>, with the original 0.1 alpha archived at <https://eddietyp.github.io/image-prompt-library/v0.1/>. Sandbox images are compressed for web preview; run the app locally to create your own private full library.
+**Online sandbox:** <https://eddietyp.github.io/image-prompt-library/> — a read-only GitHub Pages version chooser using public sample prompts. The current 0.2 preview is available at <https://eddietyp.github.io/image-prompt-library/v0.2/>, with the original 0.1 alpha archived at <https://eddietyp.github.io/image-prompt-library/v0.1/>. Sandbox images are compressed for web preview. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own full library.
 
 **Alpha release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.2.0-alpha> — refreshes Cards browsing, mobile layout behavior, adaptive image display, and versioned public previews.
 
@@ -39,11 +39,18 @@ The screenshots below show the main browsing and detail flows. The 0.2 preview a
 
 Cards view is designed for fast visual scanning. In the 0.2 preview, cards use an image-first layout with a clean title overlay, quick actions, and adaptive image display for mixed portrait, landscape, and tall reference images.
 
-![Cards view showing the full sample library](docs/assets/screenshots/card-view-all.png)
+![Cards view showing a filtered sample collection](docs/assets/screenshots/card-view-all.png)
 
 ### Mobile-first browsing behavior
 
-On phones, the app defaults to Cards view, uses a stable two-column masonry layout, keeps quick actions touch-visible, and moves the selected collection into a bottom dock instead of crowding the header.
+On phones, the app defaults to Cards view, uses a stable two-column masonry layout, keeps quick actions touch-visible, and moves the selected collection into a bottom dock instead of crowding the header. Filters open as a full-height drawer, and the detail view keeps prompt tabs and copy/edit controls reachable without switching to a desktop layout.
+
+<p>
+  <img src="docs/assets/screenshots/mobile-cards-view.jpg" width="24%" alt="Mobile Cards view with two-column masonry" />
+  <img src="docs/assets/screenshots/mobile-filter-drawer.jpg" width="24%" alt="Mobile collection filter drawer" />
+  <img src="docs/assets/screenshots/mobile-detail-image.jpg" width="24%" alt="Mobile image-first detail view" />
+  <img src="docs/assets/screenshots/mobile-detail-prompt.jpg" width="24%" alt="Mobile prompt detail with language tabs" />
+</p>
 
 ### Explore your prompt library visually
 
@@ -158,6 +165,8 @@ Do not commit runtime `library/` data to git. It is your private prompt/image co
 4. Save the card.
 5. Use Cards/Explore, search, filters, and detail view to browse and copy prompts later.
 
+![Add prompt modal](docs/assets/screenshots/add-prompt-modal.png)
+
 ## Import and example data
 
 The app starts with an empty private library. Your own `library/` folder contains personal prompt data and images, so it is intentionally ignored by git.
@@ -206,7 +215,7 @@ The public Pages deployment is versioned:
 - `/v0.2/` — current 0.2 preview
 - `/v0.1/` — archived 0.1 alpha demo
 
-The demos read public sample metadata from `frontend/public/demo-data/`, use compressed WebP preview images, and disable write actions. They are intended only as online sandboxes; run the local app to create and manage your own private prompt library.
+The demos read public sample metadata from `frontend/public/demo-data/`, use compressed WebP preview images, and disable write actions. They are intended only as online sandboxes. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own private prompt library.
 
 ## Verification
 
