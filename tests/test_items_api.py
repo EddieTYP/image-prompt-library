@@ -32,6 +32,27 @@ def create_payload(**overrides):
     return payload
 
 
+def test_api_rejects_explicit_prompt_provenance_without_exactly_one_original(tmp_path):
+    c = client(tmp_path)
+    zero_original = create_payload(prompts=[
+        {"language": "en", "text": "English prompt", "is_original": False, "provenance": {"kind": "manual"}},
+        {"language": "zh_hant", "text": "中文 prompt", "is_original": False, "provenance": {"kind": "manual"}},
+    ])
+    multiple_originals = create_payload(prompts=[
+        {"language": "en", "text": "English prompt", "is_original": True, "provenance": {"kind": "manual"}},
+        {"language": "zh_hant", "text": "中文 prompt", "is_original": True, "provenance": {"kind": "manual"}},
+    ])
+
+    assert c.post("/api/items", json=zero_original).status_code == 400
+    assert c.post("/api/items", json=multiple_originals).status_code == 400
+
+    created = c.post("/api/items", json=create_payload(prompts=[
+        {"language": "en", "text": "English prompt", "is_original": True, "provenance": {"kind": "manual"}},
+        {"language": "zh_hant", "text": "中文 prompt", "is_original": False, "provenance": {"kind": "manual"}},
+    ])).json()
+    assert sum(1 for prompt in created["prompts"] if prompt["is_original"]) == 1
+
+
 def test_create_get_search_and_filter_item(tmp_path):
     c = client(tmp_path)
     created = c.post("/api/items", json=create_payload()).json()

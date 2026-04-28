@@ -1,0 +1,2 @@
+ALTER TABLE prompts ADD COLUMN is_original INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE prompts ADD COLUMN provenance TEXT;

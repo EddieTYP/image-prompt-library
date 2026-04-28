@@ -1,6 +1,6 @@
 # Maintainer Log
 
-Last updated: 2026-04-27
+Last updated: 2026-04-28
 
 This file records public-safe maintainer notes for the Image Prompt Library project. It is intentionally more detailed than `ROADMAP.md`, but it should not contain private machine paths, credentials, runtime data, or local workflow details.
 
@@ -64,13 +64,33 @@ Current accepted layout decisions:
 
 The detail modal should be the primary lightweight editing surface:
 
-- title, collection, metadata, prompts, tags, and notes can be edited in place
+- title, collection, metadata, prompts, tags, and notes can be edited in place in local-install mode
 - edits should use explicit confirm/cancel controls rather than blur-only auto-save
-- prompt panel uses ordered language tabs: English, Traditional Chinese, Simplified Chinese
+- read/detail prompt tabs should show English, Traditional Chinese, and Simplified Chinese consistently, including empty tabs for languages that are missing or only machine-derived later
+- the language that is the source/original prompt should be visually distinguished in both selected and unselected tab states, instead of requiring a long tab label such as `zh-Hans (Origin)` on the tab itself
+- prompt labels follow UI language: English UI uses `English`, `zh-Hant`, `zh-Hans`; Chinese UI uses `英文`, `繁中`, `簡中`; provenance badges/tooltips can still render `zh-Hans (Origin)` / `簡中（原文）` inside the prompt panel
+- Origin is a first-class provenance property and should carry its detected/source language, but the editor should not expose a separate Origin prompt block
 - prompt copy/edit actions apply to the active prompt tab
-- empty prompt tabs remain clickable/editable so missing translations can be added later
+- Prompt Copy Language should include Origin/原文 in addition to English/英文, Traditional Chinese/繁中, and Simplified Chinese/簡中
+- local-install edit mode should show exactly the normal prompt language blocks, each with an `is source/original` checkbox beside the block title; exactly one prompt can be marked original, and selecting a different one should require unchecking or otherwise explicitly moving the original marker
+- empty prompt tabs remain clickable/editable in local-install mode so missing translations can be added later
 - notes are separate from prompts and should stay visually lightweight when empty
 - tags stay near the bottom with a clear add/remove flow
+
+### UI language and sample-vault behavior
+
+The public GitHub Pages site should feel like a rich read-only prompt vault rather than a throwaway demo:
+
+- public Pages default UI language should be English unless localStorage already contains a user preference
+- switching UI language should update interface chrome, collection names, sample attribution/remark text, and prompt-language labels
+- item titles should honor the source/original title and should not be auto-translated just because the UI language changes
+- sample attribution/remark copy should begin with a UI-language-specific attribution sentence, then preserve source/license/manifest provenance
+- the `English` option inside the UI-language selector should remain spelled `English`; other Chinese-mode labels can use `英文`
+- public wording should describe Pages as a static read-only vault where visitors can browse/search/view/copy public sample prompts
+- public wording should make clear that the main product value is the local-first library architecture/workflow, not ownership of the bundled sample images
+- README/public docs should visibly thank the sample sources/contributors (`wuyoscar/gpt_image_2_skill` and `freestylefly/awesome-gpt-image-2`) and keep sample-content licensing separate from the app code license
+- Add/Edit/private management should remain clearly local-install only
+- the clone/local-install path should be informational and should not turn the Pages site into a checkout, SaaS, account, or commercial transaction flow
 
 ## Data and security rules
 
@@ -118,6 +138,8 @@ Recent preparation work includes:
 - verified a fresh clone setup/start/smoke-test path on a non-reserved port with Python 3.12, including empty-library onboarding and public sample-library installation
 - after public release, set the GitHub repo homepage to the read-only sandbox URL, polished README badges/release/demo affordances, drafted launch-post copy in the MacBook Downloads folder, verified unauthenticated public sample-data installation, and added SHA256 verification for the sample image ZIP
 - verified tests and frontend build before the latest public-alpha preparation commit
+- promoted the current preview to `v0.3.0-alpha` positioning: a multilingual provenance-aware prompt vault rather than a small patch on the 0.2 mobile preview
+- added versioned `/v0.3/` Pages output while preserving `/v0.2/` and `/v0.1/` as archived previews
 
 ## Sample data notes
 
@@ -125,11 +147,23 @@ The public sample path is the optional sample library installer:
 
 ```bash
 ./scripts/install-sample-data.sh en
+./scripts/install-sample-data.sh zh_hant awesome-gpt-image-2
 ```
 
-Sample metadata manifests live in `sample-data/manifests/`. The larger sample image bundle is distributed separately as a release asset so runtime/generated media are not committed to the repo.
+Sample metadata manifests live in `sample-data/manifests/`. Larger sample image bundles are distributed separately as release assets so runtime/generated media are not committed to the repo.
 
 Sample content must preserve third-party attribution and license metadata. The app's own code license does not automatically relicense sample content.
+
+Sample manifests now use a formal `schema_version: 2` provenance contract:
+
+- each item identifies exactly one existing prompt language as Origin/原文, rather than adding a separate editable Origin prompt block
+- the origin/source prompt records its detected/source language (`en`, `zh_hant`, `zh_hans`, or another explicit language code when needed)
+- source-provided English and Chinese prompts remain source text unless explicitly marked as derived
+- Traditional/Simplified Chinese conversion is marked as derived when generated from the other Chinese script
+- machine-translated prompt variants are explicitly marked as derived/translated; current sample manifests now carry English, Traditional Chinese, and Simplified Chinese prompt records for every public sample item
+- README/demo copy explains that the original/source prompt is normally the best prompt to reproduce a result close to the sample image
+- collection names are localized via manifest metadata, while titles preserve upstream/source wording
+- the static demo bundle combines both sample packages and exports 510 compressed public sample references
 
 ## Verification checklist
 
@@ -154,7 +188,7 @@ Before switching the repository public or tagging an alpha release, verify:
 The next product polish focus is a mobile-native experience rather than a scaled-down desktop layout:
 
 - Mobile should default to **Cards** when there is no saved user view preference; Cards is the primary mobile browsing mode.
-- Mobile Cards should support dense browsing with narrow phones around two columns and larger phones around three columns, with touch-visible actions for copy/favorite/edit flows.
+- Mobile Cards should support dense browsing with a stable two-column masonry layout on phones, with touch-visible actions for copy/favorite/edit flows.
 - Mobile Explore should be a contained interactive canvas: the page itself should not pinch-zoom or distort while the Explore surface supports one-finger pan and two-finger pinch zoom.
 - Mobile Explore layout should favor a vertical constellation/spine distribution instead of a wide desktop-style map.
 - Mobile detail view should stack image above content. The close control floats at the top-right of the image area; favorite and edit controls float at the image bottom-right; prompt, metadata, tags, and notes sit below.
@@ -175,7 +209,7 @@ Public-alpha follow-ups that remain useful:
 - enable private vulnerability reporting in GitHub settings if available
 - consider native Windows PowerShell scripts or Docker Compose for easier cross-platform setup
 - add export/import backup archive UI
-- complete the next mobile-native UX polish batch described above
+- continue mobile Explore gesture/contained-canvas polish after the current Cards/detail improvements
 - consider optional semantic/vector search
 
 ## Maintainer note policy

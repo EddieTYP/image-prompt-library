@@ -12,6 +12,17 @@ function initialTraditionalPrompt(item: ItemDetail | undefined) {
   return promptText(item, 'zh_hant') || promptText(item, 'original');
 }
 
+function initialOriginalLanguage(item: ItemDetail | undefined) {
+  const original = item?.prompts.find(prompt => prompt.is_original);
+  if (original?.language === 'en' || original?.language === 'zh_hant' || original?.language === 'zh_hans') return original.language;
+  return 'en';
+}
+
+function promptProvenance(language: string, originalLanguage: string) {
+  if (language === originalLanguage) return { kind: 'manual', source_language: language, derived_from: null, method: null };
+  return { kind: 'manual', source_language: originalLanguage, derived_from: originalLanguage, method: null };
+}
+
 export default function ItemEditorModal({
   item,
   t,
@@ -39,6 +50,7 @@ export default function ItemEditorModal({
   const [zhHantPrompt, setZhHantPrompt] = useState(initialTraditionalPrompt(item));
   const [zhHansPrompt, setZhHansPrompt] = useState(promptText(item, 'zh_hans'));
   const [englishPrompt, setEnglishPrompt] = useState(promptText(item, 'en'));
+  const [originalLanguage, setOriginalLanguage] = useState(initialOriginalLanguage(item));
   const [resultFile, setResultFile] = useState<File>();
   const [referenceFile, setReferenceFile] = useState<File>();
   const [saving, setSaving] = useState(false);
@@ -72,11 +84,21 @@ export default function ItemEditorModal({
     setSaving(true);
     setSaveError('');
     try {
-      const prompts = [
+      const promptDrafts = [
         { language: 'en', text: englishPrompt.trim(), is_primary: true },
         { language: 'zh_hant', text: zhHantPrompt.trim(), is_primary: !englishPrompt.trim() },
         { language: 'zh_hans', text: zhHansPrompt.trim(), is_primary: !englishPrompt.trim() && !zhHantPrompt.trim() },
-      ].filter(prompt => prompt.text);
+      ];
+      const availableOriginal = promptDrafts.find(prompt => prompt.language === originalLanguage && prompt.text)
+        ? originalLanguage
+        : promptDrafts.find(prompt => prompt.text)?.language || originalLanguage;
+      const prompts = promptDrafts
+        .filter(prompt => prompt.text)
+        .map(prompt => ({
+          ...prompt,
+          is_original: prompt.language === availableOriginal,
+          provenance: promptProvenance(prompt.language, availableOriginal),
+        }));
       const payload = {
         title: title.trim(),
         model: model.trim() || undefined,
@@ -167,15 +189,15 @@ export default function ItemEditorModal({
             )}
           </label>
           <label className="field prompt-field">
-            <span>{t('englishPrompt')}</span>
+            <span className="prompt-field-title">{t('englishPrompt')} <button type="button" className={`origin-marker ${originalLanguage === 'en' ? 'active' : ''}`} onClick={() => setOriginalLanguage('en')}>{originalLanguage === 'en' ? t('origin') : t('markAsOriginal')}</button></span>
             <textarea placeholder={t('englishPromptPlaceholder')} value={englishPrompt} onChange={e => setEnglishPrompt(e.target.value)} />
           </label>
           <label className="field prompt-field">
-            <span>{t('traditionalChinesePrompt')}</span>
+            <span className="prompt-field-title">{t('traditionalChinesePrompt')} <button type="button" className={`origin-marker ${originalLanguage === 'zh_hant' ? 'active' : ''}`} onClick={() => setOriginalLanguage('zh_hant')}>{originalLanguage === 'zh_hant' ? t('origin') : t('markAsOriginal')}</button></span>
             <textarea placeholder={t('traditionalPromptPlaceholder')} value={zhHantPrompt} onChange={e => setZhHantPrompt(e.target.value)} />
           </label>
           <label className="field prompt-field">
-            <span>{t('simplifiedChinesePrompt')}</span>
+            <span className="prompt-field-title">{t('simplifiedChinesePrompt')} <button type="button" className={`origin-marker ${originalLanguage === 'zh_hans' ? 'active' : ''}`} onClick={() => setOriginalLanguage('zh_hans')}>{originalLanguage === 'zh_hans' ? t('origin') : t('markAsOriginal')}</button></span>
             <textarea placeholder={t('simplifiedPromptPlaceholder')} value={zhHansPrompt} onChange={e => setZhHansPrompt(e.target.value)} />
           </label>
           <label className="field prompt-field">

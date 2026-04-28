@@ -58,7 +58,7 @@ def test_v02_release_notes_describe_mobile_preview_and_versioned_pages():
     notes = notes_path.read_text()
 
     assert "# Image Prompt Library v0.2.0-alpha" in notes
-    assert "0.2 Mobile browsing preview" in notes
+    assert "current 0.2 preview" in notes
     assert "https://eddietyp.github.io/image-prompt-library/v0.2/" in notes
     assert "https://eddietyp.github.io/image-prompt-library/v0.1/" in notes
     assert "two-column masonry" in notes
@@ -68,7 +68,36 @@ def test_v02_release_notes_describe_mobile_preview_and_versioned_pages():
     assert "read-only online sandboxes" in notes
     assert "AGPL-3.0-or-later" in notes
     assert "wuyoscar/gpt_image_2_skill" in notes
+    assert "freestylefly/awesome-gpt-image-2" in notes
     assert "Python 3.10+" in notes
+
+    assert "/Users/" not in notes
+    assert ".local-work" not in notes
+    assert "OpenNana" not in notes
+    assert "token" not in notes.lower()
+    assert "secret" not in notes.lower()
+
+
+def test_v03_release_notes_describe_multilingual_provenance_vault():
+    notes_path = ROOT / "docs" / "releases" / "v0.3.0-alpha.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text()
+
+    assert "# Image Prompt Library v0.3.0-alpha" in notes
+    assert "Multilingual provenance-aware prompt vault" in notes
+    assert "https://eddietyp.github.io/image-prompt-library/v0.3/" in notes
+    assert "https://eddietyp.github.io/image-prompt-library/v0.2/" in notes
+    assert "510 references" in notes
+    assert "English / Traditional Chinese / Simplified Chinese" in notes
+    assert "schema v2" in notes
+    assert "source/original prompt" in notes
+    assert "machine translations" in notes
+    assert "OpenCC script conversions" in notes
+    assert "wuyoscar/gpt_image_2_skill" in notes
+    assert "freestylefly/awesome-gpt-image-2" in notes
+    assert "read-only" in notes
+    assert "local installation" in notes
+    assert "AGPL-3.0-or-later" in notes
 
     assert "/Users/" not in notes
     assert ".local-work" not in notes

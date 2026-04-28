@@ -1,80 +1,248 @@
 [
   {
-    "id": "tag_20c12a5f91c7419a",
+    "id": "tag_5d39eb13e4f442a9",
     "name": "architecture-interiors",
     "kind": "general",
     "count": 7
   },
   {
-    "id": "tag_d4008beb95264c84",
+    "id": "tag_cc648cdd1fec4b43",
+    "name": "architecture-space",
+    "kind": "general",
+    "count": 17
+  },
+  {
+    "id": "tag_06d8d25c2a374645",
     "name": "art-illustration",
     "kind": "general",
     "count": 16
   },
   {
-    "id": "tag_f9018835f4444f36",
+    "id": "tag_ead9dc5449554137",
+    "name": "awesome_gpt_image_2",
+    "kind": "general",
+    "count": 348
+  },
+  {
+    "id": "tag_f57c0d38f32e4d5b",
+    "name": "bilingual_prompt",
+    "kind": "general",
+    "count": 161
+  },
+  {
+    "id": "tag_2688485f960b480c",
+    "name": "brand-logo",
+    "kind": "general",
+    "count": 8
+  },
+  {
+    "id": "tag_47236bba48034e31",
+    "name": "brand_design",
+    "kind": "general",
+    "count": 58
+  },
+  {
+    "id": "tag_871b3c362af343e8",
+    "name": "character",
+    "kind": "general",
+    "count": 115
+  },
+  {
+    "id": "tag_b3bf7bca4f454701",
     "name": "characters-anime",
     "kind": "general",
     "count": 26
   },
   {
-    "id": "tag_6897eea187bf4e91",
+    "id": "tag_6337d6d85cf74a14",
+    "name": "characters-portraits",
+    "kind": "general",
+    "count": 20
+  },
+  {
+    "id": "tag_cf7494442f4748a8",
+    "name": "charts-infographics",
+    "kind": "general",
+    "count": 50
+  },
+  {
+    "id": "tag_877468162bf84130",
+    "name": "chinese_style",
+    "kind": "general",
+    "count": 16
+  },
+  {
+    "id": "tag_57508eb604d24f31",
     "name": "cinematic-storytelling",
     "kind": "general",
     "count": 16
   },
   {
-    "id": "tag_b4824f79b4b54f6f",
+    "id": "tag_1814eb315eb14bae",
     "name": "design-typography",
     "kind": "general",
     "count": 23
   },
   {
-    "id": "tag_3a8fd45a03504c45",
+    "id": "tag_2ac6c323d3f14c11",
+    "name": "documents-publishing",
+    "kind": "general",
+    "count": 1
+  },
+  {
+    "id": "tag_48e7c236485341c2",
     "name": "education-infographics",
     "kind": "general",
     "count": 16
   },
   {
-    "id": "tag_43dad4db86c2476c",
+    "id": "tag_5ee6ddfe2b5a4d4f",
     "name": "fashion-lifestyle",
     "kind": "general",
     "count": 9
   },
   {
-    "id": "tag_d0d97c2aee414faf",
+    "id": "tag_e2560ab467a44d98",
     "name": "full_catalog",
     "kind": "general",
-    "count": 162
+    "count": 510
   },
   {
-    "id": "tag_120ada9d335c46de",
+    "id": "tag_df588adb4bda4cfe",
     "name": "gpt_image_2_skill",
     "kind": "general",
     "count": 162
   },
   {
-    "id": "tag_b23d6ea3393e4005",
+    "id": "tag_08132eb7268d4736",
+    "name": "historical-chinese",
+    "kind": "general",
+    "count": 5
+  },
+  {
+    "id": "tag_1e0b5d29255b4b61",
+    "name": "illustration",
+    "kind": "general",
+    "count": 90
+  },
+  {
+    "id": "tag_fc0cc93e7a7745b8",
+    "name": "illustration-art",
+    "kind": "general",
+    "count": 27
+  },
+  {
+    "id": "tag_9ba686f22dcb4fb0",
+    "name": "infographic",
+    "kind": "general",
+    "count": 55
+  },
+  {
+    "id": "tag_8bbdf03a6e1f4155",
     "name": "photo-real-world",
     "kind": "general",
     "count": 10
   },
   {
-    "id": "tag_e25e01e50059483d",
-    "name": "sample",
+    "id": "tag_c71641c800de460b",
+    "name": "photography-realism",
     "kind": "general",
-    "count": 162
+    "count": 33
   },
   {
-    "id": "tag_0a7785767ea14c2a",
+    "id": "tag_13e3ca39aacf40c7",
+    "name": "photoreal",
+    "kind": "general",
+    "count": 86
+  },
+  {
+    "id": "tag_c779407fce1a4c73",
+    "name": "poster",
+    "kind": "general",
+    "count": 74
+  },
+  {
+    "id": "tag_4ed60ad9d6734704",
+    "name": "poster-typography",
+    "kind": "general",
+    "count": 82
+  },
+  {
+    "id": "tag_65d27e20fe3d48ec",
+    "name": "product-ecommerce",
+    "kind": "general",
+    "count": 19
+  },
+  {
+    "id": "tag_16d3a8c5d1704da2",
+    "name": "product_design",
+    "kind": "general",
+    "count": 67
+  },
+  {
+    "id": "tag_f5a0765acb0a417d",
+    "name": "prompt_as_code",
+    "kind": "general",
+    "count": 145
+  },
+  {
+    "id": "tag_e9f76940329247c5",
+    "name": "sample",
+    "kind": "general",
+    "count": 510
+  },
+  {
+    "id": "tag_e8f7a686b72a4eb2",
+    "name": "sample_package_2",
+    "kind": "general",
+    "count": 348
+  },
+  {
+    "id": "tag_a7280eef17aa4ca1",
+    "name": "scenes-storytelling",
+    "kind": "general",
+    "count": 5
+  },
+  {
+    "id": "tag_eac6febbbbc84eff",
+    "name": "sports",
+    "kind": "general",
+    "count": 19
+  },
+  {
+    "id": "tag_f47449914b6641d4",
     "name": "technical-research",
     "kind": "general",
     "count": 31
   },
   {
-    "id": "tag_b23a548f7c404e89",
+    "id": "tag_83ef550496a2481e",
     "name": "ui-brand-product",
     "kind": "general",
     "count": 8
+  },
+  {
+    "id": "tag_d33147bee0884959",
+    "name": "ui-interface",
+    "kind": "general",
+    "count": 81
+  },
+  {
+    "id": "tag_51a8024d4b004ec9",
+    "name": "ui_mockup",
+    "kind": "general",
+    "count": 59
+  },
+  {
+    "id": "tag_d6eff0cf2bef404b",
+    "name": "x_source",
+    "kind": "general",
+    "count": 320
+  },
+  {
+    "id": "tag_231735ce992d4d17",
+    "name": "xiaohongshu_source",
+    "kind": "general",
+    "count": 18
   }
 ]

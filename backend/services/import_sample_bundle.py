@@ -22,7 +22,7 @@ def _load_manifest(path: Path) -> dict[str, Any]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("Sample manifest must be a JSON object")
-    if data.get("schema_version") != 1:
+    if data.get("schema_version") not in {1, 2}:
         raise ValueError("Unsupported sample manifest schema_version")
     if not isinstance(data.get("items"), list):
         raise ValueError("Sample manifest must contain an items list")
@@ -47,11 +47,22 @@ def _collection_name(collection: dict[str, Any] | None, language: str) -> str:
         return "Sample prompts"
     names = collection.get("names") if isinstance(collection.get("names"), dict) else {}
     return (
-        _clean_text(collection.get("name"))
-        or _clean_text(names.get(language))
+        _clean_text(names.get(language))
         or _clean_text(names.get("en"))
+        or _clean_text(collection.get("name"))
         or "Sample prompts"
     )
+
+
+def _collection_names(collection: dict[str, Any] | None) -> dict[str, str]:
+    if not collection:
+        return {}
+    names = collection.get("names") if isinstance(collection.get("names"), dict) else {}
+    out = {str(key): str(value).strip() for key, value in names.items() if str(value).strip()}
+    fallback = _clean_text(collection.get("name"))
+    if fallback and not out:
+        out["en"] = fallback
+    return out
 
 
 def _prompts(item: dict[str, Any]) -> list[PromptIn]:
@@ -63,12 +74,48 @@ def _prompts(item: dict[str, Any]) -> list[PromptIn]:
         text = _clean_text(prompt.get("text"))
         if not text:
             continue
-        prompts.append(PromptIn(language=language, text=text, is_primary=bool(prompt.get("is_primary", index == 0))))
+        provenance = prompt.get("provenance") if isinstance(prompt.get("provenance"), dict) else {}
+        prompts.append(PromptIn(
+            language=language,
+            text=text,
+            is_primary=bool(prompt.get("is_primary", index == 0)),
+            is_original=bool(prompt.get("is_original")),
+            provenance=provenance,
+        ))
     if not prompts:
         title = _clean_text(item.get("title")) or "Untitled sample prompt"
-        prompts.append(PromptIn(language="en", text=title, is_primary=True))
+        prompts.append(PromptIn(
+            language="en",
+            text=title,
+            is_primary=True,
+            is_original=True,
+            provenance={"kind": "manual", "source_language": "en", "derived_from": None, "method": None},
+        ))
     if not any(prompt.is_primary for prompt in prompts):
         prompts[0].is_primary = True
+    if not any(prompt.is_original for prompt in prompts):
+        prompts[0].is_original = True
+    original_language = next(prompt.language for prompt in prompts if prompt.is_original)
+    original_seen = False
+    for prompt in prompts:
+        if prompt.is_original and not original_seen:
+            original_seen = True
+            prompt.provenance = {
+                **prompt.provenance,
+                "kind": prompt.provenance.get("kind") or "source",
+                "source_language": prompt.provenance.get("source_language") or prompt.language,
+                "derived_from": prompt.provenance.get("derived_from"),
+                "method": prompt.provenance.get("method"),
+            }
+        else:
+            prompt.is_original = False
+            prompt.provenance = {
+                **prompt.provenance,
+                "kind": prompt.provenance.get("kind") or "manual",
+                "source_language": prompt.provenance.get("source_language") or original_language,
+                "derived_from": prompt.provenance.get("derived_from") or original_language,
+                "method": prompt.provenance.get("method"),
+            }
     return prompts
 
 
@@ -84,8 +131,19 @@ def _replace_prompts_exactly(library_path: Path, repo: ItemRepository, item_id: 
         conn.execute("DELETE FROM prompts WHERE item_id=?", (item_id,))
         for index, prompt in enumerate(prompts):
             conn.execute(
-                "INSERT INTO prompts(id,item_id,language,text,is_primary,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
-                (new_id("prm"), item_id, prompt.language, prompt.text, int(prompt.is_primary or index == 0), timestamp, timestamp),
+                """INSERT INTO prompts(id,item_id,language,text,is_primary,is_original,provenance,created_at,updated_at)
+                    VALUES(?,?,?,?,?,?,?,?,?)""",
+                (
+                    new_id("prm"),
+                    item_id,
+                    prompt.language,
+                    prompt.text,
+                    int(prompt.is_primary or index == 0),
+                    int(prompt.is_original),
+                    json.dumps(prompt.provenance or {}, ensure_ascii=False),
+                    timestamp,
+                    timestamp,
+                ),
             )
         repo.rebuild_search(conn, item_id)
         conn.commit()
@@ -156,6 +214,7 @@ def import_sample_bundle(manifest_path: Path | str, assets_dir: Path | str, libr
             imported=True,
         )
         _replace_prompts_exactly(library_path, repo, created.id, prompt_values)
+        repo.update_cluster_names(created.cluster.id if created.cluster else None, _collection_names(collection))
         item_count += 1
 
         image_value = _clean_text(item.get("image"))

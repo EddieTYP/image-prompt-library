@@ -122,11 +122,13 @@ def export_demo(library_path: Path, output: Path = DEFAULT_OUTPUT) -> None:
     items = [_rewrite_item(library_path, media_dir, repo.get_item(item.id).model_dump(mode="json")) for item in item_list.items]
     clusters = _rewrite_cluster_previews([cluster.model_dump(mode="json") for cluster in repo.list_clusters()], items)
     tags = [tag.model_dump(mode="json") for tag in repo.list_tags()]
+    sources = sorted({item.source_name for item in item_list.items if item.source_name})
+    source_label = "; ".join(sources) if sources else "sample data"
     metadata = {
         "title": "Image Prompt Library online sandbox",
         "mode": "read-only",
         "image_note": "Images are compressed for the web demo.",
-        "source": "wuyoscar/gpt_image_2_skill sample data, CC BY 4.0",
+        "source": source_label,
         "item_count": len(items),
         "image_max_width": DEMO_IMAGE_MAX_WIDTH,
         "image_quality": DEMO_IMAGE_QUALITY,

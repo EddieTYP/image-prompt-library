@@ -1,10 +1,12 @@
-from typing import List, Optional
+from typing import Any, List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 class PromptIn(BaseModel):
     language: str = "original"
     text: str
     is_primary: bool = False
+    is_original: bool = False
+    provenance: dict[str, Any] = Field(default_factory=dict)
 
 class PromptRecord(PromptIn):
     id: str
@@ -29,6 +31,7 @@ class ImageRecord(BaseModel):
 class ClusterRecord(BaseModel):
     id: str
     name: str
+    names: dict[str, str] = Field(default_factory=dict)
     description: Optional[str] = None
     sort_order: int = 0
     count: int = 0

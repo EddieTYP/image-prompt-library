@@ -504,7 +504,7 @@ def test_ui_language_setting_localizes_main_chrome():
     assert "t('filters')" in topbar
     assert "t('searchPlaceholder')" in topbar
     assert "t('noMatchingPrompts')" in cards
-    assert "export type UiLanguage = 'zh_hant' | 'zh_hans' | 'en'" in i18n
+    assert "export type { UiLanguage } from '../types'" in i18n
     assert "繁體中文" in i18n and "简体中文" in i18n and "English" in i18n
     assert "搜尋所有 prompts、標題、標籤…" in i18n
     assert "Search all prompts, titles, tags…" in i18n
@@ -651,7 +651,7 @@ def test_detail_modal_supports_inline_editing_contract():
     assert "lastDefaultPromptKeyRef.current = defaultPromptKey" in detail
     assert "setLang(nextPrompt.language)" in detail
     assert "const prompt = item?.prompts.find(promptRecord => promptRecord.language === lang)" in detail
-    assert "const resolvedPrompt = resolvePromptRecord(availablePromptRecords, lang, preferredLanguage)" in detail
+    assert "const resolvedPrompt = resolvePromptRecord(availablePromptRecords, lang, fallbackLanguage)" in detail
     assert "promptDisplayOrder.map(promptLanguage" in detail
     assert "const tabPrompt = item.prompts.find(prompt => prompt.language === promptLanguage)" in detail
     assert "onClick={() => { setLang(promptLanguage); cancelPromptEdit(); }}" in detail
@@ -714,7 +714,7 @@ def test_editor_supports_multilingual_prompts_collection_suggestions_and_image_r
     api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
     i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
 
-    assert "clusters={clusters}" in app
+    assert "clusters={localizedClusters}" in app
     assert "tags={tags}" in app
     assert "clusters: ClusterRecord[]" in editor
     assert "tags: TagRecord[]" in editor
@@ -739,8 +739,10 @@ def test_editor_supports_multilingual_prompts_collection_suggestions_and_image_r
     assert "tag-suggestions" in editor
     assert "filteredTags" in editor
     assert "list=\"tag-suggestions\"" in editor
-    assert "Original" not in detail
-    assert "'original'" not in detail
+    assert "origin-badge" in detail
+    assert "is_original" in detail
+    assert "originalLanguage" in editor
+    assert "is_original: prompt.language === availableOriginal" in editor
     assert "t('resultImageRequired')" in editor and "required" in editor
     assert "t('referencePhotoOptional')" in editor and "optional" in i18n.lower()
     assert "resultFile" in editor and "referenceFile" in editor
@@ -782,3 +784,24 @@ def test_delete_action_archives_item_and_refreshes_visible_data():
     assert "confirm(t('deleteReferenceConfirm'))" in editor
     assert "api.deleteItem(item.id)" in editor
     assert "danger" in editor
+
+
+def test_prompt_copy_language_labels_follow_ui_language():
+    prompts = (ROOT / "frontend" / "src" / "utils" / "prompts.ts").read_text()
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+    assert "getPromptCopyLanguageLabel(language, uiLanguage)" in config
+    assert "zh_hant: { origin: '原文', en: '英文', zh_hant: '繁中', zh_hans: '簡中' }" in prompts
+    assert "en: { origin: 'Origin', en: 'English', zh_hant: 'zh-Hant', zh_hans: 'zh-Hans' }" in prompts
+    assert "PROMPT_COPY_LANGUAGE_LABELS[language]" not in config
+
+
+def test_collection_names_are_localized_from_cluster_names_metadata():
+    types = (ROOT / "frontend" / "src" / "types.ts").read_text()
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    assert "names?: Partial<Record<UiLanguage, string>>" in types
+    assert "function localizedClusterName(cluster: ClusterRecord | undefined, language: UiLanguage)" in app
+    assert "localizedClusters" in app
+    assert "localizedData" in app
+    assert "clusters={localizedClusters}" in app
+    assert "items={localizedData.items}" in app
+    assert "clusterName={localizedClusterName(selectedCluster, uiLanguage)}" in app

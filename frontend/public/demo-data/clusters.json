@@ -1,132 +1,395 @@
 [
   {
-    "id": "clu_18c2db3af302411e",
+    "id": "clu_42ad61eee58e4be9",
     "name": "Architecture & Interiors",
+    "names": {
+      "en": "Architecture & Interiors",
+      "zh_hans": "建筑与室内",
+      "zh_hant": "建築與室內"
+    },
     "description": null,
     "sort_order": 0,
     "count": 7,
     "preview_images": [
-      "demo-data/media/img_5108491cec114c54.webp",
-      "demo-data/media/img_4459cf4001834c5b.webp",
-      "demo-data/media/img_283ee311291a4e9d.webp",
-      "demo-data/media/img_99ea33b72c0d4f43.webp"
+      "demo-data/media/img_6b599ac6b8d94e44.webp",
+      "demo-data/media/img_968670ed8bc74e98.webp",
+      "demo-data/media/img_1d09992713764104.webp",
+      "demo-data/media/img_6d6a7a4bfe244814.webp"
     ]
   },
   {
-    "id": "clu_d28ad3fd9e07472d",
+    "id": "clu_66480d5235704123",
     "name": "Art & Illustration",
+    "names": {
+      "en": "Art & Illustration",
+      "zh_hans": "艺术与插画",
+      "zh_hant": "藝術與插畫"
+    },
     "description": null,
     "sort_order": 0,
     "count": 16,
     "preview_images": [
-      "demo-data/media/img_a590c55059ef4d09.webp",
-      "demo-data/media/img_7ef2314daba34740.webp",
-      "demo-data/media/img_27086a2daf894e46.webp",
-      "demo-data/media/img_97d1e48efc1245e7.webp"
+      "demo-data/media/img_9facf881682345bf.webp",
+      "demo-data/media/img_46989bdc4aa94cb0.webp",
+      "demo-data/media/img_ebcff189b3e340a9.webp",
+      "demo-data/media/img_92affe1be9e5435f.webp"
     ]
   },
   {
-    "id": "clu_261d101866cf4a25",
+    "id": "clu_5e5c8ef56299496f",
     "name": "Characters & Anime",
+    "names": {
+      "en": "Characters & Anime",
+      "zh_hans": "角色与动漫",
+      "zh_hant": "角色與動畫"
+    },
     "description": null,
     "sort_order": 0,
     "count": 26,
     "preview_images": [
-      "demo-data/media/img_ff96aadd686046c8.webp",
-      "demo-data/media/img_be443f7384c44861.webp",
-      "demo-data/media/img_d51e9813133542f2.webp",
-      "demo-data/media/img_0389f716791445e4.webp"
+      "demo-data/media/img_e7d65b08c6c341bf.webp",
+      "demo-data/media/img_95481998a5da49b4.webp",
+      "demo-data/media/img_c816254eef1a46c7.webp",
+      "demo-data/media/img_d7935866d01d47a6.webp"
     ]
   },
   {
-    "id": "clu_3ec62ee900c84f72",
+    "id": "clu_e7808e4ef0234870",
     "name": "Cinematic Storytelling",
+    "names": {
+      "en": "Cinematic Storytelling",
+      "zh_hans": "电影叙事",
+      "zh_hant": "電影敘事"
+    },
     "description": null,
     "sort_order": 0,
     "count": 16,
     "preview_images": [
-      "demo-data/media/img_8789e5730bc44731.webp",
-      "demo-data/media/img_dcc6ebe1f5914bf1.webp",
-      "demo-data/media/img_fb3d420ed971493b.webp",
-      "demo-data/media/img_18f6fa72ccfa42e2.webp"
+      "demo-data/media/img_d3353c68855d4216.webp",
+      "demo-data/media/img_6ac9aa4d452f47df.webp",
+      "demo-data/media/img_dfd8deb7c5b94efc.webp",
+      "demo-data/media/img_dfeee400291e44c0.webp"
     ]
   },
   {
-    "id": "clu_c8c76d5b8bde480d",
+    "id": "clu_af7fc38aff784247",
     "name": "Design, Posters & Typography",
+    "names": {
+      "en": "Design, Posters & Typography",
+      "zh_hans": "设计、海报与字体",
+      "zh_hant": "設計、海報與字體"
+    },
     "description": null,
     "sort_order": 0,
     "count": 23,
     "preview_images": [
-      "demo-data/media/img_0f3999b4293d4333.webp",
-      "demo-data/media/img_2a3d75d678494674.webp",
-      "demo-data/media/img_e92dd0e15936458d.webp",
-      "demo-data/media/img_378420e0eb914a7e.webp"
+      "demo-data/media/img_90885838d7da43b1.webp",
+      "demo-data/media/img_e690d920b43d4c46.webp",
+      "demo-data/media/img_dc5fe68b6cb3416a.webp",
+      "demo-data/media/img_691cbeb535174735.webp"
     ]
   },
   {
-    "id": "clu_4a46948c31f84b34",
+    "id": "clu_df232376278d429a",
     "name": "Education & Infographics",
+    "names": {
+      "en": "Education & Infographics",
+      "zh_hans": "教育与信息图",
+      "zh_hant": "教育與資訊圖表"
+    },
     "description": null,
     "sort_order": 0,
     "count": 16,
     "preview_images": [
-      "demo-data/media/img_777837bcfc6a4b0b.webp",
-      "demo-data/media/img_7196e2c3290a4d44.webp",
-      "demo-data/media/img_be95a8a4f7e6467c.webp",
-      "demo-data/media/img_5b7cc243d7fd4c1c.webp"
+      "demo-data/media/img_df4c3fcf41054571.webp",
+      "demo-data/media/img_b8041fca10954b3a.webp",
+      "demo-data/media/img_044e8c9178694e8a.webp",
+      "demo-data/media/img_74ae33a163cc4bef.webp"
     ]
   },
   {
-    "id": "clu_88948d1ff86e49f0",
+    "id": "clu_4a17ab790da9474e",
     "name": "Fashion, Beauty & Lifestyle",
+    "names": {
+      "en": "Fashion, Beauty & Lifestyle",
+      "zh_hans": "时尚、美容与生活风格",
+      "zh_hant": "時尚、美容與生活風格"
+    },
     "description": null,
     "sort_order": 0,
     "count": 9,
     "preview_images": [
-      "demo-data/media/img_e95570ca1a1a491c.webp",
-      "demo-data/media/img_93a40db5f0334c62.webp",
-      "demo-data/media/img_4fe0621b9b1540fa.webp",
-      "demo-data/media/img_66f642be24564bd0.webp"
+      "demo-data/media/img_3e2eab0bdc9647d3.webp",
+      "demo-data/media/img_580d54ceff7c4fb7.webp",
+      "demo-data/media/img_4d91835579ae4751.webp",
+      "demo-data/media/img_0da0689b888f4d75.webp"
     ]
   },
   {
-    "id": "clu_dd91090d117b426f",
+    "id": "clu_82f91b5b0d214932",
     "name": "Photography & Real-world Screens",
+    "names": {
+      "en": "Photography & Real-world Screens",
+      "zh_hans": "摄影与真实屏幕",
+      "zh_hant": "攝影與真實屏幕"
+    },
     "description": null,
     "sort_order": 0,
     "count": 10,
     "preview_images": [
-      "demo-data/media/img_8edb9ac7c336488a.webp",
-      "demo-data/media/img_43c9212e37b042b8.webp",
-      "demo-data/media/img_056c6e7edce14fa6.webp",
-      "demo-data/media/img_c5bd0832eb9c4bd6.webp"
+      "demo-data/media/img_8683d05e8a214d29.webp",
+      "demo-data/media/img_73c3c7cc4c2744bd.webp",
+      "demo-data/media/img_abb71f0e6b98428c.webp",
+      "demo-data/media/img_2c8e3a72a59247b4.webp"
     ]
   },
   {
-    "id": "clu_d0cbece200154f99",
+    "id": "clu_160ef580f7bd4e41",
     "name": "Technical & Research Diagrams",
+    "names": {
+      "en": "Technical & Research Diagrams",
+      "zh_hans": "技术与研究图解",
+      "zh_hant": "技術與研究圖解"
+    },
     "description": null,
     "sort_order": 0,
     "count": 31,
     "preview_images": [
-      "demo-data/media/img_cad41a1ff1684aa7.webp",
-      "demo-data/media/img_0b7725ee72394808.webp",
-      "demo-data/media/img_09b6bc118d7643a2.webp",
-      "demo-data/media/img_4fddb0311c3b4cae.webp"
+      "demo-data/media/img_709c31a164434d11.webp",
+      "demo-data/media/img_b755e1417ad5492d.webp",
+      "demo-data/media/img_f509cf5af337420c.webp",
+      "demo-data/media/img_1979ff16cced461a.webp"
     ]
   },
   {
-    "id": "clu_02594c83beca48ce",
+    "id": "clu_1db7582b90274497",
+    "name": "UI 與介面",
+    "names": {
+      "en": "UI & Interface",
+      "zh_hans": "UI与界面",
+      "zh_hant": "UI 與介面"
+    },
+    "description": null,
+    "sort_order": 0,
+    "count": 81,
+    "preview_images": [
+      "demo-data/media/img_5b6b99b047d340b5.webp",
+      "demo-data/media/img_10ab1a04662f41d9.webp",
+      "demo-data/media/img_3b9869a2e53f4b93.webp",
+      "demo-data/media/img_f0793f94333c4573.webp"
+    ]
+  },
+  {
+    "id": "clu_c773d415d2c641fe",
     "name": "UI, Brand & Product",
+    "names": {
+      "en": "UI, Brand & Product",
+      "zh_hans": "界面、品牌与产品",
+      "zh_hant": "介面、品牌與產品"
+    },
     "description": null,
     "sort_order": 0,
     "count": 8,
     "preview_images": [
-      "demo-data/media/img_5b3198ed20654cbc.webp",
-      "demo-data/media/img_5c77cbe191714465.webp",
-      "demo-data/media/img_ea18d0ab8f324b41.webp",
-      "demo-data/media/img_ffd562caec52446b.webp"
+      "demo-data/media/img_8a95d931071b4ea0.webp",
+      "demo-data/media/img_295f69d75aa1460f.webp",
+      "demo-data/media/img_84886f877487400b.webp",
+      "demo-data/media/img_cf982a331fb24d64.webp"
+    ]
+  },
+  {
+    "id": "clu_f569a8ad643c43f3",
+    "name": "人物與角色",
+    "names": {
+      "en": "Characters & Portraits",
+      "zh_hans": "人物与角色",
+      "zh_hant": "人物與角色"
+    },
+    "description": null,
+    "sort_order": 0,
+    "count": 20,
+    "preview_images": [
+      "demo-data/media/img_e04d4bcee5f14d8b.webp",
+      "demo-data/media/img_7672d969f058494c.webp",
+      "demo-data/media/img_c9114f6f5c7a4cf1.webp",
+      "demo-data/media/img_cbb0d7609942441c.webp"
+    ]
+  },
+  {
+    "id": "clu_31547c9f152c4dac",
+    "name": "品牌與標誌",
+    "names": {
+      "en": "Brand & Logo",
+      "zh_hans": "品牌与标志",
+      "zh_hant": "品牌與標誌"
+    },
+    "description": null,
+    "sort_order": 0,
+    "count": 8,
+    "preview_images": [
+      "demo-data/media/img_63cfb58d6b674559.webp",
+      "demo-data/media/img_773e4a7030874339.webp",
+      "demo-data/media/img_465d6ead8a8345a6.webp",
+      "demo-data/media/img_560aa52afcb347c4.webp"
+    ]
+  },
+  {
+    "id": "clu_d0b066f351b44458",
+    "name": "商品與電商",
+    "names": {
+      "en": "Product & E-commerce",
+      "zh_hans": "商品与电商",
+      "zh_hant": "商品與電商"
+    },
+    "description": null,
+    "sort_order": 0,
+    "count": 19,
+    "preview_images": [
+      "demo-data/media/img_90c63084e7454bc4.webp",
+      "demo-data/media/img_6541f70d6f9443c1.webp",
+      "demo-data/media/img_7542cd5d2eed40a7.webp",
+      "demo-data/media/img_daf86f097c2546f1.webp"
+    ]
+  },
+  {
+    "id": "clu_331d30ba8b6a48e6",
+    "name": "圖表與資訊視覺化",
+    "names": {
+      "en": "Charts & Infographics",
+      "zh_hans": "图表与信息可视化",
+      "zh_hant": "圖表與資訊視覺化"
+    },
+    "description": null,
+    "sort_order": 0,
+    "count": 50,
+    "preview_images": [
+      "demo-data/media/img_b7ee2199033845f2.webp",
+      "demo-data/media/img_52d072d84fb8414e.webp",
+      "demo-data/media/img_50ae5e36d39a423d.webp",
+      "demo-data/media/img_f253b77b0ca14bb4.webp"
+    ]
+  },
+  {
+    "id": "clu_4328a28a2bcd4ba6",
+    "name": "場景與敘事",
+    "names": {
+      "en": "Scenes & Storytelling",
+      "zh_hans": "场景与叙事",
+      "zh_hant": "場景與敘事"
+    },
+    "description": null,
+    "sort_order": 0,
+    "count": 5,
+    "preview_images": [
+      "demo-data/media/img_e216f11825884386.webp",
+      "demo-data/media/img_806e0d9290414d3d.webp",
+      "demo-data/media/img_65ce5f09976f451c.webp",
+      "demo-data/media/img_5b8f49d4bf4a457e.webp"
+    ]
+  },
+  {
+    "id": "clu_0b31b6d82fe7436b",
+    "name": "建築與空間",
+    "names": {
+      "en": "Architecture & Space",
+      "zh_hans": "建筑与空间",
+      "zh_hant": "建築與空間"
+    },
+    "description": null,
+    "sort_order": 0,
+    "count": 17,
+    "preview_images": [
+      "demo-data/media/img_bd874897418f4def.webp",
+      "demo-data/media/img_afeb9db2c2534416.webp",
+      "demo-data/media/img_a073d9ee64c14a80.webp",
+      "demo-data/media/img_6950d8b332f54b07.webp"
+    ]
+  },
+  {
+    "id": "clu_8f34c36883e04de9",
+    "name": "插畫與藝術",
+    "names": {
+      "en": "Illustration & Art",
+      "zh_hans": "插画与艺术",
+      "zh_hant": "插畫與藝術"
+    },
+    "description": null,
+    "sort_order": 0,
+    "count": 27,
+    "preview_images": [
+      "demo-data/media/img_58b7a1a6a83946e4.webp",
+      "demo-data/media/img_c23290c4db6e49c6.webp",
+      "demo-data/media/img_74e51d6a375143f5.webp",
+      "demo-data/media/img_f96436f961af46a6.webp"
+    ]
+  },
+  {
+    "id": "clu_89615f4b5f764eaf",
+    "name": "攝影與寫實",
+    "names": {
+      "en": "Photography & Realism",
+      "zh_hans": "摄影与写实",
+      "zh_hant": "攝影與寫實"
+    },
+    "description": null,
+    "sort_order": 0,
+    "count": 33,
+    "preview_images": [
+      "demo-data/media/img_8434920e62f3403b.webp",
+      "demo-data/media/img_1dea6a3fb5eb4f67.webp",
+      "demo-data/media/img_6291c6b6f64f4444.webp",
+      "demo-data/media/img_8d5e4206628945c2.webp"
+    ]
+  },
+  {
+    "id": "clu_e20dd6a482344e8a",
+    "name": "文件與出版物",
+    "names": {
+      "en": "Documents & Publishing",
+      "zh_hans": "文档与出版物",
+      "zh_hant": "文件與出版物"
+    },
+    "description": null,
+    "sort_order": 0,
+    "count": 1,
+    "preview_images": [
+      "demo-data/media/img_51fe530861194d98.webp"
+    ]
+  },
+  {
+    "id": "clu_3bd609c3345746c5",
+    "name": "歷史與古風題材",
+    "names": {
+      "en": "Historical & Chinese Style",
+      "zh_hans": "历史与古风题材",
+      "zh_hant": "歷史與古風題材"
+    },
+    "description": null,
+    "sort_order": 0,
+    "count": 5,
+    "preview_images": [
+      "demo-data/media/img_394235c8c1f04ad2.webp",
+      "demo-data/media/img_e08971a5b5a14731.webp",
+      "demo-data/media/img_29a97e6e89544c29.webp",
+      "demo-data/media/img_3123a506c4a24ee2.webp"
+    ]
+  },
+  {
+    "id": "clu_6be0502192494c46",
+    "name": "海報與排版",
+    "names": {
+      "en": "Posters & Typography",
+      "zh_hans": "海报与排版",
+      "zh_hant": "海報與排版"
+    },
+    "description": null,
+    "sort_order": 0,
+    "count": 82,
+    "preview_images": [
+      "demo-data/media/img_d2185b2113474b0b.webp",
+      "demo-data/media/img_12dc5ca93661447a.webp",
+      "demo-data/media/img_ceef344d31824a64.webp",
+      "demo-data/media/img_a97022672a62459f.webp"
     ]
   }
 ]

@@ -15,6 +15,7 @@ def test_awesome_gpt_image_2_manifest_is_second_sample_package():
     manifest = json.loads((MANIFEST_DIR / "zh_hant.json").read_text(encoding="utf-8"))
 
     assert manifest["id"] == "awesome-gpt-image-2-v1-zh_hant"
+    assert manifest["schema_version"] == 2
     assert manifest["language"] == "zh_hant"
     assert manifest["source"]["name"] == "freestylefly/awesome-gpt-image-2"
     assert manifest["source"]["url"] == "https://github.com/freestylefly/awesome-gpt-image-2"
@@ -26,7 +27,16 @@ def test_awesome_gpt_image_2_manifest_is_second_sample_package():
     first = manifest["items"][0]
     assert first["slug"].startswith("sample-awesome-gpt-image-2-")
     assert first["image"].startswith("images/case")
-    assert {prompt["language"] for prompt in first["prompts"]} >= {"zh_hant"}
+    assert {prompt["language"] for prompt in first["prompts"]} >= {"zh_hant", "zh_hans", "en"}
+    assert all(
+        {prompt["language"] for prompt in item["prompts"]} >= {"zh_hant", "zh_hans", "en"}
+        for item in manifest["items"]
+    )
+    assert not any("http" in str(item.get("author", "")) for item in manifest["items"])
+    assert not any("[" in str(item.get("author", "")) and "](" in str(item.get("author", "")) for item in manifest["items"])
+    assert len([prompt for prompt in first["prompts"] if prompt.get("is_original")]) == 1
+    for prompt in first["prompts"]:
+        assert prompt.get("provenance", {}).get("kind") in {"source", "conversion", "translation", "manual"}
     assert "awesome_gpt_image_2" in first["tags"]
     assert "sample_package_2" in first["tags"]
 

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.2.0-alpha)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.3.0-alpha)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 ChatGPT image generation has become good enough that the prompts are worth keeping. The problem is that once you start saving great outputs, screenshots, and variations, there still is not a simple private tool for managing image prompts like a real reference library.
@@ -11,15 +11,15 @@ ChatGPT image generation has become good enough that the prompts are worth keepi
 
 Your library stays on your own machine: local SQLite, local image files, no accounts, no cloud sync, and no hosted database required.
 
-**Online sandbox:** <https://eddietyp.github.io/image-prompt-library/> — a read-only GitHub Pages version chooser using public sample prompts. The current 0.2 preview is available at <https://eddietyp.github.io/image-prompt-library/v0.2/>, with the original 0.1 alpha archived at <https://eddietyp.github.io/image-prompt-library/v0.1/>. Sandbox images are compressed for web preview. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own full library.
+**Online sandbox:** <https://eddietyp.github.io/image-prompt-library/> — a read-only GitHub Pages version chooser using public sample prompts. The current 0.3 preview is available at <https://eddietyp.github.io/image-prompt-library/v0.3/>, with the 0.2 preview archived at <https://eddietyp.github.io/image-prompt-library/v0.2/> and the original 0.1 alpha archived at <https://eddietyp.github.io/image-prompt-library/v0.1/>. Sandbox images are compressed for web preview. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own full library.
 
-**Alpha release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.2.0-alpha> — refreshes Cards browsing, mobile layout behavior, adaptive image display, and versioned public previews.
+**Alpha release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.3.0-alpha> — Multilingual provenance-aware prompt vault with combined sample sources, schema v2 provenance, full prompt-language coverage, and versioned public previews.
 
 **Roadmap:** See [`ROADMAP.md`](ROADMAP.md) for follow-up work around mobile Explore, management flows, packaging, and public release polish.
 
 ![Image Prompt Library Cards view](docs/assets/screenshots/card-view-all.png)
 
-The 0.2 preview refreshes the browsing experience across desktop and mobile: image-first Cards, cleaner detail behavior, versioned public demos, and phone-specific layout improvements.
+The 0.3 preview turns the public sandbox into a multilingual provenance-aware prompt vault: 510 public references, two attributed sample sources, English / Traditional Chinese / Simplified Chinese prompt variants, and source/original provenance for every item.
 
 ## What it does
 
@@ -33,11 +33,11 @@ The 0.2 preview refreshes the browsing experience across desktop and mobile: ima
 
 ## Screenshots
 
-The screenshots below show the main browsing and detail flows. The 0.2 preview also adds phone-specific behavior for Cards browsing, filtering, and detail viewing.
+The screenshots below show the main browsing and detail flows. The current 0.3 preview keeps the mobile Cards/detail improvements from 0.2 and adds the richer multilingual read-only prompt vault.
 
 ### Browse with image-first cards
 
-Cards view is designed for fast visual scanning. In the 0.2 preview, cards use an image-first layout with a clean title overlay, quick actions, and adaptive image display for mixed portrait, landscape, and tall reference images.
+Cards view is designed for fast visual scanning. The current preview uses an image-first layout with a clean title overlay, quick actions, and adaptive image display for mixed portrait, landscape, and tall reference images.
 
 ![Cards view showing a filtered sample collection](docs/assets/screenshots/card-view-all.png)
 
@@ -78,8 +78,8 @@ The detail view keeps the large image preview, prompt, language tabs, attributio
 - Cards mode: image-first masonry/Pinterest-style prompt gallery.
 - Search across titles, prompts, tags, collections, sources, and notes.
 - Collections and tags for organizing references.
-- Detail modal with lightweight inline editing, prompt language tabs, and copy feedback.
-- Add/edit modal with English, Traditional Chinese, and Simplified Chinese prompt fields plus metadata.
+- Detail modal with lightweight inline editing, prompt language tabs, source/origin prompt styling, and copy feedback.
+- Add/edit modal with English, Traditional Chinese, and Simplified Chinese prompt fields plus metadata and a single source/origin marker.
 - Result image and optional reference image uploads.
 - Phone-friendly Cards behavior: two-column masonry, compact header, touch-visible actions, and bottom selected-collection dock.
 - Adaptive card/detail image display for mixed portrait, landscape, and tall reference images.
@@ -181,13 +181,19 @@ If you want to see the app with example content, install the optional sample lib
 
 Then start the app and open <http://127.0.0.1:8000/>.
 
-The installer downloads the sample image ZIP from a public sample-data release and verifies its SHA256 checksum before import. The default sample library is based on [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill), licensed under **CC BY 4.0**. A second sample package based on [`freestylefly/awesome-gpt-image-2`](https://github.com/freestylefly/awesome-gpt-image-2), licensed under **MIT**, is available with:
+The installer downloads the sample image ZIP from a public sample-data release and verifies its SHA256 checksum before import. Sample manifests use schema v2 prompt provenance, so each item records one source/original prompt language and any converted or translated variants. When reproducing a sample image, copy the **Origin** prompt where available; it is usually closest to the original result.
+
+The default sample library is based on [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill), licensed under **CC BY 4.0**. Thank you to `wuyoscar/gpt_image_2_skill` for the curated ChatGPT image prompt gallery used as the first public sample package.
+
+A second sample package based on [`freestylefly/awesome-gpt-image-2`](https://github.com/freestylefly/awesome-gpt-image-2), licensed under **MIT**, is available with:
 
 ```bash
 ./scripts/install-sample-data.sh zh_hant awesome-gpt-image-2
 ```
 
 Both are included only as demo/sample content; your own prompt library data remains private and is not part of any sample bundle.
+
+Thank you to `freestylefly/awesome-gpt-image-2` for the larger Chinese prompt/image gallery used as the second public sample package. The Image Prompt Library app code remains AGPL-3.0-or-later; third-party sample prompts/images keep their own upstream attribution and license boundary.
 
 ## Backup
 
@@ -212,13 +218,14 @@ The repository also ships static read-only demos for GitHub Pages:
 
 ```bash
 npm run build:demo
-npm run build:demo:v0.2
+npm run build:demo:v0.3
 ```
 
 The public Pages deployment is versioned:
 
 - `/` — version chooser
-- `/v0.2/` — current 0.2 preview
+- `/v0.3/` — current 0.3 preview
+- `/v0.2/` — archived 0.2 preview
 - `/v0.1/` — archived 0.1 alpha demo
 
 The demos read public sample metadata from `frontend/public/demo-data/`, use compressed WebP preview images, and disable write actions. They are intended only as online sandboxes. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own private prompt library.
@@ -250,7 +257,7 @@ Image Prompt Library's core application code is open source under **AGPL-3.0-or-
 
 Commercial licenses are available for organizations that want to use, modify, or host Image Prompt Library under terms outside the AGPL. Contact the maintainer if you need proprietary hosted-product terms or other non-AGPL licensing.
 
-Sample data and third-party assets are licensed separately and retain their original attribution/license terms. The optional sample bundle currently preserves `wuyoscar/gpt_image_2_skill` / **CC BY 4.0** attribution; do not treat sample prompts/images as part of the app-code AGPL grant.
+Sample data and third-party assets are licensed separately and retain their original attribution/license terms. The optional sample bundles currently preserve `wuyoscar/gpt_image_2_skill` / **CC BY 4.0** and `freestylefly/awesome-gpt-image-2` / **MIT** attribution; do not treat sample prompts/images as part of the app-code AGPL grant.
 
 Your own local prompt library data remains yours and should not be committed to this repository.
 
@@ -292,7 +299,7 @@ Check `IMAGE_PROMPT_LIBRARY_PATH` in `.env`. Your database and image folders mus
 
 ## Project status
 
-This is an alpha local-first app. Core browse/search/filter/detail/copy/add/edit flows exist, the public read-only sandbox is versioned, and the 0.2 preview improves both desktop and mobile browsing. Remaining work includes deeper mobile Explore gestures, management-flow polish, packaging, and public-release hardening.
+This is an alpha local-first app. Core browse/search/filter/detail/copy/add/edit flows exist, the public read-only sandbox is versioned, and the current 0.3 preview adds a multilingual provenance-aware public vault while preserving desktop and mobile browsing improvements. Remaining work includes deeper mobile Explore gestures, management-flow polish, packaging, and public-release hardening.
 
 See `ROADMAP.md` for the current roadmap and follow-up priorities.
 

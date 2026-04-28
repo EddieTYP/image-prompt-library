@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -53,14 +54,19 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert "actions/deploy-pages" in text
     assert "fetch-depth: 0" in text
     assert "LEGACY_DEMO_REF: v0.1.0-alpha" in text
-    assert "MOBILE_PREVIEW_PATH: v0.2" in text
-    assert "VITE_BASE_PATH=/image-prompt-library/${MOBILE_PREVIEW_PATH}/ npm run build" in text
+    assert "CURRENT_PREVIEW_PATH: v0.3" in text
+    assert "ARCHIVED_02_DEMO_REF: v0.2.0-alpha" in text
+    assert "ARCHIVED_02_DEMO_PATH: v0.2" in text
+    assert "VITE_BASE_PATH=/image-prompt-library/${CURRENT_PREVIEW_PATH}/ npm run build" in text
+    assert "VITE_BASE_PATH=/image-prompt-library/${ARCHIVED_02_DEMO_PATH}/ npm run build" in text
     assert "git worktree add .page-build/${LEGACY_DEMO_PATH} ${LEGACY_DEMO_REF}" in text
     assert "VITE_BASE_PATH=/image-prompt-library/${LEGACY_DEMO_PATH}/ npm run build" in text
-    assert ".pages-artifact/${MOBILE_PREVIEW_PATH}" in text
+    assert ".pages-artifact/${CURRENT_PREVIEW_PATH}" in text
+    assert ".pages-artifact/${ARCHIVED_02_DEMO_PATH}" in text
     assert ".pages-artifact/${LEGACY_DEMO_PATH}" in text
     assert "Choose a preview" in text
-    assert "Mobile browsing preview" in text
+    assert "Multilingual provenance-aware prompt vault" in text
+    assert "Archived 0.2 preview" in text
     assert "Add/edit require local install" in text
     assert "private library management are local-only" in text
     assert "Original alpha demo" in text
@@ -71,8 +77,10 @@ def test_package_exposes_versioned_demo_build_scripts():
     package_json = (ROOT / "package.json").read_text()
     assert '"build:demo:v0.1"' in package_json
     assert '"build:demo:v0.2"' in package_json
+    assert '"build:demo:v0.3"' in package_json
     assert "VITE_BASE_PATH=/image-prompt-library/v0.1/" in package_json
     assert "VITE_BASE_PATH=/image-prompt-library/v0.2/" in package_json
+    assert "VITE_BASE_PATH=/image-prompt-library/v0.3/" in package_json
 
 
 def test_demo_export_script_outputs_compact_static_assets():
@@ -94,7 +102,17 @@ def test_demo_data_bundle_is_present_and_uses_compressed_media_paths():
     assert (demo_root / "clusters.json").exists()
     assert (demo_root / "tags.json").exists()
     items_text = (demo_root / "items.json").read_text()
+    clusters = json.loads((demo_root / "clusters.json").read_text(encoding="utf-8"))
+    items = json.loads(items_text)
+    sources = {item.get("source_name") for item in items}
+    assert len(items) == 510
+    assert {"wuyoscar/gpt_image_2_skill", "freestylefly/awesome-gpt-image-2"} <= sources
+    assert all({prompt.get("language") for prompt in item.get("prompts", [])} >= {"en", "zh_hant", "zh_hans"} for item in items)
+    assert not any("http" in str(item.get("author", "")) for item in items)
+    assert not any("[" in str(item.get("author", "")) and "](" in str(item.get("author", "")) for item in items)
     assert "demo-data/media/" in items_text
     assert ".webp" in items_text
     assert "originals/" not in items_text
     assert "library/db.sqlite" not in items_text
+    assert clusters and all(cluster.get("names", {}).get("zh_hant") for cluster in clusters)
+    assert items and all(item.get("cluster", {}).get("names", {}).get("zh_hant") for item in items if item.get("cluster"))

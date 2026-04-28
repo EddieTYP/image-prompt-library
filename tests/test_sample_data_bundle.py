@@ -29,19 +29,37 @@ def test_sample_data_manifests_are_localized_and_truthful():
     assert "wuyoscar/gpt_image_2_skill" in manifests["en"]["source"]["name"]
     assert manifests["en"]["source"]["license"] == "CC BY 4.0"
 
-    zh_hant_fallback_ids = {
+    english_origin_ids = {
         item["id"]
         for item in manifests["zh_hant"]["items"]
-        if item["prompts"] and {prompt["language"] for prompt in item["prompts"]} == {"en"}
+        for prompt in item["prompts"]
+        if prompt["language"] == "en" and prompt.get("is_original")
     }
-    zh_hans_fallback_ids = {
-        item["id"]
-        for item in manifests["zh_hans"]["items"]
-        if item["prompts"] and {prompt["language"] for prompt in item["prompts"]} == {"en"}
-    }
-    assert zh_hant_fallback_ids, "sample data should keep English-only source entries as English instead of inventing Chinese prompts"
-    assert zh_hant_fallback_ids == zh_hans_fallback_ids
+    assert english_origin_ids, "sample data should preserve English as the source/original language when upstream English was original"
+    for manifest in manifests.values():
+        for language in ("en", "zh_hant", "zh_hans"):
+            assert sum(1 for item in manifest["items"] for prompt in item["prompts"] if prompt["language"] == language) == 162
 
+
+def assert_v2_prompt_provenance(manifest: dict):
+    assert manifest["schema_version"] == 2
+    for item in manifest["items"]:
+        prompts = item.get("prompts", [])
+        originals = [prompt for prompt in prompts if prompt.get("is_original")]
+        assert len(originals) == 1, item["id"]
+        for prompt in prompts:
+            provenance = prompt.get("provenance")
+            assert isinstance(provenance, dict), item["id"]
+            assert provenance.get("kind") in {"source", "conversion", "translation", "manual"}
+            assert provenance.get("source_language") in {"en", "zh_hant", "zh_hans"}
+            if not prompt.get("is_original"):
+                assert provenance.get("derived_from") in {"en", "zh_hant", "zh_hans"}
+
+
+def test_sample_data_manifests_use_schema_v2_prompt_provenance():
+    manifest_dir = ROOT / "sample-data" / "manifests"
+    for lang in ("en", "zh_hans", "zh_hant"):
+        assert_v2_prompt_provenance(json.loads((manifest_dir / f"{lang}.json").read_text(encoding="utf-8")))
 
 def test_sample_data_attribution_documents_third_party_license_boundary():
     attribution = (ROOT / "sample-data" / "ATTRIBUTION.md").read_text()
@@ -56,6 +74,8 @@ def test_sample_data_attribution_documents_third_party_license_boundary():
     assert "SHA256" in readme
     assert "8a458f6c8c96079f40fbc46c689e7de0bd2eb464ee7f800f94f3ca60131d5035" in readme
     assert "./scripts/install-sample-data.sh en" in readme
+    assert "fill_sample_manifest_translations.py" in readme
+    assert (ROOT / "backend" / "services" / "fill_sample_manifest_translations.py").exists()
 
 
 def test_import_sample_bundle_loads_manifest_assets_and_is_idempotent(tmp_path: Path):
@@ -67,7 +87,7 @@ def test_import_sample_bundle_loads_manifest_assets_and_is_idempotent(tmp_path: 
 
     manifest = tmp_path / "manifest.json"
     manifest.write_text(json.dumps({
-        "schema_version": 1,
+        "schema_version": 2,
         "id": "fixture-sample",
         "language": "zh_hant",
         "source": {"name": "fixture", "license": "CC BY 4.0"},
@@ -83,7 +103,13 @@ def test_import_sample_bundle_loads_manifest_assets_and_is_idempotent(tmp_path: 
             "author": "fixture author",
             "license": "CC BY 4.0",
             "tags": ["sample"],
-            "prompts": [{"language": "zh_hant", "text": "一個紅色方塊", "is_primary": True}],
+            "prompts": [{
+                "language": "zh_hant",
+                "text": "一個紅色方塊",
+                "is_primary": True,
+                "is_original": True,
+                "provenance": {"kind": "source", "source_language": "zh_hant", "derived_from": None, "method": None},
+            }],
         }],
     }), encoding="utf-8")
 
@@ -97,8 +123,11 @@ def test_import_sample_bundle_loads_manifest_assets_and_is_idempotent(tmp_path: 
     items = ItemRepository(tmp_path / "library").list_items(limit=10).items
     assert len(items) == 1
     assert items[0].cluster.name == "視覺設計"
+    assert items[0].cluster.names == {"en": "Visual Design", "zh_hant": "視覺設計"}
     assert items[0].first_image is not None
     assert items[0].prompts[0].language == "zh_hant"
+    assert items[0].prompts[0].is_original is True
+    assert items[0].prompts[0].provenance["kind"] == "source"
     detail = ItemRepository(tmp_path / "library").get_item(items[0].id)
     assert detail is not None
     assert "CC BY 4.0" in (detail.notes or "")
@@ -122,7 +151,7 @@ def test_install_sample_data_script_supports_local_zip_override(tmp_path: Path):
     Image.new("RGB", (10, 10), "blue").save(image_dir / "fixture.png")
     manifest = tmp_path / "fixture-manifest.json"
     manifest.write_text(json.dumps({
-        "schema_version": 1,
+        "schema_version": 2,
         "id": "fixture-installer",
         "language": "en",
         "source": {"name": "fixture", "license": "CC BY 4.0"},
@@ -135,7 +164,13 @@ def test_install_sample_data_script_supports_local_zip_override(tmp_path: Path):
             "image": "images/fixture.png",
             "source_name": "fixture",
             "tags": ["sample"],
-            "prompts": [{"language": "en", "text": "A blue square", "is_primary": True}],
+            "prompts": [{
+                "language": "en",
+                "text": "A blue square",
+                "is_primary": True,
+                "is_original": True,
+                "provenance": {"kind": "source", "source_language": "en", "derived_from": None, "method": None},
+            }],
         }],
     }), encoding="utf-8")
     zip_path = tmp_path / "sample-images.zip"

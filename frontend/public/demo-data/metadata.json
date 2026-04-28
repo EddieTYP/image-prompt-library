@@ -2,8 +2,8 @@
   "title": "Image Prompt Library online sandbox",
   "mode": "read-only",
   "image_note": "Images are compressed for the web demo.",
-  "source": "wuyoscar/gpt_image_2_skill sample data, CC BY 4.0",
-  "item_count": 162,
-  "image_max_width": 760,
-  "image_quality": 58
+  "source": "freestylefly/awesome-gpt-image-2; wuyoscar/gpt_image_2_skill",
+  "item_count": 510,
+  "image_max_width": 900,
+  "image_quality": 62
 }

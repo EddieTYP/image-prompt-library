@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.services.import_gpt_image_2_skill import SOURCE_LICENSE, SOURCE_NAME, load_full_gallery_records
+from backend.services.text_normalize import to_traditional
 
 COLLECTIONS = [
     {"id": "cinematic-storytelling", "names": {"en": "Cinematic Storytelling", "zh_hans": "电影叙事", "zh_hant": "電影敘事"}},
@@ -48,13 +49,30 @@ def prompts_for(record: dict[str, Any], language: str) -> list[dict[str, Any]]:
     en = record.get("prompt_en")
     zh_hans = record.get("prompt_zh_hans")
     zh_hant = record.get("prompt_zh_hant")
-    if language == "en":
-        return [{"language": "en", "text": en, "is_primary": True}] if en else []
-    if language == "zh_hans" and zh_hans:
-        return [{"language": "zh_hans", "text": zh_hans, "is_primary": True}]
-    if language == "zh_hant" and zh_hant:
-        return [{"language": "zh_hant", "text": zh_hant, "is_primary": True}]
-    return [{"language": "en", "text": en, "is_primary": True}] if en else []
+    if zh_hans and not zh_hant:
+        zh_hant = to_traditional(zh_hans)
+    source_language = "en" if en else "zh_hans" if zh_hans else "zh_hant"
+    prompt_values = [("en", en), ("zh_hant", zh_hant), ("zh_hans", zh_hans)]
+    primary_language = language if dict(prompt_values).get(language) else source_language
+    prompts: list[dict[str, Any]] = []
+    for prompt_language, text in prompt_values:
+        if not text:
+            continue
+        is_original = prompt_language == source_language
+        if is_original:
+            provenance = {"kind": "source", "source_language": prompt_language, "derived_from": None, "method": None}
+        elif prompt_language == "zh_hant" and source_language == "zh_hans":
+            provenance = {"kind": "conversion", "source_language": source_language, "derived_from": source_language, "method": "opencc-s2t"}
+        else:
+            provenance = {"kind": "translation", "source_language": source_language, "derived_from": source_language, "method": "upstream-curated"}
+        prompts.append({
+            "language": prompt_language,
+            "text": text,
+            "is_primary": prompt_language == primary_language,
+            "is_original": is_original,
+            "provenance": provenance,
+        })
+    return prompts
 
 
 def build_manifest(source_root: Path, language: str) -> dict[str, Any]:
@@ -88,7 +106,7 @@ def build_manifest(source_root: Path, language: str) -> dict[str, Any]:
             }
         )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "id": f"gpt-image-2-skill-v1-{language}",
         "language": language,
         "title": f"GPT Image 2 Skill sample data ({language})",

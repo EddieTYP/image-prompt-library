@@ -13,7 +13,7 @@ import { useItemsQuery } from './hooks/useItemsQuery';
 import type { ClusterRecord, ItemDetail, ItemSummary, TagRecord, ViewMode } from './types';
 import { copyTextToClipboard } from './utils/clipboard';
 import { DEFAULT_UI_LANGUAGE, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
-import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptLanguage } from './utils/prompts';
+import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptCopyLanguage } from './utils/prompts';
 
 const UI_LANGUAGE_STORAGE_KEY = 'image-prompt-library.ui_language';
 const PROMPT_LANGUAGE_STORAGE_KEY = 'image-prompt-library.preferred_prompt_language';
@@ -21,7 +21,7 @@ const VIEW_STORAGE_KEY = 'image-prompt-library.view_mode.v2';
 const GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY = 'image-prompt-library.global_thumbnail_budget';
 const FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY = 'image-prompt-library.focus_thumbnail_budget';
 
-function loadPreferredLanguage(): PromptLanguage {
+function loadPreferredLanguage(): PromptCopyLanguage {
   if (typeof window === 'undefined') return DEFAULT_PROMPT_LANGUAGE;
   return normalizePromptLanguage(window.localStorage.getItem(PROMPT_LANGUAGE_STORAGE_KEY));
 }
@@ -52,6 +52,18 @@ function selectedCollectionNameSizeClass(name: string) {
   return '';
 }
 
+function localizedClusterName(cluster: ClusterRecord | undefined, language: UiLanguage) {
+  return cluster?.names?.[language] || cluster?.names?.en || cluster?.name || '';
+}
+
+function localizeCluster(cluster: ClusterRecord, language: UiLanguage): ClusterRecord {
+  return { ...cluster, name: localizedClusterName(cluster, language) };
+}
+
+function localizeItemCluster(item: ItemSummary, language: UiLanguage): ItemSummary {
+  return item.cluster ? { ...item, cluster: localizeCluster(item.cluster, language) } : item;
+}
+
 export default function App() {
   const [q, setQ] = useState('');
   const debouncedQ = useDebouncedValue(q);
@@ -66,7 +78,7 @@ export default function App() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [itemsReloadKey, setItemsReloadKey] = useState(0);
   const [uiLanguage, setUiLanguage] = useState<UiLanguage>(loadUiLanguage);
-  const [preferredLanguage, setPreferredLanguage] = useState<PromptLanguage>(loadPreferredLanguage);
+  const [preferredLanguage, setPreferredLanguage] = useState<PromptCopyLanguage>(loadPreferredLanguage);
   const [globalThumbnailBudget, setGlobalThumbnailBudget] = useState(() => loadNumberSetting(GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 50, 150));
   const [focusThumbnailBudget, setFocusThumbnailBudget] = useState(() => loadNumberSetting(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 24, 100));
   const [exploreFitRequestKey, setExploreFitRequestKey] = useState(0);
@@ -79,6 +91,9 @@ export default function App() {
     : clusterId;
   const selectedCluster = useMemo(() => clusters.find(c => c.id === clusterId), [clusters, clusterId]);
   const t = useMemo(() => makeTranslator(uiLanguage), [uiLanguage]);
+  const localizedClusters = useMemo(() => clusters.map(cluster => localizeCluster(cluster, uiLanguage)), [clusters, uiLanguage]);
+  const localizedData = useMemo(() => ({ ...data, items: data.items.map(item => localizeItemCluster(item, uiLanguage)) }), [data, uiLanguage]);
+  const localizedSelectedCluster = selectedCluster ? localizeCluster(selectedCluster, uiLanguage) : undefined;
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
   const refreshTags = () => api.tags().then(setTags).catch(() => setTags([]));
   useEffect(() => { refreshClusters(); refreshTags(); }, []);
@@ -104,7 +119,7 @@ export default function App() {
   };
   const saved = () => { refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
   const deleted = () => { setDetailId(undefined); setEditing(undefined); refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
-  const updatePreferredLanguage = (language: PromptLanguage) => {
+  const updatePreferredLanguage = (language: PromptCopyLanguage) => {
     setPreferredLanguage(language);
     window.localStorage.setItem(PROMPT_LANGUAGE_STORAGE_KEY, language);
   };
@@ -138,7 +153,7 @@ export default function App() {
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
   return <div className={`app ${view === 'explore' ? 'explore-mode' : 'cards-mode'}`}>
-    <TopBar t={t} q={q} onQ={setQ} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={data.total} clusterName={selectedCluster?.name} clearCluster={clearCluster} />
+    <TopBar t={t} q={q} onQ={setQ} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
     {isDemoMode && (
       <div className="demo-banner" role="status">
         <strong>{t('onlineSandbox')}</strong>
@@ -149,7 +164,7 @@ export default function App() {
         <a href="https://github.com/EddieTYP/image-prompt-library" target="_blank" rel="noreferrer">{t('viewOnGitHub')}</a>
       </div>
     )}
-    <FiltersPanel t={t} open={filtersOpen} clusters={clusters} selected={clusterId} onSelect={handleFilterSelect} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
+    <FiltersPanel t={t} open={filtersOpen} clusters={localizedClusters} selected={clusterId} onSelect={handleFilterSelect} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
     <ConfigPanel t={t} open={configOpen} onClose={() => setConfigOpen(false)} uiLanguage={uiLanguage} onUiLanguage={updateUiLanguage} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} />
     {/* Static-test compatibility marker: <main className="app-main"> */}
     <main className={`app-main ${refreshing ? 'is-refreshing' : ''}`} aria-busy={refreshing}>
@@ -157,20 +172,20 @@ export default function App() {
       {initialLoading && <div className="loading">{t('loading')}</div>}
       {error && <div className="error">{error}</div>}
       {view === 'explore'
-        ? <ExploreView t={t} clusters={clusters} items={data.items} focusedClusterId={exploreFocusedClusterId} fitRequestKey={exploreFitRequestKey} unfilterTransitionPhase={exploreUnfilterFadePhase} globalThumbnailBudget={globalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusCluster={focusCluster} onOpen={setDetailId} onAdd={isDemoMode ? undefined : openNewItemEditor} />
-        : <CardsView t={t} items={data.items} onOpen={setDetailId} onFavorite={isDemoMode ? undefined : favorite} onEdit={isDemoMode ? undefined : editSummary} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} />}
+        ? <ExploreView t={t} clusters={localizedClusters} items={localizedData.items} focusedClusterId={exploreFocusedClusterId} fitRequestKey={exploreFitRequestKey} unfilterTransitionPhase={exploreUnfilterFadePhase} globalThumbnailBudget={globalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusCluster={focusCluster} onOpen={setDetailId} onAdd={isDemoMode ? undefined : openNewItemEditor} />
+        : <CardsView t={t} items={localizedData.items} onOpen={setDetailId} onFavorite={isDemoMode ? undefined : favorite} onEdit={isDemoMode ? undefined : editSummary} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} />}
     </main>
-    {showSelectedCollectionDock && selectedCluster && (
-      <button className="selected-collection-dock" onClick={clearCluster} aria-label={`${t('collectionChip')}: ${selectedCluster.name}. ${t('close')}`}>
+    {showSelectedCollectionDock && localizedSelectedCluster && (
+      <button className="selected-collection-dock" onClick={clearCluster} aria-label={`${t('collectionChip')}: ${localizedSelectedCluster.name}. ${t('close')}`}>
         <span className="selected-collection-dot" aria-hidden="true" />
-        <span className={`selected-collection-name ${selectedCollectionNameSizeClass(selectedCluster.name)}`}>{selectedCluster.name}</span>
-        <span className="selected-collection-count">{data.total} {t('referencesShown')}</span>
+        <span className={`selected-collection-name ${selectedCollectionNameSizeClass(localizedSelectedCluster.name)}`}>{localizedSelectedCluster.name}</span>
+        <span className="selected-collection-count">{localizedData.total} {t('referencesShown')}</span>
         <span className="selected-collection-clear" aria-hidden="true">×</span>
       </button>
     )}
     {!isDemoMode && <button className="fab" onClick={openNewItemEditor}><Plus/> {t('add')}</button>}
-    <ItemDetailModal t={t} id={detailId} preferredLanguage={preferredLanguage} clusters={clusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} />
+    <ItemDetailModal t={t} id={detailId} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} />
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
-    {editorOpen && <ItemEditorModal t={t} item={editing} clusters={clusters} tags={tags} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} />}
+    {editorOpen && <ItemEditorModal t={t} item={editing} clusters={localizedClusters} tags={tags} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} />}
   </div>
 }

@@ -79,11 +79,38 @@ def _converter():
 _to_hant = _converter()
 
 
+def _simplified_converter():
+    try:
+        from opencc import OpenCC  # type: ignore
+
+        return OpenCC("t2s").convert
+    except Exception:
+        return lambda text: text
+
+
+_to_hans = _simplified_converter()
+
+
 def clean_text(value: Any) -> str | None:
     if value is None:
         return None
     text = str(value).replace("\\_", "_").strip()
     return text or None
+
+
+def parse_markdown_link(value: str | None) -> tuple[str | None, str | None]:
+    """Return a concise label and URL from markdown links such as [@name](https://...)."""
+    if not value:
+        return None, None
+    text = value.strip().replace("\\[", "[").replace("\\]", "]")
+    links = re.findall(r"\[([^\]]+)\]\((https?://[^)\s>]+|<https?://[^)>]+>)\)", text)
+    if links:
+        labels = " / ".join(clean_text(label) or label for label, _url in links)
+        return clean_text(labels), clean_text(links[0][1].strip("<>"))
+    bare_url = re.search(r"https?://[^\s>)]+", text)
+    label = re.sub(r"\([^)]*https?://[^)]*\)", "", text)
+    label = re.sub(r"[\[\]\\()<>]", "", label).strip() or None
+    return clean_text(label), clean_text(bare_url.group(0)) if bare_url else None
 
 
 def slugify(value: str) -> str:
@@ -111,17 +138,19 @@ def parse_gallery(source_root: Path) -> list[dict[str, Any]]:
             if not prompt:
                 continue
             image_path = clean_text(image_match.group(2) if image_match else None)
+            source_label, linked_source_url = parse_markdown_link(clean_text(source_match.group(1)) if source_match else None)
             records.append({
                 "number": number,
                 "id": f"case-{number:03d}",
                 "title": _to_hant(title),
                 "image_alt": _to_hant(clean_text(image_match.group(1)) or title) if image_match else _to_hant(title),
                 "image": image_path.replace("../data/", "") if image_path else f"images/case{number}.jpg",
-                "source": clean_text(source_match.group(1)) or "未提供",
+                "source": source_label or "未提供",
                 "prompt_source": prompt,
                 "prompt_zh_hant": _to_hant(prompt),
                 "part": part,
-                "source_url": f"{SOURCE_URL}/blob/main/docs/gallery-part-{part}.md#case-{number}",
+                "source_url": linked_source_url or f"{SOURCE_URL}/blob/main/docs/gallery-part-{part}.md#case-{number}",
+                "source_file_url": f"{SOURCE_URL}/blob/main/docs/gallery-part-{part}.md#case-{number}",
             })
     return records
 
@@ -164,12 +193,39 @@ def tags_for(record: dict[str, Any], collection_id: str) -> list[str]:
 
 
 def prompts_for(record: dict[str, Any]) -> list[dict[str, Any]]:
-    prompts = [{"language": "zh_hant", "text": record["prompt_zh_hant"], "is_primary": True}]
+    prompts = [
+        {
+            "language": "zh_hant",
+            "text": record["prompt_zh_hant"],
+            "is_primary": True,
+            "is_original": False,
+            "provenance": {"kind": "conversion", "source_language": "zh_hans", "derived_from": "zh_hans", "method": "opencc-s2twp"},
+        },
+        {
+            "language": "zh_hans",
+            "text": _to_hans(record["prompt_source"]),
+            "is_primary": False,
+            "is_original": True,
+            "provenance": {"kind": "source", "source_language": "zh_hans", "derived_from": None, "method": None},
+        },
+    ]
     en = split_english_prompt(record["prompt_source"])
     if en and en.strip() != record["prompt_source"].strip():
-        prompts.append({"language": "en", "text": en, "is_primary": False})
+        prompts.append({
+            "language": "en",
+            "text": en,
+            "is_primary": False,
+            "is_original": False,
+            "provenance": {"kind": "translation", "source_language": "zh_hans", "derived_from": "zh_hans", "method": "upstream-extracted-english-section"},
+        })
     elif en and not any("\u4e00" <= ch <= "\u9fff" for ch in en):
-        prompts.append({"language": "en", "text": en, "is_primary": False})
+        prompts.append({
+            "language": "en",
+            "text": en,
+            "is_primary": False,
+            "is_original": False,
+            "provenance": {"kind": "translation", "source_language": "zh_hans", "derived_from": "zh_hans", "method": "upstream-english-prompt"},
+        })
     return prompts
 
 
@@ -199,7 +255,7 @@ def build_manifest(source_root: Path, commit: str | None = None) -> dict[str, An
         }
         items.append(item)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "id": "awesome-gpt-image-2-v1-zh_hant",
         "language": "zh_hant",
         "title": "Awesome GPT Image 2 second sample package (zh_hant)",

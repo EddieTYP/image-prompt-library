@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, Copy, ExternalLink, Heart, Pencil, Plus, X } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
-import type { ClusterRecord, ImageRecord, ItemDetail, TagRecord } from '../types';
+import type { ClusterRecord, ImageRecord, ItemDetail, PromptRecord, TagRecord } from '../types';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { imageDisplayPath, imageHeroPath, selectPrimaryImage } from '../utils/images';
 import type { Translator } from '../utils/i18n';
-import { PROMPT_LANGUAGE_LABELS, resolvePromptText, type PromptLanguage } from '../utils/prompts';
+import { PROMPT_LANGUAGE_LABELS, resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage, type PromptLanguage } from '../utils/prompts';
 
 const LANG_LABELS: Record<string, string> = {
   ...PROMPT_LANGUAGE_LABELS,
@@ -37,6 +37,16 @@ function resolvePromptRecord<T extends { language: string; text: string }>(
     || usable.find(prompt => prompt.language === preferredLanguage)
     || usable.find(prompt => prompt.language === 'en')
     || usable[0];
+}
+
+
+function resolveInitialPromptLanguage(prompts: PromptRecord[], preferredLanguage: PromptCopyLanguage): PromptLanguage {
+  if (preferredLanguage === 'origin') {
+    const originalLanguage = resolveOriginalPrompt(prompts)?.language;
+    if (originalLanguage === 'en' || originalLanguage === 'zh_hant' || originalLanguage === 'zh_hans') return originalLanguage;
+    return 'en';
+  }
+  return preferredLanguage;
 }
 
 function InlineEditableField({
@@ -155,7 +165,7 @@ export default function ItemDetailModal({
 }: {
   id?: string;
   t: Translator;
-  preferredLanguage: PromptLanguage;
+  preferredLanguage: PromptCopyLanguage;
   clusters: ClusterRecord[];
   tags: TagRecord[];
   onClose: () => void;
@@ -191,7 +201,8 @@ export default function ItemDetailModal({
     if (!item || !id) return;
     const defaultPromptKey = `${id}:${preferredLanguage}`;
     if (lastDefaultPromptKeyRef.current === defaultPromptKey) return;
-    const nextPrompt = resolvePromptRecord(availablePromptRecords, preferredLanguage, preferredLanguage);
+    const initialLanguage = resolveInitialPromptLanguage(item.prompts, preferredLanguage);
+    const nextPrompt = resolvePromptRecord(availablePromptRecords, initialLanguage, initialLanguage);
     if (nextPrompt) setLang(nextPrompt.language);
     lastDefaultPromptKeyRef.current = defaultPromptKey;
   }, [item, availablePromptRecords, preferredLanguage, id]);
@@ -208,7 +219,9 @@ export default function ItemDetailModal({
   if (!id) return null;
 
   const prompt = item?.prompts.find(promptRecord => promptRecord.language === lang);
-  const resolvedPrompt = resolvePromptRecord(availablePromptRecords, lang, preferredLanguage);
+  const originalPrompt = resolveOriginalPrompt(item?.prompts);
+  const fallbackLanguage = preferredLanguage === 'origin' ? resolveInitialPromptLanguage(item?.prompts || [], preferredLanguage) : preferredLanguage;
+  const resolvedPrompt = resolvePromptRecord(availablePromptRecords, lang, fallbackLanguage);
   const copyText = prompt?.text || resolvedPrompt?.text || resolvePromptText(item?.prompts, preferredLanguage, item?.title || '');
   const uniqueImages = dedupeImages(item?.images || []);
   const primaryImage = selectPrimaryImage(uniqueImages);
@@ -348,17 +361,19 @@ export default function ItemDetailModal({
                           <div className="prompt-language-tabs tabs" role="tablist" aria-label={t('promptLanguage')}>
                             {promptDisplayOrder.map(promptLanguage => {
                               const tabPrompt = item.prompts.find(prompt => prompt.language === promptLanguage);
+                              const isOriginalPrompt = Boolean(tabPrompt?.is_original || originalPrompt?.language === promptLanguage);
                               return (
                                 <button
                                   type="button"
                                   role="tab"
                                   aria-selected={lang === promptLanguage}
-                                  className={`prompt-language-tab ${lang === promptLanguage ? 'active' : ''}`}
+                                  className={`prompt-language-tab ${lang === promptLanguage ? 'active' : ''} ${isOriginalPrompt ? 'is-original' : ''}`}
                                   onClick={() => { setLang(promptLanguage); cancelPromptEdit(); }}
                                   title={tabPrompt?.text.trim() ? undefined : t('promptText')}
                                   key={promptLanguage}
                                 >
                                   {LANG_LABELS[promptLanguage] || promptLanguage}
+                                  {isOriginalPrompt && <span className="origin-badge">{t('origin')}</span>}
                                 </button>
                               );
                             })}

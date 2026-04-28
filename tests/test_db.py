@@ -14,11 +14,11 @@ def test_init_db_creates_required_tables(tmp_path: Path):
         assert "role" in image_columns
         images_sql = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='images'").fetchone()[0]
         assert "CHECK(role IN ('result_image', 'reference_image'))" in images_sql
-        assert {row[0] for row in conn.execute("SELECT version FROM schema_migrations")} == {
-            "001_initial.sql",
-            "002_image_roles.sql",
-            "003_image_role_check.sql",
-        }
+        prompt_columns = {row[1] for row in conn.execute("PRAGMA table_info(prompts)")}
+        assert {"is_original", "provenance"} <= prompt_columns
+        cluster_columns = {row[1] for row in conn.execute("PRAGMA table_info(clusters)")}
+        assert "names" in cluster_columns
+        assert {row[0] for row in conn.execute("SELECT version FROM schema_migrations")} == set(MIGRATIONS)
 
 
 def test_init_db_is_idempotent(tmp_path: Path):

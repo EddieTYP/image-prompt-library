@@ -3,9 +3,9 @@ import { X } from 'lucide-react';
 import { api } from '../api/client';
 import type { AppConfig } from '../types';
 import { UI_LANGUAGE_LABELS, type Translator, type UiLanguage } from '../utils/i18n';
-import { PROMPT_LANGUAGE_LABELS, type PromptLanguage } from '../utils/prompts';
+import { getPromptCopyLanguageLabel, type PromptCopyLanguage } from '../utils/prompts';
 
-const LANGUAGE_OPTIONS: PromptLanguage[] = ['zh_hant', 'zh_hans', 'en'];
+const LANGUAGE_OPTIONS: PromptCopyLanguage[] = ['origin', 'en', 'zh_hant', 'zh_hans'];
 const UI_LANGUAGE_OPTIONS: UiLanguage[] = ['zh_hant', 'zh_hans', 'en'];
 const GLOBAL_BUDGET_MIN = 50;
 const GLOBAL_BUDGET_MAX = 150;
@@ -32,8 +32,8 @@ export default function ConfigPanel({
   onClose: () => void;
   uiLanguage: UiLanguage;
   onUiLanguage: (language: UiLanguage) => void;
-  preferredLanguage: PromptLanguage;
-  onPreferredLanguage: (language: PromptLanguage) => void;
+  preferredLanguage: PromptCopyLanguage;
+  onPreferredLanguage: (language: PromptCopyLanguage) => void;
   globalThumbnailBudget: number;
   onGlobalThumbnailBudget: (budget: number) => void;
   focusThumbnailBudget: number;
@@ -77,7 +77,7 @@ export default function ConfigPanel({
               className={preferredLanguage === language ? 'active' : ''}
               onClick={() => onPreferredLanguage(language)}
             >
-              {PROMPT_LANGUAGE_LABELS[language]}
+              {getPromptCopyLanguageLabel(language, uiLanguage)}
             </button>
           ))}
         </div>

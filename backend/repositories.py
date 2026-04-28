@@ -1,5 +1,5 @@
 from __future__ import annotations
-import re, uuid
+import json, re, uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -57,6 +57,27 @@ class ItemRepository:
         conn.execute("INSERT INTO clusters(id,name,created_at,updated_at) VALUES(?,?,?,?)", (cid, name, ts, ts))
         return cid
 
+    def update_cluster_names(self, cluster_id: str | None, names: dict[str, str] | None) -> None:
+        if not cluster_id or not names:
+            return
+        clean = {str(key): str(value).strip() for key, value in names.items() if str(value).strip()}
+        if not clean:
+            return
+        with connect(self.library_path) as conn:
+            conn.execute("UPDATE clusters SET names=?, updated_at=? WHERE id=?", (json.dumps(clean, ensure_ascii=False), now(), cluster_id))
+            conn.commit()
+
+    def _cluster_names_from_row(self, row) -> dict[str, str]:
+        raw = row["cluster_names"] if "cluster_names" in row.keys() else row["names"] if "names" in row.keys() else None
+        if isinstance(raw, str) and raw.strip():
+            try:
+                parsed = json.loads(raw)
+                if isinstance(parsed, dict):
+                    return {str(key): str(value) for key, value in parsed.items() if str(value).strip()}
+            except json.JSONDecodeError:
+                return {}
+        return {}
+
     def ensure_tag(self, conn, name: str, kind: str = "general") -> str:
         clean = name.strip()
         row = conn.execute("SELECT id FROM tags WHERE name=?", (clean,)).fetchone()
@@ -81,15 +102,86 @@ class ItemRepository:
         conn.execute(f"UPDATE items SET cluster_id=NULL, updated_at=? WHERE cluster_id IN ({placeholders})", (now(), *cluster_ids))
         conn.execute(f"DELETE FROM clusters WHERE id IN ({placeholders})", cluster_ids)
 
-    def _normalized_prompts(self, prompts: list[PromptIn]) -> list[PromptIn]:
+    def _normalized_prompts(self, prompts: list[PromptIn], *, strict_original: bool = False) -> list[PromptIn]:
         normalized = list(prompts)
         languages = {p.language for p in normalized}
+        if strict_original:
+            self._validate_explicit_original(normalized)
         zh_hans = next((p for p in normalized if p.language == "zh_hans" and p.text.strip()), None)
         if zh_hans and "zh_hant" not in languages:
-            normalized.insert(0, PromptIn(language="zh_hant", text=to_traditional(zh_hans.text), is_primary=zh_hans.is_primary))
+            provenance = {
+                "kind": "conversion",
+                "source_language": zh_hans.language,
+                "derived_from": zh_hans.language,
+                "method": "opencc-s2t",
+            }
+            normalized.insert(0, PromptIn(
+                language="zh_hant",
+                text=to_traditional(zh_hans.text),
+                is_primary=zh_hans.is_primary,
+                is_original=False,
+                provenance=provenance,
+            ))
             if zh_hans.is_primary:
                 zh_hans.is_primary = False
-        return normalized
+        return self._with_single_original(normalized)
+
+    def _validate_explicit_original(self, prompts: list[PromptIn]) -> None:
+        usable = [prompt for prompt in prompts if prompt.text.strip()]
+        has_explicit_provenance = any(bool(prompt.provenance) for prompt in usable)
+        has_explicit_original_marker = any("is_original" in getattr(prompt, "model_fields_set", set()) for prompt in usable)
+        if not (has_explicit_provenance or has_explicit_original_marker):
+            return
+        if sum(1 for prompt in usable if prompt.is_original) != 1:
+            raise ValueError("Exactly one prompt must be marked as source/original")
+
+    def _with_single_original(self, prompts: list[PromptIn]) -> list[PromptIn]:
+        usable = [prompt for prompt in prompts if prompt.text.strip()]
+        if not usable:
+            return prompts
+        originals = [prompt for prompt in usable if prompt.is_original]
+        source_language = (originals[0] if originals else next((p for p in usable if p.is_primary), usable[0])).language
+        original_assigned = False
+        for prompt in usable:
+            is_original = bool(prompt.is_original and prompt.language == source_language and not original_assigned)
+            if not originals and prompt.language == source_language and not original_assigned:
+                is_original = True
+            prompt.is_original = is_original
+            if is_original:
+                original_assigned = True
+                prompt.provenance = {
+                    **({} if not prompt.provenance else prompt.provenance),
+                    "kind": prompt.provenance.get("kind") or "manual",
+                    "source_language": prompt.provenance.get("source_language") or prompt.language,
+                    "derived_from": prompt.provenance.get("derived_from"),
+                    "method": prompt.provenance.get("method"),
+                }
+            else:
+                prompt.provenance = {
+                    **({} if not prompt.provenance else prompt.provenance),
+                    "kind": prompt.provenance.get("kind") or "manual",
+                    "source_language": prompt.provenance.get("source_language") or source_language,
+                    "derived_from": prompt.provenance.get("derived_from") or source_language,
+                    "method": prompt.provenance.get("method"),
+                }
+        return prompts
+
+    def _insert_prompt(self, conn, item_id: str, prompt: PromptIn, is_primary: bool, timestamp: str) -> None:
+        conn.execute(
+            """INSERT INTO prompts(id,item_id,language,text,is_primary,is_original,provenance,created_at,updated_at)
+                VALUES(?,?,?,?,?,?,?,?,?)""",
+            (
+                new_id("prm"),
+                item_id,
+                prompt.language,
+                prompt.text,
+                int(is_primary),
+                int(prompt.is_original),
+                json.dumps(prompt.provenance or {}, ensure_ascii=False),
+                timestamp,
+                timestamp,
+            ),
+        )
 
     def create_item(self, payload: ItemCreate, imported: bool = False, forced_id: str | None = None) -> ItemDetail:
         with connect(self.library_path) as conn:
@@ -100,9 +192,8 @@ class ItemRepository:
             conn.execute("""INSERT INTO items(id,title,slug,model,media_type,source_name,source_url,author,cluster_id,rating,favorite,archived,notes,created_at,updated_at,imported_at)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (iid, payload.title, slug, payload.model, payload.media_type, payload.source_name, payload.source_url, payload.author, cluster_id, payload.rating, int(payload.favorite), int(payload.archived), payload.notes, ts, ts, ts if imported else None))
-            for idx, prompt in enumerate(self._normalized_prompts(payload.prompts)):
-                conn.execute("INSERT INTO prompts(id,item_id,language,text,is_primary,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
-                    (new_id("prm"), iid, prompt.language, prompt.text, int(prompt.is_primary or idx == 0), ts, ts))
+            for idx, prompt in enumerate(self._normalized_prompts(payload.prompts, strict_original=not imported)):
+                self._insert_prompt(conn, iid, prompt, prompt.is_primary or idx == 0, ts)
             for tag in payload.tags:
                 if tag.strip():
                     tid = self.ensure_tag(conn, tag)
@@ -136,9 +227,8 @@ class ItemRepository:
                 conn.execute("DELETE FROM prompts WHERE item_id=?", (item_id,))
                 ts = now()
                 prompts = [PromptIn.model_validate(prompt) if isinstance(prompt, dict) else prompt for prompt in (payload.prompts or [])]
-                for idx, prompt in enumerate(self._normalized_prompts(prompts)):
-                    conn.execute("INSERT INTO prompts(id,item_id,language,text,is_primary,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
-                        (new_id("prm"), item_id, prompt.language, prompt.text, int(prompt.is_primary or idx == 0), ts, ts))
+                for idx, prompt in enumerate(self._normalized_prompts(prompts, strict_original=True)):
+                    self._insert_prompt(conn, item_id, prompt, prompt.is_primary or idx == 0, ts)
             self.rebuild_search(conn, item_id)
             if ("cluster_id" in scalar and scalar["cluster_id"] != previous_cluster_id) or scalar.get("archived") == 1:
                 self.delete_empty_clusters(conn)
@@ -169,7 +259,7 @@ class ItemRepository:
 
     def _cluster_from_row(self, row) -> ClusterRecord | None:
         if not row or not row["cluster_id"]: return None
-        return ClusterRecord(id=row["cluster_id"], name=row["cluster_name"], description=row["cluster_description"], sort_order=row["cluster_sort_order"] or 0)
+        return ClusterRecord(id=row["cluster_id"], name=row["cluster_name"], names=self._cluster_names_from_row(row), description=row["cluster_description"], sort_order=row["cluster_sort_order"] or 0)
 
     def _image_by_id(self, image_id: str) -> ImageRecord:
         with connect(self.library_path) as conn:
@@ -181,7 +271,22 @@ class ItemRepository:
         return [TagRecord(**dict(r)) for r in rows]
 
     def _prompts(self, conn, item_id: str) -> list[PromptRecord]:
-        return [PromptRecord(**dict(r)) for r in conn.execute("SELECT * FROM prompts WHERE item_id=? ORDER BY is_primary DESC, created_at", (item_id,)).fetchall()]
+        rows = conn.execute("SELECT * FROM prompts WHERE item_id=? ORDER BY is_primary DESC, created_at", (item_id,)).fetchall()
+        prompts: list[PromptRecord] = []
+        for row in rows:
+            data = dict(row)
+            provenance = data.get("provenance")
+            if isinstance(provenance, str) and provenance.strip():
+                try:
+                    data["provenance"] = json.loads(provenance)
+                except json.JSONDecodeError:
+                    data["provenance"] = {}
+            else:
+                data["provenance"] = {}
+            data["is_primary"] = bool(data.get("is_primary"))
+            data["is_original"] = bool(data.get("is_original"))
+            prompts.append(PromptRecord(**data))
+        return prompts
 
     def _images(self, conn, item_id: str) -> list[ImageRecord]:
         return [ImageRecord(**dict(r)) for r in conn.execute("""SELECT * FROM images WHERE item_id=?
@@ -194,7 +299,7 @@ class ItemRepository:
 
     def get_item(self, item_id: str) -> ItemDetail:
         with connect(self.library_path) as conn:
-            row = conn.execute("""SELECT i.*, c.id cluster_id, c.name cluster_name, c.description cluster_description, c.sort_order cluster_sort_order FROM items i LEFT JOIN clusters c ON c.id=i.cluster_id WHERE i.id=?""", (item_id,)).fetchone()
+            row = conn.execute("""SELECT i.*, c.id cluster_id, c.name cluster_name, c.names cluster_names, c.description cluster_description, c.sort_order cluster_sort_order FROM items i LEFT JOIN clusters c ON c.id=i.cluster_id WHERE i.id=?""", (item_id,)).fetchone()
             if not row: raise KeyError(item_id)
             summary = self._summary_from_row(conn, row)
             return ItemDetail(**summary.model_dump(), images=self._images(conn,item_id), notes=row["notes"], author=row["author"])
@@ -219,7 +324,7 @@ class ItemRepository:
         order = {"created_desc":"i.created_at DESC", "title_asc":"i.title COLLATE NOCASE ASC", "rating_desc":"i.rating DESC, i.updated_at DESC"}.get(sort, "i.updated_at DESC")
         with connect(self.library_path) as conn:
             total = conn.execute(f"SELECT COUNT(DISTINCT i.id) FROM items i LEFT JOIN clusters c ON c.id=i.cluster_id {where_sql}", params).fetchone()[0]
-            rows = conn.execute(f"""SELECT i.*, c.id cluster_id, c.name cluster_name, c.description cluster_description, c.sort_order cluster_sort_order FROM items i LEFT JOIN clusters c ON c.id=i.cluster_id {where_sql} GROUP BY i.id ORDER BY {order} LIMIT ? OFFSET ?""", (*params, limit, offset)).fetchall()
+            rows = conn.execute(f"""SELECT i.*, c.id cluster_id, c.name cluster_name, c.names cluster_names, c.description cluster_description, c.sort_order cluster_sort_order FROM items i LEFT JOIN clusters c ON c.id=i.cluster_id {where_sql} GROUP BY i.id ORDER BY {order} LIMIT ? OFFSET ?""", (*params, limit, offset)).fetchall()
             return ItemList(items=[self._summary_from_row(conn,r) for r in rows], total=total, limit=limit, offset=offset)
 
     def list_clusters(self) -> list[ClusterRecord]:
@@ -241,7 +346,7 @@ class ItemRepository:
                         )
                       )
                     ORDER BY CASE img.role WHEN 'result_image' THEN 0 ELSE 1 END, img.sort_order LIMIT 4""",(r["id"],)).fetchall() if x[0]]
-                out.append(ClusterRecord(id=r["id"], name=r["name"], description=r["description"], sort_order=r["sort_order"], count=r["count"], preview_images=previews))
+                out.append(ClusterRecord(id=r["id"], name=r["name"], names=self._cluster_names_from_row(r), description=r["description"], sort_order=r["sort_order"], count=r["count"], preview_images=previews))
             return out
 
     def list_tags(self) -> list[TagRecord]:

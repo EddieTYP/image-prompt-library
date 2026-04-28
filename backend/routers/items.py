@@ -13,7 +13,9 @@ def list_items(request: Request, q: str | None=None, cluster: str | None=None, t
     return repo(request).list_items(q=q, cluster=cluster, tag=tag, favorite=favorite, archived=archived, sort=sort, limit=min(limit,1000), offset=offset)
 
 @router.post("/items", response_model=ItemDetail)
-def create_item(request: Request, payload: ItemCreate): return repo(request).create_item(payload)
+def create_item(request: Request, payload: ItemCreate):
+    try: return repo(request).create_item(payload)
+    except ValueError as exc: raise HTTPException(400, str(exc)) from exc
 
 @router.get("/items/{item_id}", response_model=ItemDetail)
 def get_item(request: Request, item_id: str):
@@ -24,6 +26,7 @@ def get_item(request: Request, item_id: str):
 def update_item(request: Request, item_id: str, payload: ItemUpdate):
     try: return repo(request).update_item(item_id, payload)
     except KeyError as exc: not_found(exc)
+    except ValueError as exc: raise HTTPException(400, str(exc)) from exc
 
 @router.delete("/items/{item_id}", response_model=ItemDetail)
 def delete_item(request: Request, item_id: str):

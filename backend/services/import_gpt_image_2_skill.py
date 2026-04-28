@@ -253,8 +253,19 @@ def _replace_prompts_exactly(library_path: Path, repo: ItemRepository, item_id: 
         conn.execute("DELETE FROM prompts WHERE item_id=?", (item_id,))
         for idx, prompt in enumerate(prompts):
             conn.execute(
-                "INSERT INTO prompts(id,item_id,language,text,is_primary,created_at,updated_at) VALUES(?,?,?,?,?,?,?)",
-                (new_id("prm"), item_id, prompt.language, prompt.text, int(prompt.is_primary or idx == 0), ts, ts),
+                """INSERT INTO prompts(id,item_id,language,text,is_primary,is_original,provenance,created_at,updated_at)
+                    VALUES(?,?,?,?,?,?,?,?,?)""",
+                (
+                    new_id("prm"),
+                    item_id,
+                    prompt.language,
+                    prompt.text,
+                    int(prompt.is_primary or idx == 0),
+                    int(prompt.is_original),
+                    json.dumps(prompt.provenance or {}, ensure_ascii=False),
+                    ts,
+                    ts,
+                ),
             )
         repo.rebuild_search(conn, item_id)
         conn.commit()

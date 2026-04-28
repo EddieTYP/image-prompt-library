@@ -17,7 +17,9 @@ concurrency:
 env:
   LEGACY_DEMO_REF: v0.1.0-alpha
   LEGACY_DEMO_PATH: v0.1
-  MOBILE_PREVIEW_PATH: v0.2
+  ARCHIVED_02_DEMO_REF: v0.2.0-alpha
+  ARCHIVED_02_DEMO_PATH: v0.2
+  CURRENT_PREVIEW_PATH: v0.3
 
 jobs:
   build:
@@ -35,12 +37,23 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install
-      - name: Build v0.2 mobile browsing preview
-        run: VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/${MOBILE_PREVIEW_PATH}/ npm run build
-      - name: Stage v0.2 mobile browsing preview
+      - name: Build current v0.3 prompt vault preview
+        run: VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/${CURRENT_PREVIEW_PATH}/ npm run build
+      - name: Stage current v0.3 prompt vault preview
         run: |
-          mkdir -p .pages-artifact/${MOBILE_PREVIEW_PATH}
-          cp -R frontend/dist/. .pages-artifact/${MOBILE_PREVIEW_PATH}/
+          mkdir -p .pages-artifact/${CURRENT_PREVIEW_PATH}
+          cp -R frontend/dist/. .pages-artifact/${CURRENT_PREVIEW_PATH}/
+      - name: Build archived v0.2 preview
+        run: |
+          git fetch --tags origin
+          git worktree add .page-build/${ARCHIVED_02_DEMO_PATH} ${ARCHIVED_02_DEMO_REF}
+          cd .page-build/${ARCHIVED_02_DEMO_PATH}
+          npm install
+          VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/${ARCHIVED_02_DEMO_PATH}/ npm run build
+      - name: Stage archived v0.2 preview
+        run: |
+          mkdir -p .pages-artifact/${ARCHIVED_02_DEMO_PATH}
+          cp -R .page-build/${ARCHIVED_02_DEMO_PATH}/frontend/dist/. .pages-artifact/${ARCHIVED_02_DEMO_PATH}/
       - name: Build archived v0.1 demo
         run: |
           git fetch --tags origin
@@ -166,10 +179,15 @@ jobs:
                   Run the app locally for your own private full library.
                 </p>
                 <section class="versions" aria-label="Demo versions">
-                  <a class="version-card" href="./v0.2/">
-                    <span class="version-label">New · v0.2</span>
-                    <h2>Mobile browsing preview</h2>
-                    <p>Phone-first Cards browsing, two-column masonry, adaptive image display, compact mobile header, and selected-collection dock.</p>
+                  <a class="version-card" href="./v0.3/">
+                    <span class="version-label">New · v0.3</span>
+                    <h2>Multilingual provenance-aware prompt vault</h2>
+                    <p>Browse 510 references from two attributed sample sources with Origin, English, Traditional Chinese, and Simplified Chinese prompt variants.</p>
+                  </a>
+                  <a class="version-card stable" href="./v0.2/">
+                    <span class="version-label">Archive · v0.2</span>
+                    <h2>Archived 0.2 preview</h2>
+                    <p>Mobile Cards browsing, two-column masonry, adaptive image display, compact mobile header, and selected-collection dock.</p>
                   </a>
                   <a class="version-card stable" href="./v0.1/">
                     <span class="version-label">Archive · v0.1</span>
