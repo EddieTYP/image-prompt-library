@@ -15,7 +15,9 @@ from backend.services.generation_jobs import GenerationJobConflict, GenerationJo
 
 PROVIDER_ID = "openai_codex_oauth_native"
 AUTH_MODE = "codex_oauth_native"
+DISPLAY_NAME = "ChatGPT / Codex OAuth"
 DEFAULT_AUTH_PATH = Path.home() / ".image-prompt-library" / "auth.json"
+DEFAULT_CONFIG_PATH = Path.home() / ".image-prompt-library" / "config.json"
 CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 CODEX_AUTH_ISSUER = "https://auth.openai.com"
 CODEX_TOKEN_URL = f"{CODEX_AUTH_ISSUER}/oauth/token"
@@ -48,12 +50,42 @@ def _auth_path() -> Path:
     return DEFAULT_AUTH_PATH
 
 
-def _codex_client_id() -> str:
+def _config_path() -> Path:
+    configured = os.environ.get("IMAGE_PROMPT_LIBRARY_CONFIG_PATH")
+    if configured:
+        return Path(configured).expanduser()
+    return DEFAULT_CONFIG_PATH
+
+
+def _client_id_from_config() -> str | None:
+    path = _config_path()
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    providers = payload.get("providers") if isinstance(payload, dict) else None
+    provider_config = providers.get(PROVIDER_ID) if isinstance(providers, dict) else None
+    if not isinstance(provider_config, dict):
+        return None
+    client_id = str(provider_config.get("client_id", "") or "").strip()
+    return client_id or None
+
+
+def configured_client_id() -> str | None:
     client_id = os.environ.get("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "").strip()
     if client_id:
         return client_id
+    return _client_id_from_config()
+
+
+def _codex_client_id() -> str:
+    client_id = configured_client_id()
+    if client_id:
+        return client_id
     raise CodexNativeAuthError(
-        "IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID is required to start native Codex OAuth"
+        "IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID or local config client_id is required to start native Codex OAuth"
     )
 
 
@@ -78,6 +110,15 @@ def account_id_from_access_token(token: str) -> str | None:
         if isinstance(account_id, str) and account_id.strip():
             return account_id.strip()
     return None
+
+
+def _token_expires_soon(token: str, skew_seconds: int = 300) -> bool:
+    claims = _decode_jwt_payload(token)
+    exp = claims.get("exp")
+    if not isinstance(exp, (int, float)):
+        return False
+    now_ts = datetime.now(timezone.utc).timestamp()
+    return float(exp) <= now_ts + skew_seconds
 
 
 def codex_cloudflare_headers(access_token: str) -> dict[str, str]:
@@ -153,7 +194,7 @@ class CodexNativeAuthStore:
             finally:
                 raise
 
-    def read_tokens(self) -> dict[str, str]:
+    def _read_raw_tokens(self) -> dict[str, str]:
         if not self.path.is_file():
             raise CodexNativeAuthError("No native Codex OAuth credentials saved")
         payload = json.loads(self.path.read_text(encoding="utf-8"))
@@ -166,7 +207,48 @@ class CodexNativeAuthStore:
             raise CodexNativeAuthError("Native Codex auth store has incomplete tokens")
         return {"access_token": access_token, "refresh_token": refresh_token}
 
+    def read_tokens(self, http_client: httpx.Client | None = None) -> dict[str, str]:
+        tokens = self._read_raw_tokens()
+        if _token_expires_soon(tokens["access_token"]):
+            tokens = self.refresh_tokens(tokens["refresh_token"], http_client=http_client)
+        return tokens
+
+    def refresh_tokens(self, refresh_token: str, http_client: httpx.Client | None = None) -> dict[str, str]:
+        client_id = _codex_client_id()
+        close_client = http_client is None
+        client = http_client or httpx.Client(timeout=httpx.Timeout(15.0))
+        try:
+            try:
+                response = client.post(
+                    CODEX_TOKEN_URL,
+                    data={
+                        "grant_type": "refresh_token",
+                        "refresh_token": refresh_token,
+                        "client_id": client_id,
+                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+            except httpx.HTTPError as exc:
+                raise CodexNativeAuthError("Token refresh failed") from exc
+        finally:
+            if close_client:
+                client.close()
+        if response.status_code != 200:
+            raise CodexNativeAuthError(f"Token refresh returned status {response.status_code}")
+        payload = _response_json(response, "Token refresh")
+        access_token = str(payload.get("access_token", "") or "").strip()
+        next_refresh_token = str(payload.get("refresh_token", "") or refresh_token).strip()
+        self.save_tokens({"access_token": access_token, "refresh_token": next_refresh_token})
+        return {"access_token": access_token, "refresh_token": next_refresh_token}
+
+    def delete_tokens(self) -> None:
+        try:
+            self.path.unlink()
+        except FileNotFoundError:
+            pass
+
     def status(self) -> dict[str, Any]:
+        configured = bool(configured_client_id())
         token_present = False
         account_id = None
         try:
@@ -175,10 +257,31 @@ class CodexNativeAuthStore:
             account_id = account_id_from_access_token(tokens["access_token"])
         except Exception:
             token_present = False
+        available = configured and token_present
+        if not configured:
+            state = "not_configured"
+            reason = "missing_client_id"
+        elif not token_present:
+            state = "not_connected"
+            reason = "not_authenticated"
+        else:
+            state = "connected"
+            reason = None
         return {
             "provider": PROVIDER_ID,
+            "display_name": DISPLAY_NAME,
             "auth_mode": AUTH_MODE,
-            "available": token_present,
+            "optional": True,
+            "configured": configured,
+            "authenticated": token_present,
+            "available": available,
+            "state": state,
+            "reason": reason,
+            "features": {
+                "text_to_image": available,
+                "text_reference_to_image": False,
+                "image_edit": False,
+            },
             "token_present": token_present,
             "account_id": account_id,
             "auth_store_path": str(self.path),

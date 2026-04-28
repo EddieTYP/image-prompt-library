@@ -1,6 +1,8 @@
 import base64
 import json
 import os
+import subprocess
+import sys
 from io import BytesIO
 from pathlib import Path
 
@@ -16,11 +18,11 @@ def png_bytes(color="purple", size=(16, 10)) -> bytes:
     return out.getvalue()
 
 
-def fake_jwt(account_id="acct_test_123") -> str:
+def fake_jwt(account_id="acct_test_123", exp=4_102_444_800) -> str:
     header = base64.urlsafe_b64encode(json.dumps({"alg": "none"}).encode()).decode().rstrip("=")
     payload = base64.urlsafe_b64encode(json.dumps({
         "https://api.openai.com/auth": {"chatgpt_account_id": account_id},
-        "exp": 4_102_444_800,
+        "exp": exp,
     }).encode()).decode().rstrip("=")
     return f"{header}.{payload}.sig"
 
@@ -56,22 +58,22 @@ def test_codex_native_token_store_is_app_owned_redacted_and_permissioned(tmp_pat
     assert oct(auth_path.stat().st_mode & 0o777) == "0o600"
 
     status = store.status()
-    assert status == {
-        "provider": "openai_codex_oauth_native",
-        "auth_mode": "codex_oauth_native",
-        "available": True,
-        "token_present": True,
-        "account_id": "acct_test_123",
-        "auth_store_path": str(auth_path),
-    }
+    assert status["provider"] == "openai_codex_oauth_native"
+    assert status["auth_mode"] == "codex_oauth_native"
+    assert status["optional"] is True
+    assert status["authenticated"] is True
+    assert status["token_present"] is True
+    assert status["account_id"] == "acct_test_123"
+    assert status["auth_store_path"] == str(auth_path)
     assert "refresh-secret" not in json.dumps(status)
     assert "access_token" not in status
     assert codex_cloudflare_headers(fake_jwt())["ChatGPT-Account-ID"] == "acct_test_123"
 
 
-def test_codex_native_status_api_does_not_expose_tokens_or_use_library_path(tmp_path, monkeypatch):
+def test_codex_native_status_api_is_optional_frontend_ready_and_redacted(tmp_path, monkeypatch):
     auth_path = tmp_path / "auth-outside-library" / "auth.json"
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.delenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", raising=False)
     c = client(tmp_path)
 
     response = c.get("/api/generation-providers/openai-codex-native/status")
@@ -79,11 +81,128 @@ def test_codex_native_status_api_does_not_expose_tokens_or_use_library_path(tmp_
     assert response.status_code == 200
     payload = response.json()
     assert payload["provider"] == "openai_codex_oauth_native"
+    assert payload["display_name"] == "ChatGPT / Codex OAuth"
+    assert payload["optional"] is True
+    assert payload["configured"] is False
+    assert payload["authenticated"] is False
     assert payload["available"] is False
-    assert payload["token_present"] is False
+    assert payload["state"] == "not_configured"
+    assert payload["reason"] == "missing_client_id"
+    assert payload["features"] == {
+        "text_to_image": False,
+        "text_reference_to_image": False,
+        "image_edit": False,
+    }
     assert payload["auth_store_path"] == str(auth_path)
     assert str(tmp_path / "library") not in payload["auth_store_path"]
     assert "token" not in json.dumps(payload).lower().replace("token_present", "")
+
+
+def test_codex_native_status_uses_local_config_client_id_and_lists_optional_providers(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    config_path = tmp_path / "config" / "config.json"
+    config_path.parent.mkdir()
+    config_path.write_text(json.dumps({
+        "providers": {
+            "openai_codex_oauth_native": {"client_id": "config-client-id"}
+        }
+    }), encoding="utf-8")
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CONFIG_PATH", str(config_path))
+    monkeypatch.delenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", raising=False)
+
+    c = client(tmp_path)
+    status = c.get("/api/generation-providers/openai-codex-native/status").json()
+    assert status["configured"] is True
+    assert status["authenticated"] is False
+    assert status["available"] is False
+    assert status["state"] == "not_connected"
+    assert status["reason"] == "not_authenticated"
+    assert status["features"]["text_to_image"] is False
+
+    providers = c.get("/api/generation-providers").json()
+    assert providers[0]["provider"] == "manual_upload"
+    codex = next(provider for provider in providers if provider["provider"] == "openai_codex_oauth_native")
+    assert codex["optional"] is True
+    assert codex["state"] == "not_connected"
+
+
+def test_codex_native_disconnect_removes_only_app_auth_store(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
+    assert auth_path.exists()
+
+    c = client(tmp_path)
+    response = c.post("/api/generation-providers/openai-codex-native/auth/disconnect")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["state"] == "not_connected"
+    assert payload["configured"] is True
+    assert payload["authenticated"] is False
+    assert auth_path.exists() is False
+
+
+def test_codex_native_smoke_script_reports_optional_status_without_tokens(tmp_path):
+    auth_path = tmp_path / "auth" / "auth.json"
+    env = os.environ.copy()
+    env["IMAGE_PROMPT_LIBRARY_AUTH_PATH"] = str(auth_path)
+    env.pop("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", None)
+    env.pop("IMAGE_PROMPT_LIBRARY_CONFIG_PATH", None)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/codex_native_oauth_smoke.py",
+            "status",
+            "--library",
+            str(tmp_path / "library"),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["state"] == "not_configured"
+    assert payload["available"] is False
+    assert "access_token" not in result.stdout
+
+
+def test_codex_native_refreshes_expired_access_token_before_use(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    import httpx
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    seen_bodies = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_bodies.append(request.content.decode())
+        return httpx.Response(200, json={
+            "access_token": fake_jwt("acct_refreshed"),
+            "refresh_token": "refresh-token-rotated",
+        })
+
+    store = CodexNativeAuthStore()
+    store.save_tokens({"access_token": fake_jwt("acct_expired", exp=1), "refresh_token": "refresh-token-old"})
+    tokens = store.read_tokens(http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+
+    assert tokens["access_token"] == fake_jwt("acct_refreshed")
+    assert tokens["refresh_token"] == "refresh-token-rotated"
+    assert "grant_type=refresh_token" in seen_bodies[0]
+    assert "client_id=codex-client-test" in seen_bodies[0]
+    assert "refresh-token-rotated" in auth_path.read_text()
 
 
 def test_codex_native_device_flow_uses_codex_endpoints_and_saves_app_owned_tokens(tmp_path, monkeypatch):
