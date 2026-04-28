@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, Copy, ExternalLink, Heart, Pencil, Plus, X } from 'lucide-react';
+import GenerationPanel from './GenerationPanel';
 import { api, mediaUrl } from '../api/client';
 import type { ClusterRecord, ImageRecord, ItemDetail, PromptRecord, TagRecord } from '../types';
 import { copyTextToClipboard } from '../utils/clipboard';
@@ -180,6 +181,7 @@ export default function ItemDetailModal({
   const [tagQuery, setTagQuery] = useState('');
   const [editingPromptLanguage, setEditingPromptLanguage] = useState<string>();
   const [promptDraft, setPromptDraft] = useState('');
+  const [generationOpen, setGenerationOpen] = useState(false);
   const lastDefaultPromptKeyRef = useRef('');
 
   useEffect(() => { setLang(preferredLanguage); }, [preferredLanguage, id]);
@@ -323,6 +325,7 @@ export default function ItemDetailModal({
               <aside className="detail-side">
                 <div className="detail-side-actions">
                   <span className="detail-side-primary-actions">
+                    {showMutations && <button className="secondary generate-variant-button" onClick={() => setGenerationOpen(true)}>Generate variant</button>}
                     {showMutations && <button className="modal-icon-button favorite-button" onClick={toggleFavorite} aria-label={item.favorite ? t('saved') : t('favorite')}>
                       <Heart size={18} fill={item.favorite ? 'currentColor' : 'none'} />
                     </button>}
@@ -437,6 +440,15 @@ export default function ItemDetailModal({
               </aside>
             </div>
           </div>
+        )}
+        {generationOpen && item && (
+          <GenerationPanel
+            item={item}
+            preferredLanguage={preferredLanguage}
+            t={t}
+            onClose={() => setGenerationOpen(false)}
+            onAccepted={() => { api.item(item.id).then(setItem).catch(() => undefined); onChanged(); }}
+          />
         )}
       </div>
     </div>

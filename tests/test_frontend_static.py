@@ -270,11 +270,42 @@ def test_config_prompt_copy_language_is_mobile_safe():
     compact_css = css.replace(" ", "")
 
     assert "prompt-copy-language-control" in config
-    assert ".prompt-copy-language-control" in css
-    assert "grid-template-columns:repeat(2,minmax(0,1fr))" in compact_css
+    assert ".prompt-copy-language-control{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))" in compact_css
+    assert "white-space:normal" in compact_css
+    assert "@media(max-width:760px)" in compact_css
+    assert ".prompt-copy-language-control{grid-template-columns:repeat(2,minmax(0,1fr));" in compact_css
 
 
-def test_explore_uses_real_thumbnails_not_dots_or_originals():
+def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+    panel_path = ROOT / "frontend" / "src" / "components" / "GenerationPanel.tsx"
+    assert panel_path.exists()
+    panel = panel_path.read_text()
+    api = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+    types = (ROOT / "frontend" / "src" / "types.ts").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+
+    assert "GenerationJobRecord" in types
+    assert "createGenerationJob:" in api
+    assert "generationJobs:" in api
+    assert "runGenerationJob:" in api
+    assert "uploadGenerationResult:" in api
+    assert "acceptGenerationJob:" in api
+    assert "discardGenerationJob:" in api
+    assert "GenerationPanel" in app or "GenerationPanel" in detail
+    assert "Generate variant" in detail
+    assert "Result inbox" in panel
+    assert "api.createGenerationJob" in panel
+    assert "api.runGenerationJob" in panel
+    assert "api.uploadGenerationResult" in panel
+    assert "api.acceptGenerationJob" in panel
+    assert "api.discardGenerationJob" in panel
+    assert "manual_upload" in panel
+    assert "openai_codex_oauth_native" in panel
+    assert "generation-panel" in css
+    assert "generation-job-card" in css
+
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
     assert "function getConstellationImagePath" in explore
