@@ -204,6 +204,15 @@ Recommended implementation order:
 
 ## Known follow-ups
 
+Next implementation focus:
+
+1. **ImportDraft core — done in backend**: persistent schema/storage, preview/list/detail/confirm API, duplicate checks, derived Traditional Chinese normalization on accepted items, and accept-draft writes into the normal library repository layer are implemented and tested.
+2. **Repository/dataset ingestion MVP — done for local markdown repositories**: the backend scans local markdown folders, extracts heading/fenced-prompt/image records, stages local image assets safely under the selected library, preserves source file/ref metadata, and emits ImportDraft records for review. Remote GitHub clone/download orchestration and richer dataset-specific parsers remain future hardening.
+3. **GenerationJob plus result inbox foundation** — provider-agnostic generation jobs, result review, accept/retry/discard, and attach generated variants back to library items.
+4. **`openai_codex_oauth_native` provider** — native ChatGPT/Codex OAuth image generation provider using the generation-job infrastructure.
+5. **Generic URL plus X/Threads import** — public URL extraction and social-post/thread import behind local-only/experimental warnings.
+6. **Instagram import** — later experimental adapter only after generic URL and X/Threads are useful.
+
 Public-alpha follow-ups that remain useful:
 
 - enable private vulnerability reporting in GitHub settings if available
@@ -216,18 +225,18 @@ Private/local generation follow-ups:
 
 - implement a provider-adapter generation layer with provider-agnostic `GenerationJob` records, result inbox, accept/retry/discard review, and attach-to-library flow
 - support the intended one-click generation workflow: edit or fork an existing prompt variant, choose a generation provider, generate Text→Image or Text+Reference→Image/Edit outputs, review results, then attach accepted images back to the source item or as a generated variant
-- implement `openai_codex_oauth_native` directly as the preferred Codex/ChatGPT-login adapter, rather than only brokering through Hermes
+- implement `openai_codex_oauth_native` directly as the preferred Codex/ChatGPT-login adapter, rather than only brokering through external agent tools
 - keep `openai_codex_oauth_native` local-only and experimental; it uses the ChatGPT/Codex backend, not the stable public OpenAI Images API
-- device-code login should create this app's own OAuth session and token store, separate from Hermes and Codex CLI by default
+- device-code login should create this app's own OAuth session and token store, separate from other local auth stores by default
 - token storage must live outside the library/export/demo data path, use restrictive permissions, support refresh locking/skew handling, and never enter git, sample bundles, backups, or GitHub Pages exports
 - request handling must decode the OAuth JWT for `ChatGPT-Account-ID`, send Codex-compatible originator/user-agent headers, call the Codex Responses API with the `image_generation` tool and `gpt-image-2`, parse streamed base64 image output, and save results into a local review inbox
 - generated-output provenance should record provider `openai_codex_oauth_native`, auth mode `codex_oauth_native`, model/provider details, quality/size/aspect ratio, prompt variant, reference images, source item id, generation job id, timestamps, and user disposition
 
 Import and agent-ingestion follow-ups:
 
-- add a shared `ImportDraft` pipeline so source adapters can stage candidate images/prompts/metadata before the user confirms import
-- add an agent skill / adapter to pull prompt-image datasets from a local folder or GitHub repository, especially markdown/gallery repos with image assets and prompt blocks
-- repository ingestion should preserve repo URL, commit/ref when available, source file paths, upstream author/license metadata, prompt-language provenance, suggested collection/tags, and staged media paths
+- Batch 1 ImportDraft core is now implemented in the backend: source adapters can create persistent draft records with prompts/media/provenance metadata, reviewers can list/preview drafts, duplicate drafts are detected by source URL or normalized prompt text, and accepted drafts create normal library items through the existing repository layer.
+- Batch 2 repository/dataset ingestion MVP is implemented for local markdown repositories: `POST /api/import-drafts/repository` scans a local folder, extracts Markdown heading/fenced-prompt/image records, stages image assets under `import-staging/`, stores image dimensions/SHA256 when available, preserves repo URL/ref/source path metadata, and emits ImportDraft records for review before accept.
+- future repository-ingestion hardening should add remote GitHub clone/download orchestration, richer dataset-specific parser adapters, license/attribution extraction, and optional tag suggestions
 - add an agent skill / adapter to pull X/Twitter and Threads post or thread URLs into `ImportDraft` records with public post text, media, source URL, author/handle, quoted/replied context when accessible, and suggested collection/tags
 - add a generic public URL import adapter for article/post pages that can extract visible text, images, Open Graph metadata, author/source metadata, candidate prompts, and suggested collection/tags into reviewable drafts
 - track Instagram URL import as a later experimental adapter rather than the first URL-import target, because login/browser-session requirements and anti-bot behavior are likely

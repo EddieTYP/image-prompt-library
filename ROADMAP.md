@@ -66,6 +66,8 @@ Mobile-native browsing remains in scope:
 
 Goal: make it easy to pull useful prompt/image references from external repositories and public social posts into the local library through a reviewable import-draft flow. These importers should stay local-first and user-confirmed rather than becoming an automated hosted scraping service.
 
+Current status: **Batch 1 ImportDraft core is implemented in the local backend** and **Batch 2 repository/dataset ingestion MVP is implemented for local markdown repositories**. The current importer scans local markdown folders, stages local image assets, emits reviewable ImportDraft records with source path/ref metadata, detects duplicates through the shared draft pipeline, and accepts staged images into normal library media storage. Next implementation milestone: **GenerationJob plus result inbox foundation**.
+
 Shared architecture:
 
 - Use a common `ImportDraft` pipeline for all import sources.
@@ -83,10 +85,14 @@ Planned adapters / agent skills:
 
 Recommended order:
 
-1. Implement the repository/dataset ingestion skill first because markdown/GitHub repos are more stable, easier to test, and map cleanly to the existing sample-manifest/provenance model.
-2. Implement generic URL import and X/Threads ingestion next, behind clear local-only/experimental warnings where needed.
-3. Consider Instagram only after the generic/X/Threads flow is useful, because IG auth/browser-session requirements and anti-bot behavior make it less reliable.
-4. Keep all live-import flows independent from the public GitHub Pages demo; Pages remains read-only and does not perform live imports.
+1. **Batch 1: ImportDraft core — done in backend.** Schema, staging storage, preview/list/detail/confirm API, duplicate checks, Traditional Chinese derived normalization on accepted items, and accept-draft writes into the normal library repository layer are implemented and tested.
+2. **Batch 2: repository/dataset ingestion MVP — done for local markdown repositories.** The backend can scan local markdown folders, extract heading/fenced-prompt/image records, stage repository images safely under the selected library, preserve source file/ref metadata, and emit ImportDraft records for review. Future hardening can add remote GitHub clone/download orchestration and richer dataset-specific parsers.
+3. **Batch 3: GenerationJob plus result inbox foundation** — provider-agnostic generation jobs, result review, accept/retry/discard, and attach generated variants back to library items.
+4. **Batch 4: `openai_codex_oauth_native`** — native ChatGPT/Codex OAuth image generation provider using the generation-job infrastructure.
+5. **Batch 5: generic URL plus X/Threads import** — public URL extraction and social-post/thread import behind local-only/experimental warnings.
+6. **Batch 6: Instagram import** — only after the generic URL and X/Threads flow is useful, because IG auth/browser-session requirements and anti-bot behavior make it less reliable.
+
+Keep all live-import and generation flows independent from the public GitHub Pages demo; Pages remains read-only and does not perform live imports or generation.
 
 ## Private/local generation roadmap
 

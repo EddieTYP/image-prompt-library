@@ -110,3 +110,60 @@ class ImportResult(BaseModel):
     image_count: int
     status: str
     log: str = ""
+
+class ImportDraftMedia(BaseModel):
+    url: Optional[str] = None
+    original_path: Optional[str] = None
+    staged_path: Optional[str] = None
+    role: str = "result_image"
+    kind: str = "remote"
+    width: Optional[int] = None
+    height: Optional[int] = None
+    file_sha256: Optional[str] = None
+
+class ImportDraftCreate(BaseModel):
+    source_type: str
+    source_name: Optional[str] = None
+    source_url: Optional[str] = None
+    source_ref: Optional[str] = None
+    source_path: Optional[str] = None
+    title: str
+    model: str = "ChatGPT Image2"
+    author: Optional[str] = None
+    suggested_cluster_name: Optional[str] = None
+    suggested_tags: List[str] = Field(default_factory=list)
+    prompts: List[PromptIn] = Field(default_factory=list)
+    media: List[ImportDraftMedia] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+    confidence: Optional[float] = None
+
+class ImportDraftRecord(ImportDraftCreate):
+    id: str
+    status: str
+    duplicate_of_item_id: Optional[str] = None
+    accepted_item_id: Optional[str] = None
+    created_at: str
+    updated_at: str
+    accepted_at: Optional[str] = None
+
+class ImportDraftList(BaseModel):
+    drafts: List[ImportDraftRecord]
+    total: int
+    limit: int
+    offset: int
+
+class ImportDraftAcceptResult(BaseModel):
+    draft: ImportDraftRecord
+    item: ItemDetail
+
+class RepositoryIngestRequest(BaseModel):
+    path: str
+    repo_url: Optional[str] = None
+    source_ref: Optional[str] = None
+
+class RepositoryIngestResult(BaseModel):
+    id: str
+    draft_count: int
+    status: str
+    drafts: List[ImportDraftRecord]
+    log: str = ""
