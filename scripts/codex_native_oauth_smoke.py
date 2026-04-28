@@ -76,12 +76,15 @@ def generate(args: argparse.Namespace) -> int:
     return 0
 
 
-def _add_library_arg(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--library",
-        default="library",
-        help="Path to the local Image Prompt Library data directory (default: ./library).",
-    )
+def _add_library_arg(parser: argparse.ArgumentParser, *, default: str | None = "library") -> None:
+    kwargs: dict[str, Any] = {
+        "help": "Path to the local Image Prompt Library data directory (default: ./library).",
+    }
+    if default is None:
+        kwargs["default"] = argparse.SUPPRESS
+    else:
+        kwargs["default"] = default
+    parser.add_argument("--library", **kwargs)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -92,25 +95,25 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     status_parser = subparsers.add_parser("status", help="Print redacted provider status.")
-    _add_library_arg(status_parser)
+    _add_library_arg(status_parser, default=None)
     status_parser.set_defaults(func=status)
 
     start_parser = subparsers.add_parser("start", help="Start Codex device-code OAuth.")
-    _add_library_arg(start_parser)
+    _add_library_arg(start_parser, default=None)
     start_parser.set_defaults(func=start)
 
     poll_parser = subparsers.add_parser("poll", help="Poll Codex device-code OAuth after approving in browser.")
-    _add_library_arg(poll_parser)
+    _add_library_arg(poll_parser, default=None)
     poll_parser.add_argument("--device-auth-id", required=True)
     poll_parser.add_argument("--user-code", required=True)
     poll_parser.set_defaults(func=poll)
 
     disconnect_parser = subparsers.add_parser("disconnect", help="Delete the app-owned Codex OAuth token store.")
-    _add_library_arg(disconnect_parser)
+    _add_library_arg(disconnect_parser, default=None)
     disconnect_parser.set_defaults(func=disconnect)
 
     generate_parser = subparsers.add_parser("generate", help="Create and run a live Codex generation job.")
-    _add_library_arg(generate_parser)
+    _add_library_arg(generate_parser, default=None)
     generate_parser.add_argument("--prompt", required=True)
     generate_parser.add_argument("--aspect-ratio", default="square")
     generate_parser.add_argument("--quality", default="high")

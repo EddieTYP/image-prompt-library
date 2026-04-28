@@ -72,7 +72,9 @@ def test_codex_native_token_store_is_app_owned_redacted_and_permissioned(tmp_pat
 
 def test_codex_native_status_api_is_optional_frontend_ready_and_redacted(tmp_path, monkeypatch):
     auth_path = tmp_path / "auth-outside-library" / "auth.json"
+    config_path = tmp_path / "missing-config.json"
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CONFIG_PATH", str(config_path))
     monkeypatch.delenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", raising=False)
     c = client(tmp_path)
 
@@ -148,12 +150,22 @@ def test_codex_native_disconnect_removes_only_app_auth_store(tmp_path, monkeypat
     assert auth_path.exists() is False
 
 
+def test_codex_native_smoke_parser_preserves_global_library_argument():
+    from scripts.codex_native_oauth_smoke import build_parser
+
+    args = build_parser().parse_args(["--library", ".local-work/smoke", "generate", "--prompt", "hello"])
+    assert args.library == ".local-work/smoke"
+
+    args = build_parser().parse_args(["generate", "--library", ".local-work/smoke", "--prompt", "hello"])
+    assert args.library == ".local-work/smoke"
+
+
 def test_codex_native_smoke_script_reports_optional_status_without_tokens(tmp_path):
     auth_path = tmp_path / "auth" / "auth.json"
     env = os.environ.copy()
     env["IMAGE_PROMPT_LIBRARY_AUTH_PATH"] = str(auth_path)
+    env["IMAGE_PROMPT_LIBRARY_CONFIG_PATH"] = str(tmp_path / "missing-config.json")
     env.pop("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", None)
-    env.pop("IMAGE_PROMPT_LIBRARY_CONFIG_PATH", None)
 
     result = subprocess.run(
         [
@@ -288,6 +300,12 @@ def test_codex_native_device_flow_rejects_invalid_upstream_json(tmp_path, monkey
         assert "invalid interval" in str(exc)
     else:
         raise AssertionError("expected invalid interval to be converted to CodexNativeAuthError")
+
+
+def test_codex_native_uses_chatgpt_account_supported_codex_model():
+    from backend.services.openai_codex_native import CODEX_CHAT_MODEL
+
+    assert CODEX_CHAT_MODEL == "gpt-5.3-codex"
 
 
 def test_codex_native_run_executes_job_and_stages_result_without_leaking_tokens(tmp_path, monkeypatch):

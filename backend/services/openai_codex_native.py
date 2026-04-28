@@ -21,7 +21,7 @@ DEFAULT_CONFIG_PATH = Path.home() / ".image-prompt-library" / "config.json"
 CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 CODEX_AUTH_ISSUER = "https://auth.openai.com"
 CODEX_TOKEN_URL = f"{CODEX_AUTH_ISSUER}/oauth/token"
-CODEX_CHAT_MODEL = "gpt-5.1-codex-mini"
+CODEX_CHAT_MODEL = "gpt-5.3-codex"
 IMAGE_MODEL = "gpt-image-2"
 DEFAULT_QUALITY = "high"
 
