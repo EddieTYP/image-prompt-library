@@ -1,6 +1,6 @@
 # Maintainer Log
 
-Last updated: 2026-04-28
+Last updated: 2026-04-29
 
 This file records public-safe maintainer notes for the Image Prompt Library project. It is intentionally more detailed than `ROADMAP.md`, but it should not contain private machine paths, credentials, runtime data, or local workflow details.
 
@@ -76,6 +76,30 @@ The detail modal should be the primary lightweight editing surface:
 - empty prompt tabs remain clickable/editable in local-install mode so missing translations can be added later
 - notes are separate from prompts and should stay visually lightweight when empty
 - tags stay near the bottom with a clear add/remove flow
+
+### Generation result workflow
+
+GenerationJob is a temporary workbench/result inbox, not an automatic commit into the library. Generation results should not be silently attached to the source item. After a provider run completes, the user explicitly chooses the result disposition.
+
+Final accepted direction for the next generation-UX batches:
+
+- Result inbox cards expose an explicit accept action and discard action.
+- Accept should become a split/dropdown action with two choices:
+  - `Attach to current item`
+  - `Save as new item`
+- `Attach to current item` appends the generated image to the current item, keeps generation metadata, and shows a toast: `Image added to item`.
+- `Save as new item` creates a new variant item whose primary image is the generated result, uses the generation prompt, preserves provenance back to the source item and GenerationJob, and shows a toast: `New variant item created` with a `View item` action.
+- If an item has multiple images, the detail modal must support first-class image browsing: main image area, thumbnail/dot switcher, visible position such as `1 / 2`, and click-to-switch behavior.
+- Generated/variant images should carry visible role/provenance badges where practical.
+- Provider runs should show an animated shimmer/skeleton image placeholder in the result inbox rather than a plain spinner.
+- When a result completes, the pending card should transition into the result card with a subtle fade-in.
+- After accept, use toast feedback rather than an interrupting modal; when attaching, select/highlight the newly attached image in the item detail if possible.
+- Manual result upload should be hidden or demoted from the primary generation flow. Its real purpose is uploading an externally generated result into a GenerationJob, not normal item creation; keep backend support available but do not present it beside the main provider run/accept controls unless exposed as an advanced/fallback action.
+
+Current user-reported bugs to fix before adding more generation features:
+
+- Accepted generated images can render as broken image placeholders instead of loading through the app media route.
+- Items with more than one image cannot currently browse/switch to the second image from the detail UI.
 
 ### UI language and sample-vault behavior
 
@@ -211,8 +235,10 @@ Next implementation focus:
 3. **GenerationJob plus result inbox foundation — done in backend**: provider-agnostic generation job records, manual/stub result staging under `generation-results/`, list/detail review API, accept/discard lifecycle, and accept-to-library media attachment are implemented and tested.
 4. **`openai_codex_oauth_native` provider — backend/provider UI slices done**: app-owned native Codex auth store outside the library, frontend-ready optional provider status/list API, device-code start/poll/disconnect helpers, env/local-config client-id bootstrap, token refresh before expiry, Codex-compatible headers, `POST /api/generation-jobs/{job_id}/run` can stage Codex image results into the GenerationJob inbox, and the frontend Config drawer lists providers plus native Codex connect/poll/disconnect controls. Live-account QA, refresh lock hardening, reference/edit modes, and retry controls remain follow-ups.
 5. **Generation UX/result inbox frontend first slice — done for local installs**: item detail views can launch `Generate variant`, create GenerationJobs from saved prompts, list per-item result inbox entries, upload manual results, run provider jobs when available, and accept/discard reviewed outputs through the existing backend lifecycle. Public GitHub Pages remains read-only and does not expose mutation/generation controls.
-6. **Generic URL plus X/Threads import** — public URL extraction and social-post/thread import behind local-only/experimental warnings.
-7. **Instagram import** — later experimental adapter only after generic URL and X/Threads are useful.
+6. **Generation Result UX correctness — planned next**: fix accepted generated images that render as placeholders, add item detail multi-image browsing, hide/demote manual result upload from the primary path, add a shimmer/skeleton pending card during generation, fade in completed result cards, and show toast feedback after accepting a result into the current item.
+7. **Save as new variant item — planned after UX correctness**: change accept into a split/dropdown action with `Attach to current item` and `Save as new item`; create a new variant item from the accepted result with source item, GenerationJob, provider/model, and generation prompt provenance; show `New variant item created` plus a `View item` action.
+8. **Generic URL plus X/Threads import** — public URL extraction and social-post/thread import behind local-only/experimental warnings.
+9. **Instagram import** — later experimental adapter only after generic URL and X/Threads are useful.
 
 Public-alpha follow-ups that remain useful:
 
@@ -226,7 +252,7 @@ Private/local generation follow-ups:
 
 - Batch 3 provider-adapter generation foundation is now implemented in the backend: `POST /api/generation-jobs` creates provider-agnostic jobs, `POST /api/generation-jobs/{job_id}/result` stages manual/stub result images under `generation-results/`, `GET /api/generation-jobs` and `GET /api/generation-jobs/{job_id}` support review/inbox reads, and accept/discard endpoints finalize the result. Accepted images are copied through normal media storage into `originals/`, `thumbs/`, and `previews/` before attaching to the source item.
 - Batch 4 `openai_codex_oauth_native` backend/provider UI slices are now implemented: `backend/services/openai_codex_native.py` owns the app-native auth store (`~/.image-prompt-library/auth.json` by default, overrideable via `IMAGE_PROMPT_LIBRARY_AUTH_PATH`), frontend-ready provider status (`not_configured` / `not_connected` / `connected`), env/local-config client-id resolution (`IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID` or `~/.image-prompt-library/config.json` / `IMAGE_PROMPT_LIBRARY_CONFIG_PATH`), redacted token status, device-code start/poll helpers, disconnect, access-token refresh before expiry, `ChatGPT-Account-ID` JWT header extraction, Codex-compatible headers, Codex Responses `image_generation` streaming, and result staging through the existing GenerationJob inbox. `backend/routers/generation_providers.py` exposes list/status/auth endpoints, `backend/routers/generation_jobs.py` exposes `POST /api/generation-jobs/{job_id}/run`, `scripts/codex_native_oauth_smoke.py` provides backend-only live OAuth/generation smoke commands, and `frontend/src/components/ConfigPanel.tsx` now lists manual/native Codex provider cards with connect, poll, and disconnect controls while keeping GitHub Pages demo mode read-only/local-only. Live-account QA, cross-process refresh lock hardening, Text+Reference/Image Edit payloads, and retry controls remain follow-ups.
-- Batch 4.4 Generation UX/result inbox frontend first slice is now implemented in `frontend/src/components/GenerationPanel.tsx`: local item detail views expose `Generate variant` only when mutations are allowed, create GenerationJobs from saved prompts, show per-item inbox entries, upload manual results, run provider jobs when a provider is available, and accept/discard reviewed outputs through the existing backend endpoints. Follow-up polish should improve empty/accepted/failed states, browser file-picker QA, mobile layout QA, and generated-output provenance visibility.
+- Batch 4.4 Generation UX/result inbox frontend first slice is now implemented in `frontend/src/components/GenerationPanel.tsx`: local item detail views expose `Generate variant` only when mutations are allowed, create GenerationJobs from saved prompts, show per-item inbox entries, upload manual results, run provider jobs when a provider is available, and accept/discard reviewed outputs through the existing backend endpoints. Follow-up polish should first fix accepted generated-image placeholders and multi-image browsing, then hide/demote external manual result upload from the primary path, add shimmer/fade/toast feedback, and add split/dropdown accept options for attaching to the current item or saving as a new variant item.
 - keep `openai_codex_oauth_native` local-only and experimental; it uses the ChatGPT/Codex backend, not the stable public OpenAI Images API
 - device-code login should create this app's own OAuth session and token store, separate from other local auth stores by default
 - token storage must live outside the library/export/demo data path, use restrictive permissions, refresh before expiry, and never enter git, sample bundles, backups, or GitHub Pages exports; cross-process refresh locking remains follow-up hardening

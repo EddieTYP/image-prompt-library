@@ -13,6 +13,8 @@ from backend.schemas import (
     GenerationJobCreate,
     GenerationJobList,
     GenerationJobRecord,
+    ItemCreate,
+    PromptIn,
 )
 from backend.services.image_store import store_image
 
@@ -172,16 +174,29 @@ class GenerationJobRepository:
             raise GenerationJobConflict(f"Generation job is already finalized with status {current.status}")
         return self.get_job(job_id)
 
+    def _store_result_image(self, job: GenerationJobRecord):
+        result_abs = self.library_path / (job.result_path or "")
+        if not result_abs.is_file():
+            raise GenerationJobConflict("Generation result file is missing")
+        return store_image(self.library_path, result_abs.read_bytes(), Path(job.result_path or "generated.png").name)
+
+    def _mark_accepted(self, job_id: str, image_id: str) -> GenerationJobRecord:
+        timestamp = now()
+        with connect(self.library_path) as conn:
+            conn.execute(
+                "UPDATE generation_jobs SET status='accepted', accepted_image_id=?, accepted_at=?, updated_at=? WHERE id=?",
+                (image_id, timestamp, timestamp, job_id),
+            )
+            conn.commit()
+        return self.get_job(job_id)
+
     def accept_result(self, job_id: str) -> GenerationJobAcceptResult:
         job = self.get_job(job_id)
         if not job.source_item_id:
             raise GenerationJobConflict("Generation job has no source item to attach to")
         if job.status != "succeeded" or not job.result_path:
             raise GenerationJobConflict("Generation job must be succeeded before accept")
-        result_abs = self.library_path / job.result_path
-        if not result_abs.is_file():
-            raise GenerationJobConflict("Generation result file is missing")
-        stored = store_image(self.library_path, result_abs.read_bytes(), Path(job.result_path).name)
+        stored = self._store_result_image(job)
         image = self.items.add_image(
             job.source_item_id,
             StoredImageInput(
@@ -194,14 +209,59 @@ class GenerationJobRepository:
                 role="result_image",
             ),
         )
-        timestamp = now()
-        with connect(self.library_path) as conn:
-            conn.execute(
-                "UPDATE generation_jobs SET status='accepted', accepted_image_id=?, accepted_at=?, updated_at=? WHERE id=?",
-                (image.id, timestamp, timestamp, job_id),
-            )
-            conn.commit()
-        return GenerationJobAcceptResult(job=self.get_job(job_id), item=self.items.get_item(job.source_item_id))
+        return GenerationJobAcceptResult(job=self._mark_accepted(job_id, image.id), item=self.items.get_item(job.source_item_id))
+
+    def accept_result_as_new_item(self, job_id: str) -> GenerationJobAcceptResult:
+        job = self.get_job(job_id)
+        if not job.source_item_id:
+            raise GenerationJobConflict("Generation job has no source item to use as a variant source")
+        if job.status != "succeeded" or not job.result_path:
+            raise GenerationJobConflict("Generation job must be succeeded before accept")
+        source_item = self.items.get_item(job.source_item_id)
+        prompt_text = (job.edited_prompt_text or job.prompt_text).strip()
+        if not prompt_text:
+            raise GenerationJobConflict("Generation job has no prompt text for a new variant item")
+        provenance = {
+            "kind": "generation_variant",
+            "source_language": job.prompt_language or "en",
+            "source_item_id": job.source_item_id,
+            "source_generation_job_id": job.id,
+            "provider": job.provider,
+            "model": job.model,
+            "mode": job.mode,
+            "parameters": job.parameters,
+        }
+        new_item = self.items.create_item(ItemCreate(
+            title=f"{source_item.title} Variant",
+            model=job.model or source_item.model,
+            source_name="Generation variant",
+            source_url=source_item.source_url,
+            author=source_item.author,
+            cluster_id=source_item.cluster.id if source_item.cluster else None,
+            tags=[tag.name for tag in source_item.tags],
+            prompts=[PromptIn(
+                language=job.prompt_language or "en",
+                text=prompt_text,
+                is_primary=True,
+                is_original=True,
+                provenance=provenance,
+            )],
+            notes=f"Variant generated from item {job.source_item_id} via GenerationJob {job.id}.",
+        ))
+        stored = self._store_result_image(job)
+        image = self.items.add_image(
+            new_item.id,
+            StoredImageInput(
+                original_path=stored.original_path,
+                thumb_path=stored.thumb_path,
+                preview_path=stored.preview_path,
+                width=stored.width,
+                height=stored.height,
+                file_sha256=stored.file_sha256,
+                role="result_image",
+            ),
+        )
+        return GenerationJobAcceptResult(job=self._mark_accepted(job_id, image.id), item=self.items.get_item(new_item.id))
 
     def discard_job(self, job_id: str) -> GenerationJobRecord:
         job = self.get_job(job_id)

@@ -182,6 +182,8 @@ export default function ItemDetailModal({
   const [editingPromptLanguage, setEditingPromptLanguage] = useState<string>();
   const [promptDraft, setPromptDraft] = useState('');
   const [generationOpen, setGenerationOpen] = useState(false);
+  const [selectedImageId, setSelectedImageId] = useState<string>();
+  const [toast, setToast] = useState<{ message: string; actionLabel?: string; item?: ItemDetail }>();
   const lastDefaultPromptKeyRef = useRef('');
 
   useEffect(() => { setLang(preferredLanguage); }, [preferredLanguage, id]);
@@ -209,6 +211,21 @@ export default function ItemDetailModal({
     lastDefaultPromptKeyRef.current = defaultPromptKey;
   }, [item, availablePromptRecords, preferredLanguage, id]);
 
+  const uniqueImages = dedupeImages(item?.images || []);
+  const primaryImage = selectPrimaryImage(uniqueImages);
+  const selectedImage = uniqueImages.find(image => image.id === selectedImageId) || primaryImage;
+  const selectedImageIndex = selectedImage ? uniqueImages.findIndex(image => image.id === selectedImage.id) : -1;
+
+  useEffect(() => {
+    if (!item || uniqueImages.length === 0) {
+      setSelectedImageId(undefined);
+      return;
+    }
+    if (!selectedImageId || !uniqueImages.some(image => image.id === selectedImageId)) {
+      setSelectedImageId(primaryImage?.id || uniqueImages[0]?.id);
+    }
+  }, [item?.id, uniqueImages.length, primaryImage?.id, selectedImageId]);
+
   const filteredTagSuggestions = useMemo(() => {
     if (!item) return [];
     const existing = new Set(item.tags.map(tag => tag.name));
@@ -225,8 +242,6 @@ export default function ItemDetailModal({
   const fallbackLanguage = preferredLanguage === 'origin' ? resolveInitialPromptLanguage(item?.prompts || [], preferredLanguage) : preferredLanguage;
   const resolvedPrompt = resolvePromptRecord(availablePromptRecords, lang, fallbackLanguage);
   const copyText = prompt?.text || resolvedPrompt?.text || resolvePromptText(item?.prompts, preferredLanguage, item?.title || '');
-  const uniqueImages = dedupeImages(item?.images || []);
-  const primaryImage = selectPrimaryImage(uniqueImages);
   const toggleFavorite = () => {
     if (!item) return;
     api.favorite(item.id).then(updated => { setItem(updated); onChanged(); });
@@ -289,12 +304,16 @@ export default function ItemDetailModal({
           <div className="modal-content-enter" key={item.id}>
             <div className="detail-layout">
               <section className="modal-hero">
-                {primaryImage ? (
-                  <img
-                    className="hero-image"
-                    src={mediaUrl(imageHeroPath(primaryImage))}
-                    alt={item.title}
-                  />
+                {selectedImage ? (
+                  <>
+                    <img
+                      className="hero-image"
+                      src={mediaUrl(imageHeroPath(selectedImage))}
+                      alt={item.title}
+                    />
+                    {uniqueImages.length > 1 && <span className="image-counter">{selectedImageIndex + 1} / {uniqueImages.length}</span>}
+                    {selectedImage.role === 'result_image' && <span className="image-role-badge">Generated</span>}
+                  </>
                 ) : (
                   <div className="placeholder hero-image">{t('noImage')}</div>
                 )}
@@ -314,9 +333,18 @@ export default function ItemDetailModal({
                   )}
                 </div>
                 {uniqueImages.length > 1 && (
-                  <div className="rail glass-rail">
-                    {uniqueImages.map(img => (
-                      <img key={getImageIdentity(img)} src={mediaUrl(imageDisplayPath(img))} alt="" />
+                  <div className="rail glass-rail image-gallery-rail" aria-label="Item images">
+                    {uniqueImages.map((img, index) => (
+                      <button
+                        type="button"
+                        key={getImageIdentity(img)}
+                        className={`image-gallery-thumb ${selectedImage?.id === img.id ? 'active' : ''}`}
+                        onClick={() => setSelectedImageId(img.id)}
+                        aria-label={`Show image ${index + 1} of ${uniqueImages.length}`}
+                        aria-pressed={selectedImage?.id === img.id}
+                      >
+                        <img src={mediaUrl(imageDisplayPath(img))} alt="" />
+                      </button>
                     ))}
                   </div>
                 )}
@@ -441,13 +469,37 @@ export default function ItemDetailModal({
             </div>
           </div>
         )}
+        {toast && (
+          <div className="toast generation-toast" role="status">
+            <span>{toast.message}</span>
+            {toast.item && toast.actionLabel && (
+              <button type="button" onClick={() => { setItem(toast.item); setToast(undefined); setGenerationOpen(false); }}>
+                {toast.actionLabel}
+              </button>
+            )}
+            <button type="button" aria-label="Dismiss" onClick={() => setToast(undefined)}>×</button>
+          </div>
+        )}
         {generationOpen && item && (
           <GenerationPanel
             item={item}
             preferredLanguage={preferredLanguage}
             t={t}
             onClose={() => setGenerationOpen(false)}
-            onAccepted={() => { api.item(item.id).then(setItem).catch(() => undefined); onChanged(); }}
+            onAccepted={(acceptedItem, message) => {
+              if (acceptedItem?.id && acceptedItem.id !== item.id) {
+                setToast({ message: message || 'New variant item created', actionLabel: 'View item', item: acceptedItem });
+                onChanged();
+                return;
+              }
+              api.item(item.id).then(updated => {
+                setItem(updated);
+                const newestImage = updated.images[0];
+                if (newestImage) setSelectedImageId(newestImage.id);
+              }).catch(() => undefined);
+              setToast({ message: message || 'Image added to item' });
+              onChanged();
+            }}
           />
         )}
       </div>

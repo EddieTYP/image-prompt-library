@@ -88,6 +88,16 @@ def accept_generation_job(job_id: str, request: Request):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post("/{job_id}/accept-as-new-item", response_model=GenerationJobAcceptResult)
+def accept_generation_job_as_new_item(job_id: str, request: Request):
+    try:
+        return repo(request).accept_result_as_new_item(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404) from exc
+    except GenerationJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.post("/{job_id}/discard", response_model=GenerationJobRecord)
 def discard_generation_job(job_id: str, request: Request):
     try:

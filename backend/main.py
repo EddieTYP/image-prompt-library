@@ -33,7 +33,7 @@ def create_app(library_path: Path | str | None = None, frontend_dist_path: Path 
         raise HTTPException(status_code=404)
     @app.get("/media/{media_path:path}")
     def media(media_path: str):
-        safe_roots = {"originals", "thumbs", "previews"}
+        safe_roots = {"originals", "thumbs", "previews", "generation-results"}
         parts = Path(media_path).parts
         if not parts or parts[0] not in safe_roots:
             raise HTTPException(status_code=404)

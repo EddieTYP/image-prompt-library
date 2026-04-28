@@ -300,11 +300,27 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "api.runGenerationJob" in panel
     assert "api.uploadGenerationResult" in panel
     assert "api.acceptGenerationJob" in panel
+    assert "api.acceptGenerationJobAsNewItem" in panel
     assert "api.discardGenerationJob" in panel
     assert "manual_upload" in panel
     assert "openai_codex_oauth_native" in panel
+    assert "Attach to current item" in panel
+    assert "Save as new item" in panel
+    assert "generation-shimmer" in panel
+    assert "Image added to item" in panel
+    assert "New variant item created" in panel
+    assert "Upload external result" in panel
+    assert "generation-advanced" in panel
     assert "generation-panel" in css
     assert "generation-job-card" in css
+    assert "generation-job-card.has-result" in css
+    assert "generation-shimmer" in css
+    assert "toast" in css
+
+    assert "selectedImageId" in detail
+    assert "image-gallery-thumb" in detail
+    assert "image-counter" in detail
+    assert "setSelectedImageId" in detail
 
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()

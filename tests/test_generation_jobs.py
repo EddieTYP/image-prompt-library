@@ -79,6 +79,65 @@ def test_generation_job_can_stage_result_and_accept_into_source_item(tmp_path):
     assert c.post(f"/api/generation-jobs/{job['id']}/accept").status_code == 409
 
 
+def test_generation_result_media_is_servable_before_accept(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "prompt_text": "A cinematic moonlit robot",
+    }).json()
+    result = c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("green"), "image/png")},
+    ).json()
+
+    media = c.get(f"/media/{result['result_path']}")
+
+    assert media.status_code == 200
+    assert media.headers["content-type"] == "image/png"
+
+
+def test_generation_job_can_accept_result_as_new_variant_item(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "text_to_image",
+        "provider": "manual_upload",
+        "model": "manual-test-model",
+        "prompt_language": "en",
+        "prompt_text": "A cinematic moonlit robot",
+        "edited_prompt_text": "A cinematic moonlit robot holding a lantern",
+        "parameters": {"aspect_ratio": "1:1"},
+    }).json()
+    c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("purple"), "image/png")},
+    )
+
+    accepted = c.post(f"/api/generation-jobs/{job['id']}/accept-as-new-item")
+
+    assert accepted.status_code == 200
+    payload = accepted.json()
+    assert payload["job"]["status"] == "accepted"
+    new_item = payload["item"]
+    assert new_item["id"] != source_item["id"]
+    assert new_item["title"].startswith("Source prompt")
+    assert new_item["images"][0]["id"] == payload["job"]["accepted_image_id"]
+    assert new_item["images"][0]["role"] == "result_image"
+    assert new_item["prompts"][0]["text"] == "A cinematic moonlit robot holding a lantern"
+    assert new_item["prompts"][0]["is_original"] is True
+    provenance = new_item["prompts"][0]["provenance"]
+    assert provenance["kind"] == "generation_variant"
+    assert provenance["source_item_id"] == source_item["id"]
+    assert provenance["source_generation_job_id"] == job["id"]
+    assert provenance["provider"] == "manual_upload"
+    assert provenance["model"] == "manual-test-model"
+
+    original_after = c.get(f"/api/items/{source_item['id']}").json()
+    assert original_after["images"] == []
+
+
 def test_generation_job_discard_does_not_attach_result(tmp_path):
     c = client(tmp_path)
     source_item = create_source_item(c)

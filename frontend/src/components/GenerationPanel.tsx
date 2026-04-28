@@ -33,7 +33,7 @@ export default function GenerationPanel({
   item: ItemDetail;
   preferredLanguage: PromptCopyLanguage;
   onClose: () => void;
-  onAccepted: () => void;
+  onAccepted: (item?: ItemDetail, message?: string) => void;
   t: Translator;
 }) {
   const originalPrompt = resolveOriginalPrompt(item.prompts);
@@ -49,6 +49,7 @@ export default function GenerationPanel({
 
   const activeJob = useMemo(() => jobs.find(job => job.id === activeJobId), [jobs, activeJobId]);
   const selectedProvider = providers.find(candidate => candidate.provider === provider);
+  const primaryProviders = providers.filter(candidate => candidate.provider !== 'manual_upload');
 
   const refreshJobs = async () => {
     const result = await api.generationJobs({ limit: 100 });
@@ -64,7 +65,7 @@ export default function GenerationPanel({
       .then(nextProviders => {
         if (cancelled) return;
         setProviders(nextProviders);
-        const firstReady = nextProviders.find(providerReady) || nextProviders[0];
+        const firstReady = nextProviders.find(nextProvider => nextProvider.provider !== 'manual_upload' && providerReady(nextProvider)) || nextProviders.find(providerReady) || nextProviders[0];
         if (firstReady) setProvider(firstReady.provider);
       })
       .catch(() => setProviders([{ provider: 'manual_upload', display_name: 'Manual upload', optional: false, configured: true, authenticated: true, available: true, state: 'available', reason: null, features: { manual_result_upload: true } }]));
@@ -99,7 +100,9 @@ export default function GenerationPanel({
 
   const runJob = async (job: GenerationJobRecord) => {
     setBusy(true);
-    setMessage('');
+    setActiveJobId(job.id);
+    setMessage('Generating image…');
+    setJobs(current => current.map(candidate => candidate.id === job.id ? { ...candidate, status: 'running' } : candidate));
     try {
       const updated = await api.runGenerationJob(job.id);
       setJobs(current => current.map(candidate => candidate.id === updated.id ? updated : candidate));
@@ -127,14 +130,17 @@ export default function GenerationPanel({
     }
   };
 
-  const acceptJob = async (job: GenerationJobRecord) => {
+  const acceptJob = async (job: GenerationJobRecord, mode: 'attach' | 'new-item' = 'attach') => {
     setBusy(true);
     setMessage('');
     try {
-      const result = await api.acceptGenerationJob(job.id);
+      const result = mode === 'new-item'
+        ? await api.acceptGenerationJobAsNewItem(job.id)
+        : await api.acceptGenerationJob(job.id);
       setJobs(current => current.map(candidate => candidate.id === result.job.id ? result.job : candidate));
-      setMessage('Accepted into this prompt item.');
-      onAccepted();
+      const acceptedMessage = mode === 'new-item' ? 'New variant item created' : 'Image added to item';
+      setMessage(acceptedMessage);
+      onAccepted(result.item, acceptedMessage);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not accept result.');
     } finally {
@@ -174,12 +180,12 @@ export default function GenerationPanel({
             <label>
               <span>Provider</span>
               <select value={provider} onChange={event => setProvider(event.currentTarget.value)}>
-                {providers.map(nextProvider => (
+                {primaryProviders.map(nextProvider => (
                   <option key={nextProvider.provider} value={nextProvider.provider} disabled={!providerReady(nextProvider)}>
                     {nextProvider.display_name}{providerReady(nextProvider) ? '' : ' · unavailable'}
                   </option>
                 ))}
-                {!providers.some(nextProvider => nextProvider.provider === 'manual_upload') && <option value="manual_upload">Manual upload</option>}
+                {primaryProviders.length === 0 && <option value="manual_upload">No connected image provider</option>}
                 {!providers.some(nextProvider => nextProvider.provider === 'openai_codex_oauth_native') && <option value="openai_codex_oauth_native">ChatGPT / Codex OAuth</option>}
               </select>
             </label>
@@ -188,6 +194,10 @@ export default function GenerationPanel({
             )}
             <textarea value={promptText} onChange={event => setPromptText(event.currentTarget.value)} />
             <button className="primary" onClick={createJob} disabled={busy || !promptText.trim()}>Create GenerationJob</button>
+            <details className="generation-advanced">
+              <summary>Upload external result</summary>
+              <p className="muted">Manual upload is kept as an advanced fallback for images generated outside the app.</p>
+            </details>
           </section>
 
           <section className="generation-inbox-card">
@@ -197,18 +207,34 @@ export default function GenerationPanel({
             </div>
             {jobs.length === 0 && <p className="muted">No generation jobs for this prompt yet.</p>}
             {jobs.map(job => (
-              <article className={`generation-job-card status-${job.status}`} key={job.id}>
+              <article className={`generation-job-card status-${job.status} ${job.result_path ? 'has-result' : ''}`} key={job.id}>
                 <header>
                   <strong>{job.provider === 'openai_codex_oauth_native' ? 'ChatGPT / Codex OAuth' : job.provider}</strong>
                   <b>{statusLabel(job.status)}</b>
                 </header>
                 <p className="muted">{job.edited_prompt_text || job.prompt_text}</p>
-                {jobResultUrl(job) ? <img src={jobResultUrl(job)} alt="Generation result" /> : <div className="generation-result-placeholder">No result image yet</div>}
+                {jobResultUrl(job) ? (
+                  <img className="generation-result-image generation-result-fade-in" src={jobResultUrl(job)} alt="Generation result" />
+                ) : job.status === 'running' ? (
+                  <div className="generation-result-placeholder generation-shimmer">Generating image…</div>
+                ) : (
+                  <div className="generation-result-placeholder">No result image yet</div>
+                )}
                 {job.error && <p className="error">{job.error}</p>}
                 <div className="generation-job-actions">
-                  {job.provider === 'openai_codex_oauth_native' && ['queued', 'failed'].includes(job.status) && <button className="secondary" onClick={() => runJob(job)} disabled={busy}>Run</button>}
-                  {job.provider === 'manual_upload' && !job.result_path && !['accepted', 'discarded'].includes(job.status) && <label className="secondary file-button">Upload result<input type="file" accept="image/*" onChange={event => uploadManualResult(job, event.currentTarget.files?.[0])} /></label>}
-                  {job.status === 'succeeded' && <button className="primary" onClick={() => acceptJob(job)} disabled={busy}>Accept</button>}
+                  {job.provider === 'openai_codex_oauth_native' && ['queued', 'failed'].includes(job.status) && <button className="secondary" onClick={() => runJob(job)} disabled={busy}>{busy && activeJobId === job.id ? 'Generating…' : 'Run'}</button>}
+                  {job.provider === 'manual_upload' && !job.result_path && !['accepted', 'discarded'].includes(job.status) && (
+                    <details className="generation-advanced inline-upload">
+                      <summary>Upload external result</summary>
+                      <label className="secondary file-button">Choose image<input type="file" accept="image/*" onChange={event => uploadManualResult(job, event.currentTarget.files?.[0])} /></label>
+                    </details>
+                  )}
+                  {job.status === 'succeeded' && (
+                    <span className="accept-dropdown">
+                      <button className="primary" onClick={() => acceptJob(job, 'attach')} disabled={busy}>Attach to current item</button>
+                      <button className="secondary" onClick={() => acceptJob(job, 'new-item')} disabled={busy}>Save as new item</button>
+                    </span>
+                  )}
                   {!['accepted', 'discarded'].includes(job.status) && <button className="secondary" onClick={() => discardJob(job)} disabled={busy}>Discard</button>}
                 </div>
               </article>
