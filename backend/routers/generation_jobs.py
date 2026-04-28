@@ -5,6 +5,7 @@ from PIL import UnidentifiedImageError
 
 from backend.schemas import GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord
 from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository
+from backend.services.openai_codex_native import CodexNativeAuthError, OpenAICodexNativeProvider
 
 router = APIRouter(prefix="/generation-jobs", tags=["generation-jobs"])
 
@@ -63,6 +64,18 @@ async def upload_generation_result(
         raise HTTPException(status_code=404) from exc
     except (GenerationJobConflict, ValueError, UnidentifiedImageError) as exc:
         raise HTTPException(status_code=409 if isinstance(exc, GenerationJobConflict) else 400, detail=str(exc)) from exc
+
+
+@router.post("/{job_id}/run", response_model=GenerationJobRecord)
+def run_generation_job(job_id: str, request: Request):
+    try:
+        return OpenAICodexNativeProvider().run_job(request.app.state.library_path, job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404) from exc
+    except GenerationJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except CodexNativeAuthError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/{job_id}/accept", response_model=GenerationJobAcceptResult)

@@ -66,7 +66,7 @@ Mobile-native browsing remains in scope:
 
 Goal: make it easy to pull useful prompt/image references from external repositories and public social posts into the local library through a reviewable import-draft flow. These importers should stay local-first and user-confirmed rather than becoming an automated hosted scraping service.
 
-Current status: **Batch 1 ImportDraft core**, **Batch 2 local markdown repository ingestion**, and **Batch 3 GenerationJob plus result inbox foundation** are implemented in the backend. Generation jobs can be created provider-agnostically, receive manually staged result images under `generation-results/`, be listed/reviewed, and accept/discard results; accepted results are copied into normal library media storage. Next implementation milestone: **`openai_codex_oauth_native` provider** on top of the generation-job infrastructure.
+Current status: **Batch 1 ImportDraft core**, **Batch 2 local markdown repository ingestion**, **Batch 3 GenerationJob plus result inbox foundation**, and the first backend slice of **Batch 4 `openai_codex_oauth_native`** are implemented. Generation jobs can be created provider-agnostically, receive manually staged or native Codex-provider staged result images under `generation-results/`, be listed/reviewed, and accept/discard results; accepted results are copied into normal library media storage. Next implementation milestone: provider/UI hardening for native Codex auth and then **Batch 5 generic URL plus X/Threads import**.
 
 Shared architecture:
 
@@ -88,7 +88,7 @@ Recommended order:
 1. **Batch 1: ImportDraft core — done in backend.** Schema, staging storage, preview/list/detail/confirm API, duplicate checks, Traditional Chinese derived normalization on accepted items, and accept-draft writes into the normal library repository layer are implemented and tested.
 2. **Batch 2: repository/dataset ingestion MVP — done for local markdown repositories.** The backend can scan local markdown folders, extract heading/fenced-prompt/image records, stage repository images safely under the selected library, preserve source file/ref metadata, and emit ImportDraft records for review. Future hardening can add remote GitHub clone/download orchestration and richer dataset-specific parsers.
 3. **Batch 3: GenerationJob plus result inbox foundation — done in backend.** Provider-agnostic generation job records, manual/stub result staging under `generation-results/`, list/detail review API, accept/discard lifecycle, and accept-to-library media attachment are implemented and tested.
-4. **Batch 4: `openai_codex_oauth_native`** — native ChatGPT/Codex OAuth image generation provider using the generation-job infrastructure.
+4. **Batch 4: `openai_codex_oauth_native` — first backend slice done.** The backend now has an app-owned native Codex auth store outside the library, redacted provider status API, device-code start/poll helpers, Codex-compatible headers with `ChatGPT-Account-ID`, a provider runner that calls the Codex Responses `image_generation` path, and `POST /api/generation-jobs/{job_id}/run` to stage generated results into the existing result inbox. Remaining hardening includes a frontend auth/generation UI, live-account QA, token refresh/lock hardening, richer error recovery, Text+Reference/Image Edit payload support, and retry controls.
 5. **Batch 5: generic URL plus X/Threads import** — public URL extraction and social-post/thread import behind local-only/experimental warnings.
 6. **Batch 6: Instagram import** — only after the generic URL and X/Threads flow is useful, because IG auth/browser-session requirements and anti-bot behavior make it less reliable.
 
@@ -104,17 +104,26 @@ Planned provider-adapter architecture:
 - Initial/adaptable providers can include `manual_upload`, `openai_api_key`, external `gpt-image` CLI, Hermes-backed providers, and a native `openai_codex_oauth_native` provider.
 - Edward's preferred direction is to implement `openai_codex_oauth_native` directly rather than relying only on Hermes as the broker.
 
-`openai_codex_oauth_native` target design:
+`openai_codex_oauth_native` current backend slice:
 
 - Local-only experimental adapter labelled as OpenAI via ChatGPT/Codex login, no `OPENAI_API_KEY` required.
-- Use the Codex/ChatGPT device-code OAuth flow to obtain an app-owned access token and refresh token.
-- Store tokens outside the prompt library data directory, for example under a user config/auth directory, with restrictive file permissions and no export into sample bundles, backups, GitHub Pages data, or the repository.
-- Maintain an independent OAuth session for this app instead of mutating Hermes or Codex CLI auth stores by default, to avoid refresh-token rotation conflicts.
-- Refresh tokens with locking/skew handling before expiry; failed refresh should require re-login rather than silently falling back.
-- Decode `ChatGPT-Account-ID` from the OAuth JWT claim and send Codex-compatible headers such as the Codex CLI-style originator/user-agent when calling the Codex backend.
-- Call the Codex Responses API at the ChatGPT/Codex backend with the `image_generation` tool, forcing `gpt-image-2` with selectable quality tiers and supported sizes/aspect ratios.
-- Extract base64 PNG results from streamed `image_generation_call` output, save them into a local generation-results area, and copy accepted images into normal library media storage.
-- Record provenance for generated outputs: provider `openai_codex_oauth_native`, auth mode `codex_oauth_native`, image model, host/chat model if applicable, quality, size/aspect ratio, prompt variant used, reference images if any, source item id, job id, timestamps, and whether the user accepted/retried/discarded the result.
+- Uses an app-owned auth file outside the prompt library by default: `~/.image-prompt-library/auth.json`, overrideable with `IMAGE_PROMPT_LIBRARY_AUTH_PATH`; saved auth files are written with restrictive permissions where supported.
+- The device-code helper can start the Codex/ChatGPT device-code flow and poll/exchange approved device auth into the app-owned token store. Starting the flow currently requires `IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID`; tokens are never returned by status/API responses.
+- `GET /api/generation-providers/openai-codex-native/status` returns redacted provider availability/account/path metadata only.
+- `POST /api/generation-providers/openai-codex-native/auth/start` starts the device-code login and returns `user_code`, `verification_url`, `device_auth_id`, `interval`, and expiry metadata.
+- `POST /api/generation-providers/openai-codex-native/auth/poll` polls device authorization and saves tokens when approved.
+- `POST /api/generation-jobs/{job_id}/run` runs queued jobs whose provider is `openai_codex_oauth_native`, calls the Codex Responses API with the `image_generation` tool, decodes the streamed base64 PNG, and stages it into `generation-results/<job_id>/` with provenance metadata.
+- Codex-compatible headers include a Codex CLI-style originator/user-agent and `ChatGPT-Account-ID` decoded from the OAuth JWT when available.
+- Accepted results still flow through the Batch 3 review path: accept copies into normal `originals/`, `thumbs/`, and `previews/`; discard leaves the item untouched.
+
+`openai_codex_oauth_native` remaining hardening:
+
+- Replace the temporary `IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID` requirement with a documented, stable native-client configuration before publicizing the adapter.
+- Add token refresh with lock/skew handling before expiry; failed refresh should require re-login rather than silently falling back.
+- Live-account QA against the current ChatGPT/Codex backend and clearer error mapping for auth expiry, Cloudflare/challenge, empty image results, and upstream API drift.
+- Add Text+Reference→Image and Image Edit request payload support using `reference_image_ids`; current backend slice covers Text→Image-style jobs.
+- Add retry controls and richer job state transitions around running/failed/retry attempts.
+- Build frontend auth/setup, generation launch, result inbox, accept/retry/discard UI on top of the backend endpoints.
 - Treat this adapter as experimental because it depends on the ChatGPT/Codex backend rather than the stable public OpenAI Images API.
 
 ## Current non-goals

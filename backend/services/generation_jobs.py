@@ -35,7 +35,16 @@ def _from_json(raw: str | None, fallback):
         return fallback
 
 
+def _redact_error(error: str) -> str:
+    message = str(error or "Generation failed")
+    for marker in ("Bearer ", "access_token", "refresh_token"):
+        if marker in message:
+            return "Generation failed; provider returned a credential-related error"
+    return message[:1000]
+
+
 class GenerationJobRepository:
+
     def __init__(self, library_path: Path | str):
         self.library_path = Path(library_path)
         init_db(self.library_path)
@@ -93,6 +102,38 @@ class GenerationJobRepository:
             ).fetchall()
         return GenerationJobList(jobs=[self._record_from_row(row) for row in rows], total=total, limit=limit, offset=offset)
 
+    def mark_running(self, job_id: str) -> GenerationJobRecord:
+        timestamp = now()
+        with connect(self.library_path) as conn:
+            cursor = conn.execute(
+                """
+                UPDATE generation_jobs
+                SET status='running', error=NULL, started_at=COALESCE(started_at, ?), updated_at=?
+                WHERE id=? AND status IN ('queued', 'failed')
+                """,
+                (timestamp, timestamp, job_id),
+            )
+            conn.commit()
+        if cursor.rowcount != 1:
+            current = self.get_job(job_id)
+            raise GenerationJobConflict(f"Generation job must be queued or failed before run; current status is {current.status}")
+        return self.get_job(job_id)
+
+    def mark_failed(self, job_id: str, error: str) -> GenerationJobRecord:
+        timestamp = now()
+        redacted_error = _redact_error(error)
+        with connect(self.library_path) as conn:
+            conn.execute(
+                """
+                UPDATE generation_jobs
+                SET status='failed', error=?, updated_at=?, completed_at=?
+                WHERE id=? AND status NOT IN ('accepted', 'discarded')
+                """,
+                (redacted_error, timestamp, timestamp, job_id),
+            )
+            conn.commit()
+        return self.get_job(job_id)
+
     def stage_result(self, job_id: str, data: bytes, filename: str, metadata: dict | None = None) -> GenerationJobRecord:
         job = self.get_job(job_id)
         if job.status in {"accepted", "discarded"}:
@@ -107,20 +148,28 @@ class GenerationJobRepository:
         result_abs.write_bytes(data)
         width = None
         height = None
-        with Image.open(result_abs) as image:
-            width, height = image.size
+        try:
+            with Image.open(result_abs) as image:
+                width, height = image.size
+        except Exception:
+            result_abs.unlink(missing_ok=True)
+            raise
         timestamp = now()
         with connect(self.library_path) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """
                 UPDATE generation_jobs
                 SET status='succeeded', result_path=?, result_width=?, result_height=?, result_sha256=?,
-                    metadata=?, updated_at=?, completed_at=?
-                WHERE id=?
+                    metadata=?, error=NULL, updated_at=?, completed_at=?
+                WHERE id=? AND status NOT IN ('accepted', 'discarded')
                 """,
                 (result_rel.as_posix(), width, height, sha, _to_json(metadata or {}), timestamp, timestamp, job_id),
             )
             conn.commit()
+        if cursor.rowcount != 1:
+            result_abs.unlink(missing_ok=True)
+            current = self.get_job(job_id)
+            raise GenerationJobConflict(f"Generation job is already finalized with status {current.status}")
         return self.get_job(job_id)
 
     def accept_result(self, job_id: str) -> GenerationJobAcceptResult:
