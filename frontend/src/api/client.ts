@@ -1,4 +1,4 @@
-import type { AppConfig, ClusterRecord, ItemCreate, ItemDetail, ItemList, ItemSummary, TagRecord, UploadImageRole } from '../types';
+import type { AppConfig, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationProviderStatus, ItemCreate, ItemDetail, ItemList, ItemSummary, TagRecord, UploadImageRole } from '../types';
 
 const API = '';
 const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
@@ -78,6 +78,36 @@ export const api = isDemoMode ? {
   deleteItem: (_id: string) => demoReadOnly(),
   favorite: (_id: string) => demoReadOnly(),
   uploadImage: (_id: string, _file: File, _role: UploadImageRole = 'result_image') => demoReadOnly(),
+  generationProviders: () => Promise.resolve<GenerationProviderStatus[]>([
+    {
+      provider: 'manual_upload',
+      display_name: 'Manual upload',
+      optional: false,
+      configured: true,
+      authenticated: true,
+      available: true,
+      state: 'available',
+      reason: null,
+      features: { manual_result_upload: true },
+    },
+    {
+      provider: 'openai_codex_oauth_native',
+      display_name: 'ChatGPT / Codex OAuth',
+      auth_mode: 'codex_oauth_native',
+      optional: true,
+      configured: false,
+      authenticated: false,
+      available: false,
+      state: 'demo_unavailable',
+      reason: 'local_only',
+      features: { text_to_image: false, text_reference_to_image: false, image_edit: false },
+      token_present: false,
+      account_id: null,
+    },
+  ]),
+  codexNativeAuthStart: () => demoReadOnly(),
+  codexNativeAuthPoll: (_payload: CodexNativeAuthPollRequest) => demoReadOnly(),
+  codexNativeAuthDisconnect: () => demoReadOnly(),
   clusters: () => demoJson<ClusterRecord[]>('demo-data/clusters.json'),
   tags: () => demoJson<TagRecord[]>('demo-data/tags.json'),
 } : {
@@ -90,6 +120,10 @@ export const api = isDemoMode ? {
   deleteItem: (id: string) => json<ItemDetail>(`/api/items/${id}`, { method: 'DELETE' }),
   favorite: (id: string) => json<ItemDetail>(`/api/items/${id}/favorite`, { method: 'POST' }),
   uploadImage: (id: string, file: File, role: UploadImageRole = 'result_image') => { const fd = new FormData(); fd.set('file', file); fd.set('role', role); return json(`/api/items/${id}/images`, { method: 'POST', body: fd }); },
+  generationProviders: () => json<GenerationProviderStatus[]>('/api/generation-providers'),
+  codexNativeAuthStart: () => json<CodexNativeAuthStart>('/api/generation-providers/openai-codex-native/auth/start', { method: 'POST' }),
+  codexNativeAuthPoll: (payload: CodexNativeAuthPollRequest) => json<CodexNativeAuthPollResponse>('/api/generation-providers/openai-codex-native/auth/poll', { method: 'POST', body: JSON.stringify(payload) }),
+  codexNativeAuthDisconnect: () => json<GenerationProviderStatus>('/api/generation-providers/openai-codex-native/auth/disconnect', { method: 'POST' }),
   clusters: () => json<ClusterRecord[]>('/api/clusters'),
   tags: () => json<TagRecord[]>('/api/tags'),
 };

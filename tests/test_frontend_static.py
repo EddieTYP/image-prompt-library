@@ -223,6 +223,57 @@ def test_explore_focus_mode_stays_in_map_without_duplicate_focus_panel():
     assert "centerFocusedCluster" in explore
 
 
+def test_config_panel_includes_optional_generation_provider_ui():
+    api = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+    types = (ROOT / "frontend" / "src" / "types.ts").read_text()
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+    i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    compact_css = css.replace(" ", "")
+
+    assert "GenerationProviderStatus" in types
+    assert "generationProviders:" in api
+    assert "codexNativeAuthStart:" in api
+    assert "codexNativeAuthPoll:" in api
+    assert "codexNativeAuthDisconnect:" in api
+    assert "Providers" in i18n and "供應商" in i18n
+    assert "provider-list" in config
+    assert "ChatGPT / Codex OAuth" in config
+    assert "verification_url" in config
+    assert "CodexNativeAuthPollResponse" in types
+    assert "status: 'pending'" in types
+    assert "authStart.verification_url" in config
+    assert "pollResult.status === 'pending'" in config
+    assert "Authorization is still pending" in config
+    assert "user_code" in config
+    assert "api.codexNativeAuthStart()" in config
+    assert "api.codexNativeAuthPoll" in config
+    assert "api.codexNativeAuthDisconnect()" in config
+    assert ".provider-card" in compact_css
+
+
+def test_demo_mode_keeps_provider_ui_read_only_and_local_only():
+    api = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+
+    assert "generationProviders: () => Promise.resolve<GenerationProviderStatus[]>(" in api
+    assert "state: 'demo_unavailable'" in api
+    assert "isDemoMode" in config
+    assert "disabled={isDemoMode || provider.state === 'not_configured'" in config
+    assert "providerFallback" in config
+    assert "Could not load provider status" in config
+
+
+def test_config_prompt_copy_language_is_mobile_safe():
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    compact_css = css.replace(" ", "")
+
+    assert "prompt-copy-language-control" in config
+    assert ".prompt-copy-language-control" in css
+    assert "grid-template-columns:repeat(2,minmax(0,1fr))" in compact_css
+
+
 def test_explore_uses_real_thumbnails_not_dots_or_originals():
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()

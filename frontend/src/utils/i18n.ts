@@ -2,7 +2,7 @@ import type { UiLanguage } from '../types';
 export type { UiLanguage } from '../types';
 type TranslationKey =
   | 'filters' | 'searchAria' | 'searchPlaceholder' | 'config' | 'referencesShown' | 'searchChip' | 'collectionChip'
-  | 'explore' | 'cards' | 'uiLanguage' | 'promptCopyLanguage' | 'promptCopyLanguageHelp'
+  | 'explore' | 'cards' | 'uiLanguage' | 'promptCopyLanguage' | 'promptCopyLanguageHelp' | 'providers'
   | 'globalThumbnails' | 'globalThumbnailsHelp' | 'focusThumbnails' | 'focusThumbnailsHelp'
   | 'calm' | 'balanced' | 'dense' | 'compact' | 'gallery' | 'full' | 'libraryPath' | 'databasePath'
   | 'libraryEmptyTitle' | 'libraryEmptyHelp' | 'noMatchingPrompts' | 'noMatchingPromptsHelp' | 'addFirstPrompt'
@@ -36,7 +36,7 @@ export function normalizeUiLanguage(value?: string | null): UiLanguage {
 const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
   zh_hant: {
     filters: '篩選', searchAria: '搜尋所有 prompts', searchPlaceholder: '搜尋所有 prompts、標題、標籤…', config: '設定', referencesShown: '個參考', searchChip: '搜尋', collectionChip: 'Collection',
-    explore: 'Explore', cards: 'Cards', uiLanguage: '介面語言', promptCopyLanguage: 'Prompt 複製語言', promptCopyLanguageHelp: '複製時可使用原文 prompt；原文通常最接近 sample image 的生成結果。',
+    explore: 'Explore', cards: 'Cards', uiLanguage: '介面語言', promptCopyLanguage: 'Prompt 複製語言', promptCopyLanguageHelp: '複製時可使用原文 prompt；原文通常最接近 sample image 的生成結果。', providers: '供應商',
     globalThumbnails: '全域縮圖', globalThumbnailsHelp: 'Explore 全部 collection 的整體密度。', focusThumbnails: '焦點縮圖', focusThumbnailsHelp: '選取 collection 周圍最多顯示的真實縮圖數量。',
     calm: '寬鬆', balanced: '平衡', dense: '密集', compact: '精簡', gallery: '圖庫', full: '完整', libraryPath: 'Library 路徑', databasePath: 'Database 路徑',
     libraryEmptyTitle: '你的 library 仍然是空的', libraryEmptyHelp: '新增第一個 prompt，或安裝 sample library 先瀏覽示例內容。', noMatchingPrompts: '找不到符合的 prompts', noMatchingPromptsHelp: '請嘗試另一個搜尋、清除篩選，或新增 prompt 參考。', addFirstPrompt: '新增第一個 prompt',
@@ -56,7 +56,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
   },
   zh_hans: {
     filters: '筛选', searchAria: '搜索所有 prompts', searchPlaceholder: '搜索所有 prompts、标题、标签…', config: '设置', referencesShown: '个参考', searchChip: '搜索', collectionChip: 'Collection',
-    explore: 'Explore', cards: 'Cards', uiLanguage: '界面语言', promptCopyLanguage: 'Prompt 复制语言', promptCopyLanguageHelp: '复制时可使用原文 prompt；原文通常最接近 sample image 的生成结果。',
+    explore: 'Explore', cards: 'Cards', uiLanguage: '界面语言', promptCopyLanguage: 'Prompt 复制语言', promptCopyLanguageHelp: '复制时可使用原文 prompt；原文通常最接近 sample image 的生成结果。', providers: '供应商',
     globalThumbnails: '全局缩图', globalThumbnailsHelp: 'Explore 全部 collection 的整体密度。', focusThumbnails: '焦点缩图', focusThumbnailsHelp: '选中 collection 周围最多显示的真实缩图数量。',
     calm: '宽松', balanced: '平衡', dense: '密集', compact: '精简', gallery: '图库', full: '完整', libraryPath: 'Library 路径', databasePath: 'Database 路径',
     libraryEmptyTitle: '你的 library 还是空的', libraryEmptyHelp: '新增第一个 prompt，或安装 sample library 先浏览示例内容。', noMatchingPrompts: '找不到符合的 prompts', noMatchingPromptsHelp: '请尝试另一个搜索、清除筛选，或新增 prompt 参考。', addFirstPrompt: '新增第一个 prompt',
@@ -76,7 +76,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
   },
   en: {
     filters: 'Filters', searchAria: 'Search all prompts', searchPlaceholder: 'Search all prompts, titles, tags…', config: 'Config', referencesShown: 'references', searchChip: 'Search', collectionChip: 'Collection',
-    explore: 'Explore', cards: 'Cards', uiLanguage: 'UI language', promptCopyLanguage: 'Prompt copy language', promptCopyLanguageHelp: 'Copy can use the origin prompt; the source/original prompt is usually closest to the sample image result.',
+    explore: 'Explore', cards: 'Cards', uiLanguage: 'UI language', promptCopyLanguage: 'Prompt copy language', promptCopyLanguageHelp: 'Copy can use the origin prompt; the source/original prompt is usually closest to the sample image result.', providers: 'Providers',
     globalThumbnails: 'Global thumbnails', globalThumbnailsHelp: 'Overall Explore density across all clusters.', focusThumbnails: 'Focus thumbnails', focusThumbnailsHelp: 'Maximum real thumbnails around the selected cluster.',
     calm: 'Calm', balanced: 'Balanced', dense: 'Dense', compact: 'Compact', gallery: 'Gallery', full: 'Full', libraryPath: 'Library path', databasePath: 'Database path',
     libraryEmptyTitle: 'Your library is empty', libraryEmptyHelp: 'Add your first prompt, or install the sample library if you want demo content first.', noMatchingPrompts: 'No matching prompts', noMatchingPromptsHelp: 'Try another search, clear filters, or add a new prompt reference.', addFirstPrompt: 'Add your first prompt',
