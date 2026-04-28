@@ -167,3 +167,41 @@ class RepositoryIngestResult(BaseModel):
     status: str
     drafts: List[ImportDraftRecord]
     log: str = ""
+
+class GenerationJobCreate(BaseModel):
+    source_item_id: Optional[str] = None
+    mode: str = "text_to_image"
+    provider: str = "manual_upload"
+    model: Optional[str] = None
+    prompt_language: Optional[str] = None
+    prompt_text: str
+    edited_prompt_text: Optional[str] = None
+    reference_image_ids: List[str] = Field(default_factory=list)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+class GenerationJobRecord(GenerationJobCreate):
+    id: str
+    status: str
+    result_path: Optional[str] = None
+    result_width: Optional[int] = None
+    result_height: Optional[int] = None
+    result_sha256: Optional[str] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    error: Optional[str] = None
+    accepted_image_id: Optional[str] = None
+    created_at: str
+    updated_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    accepted_at: Optional[str] = None
+    discarded_at: Optional[str] = None
+
+class GenerationJobList(BaseModel):
+    jobs: List[GenerationJobRecord]
+    total: int
+    limit: int
+    offset: int
+
+class GenerationJobAcceptResult(BaseModel):
+    job: GenerationJobRecord
+    item: ItemDetail

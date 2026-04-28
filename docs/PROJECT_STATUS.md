@@ -208,7 +208,7 @@ Next implementation focus:
 
 1. **ImportDraft core — done in backend**: persistent schema/storage, preview/list/detail/confirm API, duplicate checks, derived Traditional Chinese normalization on accepted items, and accept-draft writes into the normal library repository layer are implemented and tested.
 2. **Repository/dataset ingestion MVP — done for local markdown repositories**: the backend scans local markdown folders, extracts heading/fenced-prompt/image records, stages local image assets safely under the selected library, preserves source file/ref metadata, and emits ImportDraft records for review. Remote GitHub clone/download orchestration and richer dataset-specific parsers remain future hardening.
-3. **GenerationJob plus result inbox foundation** — provider-agnostic generation jobs, result review, accept/retry/discard, and attach generated variants back to library items.
+3. **GenerationJob plus result inbox foundation — done in backend**: provider-agnostic generation job records, manual/stub result staging under `generation-results/`, list/detail review API, accept/discard lifecycle, and accept-to-library media attachment are implemented and tested.
 4. **`openai_codex_oauth_native` provider** — native ChatGPT/Codex OAuth image generation provider using the generation-job infrastructure.
 5. **Generic URL plus X/Threads import** — public URL extraction and social-post/thread import behind local-only/experimental warnings.
 6. **Instagram import** — later experimental adapter only after generic URL and X/Threads are useful.
@@ -223,7 +223,8 @@ Public-alpha follow-ups that remain useful:
 
 Private/local generation follow-ups:
 
-- implement a provider-adapter generation layer with provider-agnostic `GenerationJob` records, result inbox, accept/retry/discard review, and attach-to-library flow
+- Batch 3 provider-adapter generation foundation is now implemented in the backend: `POST /api/generation-jobs` creates provider-agnostic jobs, `POST /api/generation-jobs/{job_id}/result` stages manual/stub result images under `generation-results/`, `GET /api/generation-jobs` and `GET /api/generation-jobs/{job_id}` support review/inbox reads, and accept/discard endpoints finalize the result. Accepted images are copied through normal media storage into `originals/`, `thumbs/`, and `previews/` before attaching to the source item.
+- next generation implementation is the `openai_codex_oauth_native` provider adapter on top of the GenerationJob infrastructure
 - support the intended one-click generation workflow: edit or fork an existing prompt variant, choose a generation provider, generate Text→Image or Text+Reference→Image/Edit outputs, review results, then attach accepted images back to the source item or as a generated variant
 - implement `openai_codex_oauth_native` directly as the preferred Codex/ChatGPT-login adapter, rather than only brokering through external agent tools
 - keep `openai_codex_oauth_native` local-only and experimental; it uses the ChatGPT/Codex backend, not the stable public OpenAI Images API

@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from .config import APP_VERSION, resolve_library_path
 from .db import get_db_path, init_db
-from .routers import clusters, images, import_drafts, items, tags
+from .routers import clusters, generation_jobs, images, import_drafts, items, tags
 
 DEFAULT_FRONTEND_DIST_PATH = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 
@@ -22,6 +22,7 @@ def create_app(library_path: Path | str | None = None, frontend_dist_path: Path 
     app.include_router(clusters.router, prefix="/api")
     app.include_router(tags.router, prefix="/api")
     app.include_router(import_drafts.router, prefix="/api")
+    app.include_router(generation_jobs.router, prefix="/api")
     @app.get("/api/health")
     def health(): return {"ok": True, "version": APP_VERSION}
     @app.get("/api/config")

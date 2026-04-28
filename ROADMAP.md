@@ -66,7 +66,7 @@ Mobile-native browsing remains in scope:
 
 Goal: make it easy to pull useful prompt/image references from external repositories and public social posts into the local library through a reviewable import-draft flow. These importers should stay local-first and user-confirmed rather than becoming an automated hosted scraping service.
 
-Current status: **Batch 1 ImportDraft core is implemented in the local backend** and **Batch 2 repository/dataset ingestion MVP is implemented for local markdown repositories**. The current importer scans local markdown folders, stages local image assets, emits reviewable ImportDraft records with source path/ref metadata, detects duplicates through the shared draft pipeline, and accepts staged images into normal library media storage. Next implementation milestone: **GenerationJob plus result inbox foundation**.
+Current status: **Batch 1 ImportDraft core**, **Batch 2 local markdown repository ingestion**, and **Batch 3 GenerationJob plus result inbox foundation** are implemented in the backend. Generation jobs can be created provider-agnostically, receive manually staged result images under `generation-results/`, be listed/reviewed, and accept/discard results; accepted results are copied into normal library media storage. Next implementation milestone: **`openai_codex_oauth_native` provider** on top of the generation-job infrastructure.
 
 Shared architecture:
 
@@ -87,7 +87,7 @@ Recommended order:
 
 1. **Batch 1: ImportDraft core — done in backend.** Schema, staging storage, preview/list/detail/confirm API, duplicate checks, Traditional Chinese derived normalization on accepted items, and accept-draft writes into the normal library repository layer are implemented and tested.
 2. **Batch 2: repository/dataset ingestion MVP — done for local markdown repositories.** The backend can scan local markdown folders, extract heading/fenced-prompt/image records, stage repository images safely under the selected library, preserve source file/ref metadata, and emit ImportDraft records for review. Future hardening can add remote GitHub clone/download orchestration and richer dataset-specific parsers.
-3. **Batch 3: GenerationJob plus result inbox foundation** — provider-agnostic generation jobs, result review, accept/retry/discard, and attach generated variants back to library items.
+3. **Batch 3: GenerationJob plus result inbox foundation — done in backend.** Provider-agnostic generation job records, manual/stub result staging under `generation-results/`, list/detail review API, accept/discard lifecycle, and accept-to-library media attachment are implemented and tested.
 4. **Batch 4: `openai_codex_oauth_native`** — native ChatGPT/Codex OAuth image generation provider using the generation-job infrastructure.
 5. **Batch 5: generic URL plus X/Threads import** — public URL extraction and social-post/thread import behind local-only/experimental warnings.
 6. **Batch 6: Instagram import** — only after the generic URL and X/Threads flow is useful, because IG auth/browser-session requirements and anti-bot behavior make it less reliable.
@@ -100,7 +100,7 @@ Goal: let local installs generate new images from saved prompts, review results,
 
 Planned provider-adapter architecture:
 
-- Core app owns provider-agnostic `GenerationJob` records, a generated-result inbox, review/confirm attach flow, and provenance fields.
+- Core app now owns provider-agnostic `GenerationJob` records, a generated-result inbox, review/confirm attach flow, and provenance fields in the backend.
 - Initial/adaptable providers can include `manual_upload`, `openai_api_key`, external `gpt-image` CLI, Hermes-backed providers, and a native `openai_codex_oauth_native` provider.
 - Edward's preferred direction is to implement `openai_codex_oauth_native` directly rather than relying only on Hermes as the broker.
 
