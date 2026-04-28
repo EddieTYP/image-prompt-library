@@ -302,10 +302,10 @@ def test_codex_native_device_flow_rejects_invalid_upstream_json(tmp_path, monkey
         raise AssertionError("expected invalid interval to be converted to CodexNativeAuthError")
 
 
-def test_codex_native_uses_chatgpt_account_supported_codex_model():
+def test_codex_native_uses_gpt_55_as_default_orchestration_model():
     from backend.services.openai_codex_native import CODEX_CHAT_MODEL
 
-    assert CODEX_CHAT_MODEL == "gpt-5.3-codex"
+    assert CODEX_CHAT_MODEL == "gpt-5.5"
 
 
 def test_codex_native_run_executes_job_and_stages_result_without_leaking_tokens(tmp_path, monkeypatch):
