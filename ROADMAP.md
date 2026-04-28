@@ -62,6 +62,55 @@ Mobile-native browsing remains in scope:
 - Full interface language setting.
 - Optional semantic/vector search.
 
+## Import and agent-ingestion roadmap
+
+Goal: make it easy to pull useful prompt/image references from external repositories and public social posts into the local library through a reviewable import-draft flow. These importers should stay local-first and user-confirmed rather than becoming an automated hosted scraping service.
+
+Shared architecture:
+
+- Use a common `ImportDraft` pipeline for all import sources.
+- Source adapters produce drafts with candidate images, prompts, source URL/repo metadata, author/handle when available, suggested collection, suggested tags, language/provenance metadata, and confidence/warnings.
+- The UI should present a preview/confirm screen before writing anything into the library.
+- Imported items must preserve original source text and URL/repo provenance; Traditional Chinese variants can be generated from Simplified Chinese through the existing normalization/OpenCC path and marked as derived.
+- Duplicate detection should compare source URLs, image hashes when available, and normalized prompt text.
+
+Planned adapters / agent skills:
+
+- **Agent skill: pull dataset from repository** — scan a local markdown folder or GitHub repository for prompt-gallery style data, images, metadata, and prompt blocks; download/copy media into an import staging area; emit `ImportDraft` records for user review.
+- **Agent skill: pull X/Threads posts** — given X/Twitter or Threads post/thread URLs, fetch public post text, images, quoted/replied context when accessible, author/source metadata, and generate draft tags/collection suggestions before user-confirmed import.
+- **Generic URL import adapter** — given a public web URL, attempt to extract visible post/article text, image assets, Open Graph metadata, author/source metadata, and candidate prompts into `ImportDraft` records.
+- **Instagram URL import adapter** — lower-priority experimental adapter because login/browser-session requirements and anti-bot behavior are likely; treat it as separate from the initial generic URL/X/Threads work.
+
+Recommended order:
+
+1. Implement the repository/dataset ingestion skill first because markdown/GitHub repos are more stable, easier to test, and map cleanly to the existing sample-manifest/provenance model.
+2. Implement generic URL import and X/Threads ingestion next, behind clear local-only/experimental warnings where needed.
+3. Consider Instagram only after the generic/X/Threads flow is useful, because IG auth/browser-session requirements and anti-bot behavior make it less reliable.
+4. Keep all live-import flows independent from the public GitHub Pages demo; Pages remains read-only and does not perform live imports.
+
+## Private/local generation roadmap
+
+Goal: let local installs generate new images from saved prompts, review results, and attach accepted outputs back into the local library with explicit provenance. This remains private/local-only and should not change the GitHub Pages demo from read-only browsing/copying.
+
+Planned provider-adapter architecture:
+
+- Core app owns provider-agnostic `GenerationJob` records, a generated-result inbox, review/confirm attach flow, and provenance fields.
+- Initial/adaptable providers can include `manual_upload`, `openai_api_key`, external `gpt-image` CLI, Hermes-backed providers, and a native `openai_codex_oauth_native` provider.
+- Edward's preferred direction is to implement `openai_codex_oauth_native` directly rather than relying only on Hermes as the broker.
+
+`openai_codex_oauth_native` target design:
+
+- Local-only experimental adapter labelled as OpenAI via ChatGPT/Codex login, no `OPENAI_API_KEY` required.
+- Use the Codex/ChatGPT device-code OAuth flow to obtain an app-owned access token and refresh token.
+- Store tokens outside the prompt library data directory, for example under a user config/auth directory, with restrictive file permissions and no export into sample bundles, backups, GitHub Pages data, or the repository.
+- Maintain an independent OAuth session for this app instead of mutating Hermes or Codex CLI auth stores by default, to avoid refresh-token rotation conflicts.
+- Refresh tokens with locking/skew handling before expiry; failed refresh should require re-login rather than silently falling back.
+- Decode `ChatGPT-Account-ID` from the OAuth JWT claim and send Codex-compatible headers such as the Codex CLI-style originator/user-agent when calling the Codex backend.
+- Call the Codex Responses API at the ChatGPT/Codex backend with the `image_generation` tool, forcing `gpt-image-2` with selectable quality tiers and supported sizes/aspect ratios.
+- Extract base64 PNG results from streamed `image_generation_call` output, save them into a local generation-results area, and copy accepted images into normal library media storage.
+- Record provenance for generated outputs: provider `openai_codex_oauth_native`, auth mode `codex_oauth_native`, image model, host/chat model if applicable, quality, size/aspect ratio, prompt variant used, reference images if any, source item id, job id, timestamps, and whether the user accepted/retried/discarded the result.
+- Treat this adapter as experimental because it depends on the ChatGPT/Codex backend rather than the stable public OpenAI Images API.
+
 ## Current non-goals
 
 - Hosted SaaS accounts.

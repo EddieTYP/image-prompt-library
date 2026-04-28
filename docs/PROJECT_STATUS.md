@@ -212,6 +212,28 @@ Public-alpha follow-ups that remain useful:
 - continue mobile Explore gesture/contained-canvas polish after the current Cards/detail improvements
 - consider optional semantic/vector search
 
+Private/local generation follow-ups:
+
+- implement a provider-adapter generation layer with provider-agnostic `GenerationJob` records, result inbox, accept/retry/discard review, and attach-to-library flow
+- support the intended one-click generation workflow: edit or fork an existing prompt variant, choose a generation provider, generate Text→Image or Text+Reference→Image/Edit outputs, review results, then attach accepted images back to the source item or as a generated variant
+- implement `openai_codex_oauth_native` directly as the preferred Codex/ChatGPT-login adapter, rather than only brokering through Hermes
+- keep `openai_codex_oauth_native` local-only and experimental; it uses the ChatGPT/Codex backend, not the stable public OpenAI Images API
+- device-code login should create this app's own OAuth session and token store, separate from Hermes and Codex CLI by default
+- token storage must live outside the library/export/demo data path, use restrictive permissions, support refresh locking/skew handling, and never enter git, sample bundles, backups, or GitHub Pages exports
+- request handling must decode the OAuth JWT for `ChatGPT-Account-ID`, send Codex-compatible originator/user-agent headers, call the Codex Responses API with the `image_generation` tool and `gpt-image-2`, parse streamed base64 image output, and save results into a local review inbox
+- generated-output provenance should record provider `openai_codex_oauth_native`, auth mode `codex_oauth_native`, model/provider details, quality/size/aspect ratio, prompt variant, reference images, source item id, generation job id, timestamps, and user disposition
+
+Import and agent-ingestion follow-ups:
+
+- add a shared `ImportDraft` pipeline so source adapters can stage candidate images/prompts/metadata before the user confirms import
+- add an agent skill / adapter to pull prompt-image datasets from a local folder or GitHub repository, especially markdown/gallery repos with image assets and prompt blocks
+- repository ingestion should preserve repo URL, commit/ref when available, source file paths, upstream author/license metadata, prompt-language provenance, suggested collection/tags, and staged media paths
+- add an agent skill / adapter to pull X/Twitter and Threads post or thread URLs into `ImportDraft` records with public post text, media, source URL, author/handle, quoted/replied context when accessible, and suggested collection/tags
+- add a generic public URL import adapter for article/post pages that can extract visible text, images, Open Graph metadata, author/source metadata, candidate prompts, and suggested collection/tags into reviewable drafts
+- track Instagram URL import as a later experimental adapter rather than the first URL-import target, because login/browser-session requirements and anti-bot behavior are likely
+- implement repository/dataset ingestion before URL/social import because repos are more stable and testable; then do generic URL plus X/Threads; only consider Instagram after those are useful
+- both import flows must preserve source/original text, generate Traditional Chinese only as a marked derived variant when applicable, deduplicate by source URL/image hash/normalized prompt text, and never run inside the public read-only Pages demo
+
 ## Maintainer note policy
 
 Keep this file public-safe:
