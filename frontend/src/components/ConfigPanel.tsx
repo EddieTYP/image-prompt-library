@@ -74,6 +74,7 @@ export default function ConfigPanel({
   onGlobalThumbnailBudget,
   focusThumbnailBudget,
   onFocusThumbnailBudget,
+  onProvidersChanged = () => undefined,
 }: {
   open: boolean;
   t: Translator;
@@ -86,6 +87,7 @@ export default function ConfigPanel({
   onGlobalThumbnailBudget: (budget: number) => void;
   focusThumbnailBudget: number;
   onFocusThumbnailBudget: (budget: number) => void;
+  onProvidersChanged?: () => void;
 }) {
   const [cfg, setCfg] = useState<AppConfig>();
   const [providers, setProviders] = useState<GenerationProviderStatus[]>([]);
@@ -93,9 +95,13 @@ export default function ConfigPanel({
   const [providerMessage, setProviderMessage] = useState<string>();
   const [providerBusy, setProviderBusy] = useState(false);
 
-  const loadProviders = () => api.generationProviders().then(setProviders).catch(() => {
+  const loadProviders = () => api.generationProviders().then(nextProviders => {
+    setProviders(nextProviders);
+    onProvidersChanged();
+  }).catch(() => {
     setProviders(providerFallback);
     setProviderMessage('Could not load provider status from the local backend. Showing safe local fallback.');
+    onProvidersChanged();
   });
 
   useEffect(() => {

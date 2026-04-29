@@ -220,6 +220,7 @@ export default function GenerationPanel({
       setMessage('New variant item created');
       window.setTimeout(() => setMessage(''), 2200);
       onAccepted(result.item, 'New variant item created');
+      onClose();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not save new item.');
     } finally {

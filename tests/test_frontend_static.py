@@ -249,6 +249,8 @@ def test_config_panel_includes_optional_generation_provider_ui():
     assert "api.codexNativeAuthStart()" in config
     assert "api.codexNativeAuthPoll" in config
     assert "api.codexNativeAuthDisconnect()" in config
+    assert "onProvidersChanged" in config
+    assert "onProvidersChanged();" in config
     assert ".provider-card" in compact_css
 
 
@@ -310,6 +312,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Image added to item" in panel
     assert "New variant item created" in panel
     assert "window.setTimeout(() => setMessage(''), 2200)" in panel
+    assert "onAccepted(result.item, 'New variant item created');\n      onClose();" in panel
     assert "Upload external result" in panel
     assert "generation-advanced" in panel
     assert "generation-panel" in css
@@ -366,6 +369,8 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "openStandaloneGeneration" in app
     assert "generationAvailable" in app
     assert "refreshGenerationAvailability" in app
+    assert "window.setInterval(refreshGenerationAvailability, 3000)" in app
+    assert "onProvidersChanged={refreshGenerationAvailability}" in app
     assert "provider.available && provider.authenticated && provider.configured" in app
     assert "floating-action-rail" in app
     assert "generate-fab" in app
