@@ -144,13 +144,13 @@ def test_v04_release_notes_describe_chatgpt_oauth_generation_and_installer():
     assert "token" not in notes.lower()
     assert "secret" not in notes.lower()
 
-def test_v05_release_notes_describe_local_generation_workbench_beta():
+def test_v05_release_notes_describe_local_generation_studio_beta():
     notes_path = ROOT / "docs" / "releases" / "v0.5.0-beta.md"
     assert notes_path.exists()
     notes = notes_path.read_text()
 
     assert "# Image Prompt Library v0.5.0-beta" in notes
-    assert "Local Generation Workbench" in notes
+    assert "Local Generation Studio" in notes
     assert "Online Read Only Demo" in notes
     assert "https://eddietyp.github.io/image-prompt-library/v0.4/" in notes
     assert "openai_codex_oauth_native" in notes

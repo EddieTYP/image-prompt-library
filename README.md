@@ -11,17 +11,17 @@ ChatGPT image generation has become good enough that the prompts are worth keepi
 
 Your library stays on your own machine: local SQLite, local image files, no accounts, no cloud sync, and no hosted database required.
 
-**Online Read Only Demo:** <https://eddietyp.github.io/image-prompt-library/> — browse public sample prompts and compressed preview images on GitHub Pages. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own full library. Latest v0.5 beta supports the Local Generation Workbench in local installs.
+**Online Read Only Demo:** <https://eddietyp.github.io/image-prompt-library/> — browse public sample prompts and compressed preview images on GitHub Pages. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own full library. Latest v0.5 beta supports the Local Generation Studio in local installs.
 
-**v0.5 beta highlight:** local installs can connect via **ChatGPT OAuth** using the experimental `openai_codex_oauth_native` provider, generate images directly from saved prompts, choose aspect ratio and quality settings, review auto-started queue jobs in the Local Generation Workbench, then `Attach to current item` or `Save as new item` with editable metadata. No hosted account, cloud sync, or public API key is required by the app.
+**v0.5 beta highlight:** local installs can connect via **ChatGPT OAuth** using the experimental `openai_codex_oauth_native` provider, generate images directly from saved prompts, choose aspect ratio and quality settings, review auto-started queue jobs in the Local Generation Studio, then `Attach to current item` or `Save as new item` with editable metadata. No hosted account, cloud sync, or public API key is required by the app.
 
-**Beta release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.5.0-beta> — Local Generation Workbench, ChatGPT OAuth direct image generation, aspect ratio and quality controls, auto-start queue with cancellation, Save-as-new variant metadata editing, versioned installer/update/rollback, and the multilingual provenance-aware prompt vault in the read-only demo.
+**Beta release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.5.0-beta> — Local Generation Studio, ChatGPT OAuth direct image generation, aspect ratio and quality controls, auto-start queue with cancellation, Save-as-new variant metadata editing, versioned installer/update/rollback, and the multilingual provenance-aware prompt vault in the read-only demo.
 
 **Roadmap:** See [`ROADMAP.md`](ROADMAP.md) for follow-up work around mobile Explore, versioned release installs, local generation, import flows, and public release polish.
 
 ![Image Prompt Library Cards view](docs/assets/screenshots/card-view-all.png)
 
-The public Online Read Only Demo remains a multilingual provenance-aware prompt vault: 510 public references, two attributed sample sources, English / Traditional Chinese / Simplified Chinese prompt variants, and source/original provenance for every item. The v0.5 beta local app release adds the Local Generation Workbench on top of the private install workflow.
+The public Online Read Only Demo remains a multilingual provenance-aware prompt vault: 510 public references, two attributed sample sources, English / Traditional Chinese / Simplified Chinese prompt variants, and source/original provenance for every item. The v0.5 beta local app release adds the Local Generation Studio on top of the private install workflow.
 
 ## What it does
 
@@ -36,7 +36,7 @@ The public Online Read Only Demo remains a multilingual provenance-aware prompt 
 
 ## Screenshots
 
-The screenshots below show the main browsing, detail, and local generation flows. The public Online Read Only Demo keeps the mobile Cards/detail improvements from 0.2 and the richer multilingual read-only prompt vault from 0.3, while the v0.5 beta local install path adds the ChatGPT OAuth Local Generation Workbench.
+The screenshots below show the main browsing, detail, and local generation flows. The public Online Read Only Demo keeps the mobile Cards/detail improvements from 0.2 and the richer multilingual read-only prompt vault from 0.3, while the v0.5 beta local install path adds the ChatGPT OAuth Local Generation Studio.
 
 ### Generate with ChatGPT OAuth
 
@@ -323,7 +323,7 @@ npm run build:demo:v0.4
 
 The public Pages deployment is versioned. Use `/` for the version chooser or `/v0.4/` for the current 0.4 preview.
 
-The demos read public sample metadata from `frontend/public/demo-data/`, use compressed WebP preview images, and disable write actions. They are intended only as online read-only demos. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own private prompt library. Latest v0.5 beta supports the Local Generation Workbench in local installs with ChatGPT OAuth.
+The demos read public sample metadata from `frontend/public/demo-data/`, use compressed WebP preview images, and disable write actions. They are intended only as online read-only demos. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own private prompt library. Latest v0.5 beta supports the Local Generation Studio in local installs with ChatGPT OAuth.
 
 ## Verification
 
@@ -394,7 +394,7 @@ Check `IMAGE_PROMPT_LIBRARY_PATH` in `.env`. Your database and image folders mus
 
 ## Project status
 
-This is a beta local-first app. Core browse/search/filter/detail/copy/add/edit flows exist, the public Online Read Only Demo is versioned, and the local v0.5 beta adds a provider-gated Local Generation Workbench with ChatGPT OAuth direct generation, aspect ratio and quality controls, auto-start queueing, cancellation, result inbox review, attach-current-item, save-as-new-variant, and metadata review. Remaining work includes stronger queue recovery, import-flow polish, deeper mobile Explore gestures, and public-release hardening.
+This is a beta local-first app. Core browse/search/filter/detail/copy/add/edit flows exist, the public Online Read Only Demo is versioned, and the local v0.5 beta adds a provider-gated Local Generation Studio with ChatGPT OAuth direct generation, aspect ratio and quality controls, auto-start queueing, cancellation, result inbox review, attach-current-item, save-as-new-variant, and metadata review. Remaining work includes stronger queue recovery, import-flow polish, deeper mobile Explore gestures, and public-release hardening.
 
 See `ROADMAP.md` for the current roadmap and follow-up priorities.
 
