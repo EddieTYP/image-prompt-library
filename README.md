@@ -23,6 +23,51 @@ Your library stays on your own machine: local SQLite, local image files, no acco
 
 The public Online Read Only Demo remains a multilingual provenance-aware prompt vault: 510 public references, two attributed sample sources, English / Traditional Chinese / Simplified Chinese prompt variants, and source/original provenance for every item. The v0.5 beta local app release adds the Local Generation Studio on top of the private install workflow.
 
+## TL;DR for beginners
+
+Think of the app as two folders:
+
+- **The app:** the replaceable program files. The installer puts these in `~/.image-prompt-library`.
+- **Your private library:** your prompts, SQLite database, and images. By default this lives in `~/ImagePromptLibrary`.
+
+Prerequisite: install **Python 3.10 or newer**. You do **not** need Node.js for the normal release install.
+
+Install, load sample data, and start in three steps:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash
+image-prompt-library sample-data en
+image-prompt-library start
+```
+
+Then open <http://127.0.0.1:8000/> in your browser.
+
+If the `image-prompt-library` command is not found, add `~/.local/bin` to your shell `PATH`, or use the fallback command printed by the installer:
+
+```bash
+~/.image-prompt-library/app/current/scripts/appctl.sh start
+```
+
+Keep your private library and uninstall only the app:
+
+```bash
+image-prompt-library uninstall
+```
+
+This removes the app files but keeps your prompts and images in `~/ImagePromptLibrary`, so you can reinstall later.
+
+To delete everything, including your private library, use the explicit destructive command:
+
+```bash
+image-prompt-library uninstall --delete-library
+```
+
+If you run that from a script or non-interactive shell, add `--yes`:
+
+```bash
+image-prompt-library uninstall --delete-library --yes
+```
+
 ## What it does
 
 - Save generated/reference images together with the prompt text that created them.
@@ -181,6 +226,18 @@ Optionally import the English sample library into your private data directory:
 
 ```bash
 image-prompt-library sample-data en
+```
+
+Uninstall the app files later while keeping your private prompt library:
+
+```bash
+image-prompt-library uninstall
+```
+
+Delete the private library too only if you are sure you no longer need your local prompts, database, or images:
+
+```bash
+image-prompt-library uninstall --delete-library
 ```
 
 Normal release installs do not require Node.js because the release artifact includes the built frontend. Node.js/npm are only needed for source/development installs.

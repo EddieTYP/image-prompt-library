@@ -87,6 +87,76 @@ sample_data() {
   bash "$SCRIPT_DIR/install-sample-data.sh" "$@"
 }
 
+refuse_unsafe_delete_target() {
+  TARGET="$1"
+  LABEL="$2"
+  case "$TARGET" in
+    ""|"/"|"$HOME"|"$HOME/"|"."|"..")
+      echo "Refusing unsafe $LABEL path: $TARGET" >&2
+      exit 2
+      ;;
+  esac
+}
+
+remove_default_shim_if_it_points_here() {
+  SHIM_PATH="$HOME/.local/bin/image-prompt-library"
+  if [ -f "$SHIM_PATH" ] && grep -F "$APP_PREFIX/app/current" "$SHIM_PATH" >/dev/null 2>&1; then
+    rm -f "$SHIM_PATH"
+    echo "Removed command shim: $SHIM_PATH"
+  fi
+}
+
+uninstall_app() {
+  DELETE_LIBRARY=0
+  ASSUME_YES=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --delete-library)
+        DELETE_LIBRARY=1
+        shift
+        ;;
+      --yes)
+        ASSUME_YES=1
+        shift
+        ;;
+      *)
+        echo "Unknown uninstall option: $1" >&2
+        exit 2
+        ;;
+    esac
+  done
+
+  load_env
+  LIBRARY_TO_DELETE="$IMAGE_PROMPT_LIBRARY_PATH"
+
+  if [ "$DELETE_LIBRARY" -eq 1 ] && [ "$ASSUME_YES" -ne 1 ]; then
+    if [ -t 0 ]; then
+      printf 'This will delete your private library at %s. Type DELETE to continue: ' "$LIBRARY_TO_DELETE" >&2
+      read -r CONFIRMATION
+      if [ "$CONFIRMATION" != "DELETE" ]; then
+        echo "Uninstall cancelled." >&2
+        exit 1
+      fi
+    else
+      echo "Refusing to delete the private library without --yes in a non-interactive shell." >&2
+      exit 2
+    fi
+  fi
+
+  refuse_unsafe_delete_target "$APP_PREFIX" "install prefix"
+  remove_default_shim_if_it_points_here
+  rm -rf "$APP_PREFIX"
+  echo "App files removed: $APP_PREFIX"
+
+  if [ "$DELETE_LIBRARY" -eq 1 ]; then
+    refuse_unsafe_delete_target "$LIBRARY_TO_DELETE" "private library"
+    rm -rf "$LIBRARY_TO_DELETE"
+    echo "Private library deleted: $LIBRARY_TO_DELETE"
+  else
+    echo "Private library kept: $LIBRARY_TO_DELETE"
+  fi
+}
+
 usage() {
   cat <<'USAGE'
 Usage: image-prompt-library <command>
@@ -97,6 +167,8 @@ Commands:
   update [--version V]  Install latest or selected release version
   rollback              Switch current app symlink back to app/previous
   sample-data LANG [PKG] Import optional sample data into the private library
+  uninstall [--delete-library] [--yes]
+                        Remove installed app files; keeps private library by default
 USAGE
 }
 
@@ -108,6 +180,7 @@ case "$COMMAND" in
   update) update_app "$@" ;;
   rollback) rollback_app "$@" ;;
   sample-data) sample_data "$@" ;;
+  uninstall) uninstall_app "$@" ;;
   -h|--help|help|"") usage ;;
   *) echo "Unknown command: $COMMAND" >&2; usage >&2; exit 2 ;;
 esac

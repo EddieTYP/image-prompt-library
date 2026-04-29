@@ -56,6 +56,7 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "update)" in appctl
     assert "rollback)" in appctl
     assert "sample-data)" in appctl
+    assert "uninstall)" in appctl
     assert "install-sample-data.sh" in appctl
     assert "IMAGE_PROMPT_LIBRARY_PATH" in appctl
     assert "~/ImagePromptLibrary" in appctl
@@ -103,6 +104,9 @@ def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developer
     assert "curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.5.0-beta" in readme
     assert "image-prompt-library rollback" in readme
     assert "image-prompt-library sample-data en" in readme
+    assert "image-prompt-library uninstall" in readme
+    assert "TL;DR" in readme
+    assert "Keep your private library" in readme
     assert "GitHub Release assets" in readme
     assert "Developer setup from source" in readme
     assert "git clone https://github.com/EddieTYP/image-prompt-library.git" in readme
@@ -222,6 +226,112 @@ def test_installer_supports_file_release_base_and_installs_without_git(tmp_path)
         timeout=30,
     ).strip()
     assert "v9.9.8-test" in version
+
+
+def test_installed_uninstall_removes_app_but_keeps_library_by_default(tmp_path):
+    subprocess.run(
+        ["bash", "scripts/package-release.sh", "v9.9.6-test", "--skip-build"],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "installer-library"
+    env = os.environ.copy()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
+    env["PYTHON"] = sys.executable
+    install = subprocess.run(
+        [
+            "bash",
+            "scripts/install.sh",
+            "--version",
+            "v9.9.6-test",
+            "--prefix",
+            str(prefix),
+            "--library-path",
+            str(library),
+            "--no-shim",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert install.returncode == 0, install.stdout + install.stderr
+    (library / "keep.txt").write_text("private data", encoding="utf-8")
+    appctl = prefix / "app" / "current" / "scripts" / "appctl.sh"
+
+    uninstall = subprocess.run(
+        ["bash", str(appctl), "uninstall"],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    assert uninstall.returncode == 0, uninstall.stdout + uninstall.stderr
+    assert "Private library kept" in uninstall.stdout
+    assert not prefix.exists()
+    assert (library / "keep.txt").read_text(encoding="utf-8") == "private data"
+
+
+def test_installed_uninstall_can_delete_library_with_explicit_flag(tmp_path):
+    subprocess.run(
+        ["bash", "scripts/package-release.sh", "v9.9.5-test", "--skip-build"],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "installer-library"
+    env = os.environ.copy()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
+    env["PYTHON"] = sys.executable
+    install = subprocess.run(
+        [
+            "bash",
+            "scripts/install.sh",
+            "--version",
+            "v9.9.5-test",
+            "--prefix",
+            str(prefix),
+            "--library-path",
+            str(library),
+            "--no-shim",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert install.returncode == 0, install.stdout + install.stderr
+    (library / "delete.txt").write_text("private data", encoding="utf-8")
+    appctl = prefix / "app" / "current" / "scripts" / "appctl.sh"
+
+    uninstall = subprocess.run(
+        ["bash", str(appctl), "uninstall", "--delete-library", "--yes"],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    assert uninstall.returncode == 0, uninstall.stdout + uninstall.stderr
+    assert "Private library deleted" in uninstall.stdout
+    assert not prefix.exists()
+    assert not library.exists()
 
 
 def test_installed_sample_data_script_imports_into_installer_library_by_default(tmp_path):
