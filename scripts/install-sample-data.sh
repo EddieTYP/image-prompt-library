@@ -20,8 +20,18 @@ if [[ "$PACKAGE" == "awesome-gpt-image-2" && "$LANGUAGE" != "zh_hant" ]]; then
   exit 2
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+if [[ -z "${IMAGE_PROMPT_LIBRARY_PATH:-}" && -f "$REPO_ROOT/VERSION" ]]; then
+  INSTALL_PREFIX="$(cd "$REPO_ROOT/../../.." && pwd -P)"
+  ENV_FILE="$INSTALL_PREFIX/.env"
+  if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+  fi
+fi
 LIBRARY_PATH="${IMAGE_PROMPT_LIBRARY_PATH:-$REPO_ROOT/library}"
 if [[ -n "${SAMPLE_DATA_MANIFEST:-}" ]]; then
   MANIFEST_PATH="$SAMPLE_DATA_MANIFEST"
@@ -107,7 +117,7 @@ if [[ ! -x "$PYTHON_BIN" ]]; then
   PYTHON_BIN="${PYTHON:-python3}"
 fi
 
-RESULT_JSON="$($PYTHON_BIN -m backend.services.import_sample_bundle \
+RESULT_JSON="$(cd "$REPO_ROOT" && "$PYTHON_BIN" -m backend.services.import_sample_bundle \
   --manifest "$MANIFEST_PATH" \
   --assets "$ASSET_DIR" \
   --library "$LIBRARY_PATH")"

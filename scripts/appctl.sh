@@ -82,6 +82,11 @@ rollback_app() {
   echo "Rolled back to $(basename "$PREVIOUS_TARGET")."
 }
 
+sample_data() {
+  load_env
+  bash "$SCRIPT_DIR/install-sample-data.sh" "$@"
+}
+
 usage() {
   cat <<'USAGE'
 Usage: image-prompt-library <command>
@@ -91,6 +96,7 @@ Commands:
   version               Print installed app version
   update [--version V]  Install latest or selected release version
   rollback              Switch current app symlink back to app/previous
+  sample-data LANG [PKG] Import optional sample data into the private library
 USAGE
 }
 
@@ -101,6 +107,7 @@ case "$COMMAND" in
   version) print_version ;;
   update) update_app "$@" ;;
   rollback) rollback_app "$@" ;;
+  sample-data) sample_data "$@" ;;
   -h|--help|help|"") usage ;;
   *) echo "Unknown command: $COMMAND" >&2; usage >&2; exit 2 ;;
 esac

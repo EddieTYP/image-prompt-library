@@ -2,7 +2,15 @@
 
 Image Prompt Library does not commit runtime databases or user media. Optional sample data is provided as a curated bundle for screenshots, demos, and first-run exploration.
 
-Sample installer command for the default package:
+Sample installer command for normal release installs:
+
+```bash
+image-prompt-library sample-data zh_hant
+# or: image-prompt-library sample-data zh_hans
+# or: image-prompt-library sample-data en
+```
+
+Source/development checkout command for the default package:
 
 ```bash
 ./scripts/install-sample-data.sh zh_hant

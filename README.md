@@ -177,6 +177,12 @@ Rollback to the previous installed version with:
 image-prompt-library rollback
 ```
 
+Optionally import the English sample library into your private data directory:
+
+```bash
+image-prompt-library sample-data en
+```
+
 Normal release installs do not require Node.js because the release artifact includes the built frontend. Node.js/npm are only needed for source/development installs.
 
 The selected release must have matching GitHub Release assets: `image-prompt-library-<version>.tar.gz`, `.sha256`, and `.manifest.json`. The installer verifies the SHA256 checksum before switching `app/current` to the new version.
@@ -273,7 +279,13 @@ The app starts with an empty private library. Your own `library/` folder contain
 
 ### Try the sample library
 
-If you want to see the app with example content, install the optional sample library:
+For normal release installs, use the installed command so the sample data goes into the installer-managed private library path (`~/ImagePromptLibrary` by default):
+
+```bash
+image-prompt-library sample-data en
+```
+
+For source/development checkouts, run the repository script directly:
 
 ```bash
 ./scripts/install-sample-data.sh en

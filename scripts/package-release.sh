@@ -51,7 +51,9 @@ for path in \
   backend \
   scripts/appctl.sh \
   scripts/install.sh \
+  scripts/install-sample-data.sh \
   scripts/setup-runtime.sh \
+  sample-data/manifests \
   pyproject.toml \
   README.md \
   LICENSE \

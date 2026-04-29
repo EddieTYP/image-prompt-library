@@ -2,7 +2,12 @@ import json
 import os
 import subprocess
 import sys
+import zipfile
 from pathlib import Path
+
+from PIL import Image
+
+from backend.repositories import ItemRepository
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -50,6 +55,8 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "version)" in appctl
     assert "update)" in appctl
     assert "rollback)" in appctl
+    assert "sample-data)" in appctl
+    assert "install-sample-data.sh" in appctl
     assert "IMAGE_PROMPT_LIBRARY_PATH" in appctl
     assert "~/ImagePromptLibrary" in appctl
     assert "uvicorn backend.main:app" in appctl
@@ -95,6 +102,7 @@ def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developer
     assert "image-prompt-library update --version v0.5.0-beta" in readme
     assert "curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.5.0-beta" in readme
     assert "image-prompt-library rollback" in readme
+    assert "image-prompt-library sample-data en" in readme
     assert "GitHub Release assets" in readme
     assert "Developer setup from source" in readme
     assert "git clone https://github.com/EddieTYP/image-prompt-library.git" in readme
@@ -140,6 +148,11 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     assert "frontend/dist/assets/" in listing
     assert "scripts/appctl.sh" in listing
     assert "scripts/setup-runtime.sh" in listing
+    assert "scripts/install-sample-data.sh" in listing
+    assert "sample-data/manifests/en.json" in listing
+    assert "sample-data/manifests/zh_hant.json" in listing
+    assert "sample-data/manifests/zh_hans.json" in listing
+    assert "sample-data/manifests/awesome-gpt-image-2/zh_hant.json" in listing
     assert "pyproject.toml" in listing
     assert "README.md" in listing
     assert "LICENSE" in listing
@@ -209,3 +222,90 @@ def test_installer_supports_file_release_base_and_installs_without_git(tmp_path)
         timeout=30,
     ).strip()
     assert "v9.9.8-test" in version
+
+
+def test_installed_sample_data_script_imports_into_installer_library_by_default(tmp_path):
+    subprocess.run(
+        ["bash", "scripts/package-release.sh", "v9.9.7-test", "--skip-build"],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "installer-library"
+    env = os.environ.copy()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
+    env["PYTHON"] = sys.executable
+    install = subprocess.run(
+        [
+            "bash",
+            "scripts/install.sh",
+            "--version",
+            "v9.9.7-test",
+            "--prefix",
+            str(prefix),
+            "--library-path",
+            str(library),
+            "--no-shim",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert install.returncode == 0, install.stdout + install.stderr
+
+    assets = tmp_path / "assets"
+    image_dir = assets / "images"
+    image_dir.mkdir(parents=True)
+    Image.new("RGB", (10, 10), "green").save(image_dir / "fixture.png")
+    manifest = tmp_path / "fixture-manifest.json"
+    manifest.write_text(json.dumps({
+        "schema_version": 2,
+        "id": "installed-fixture",
+        "language": "en",
+        "source": {"name": "fixture", "license": "CC BY 4.0"},
+        "collections": [{"id": "demo", "name": "Demo", "names": {"en": "Demo"}}],
+        "items": [{
+            "id": "installed-fixture-001",
+            "title": "Installed sample fixture",
+            "slug": "installed-sample-fixture",
+            "collection_id": "demo",
+            "image": "images/fixture.png",
+            "source_name": "fixture",
+            "tags": ["sample"],
+            "prompts": [{
+                "language": "en",
+                "text": "A green square",
+                "is_primary": True,
+                "is_original": True,
+                "provenance": {"kind": "source", "source_language": "en", "derived_from": None, "method": None},
+            }],
+        }],
+    }), encoding="utf-8")
+    zip_path = tmp_path / "sample-images.zip"
+    with zipfile.ZipFile(zip_path, "w") as archive:
+        archive.write(image_dir / "fixture.png", "images/fixture.png")
+
+    result = subprocess.run(
+        ["bash", str(prefix / "app" / "current" / "scripts" / "appctl.sh"), "sample-data", "en"],
+        cwd=tmp_path,
+        env={
+            **env,
+            "SAMPLE_DATA_MANIFEST": str(manifest),
+            "SAMPLE_DATA_IMAGE_ZIP": str(zip_path),
+        },
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Imported 1 items" in result.stdout
+    assert str(library) in result.stdout
+    assert ItemRepository(library).list_items(limit=5).total == 1
