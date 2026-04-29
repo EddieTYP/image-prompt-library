@@ -56,6 +56,11 @@ RELEASE_BASE_URL="${SAMPLE_DATA_RELEASE_BASE_URL:-https://github.com/EddieTYP/im
 RELEASE_ASSET_NAME="${SAMPLE_DATA_RELEASE_ASSET_NAME:-$DEFAULT_RELEASE_ASSET}"
 EXPECTED_SHA256="${SAMPLE_DATA_IMAGE_ZIP_SHA256:-$DEFAULT_SHA256}"
 
+PYTHON_BIN="$REPO_ROOT/.venv/bin/python"
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  PYTHON_BIN="${PYTHON:-python3}"
+fi
+
 sha256_file() {
   local file="$1"
   if command -v sha256sum >/dev/null 2>&1; then
@@ -84,6 +89,32 @@ verify_zip_checksum() {
   fi
 }
 
+extract_zip() {
+  local file="$1"
+  local destination="$2"
+  "$PYTHON_BIN" - "$file" "$destination" <<'PY'
+import sys
+import zipfile
+from pathlib import Path
+
+zip_path = Path(sys.argv[1])
+destination = Path(sys.argv[2]).resolve()
+destination.mkdir(parents=True, exist_ok=True)
+
+with zipfile.ZipFile(zip_path) as archive:
+    for member in archive.infolist():
+        member_path = Path(member.filename)
+        if member.filename.startswith(("/", "\\")) or ".." in member_path.parts:
+            raise SystemExit(f"Refusing unsafe ZIP member path: {member.filename}")
+        target = (destination / member_path).resolve()
+        try:
+            target.relative_to(destination)
+        except ValueError as exc:
+            raise SystemExit(f"Refusing unsafe ZIP member path: {member.filename}") from exc
+    archive.extractall(destination)
+PY
+}
+
 if [[ ! -f "$MANIFEST_PATH" ]]; then
   echo "Sample manifest not found: $MANIFEST_PATH" >&2
   exit 1
@@ -102,19 +133,14 @@ if [[ -z "$ASSET_DIR" ]]; then
     if [[ -n "${SAMPLE_DATA_IMAGE_ZIP_SHA256:-}" ]]; then
       verify_zip_checksum "$IMAGE_ZIP" "$EXPECTED_SHA256"
     fi
-    unzip -q "$IMAGE_ZIP" -d "$ASSET_DIR"
+    extract_zip "$IMAGE_ZIP" "$ASSET_DIR"
   else
     IMAGE_ZIP="$WORK_DIR/$RELEASE_ASSET_NAME"
     echo "Downloading sample images from $RELEASE_BASE_URL/$RELEASE_ASSET_NAME"
     curl -fL "$RELEASE_BASE_URL/$RELEASE_ASSET_NAME" -o "$IMAGE_ZIP"
     verify_zip_checksum "$IMAGE_ZIP" "$EXPECTED_SHA256"
-    unzip -q "$IMAGE_ZIP" -d "$ASSET_DIR"
+    extract_zip "$IMAGE_ZIP" "$ASSET_DIR"
   fi
-fi
-
-PYTHON_BIN="$REPO_ROOT/.venv/bin/python"
-if [[ ! -x "$PYTHON_BIN" ]]; then
-  PYTHON_BIN="${PYTHON:-python3}"
 fi
 
 RESULT_JSON="$(cd "$REPO_ROOT" && "$PYTHON_BIN" -m backend.services.import_sample_bundle \

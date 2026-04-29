@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -140,11 +141,20 @@ def test_install_sample_data_script_verifies_release_zip_checksum():
     installer = (ROOT / "scripts" / "install-sample-data.sh").read_text()
 
     assert "EXPECTED_SHA256" in installer
+    assert "zipfile.ZipFile" in installer
+    assert "unzip" not in installer
     assert "sha256sum" in installer or "shasum -a 256" in installer
     assert "8a458f6c8c96079f40fbc46c689e7de0bd2eb464ee7f800f94f3ca60131d5035" in installer
 
 
-def test_install_sample_data_script_supports_local_zip_override(tmp_path: Path):
+def test_install_sample_data_script_supports_local_zip_override_without_system_unzip(tmp_path: Path):
+    tool_bin = tmp_path / "tool-bin"
+    tool_bin.mkdir()
+    for command in ("dirname", "rm", "mkdir"):
+        command_path = shutil.which(command)
+        assert command_path, f"{command} should be available in the test environment"
+        (tool_bin / command).symlink_to(command_path)
+
     assets = tmp_path / "assets"
     image_dir = assets / "images"
     image_dir.mkdir(parents=True)
@@ -179,10 +189,10 @@ def test_install_sample_data_script_supports_local_zip_override(tmp_path: Path):
 
     library = tmp_path / "library"
     result = subprocess.run(
-        [str(ROOT / "scripts" / "install-sample-data.sh"), "en"],
+        ["/bin/bash", str(ROOT / "scripts" / "install-sample-data.sh"), "en"],
         cwd=ROOT,
         env={
-            **os.environ,
+            "PATH": str(tool_bin),
             "IMAGE_PROMPT_LIBRARY_PATH": str(library),
             "PYTHON": sys.executable,
             "SAMPLE_DATA_MANIFEST": str(manifest),

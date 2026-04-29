@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 import zipfile
 from pathlib import Path
 
@@ -71,6 +72,8 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "npm run build" not in setup_runtime
 
     assert "npm run build" in package
+    assert "/image-prompt-library/assets/" in package
+    assert "GitHub Pages demo build" in package
     assert "dist-release" in package
     assert "manifest.json" in package
     assert "tar.gz" in package
@@ -152,6 +155,10 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     )
     assert "backend/" in listing
     assert "frontend/dist/index.html" in listing
+    with tarfile.open(tarball_path, "r:gz") as archive:
+        index_html = archive.extractfile("./frontend/dist/index.html").read().decode("utf-8")
+    assert '/image-prompt-library/assets/' not in index_html
+    assert '/assets/' in index_html
     assert "frontend/dist/assets/" in listing
     assert "scripts/appctl.sh" in listing
     assert "scripts/setup-runtime.sh" in listing
