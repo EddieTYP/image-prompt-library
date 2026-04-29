@@ -76,6 +76,10 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert "Demo images are compressed." in text
     assert "Add/edit require local install; run locally to create your private prompt library." in text
     assert "Latest v0.5 beta supports the Local Generation Studio" in text
+    assert "local-generation-studio-banner.webp" in text
+    assert "hero-banner" in text
+    assert "View the v0.5 beta Local Generation Studio release" in text
+    assert "cp docs/assets/screenshots/local-generation-studio-banner.webp" in text
     assert "View on GitHub" in text
     assert "Inject v0.4 upgrade notice into archived v0.3 preview" in text
     assert "This v0.3 preview is archived." in text

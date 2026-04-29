@@ -179,6 +179,8 @@ jobs:
           cp -R .page-build/${LEGACY_DEMO_PATH}/frontend/dist/. .pages-artifact/${LEGACY_DEMO_PATH}/
       - name: Write version chooser landing page
         run: |
+          mkdir -p .pages-artifact/assets
+          cp docs/assets/screenshots/local-generation-studio-banner.webp .pages-artifact/assets/local-generation-studio-banner.webp
           cat > .pages-artifact/index.html <<'HTML'
           <!doctype html>
           <html lang="en">
@@ -203,7 +205,7 @@ jobs:
                     linear-gradient(135deg, #fffaf0, #f4f0ff 52%, #faf9f4);
                 }
                 main {
-                  width: min(920px, 100%);
+                  width: min(1080px, 100%);
                   background: rgba(255, 255, 255, .82);
                   border: 1px solid rgba(99, 80, 64, .12);
                   border-radius: 32px;
@@ -248,6 +250,25 @@ jobs:
                 .local-banner a {
                   color: #2c1aa6;
                   font-weight: 900;
+                }
+                .hero-banner-link {
+                  display: block;
+                  margin: 0 0 30px;
+                  border-radius: 26px;
+                  box-shadow: 0 24px 62px rgba(44, 34, 48, .16);
+                  overflow: hidden;
+                  transition: transform .18s ease, box-shadow .18s ease;
+                }
+                .hero-banner-link:hover,
+                .hero-banner-link:focus-visible {
+                  transform: translateY(-2px);
+                  box-shadow: 0 30px 72px rgba(44, 34, 48, .2);
+                  outline: none;
+                }
+                .hero-banner {
+                  display: block;
+                  width: 100%;
+                  height: auto;
                 }
                 .versions {
                   display: grid;
@@ -311,6 +332,9 @@ jobs:
                   <span>Latest v0.5 beta supports the Local Generation Studio with ChatGPT OAuth in local installs.</span>
                   <a href="https://github.com/EddieTYP/image-prompt-library">View on GitHub</a>
                 </p>
+                <a class="hero-banner-link" href="https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.5.0-beta" aria-label="View the v0.5 beta Local Generation Studio release">
+                  <img class="hero-banner" src="./assets/local-generation-studio-banner.webp" width="1800" height="600" alt="Image Prompt Library v0.5.0-beta Local Generation Studio banner showing the app Cards view and local generation workflow highlights" />
+                </a>
                 <section class="versions" aria-label="Demo versions">
                   <a class="version-card" href="./v0.4/">
                     <span class="version-label">Current demo · v0.4</span>
