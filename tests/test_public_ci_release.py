@@ -105,6 +105,18 @@ def test_v03_release_notes_describe_multilingual_provenance_vault():
     assert "token" not in notes.lower()
     assert "secret" not in notes.lower()
 
+def test_release_assets_workflow_packages_only_current_version_assets():
+    workflow_path = ROOT / ".github" / "workflows" / "release-assets.yml"
+    assert workflow_path.exists()
+    workflow = workflow_path.read_text()
+
+    assert "rm -rf dist-release" in workflow
+    assert "scripts/package-release.sh \"$VERSION\" --skip-build" in workflow
+    assert "dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.tar.gz" in workflow
+    assert "dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.tar.gz.sha256" in workflow
+    assert "dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.manifest.json" in workflow
+
+
 def test_v04_release_notes_describe_chatgpt_oauth_generation_and_installer():
     notes_path = ROOT / "docs" / "releases" / "v0.4.0-alpha.md"
     assert notes_path.exists()

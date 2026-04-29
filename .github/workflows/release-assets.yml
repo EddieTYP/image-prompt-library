@@ -42,11 +42,12 @@ jobs:
       - name: Package release asset
         run: |
           VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          rm -rf dist-release
           scripts/package-release.sh "$VERSION" --skip-build
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist-release/*.tar.gz
-            dist-release/*.sha256
-            dist-release/*.manifest.json
+            dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.tar.gz
+            dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.tar.gz.sha256
+            dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.manifest.json
