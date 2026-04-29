@@ -42,7 +42,10 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "--prefix" in install
     assert "--library-path" in install
     assert "IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL" in install
-    assert "api.github.com/repos/EddieTYP/image-prompt-library/releases/latest" in install
+    assert "api.github.com/repos/{repo}/releases?per_page=20" in install
+    assert "releases/latest" not in install
+    assert "image-prompt-library-{tag}.manifest.json" in install
+    assert "image-prompt-library-{tag}.tar.gz" in install
     assert "sha256" in install.lower()
     assert "~/.image-prompt-library" in install
     assert "app/versions" in install

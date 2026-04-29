@@ -6,7 +6,6 @@ PREFIX="$HOME/.image-prompt-library"
 LIBRARY_PATH="$HOME/ImagePromptLibrary"
 CREATE_SHIM=1
 REPO="EddieTYP/image-prompt-library"
-LATEST_RELEASE_API="https://api.github.com/repos/EddieTYP/image-prompt-library/releases/latest"
 RELEASE_BASE_URL="${IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL:-}"
 SKIP_RUNTIME_SETUP="${IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP:-0}"
 
@@ -79,10 +78,24 @@ import json
 import sys
 import urllib.request
 repo = sys.argv[1]
-url = "https://api.github.com/repos/EddieTYP/image-prompt-library/releases/latest"
+url = f"https://api.github.com/repos/{repo}/releases?per_page=20"
 with urllib.request.urlopen(url) as response:
-    data = json.load(response)
-print(data["tag_name"])
+    releases = json.load(response)
+for release in releases:
+    if release.get("draft"):
+        continue
+    tag = release.get("tag_name")
+    asset_names = {asset.get("name") for asset in release.get("assets", [])}
+    required = {
+        f"image-prompt-library-{tag}.manifest.json",
+        f"image-prompt-library-{tag}.tar.gz",
+        f"image-prompt-library-{tag}.tar.gz.sha256",
+    }
+    if tag and required.issubset(asset_names):
+        print(tag)
+        break
+else:
+    raise SystemExit("Could not find a release with Image Prompt Library app installer assets.")
 PY
 }
 
