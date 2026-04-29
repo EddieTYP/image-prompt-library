@@ -78,8 +78,10 @@ find "$STAGING" \( \
   -name 'library' -o \
   -name 'node_modules' -o \
   -name '.venv' -o \
-  -name 'backups' \
+  -name 'backups' -o \
+  -name '__pycache__' \
 \) -prune -exec rm -rf {} +
+find "$STAGING" -name '*.pyc' -type f -delete
 
 (
   cd "$STAGING"

@@ -43,6 +43,9 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "--prefix" in install
     assert "--library-path" in install
     assert "IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL" in install
+    assert "choose_python()" in install
+    assert "python3.13 python3.12 python3.11 python3.10 python3 python" in install
+    assert "PYTHON=/path/to/python3.10" in install
     assert "api.github.com/repos/{repo}/releases?per_page=20" in install
     assert "releases/latest" not in install
     assert "image-prompt-library-{tag}.manifest.json" in install
@@ -68,6 +71,8 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "app/previous" in appctl
 
     assert "python -m pip install ." in setup_runtime
+    assert "choose_python()" in setup_runtime
+    assert "python3.13 python3.12 python3.11 python3.10 python3 python" in setup_runtime
     assert "npm install" not in setup_runtime
     assert "npm run build" not in setup_runtime
 
@@ -176,6 +181,8 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     assert ".venv" not in listing
     assert "library/db.sqlite" not in listing
     assert "backups/" not in listing
+    assert "__pycache__" not in listing
+    assert ".pyc" not in listing
 
 
 def test_installer_supports_file_release_base_and_installs_without_git(tmp_path):
@@ -236,6 +243,60 @@ def test_installer_supports_file_release_base_and_installs_without_git(tmp_path)
         timeout=30,
     ).strip()
     assert "v9.9.8-test" in version
+
+
+def test_installer_auto_detects_supported_python_when_python3_is_too_old(tmp_path):
+    subprocess.run(
+        ["bash", "scripts/package-release.sh", "v9.9.4-test", "--skip-build"],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_python3 = fake_bin / "python3"
+    fake_python3.write_text(
+        "#!/usr/bin/env sh\n"
+        "echo 'fake old python3 should not be used by installer auto-detection' >&2\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    fake_python3.chmod(0o755)
+    (fake_bin / "python3.12").symlink_to(sys.executable)
+
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library-data"
+    env = os.environ.copy()
+    env.pop("PYTHON", None)
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
+
+    result = subprocess.run(
+        [
+            "bash",
+            "scripts/install.sh",
+            "--version",
+            "v9.9.4-test",
+            "--prefix",
+            str(prefix),
+            "--library-path",
+            str(library),
+            "--no-shim",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (prefix / "app" / "versions" / "v9.9.4-test").is_dir()
+    assert "fake old python3 should not be used" not in result.stderr
 
 
 def test_installed_uninstall_removes_app_but_keeps_library_by_default(tmp_path):
