@@ -270,6 +270,15 @@ cd image-prompt-library
 
 Open <http://127.0.0.1:8000/>.
 
+`setup.sh` auto-detects `python3.13`, `python3.12`, `python3.11`, or `python3.10` before falling back to `python3`. On macOS, `/usr/bin/python3` may still be Python 3.9; if setup cannot find a new enough interpreter, install Python 3.10+ and rerun with an explicit interpreter:
+
+```bash
+PYTHON=/path/to/python3.12 ./scripts/setup.sh
+./scripts/start.sh
+```
+
+`start.sh` uses `.venv/bin/python` from setup when available and prints an actionable setup message if Python dependencies are missing.
+
 `scripts/start.sh` builds the frontend and serves the built app through FastAPI, so source local use only needs one server after setup.
 
 ## Development mode
