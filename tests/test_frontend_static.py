@@ -336,6 +336,12 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "metadataPanelRef" in panel
     assert "scrollIntoView({ behavior: 'smooth', block: 'start' })" in panel
     assert "focus({ preventScroll: true })" in panel
+    assert "initialJobId" in panel
+    assert "focusedJobRef" in panel
+    assert "setFocusedJobHighlightId" in panel
+    assert "window.setInterval(() => refreshJobs({ preserveActive: true }).catch(() => undefined), 2500)" in panel
+    assert "['queued', 'running'].includes(job.status)" in panel
+    assert "scrollIntoView({ behavior: 'smooth', block: 'center' })" in panel
     assert "Save generated image as new item" in panel
     assert "Review metadata" in panel
     assert "readonly-provenance" in panel
@@ -379,6 +385,9 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "setSelectedImageId" in detail
     assert "mobile-generate-variant-button" in detail
     assert "setGenerationOpen(true)" in detail
+    assert "initialGenerationJobId" in detail
+    assert "setGenerationOpen(Boolean(initialGenerationJobId))" in detail
+    assert "initialJobId={initialGenerationJobId}" in detail
 
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
@@ -415,6 +424,16 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "!isDemoMode && (" in app
     assert "generationAvailable && <button className=\"fab generate-fab\"" in app
     assert "!isDemoMode && <GenerationQueueDrawer" in app
+    assert "focusedGenerationJobId" in app
+    assert "openGenerationJob" in app
+    assert "onOpenJob={openGenerationJob}" in app
+    assert "initialGenerationJobId={focusedItemGenerationJobId}" in app
+    assert "const [pendingGenerationSourceItemId, setPendingGenerationSourceItemId]" in app
+    assert "setStandaloneGenerationOpen(true)" in app
+    assert "setDetailId(job.source_item_id)" in app
+    assert "onOpenJob" in queue
+    assert "onClick={() => onOpenJob(job)}" in queue
+    assert "disabled={!job.source_item_id}" not in queue
     assert "Generation work queue" in queue
     assert "generation-queue-trigger" in queue
     assert "queue-dot active" in queue

@@ -12,7 +12,7 @@ import GenerationQueueDrawer from './components/GenerationQueueDrawer';
 import ConfigPanel from './components/ConfigPanel';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
-import type { ClusterRecord, GenerationProviderStatus, ItemDetail, ItemSummary, TagRecord, ViewMode } from './types';
+import type { ClusterRecord, GenerationJobRecord, GenerationProviderStatus, ItemDetail, ItemSummary, TagRecord, ViewMode } from './types';
 import { copyTextToClipboard } from './utils/clipboard';
 import { DEFAULT_UI_LANGUAGE, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
 import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptCopyLanguage } from './utils/prompts';
@@ -93,6 +93,8 @@ export default function App() {
   const [toast, setToast] = useState<{ title: string; tone: 'success' | 'error' }>();
   const [standaloneGenerationOpen, setStandaloneGenerationOpen] = useState(false);
   const [generationQueueOpen, setGenerationQueueOpen] = useState(false);
+  const [focusedGenerationJobId, setFocusedGenerationJobId] = useState<string>();
+  const [pendingGenerationSourceItemId, setPendingGenerationSourceItemId] = useState<string>();
   const [generationAvailable, setGenerationAvailable] = useState(false);
   const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
   const exploreFocusedClusterId = view === 'explore'
@@ -170,9 +172,23 @@ export default function App() {
     showCopyToast(copied);
   };
   const openNewItemEditor = () => { setEditing(undefined); setEditorOpen(true); };
-  const openStandaloneGeneration = () => { if (!generationAvailable) return; setStandaloneGenerationOpen(true); setGenerationQueueOpen(false); };
+  const openStandaloneGeneration = () => { if (!generationAvailable) return; setFocusedGenerationJobId(undefined); setPendingGenerationSourceItemId(undefined); setStandaloneGenerationOpen(true); setGenerationQueueOpen(false); };
+  const openGenerationJob = (job: GenerationJobRecord) => {
+    setFocusedGenerationJobId(job.id);
+    setGenerationQueueOpen(false);
+    if (job.source_item_id) {
+      setPendingGenerationSourceItemId(job.source_item_id);
+      setStandaloneGenerationOpen(false);
+      setDetailId(job.source_item_id);
+      return;
+    }
+    setPendingGenerationSourceItemId(undefined);
+    setDetailId(undefined);
+    setStandaloneGenerationOpen(true);
+  };
   const favorite = (id: string) => { api.favorite(id).then(saved).catch(() => undefined); };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
+  const focusedItemGenerationJobId = pendingGenerationSourceItemId ? focusedGenerationJobId : undefined;
   const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
   return <div className={`app ${view === 'explore' ? 'explore-mode' : 'cards-mode'}`}>
     <TopBar t={t} q={q} onQ={setQ} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
@@ -211,10 +227,10 @@ export default function App() {
         {generationAvailable && <button className="fab generate-fab" onClick={openStandaloneGeneration}>Generate</button>}
       </div>
     )}
-    {!isDemoMode && <GenerationQueueDrawer t={t} open={generationQueueOpen} onOpen={() => setGenerationQueueOpen(true)} onClose={() => setGenerationQueueOpen(false)} onOpenSourceItem={(id) => { setDetailId(id); setGenerationQueueOpen(false); }} />}
-    <ItemDetailModal t={t} id={detailId} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} canGenerate={generationAvailable} />
+    {!isDemoMode && <GenerationQueueDrawer t={t} open={generationQueueOpen} onOpen={() => setGenerationQueueOpen(true)} onClose={() => setGenerationQueueOpen(false)} onOpenJob={openGenerationJob} />}
+    <ItemDetailModal t={t} id={detailId} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} canGenerate={generationAvailable} initialGenerationJobId={focusedItemGenerationJobId} />
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
     {editorOpen && <ItemEditorModal t={t} item={editing} clusters={localizedClusters} tags={tags} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} />}
-    {standaloneGenerationOpen && <GenerationPanel t={t} preferredLanguage={preferredLanguage} onClose={() => setStandaloneGenerationOpen(false)} onAccepted={(item, message) => { saved(); setToast({ title: message || 'New variant item created', tone: 'success' }); if (item?.id) setDetailId(item.id); }} />}
+    {standaloneGenerationOpen && <GenerationPanel t={t} preferredLanguage={preferredLanguage} initialJobId={focusedGenerationJobId} onClose={() => setStandaloneGenerationOpen(false)} onAccepted={(item, message) => { saved(); setToast({ title: message || 'New variant item created', tone: 'success' }); if (item?.id) setDetailId(item.id); }} />}
   </div>
 }

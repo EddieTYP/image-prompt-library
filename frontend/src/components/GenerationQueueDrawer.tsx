@@ -31,13 +31,13 @@ export default function GenerationQueueDrawer({
   open,
   onOpen,
   onClose,
-  onOpenSourceItem,
+  onOpenJob,
 }: {
   t: Translator;
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
-  onOpenSourceItem: (id: string) => void;
+  onOpenJob: (job: GenerationJobRecord) => void;
 }) {
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
   const [loadError, setLoadError] = useState('');
@@ -101,8 +101,7 @@ export default function GenerationQueueDrawer({
                   type="button"
                   key={job.id}
                   className={`generation-queue-row status-${job.status}`}
-                  onClick={() => { if (job.source_item_id) onOpenSourceItem(job.source_item_id); }}
-                  disabled={!job.source_item_id}
+                  onClick={() => onOpenJob(job)}
                 >
                   {statusIcon(job)}
                   <span>{job.edited_prompt_text || job.prompt_text}</span>

@@ -74,12 +74,14 @@ export default function GenerationPanel({
   onClose,
   onAccepted,
   t,
+  initialJobId,
 }: {
   item?: ItemDetail;
   preferredLanguage: PromptCopyLanguage;
   onClose: () => void;
   onAccepted: (item?: ItemDetail, message?: string) => void;
   t: Translator;
+  initialJobId?: string;
 }) {
   const originalPrompt = resolveOriginalPrompt(item?.prompts);
   const defaultPromptLanguage = preferredLanguage === 'origin' ? (originalPrompt?.language || 'en') : preferredLanguage;
@@ -92,21 +94,29 @@ export default function GenerationPanel({
   const [promptText, setPromptText] = useState(defaultPrompt);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [activeJobId, setActiveJobId] = useState<string>();
+  const [activeJobId, setActiveJobId] = useState<string | undefined>(initialJobId);
+  const [focusedJobHighlightId, setFocusedJobHighlightId] = useState<string | undefined>(initialJobId);
   const [reviewJob, setReviewJob] = useState<GenerationJobRecord>();
   const [metadataDraft, setMetadataDraft] = useState<GenerationJobAcceptAsNewItemPayload>();
   const metadataPanelRef = useRef<HTMLElement | null>(null);
+  const focusedJobRef = useRef<HTMLElement | null>(null);
 
   const activeJob = useMemo(() => jobs.find(job => job.id === activeJobId), [jobs, activeJobId]);
   const selectedProvider = providers.find(candidate => candidate.provider === provider);
   const primaryProviders = providers.filter(candidate => candidate.provider !== 'manual_upload');
   const panelTitle = item ? 'Generate variant' : 'Generate image';
 
-  const refreshJobs = async () => {
+  const refreshJobs = async (options: { preserveActive?: boolean } = {}) => {
     const result = await api.generationJobs({ limit: 100 });
     const nextJobs = result.jobs.filter(job => item ? job.source_item_id === item.id : !job.source_item_id);
     setJobs(nextJobs);
-    if (!activeJobId && nextJobs[0]) setActiveJobId(nextJobs[0].id);
+    const focusedJob = initialJobId ? nextJobs.find(job => job.id === initialJobId) : undefined;
+    if (focusedJob) {
+      setActiveJobId(focusedJob.id);
+      setFocusedJobHighlightId(focusedJob.id);
+    } else if (!options.preserveActive && !activeJobId && nextJobs[0]) {
+      setActiveJobId(nextJobs[0].id);
+    }
     return nextJobs;
   };
 
@@ -122,7 +132,26 @@ export default function GenerationPanel({
       .catch(() => setProviders([{ provider: 'manual_upload', display_name: 'Manual upload', optional: false, configured: true, authenticated: true, available: true, state: 'available', reason: null, features: { manual_result_upload: true } }]));
     refreshJobs().catch(() => undefined);
     return () => { cancelled = true; };
-  }, [item?.id]);
+  }, [item?.id, initialJobId]);
+
+  useEffect(() => {
+    if (!initialJobId) return;
+    setActiveJobId(initialJobId);
+    setFocusedJobHighlightId(initialJobId);
+  }, [initialJobId]);
+
+  useEffect(() => {
+    if (!jobs.some(job => ['queued', 'running'].includes(job.status))) return undefined;
+    const timer = window.setInterval(() => refreshJobs({ preserveActive: true }).catch(() => undefined), 2500);
+    return () => window.clearInterval(timer);
+  }, [jobs, item?.id, initialJobId]);
+
+  useEffect(() => {
+    if (!focusedJobHighlightId) return undefined;
+    window.requestAnimationFrame(() => focusedJobRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    const timer = window.setTimeout(() => setFocusedJobHighlightId(undefined), 4200);
+    return () => window.clearTimeout(timer);
+  }, [focusedJobHighlightId]);
 
   useEffect(() => {
     if (!reviewJob || !metadataDraft) return;
@@ -360,7 +389,11 @@ export default function GenerationPanel({
             {jobs.map(job => {
               const failure = job.status === 'failed' ? friendlyFailure(job) : undefined;
               return (
-                <article className={`generation-job-card status-${job.status} ${job.result_path ? 'has-result' : ''}`} key={job.id}>
+                <article
+                  ref={job.id === focusedJobHighlightId ? focusedJobRef : undefined}
+                  className={`generation-job-card status-${job.status} ${job.result_path ? 'has-result' : ''} ${job.id === focusedJobHighlightId ? 'is-focused' : ''}`}
+                  key={job.id}
+                >
                   <header>
                     <strong>{job.provider === 'openai_codex_oauth_native' ? 'ChatGPT / Codex OAuth' : job.provider}</strong>
                     <b>{statusLabel(job.status)}</b>

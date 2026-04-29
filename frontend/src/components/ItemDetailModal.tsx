@@ -164,6 +164,7 @@ export default function ItemDetailModal({
   onChanged,
   showMutations = true,
   canGenerate = false,
+  initialGenerationJobId,
 }: {
   id?: string;
   t: Translator;
@@ -176,6 +177,7 @@ export default function ItemDetailModal({
   onChanged: () => void;
   showMutations?: boolean;
   canGenerate?: boolean;
+  initialGenerationJobId?: string;
 }) {
   const [item, setItem] = useState<ItemDetail>();
   const [lang, setLang] = useState<string>(preferredLanguage);
@@ -189,6 +191,7 @@ export default function ItemDetailModal({
   const lastDefaultPromptKeyRef = useRef('');
 
   useEffect(() => { setLang(preferredLanguage); }, [preferredLanguage, id]);
+  useEffect(() => { setGenerationOpen(Boolean(initialGenerationJobId)); }, [initialGenerationJobId]);
 
   useEffect(() => {
     if (!id) return;
@@ -497,6 +500,7 @@ export default function ItemDetailModal({
             item={item}
             preferredLanguage={preferredLanguage}
             t={t}
+            initialJobId={initialGenerationJobId}
             onClose={() => setGenerationOpen(false)}
             onAccepted={(acceptedItem, message) => {
               if (acceptedItem?.id && acceptedItem.id !== item.id) {
