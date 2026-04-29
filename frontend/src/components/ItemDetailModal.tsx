@@ -329,6 +329,9 @@ export default function ItemDetailModal({
                       <button className="modal-icon-button edit-button" onClick={() => onEdit(item)} aria-label={t('edit')}>
                         <Pencil size={18} />
                       </button>
+                      <button className="modal-icon-button mobile-generate-variant-button" onClick={() => setGenerationOpen(true)} aria-label="Generate variant">
+                        <Plus size={18} />
+                      </button>
                     </span>
                   )}
                 </div>

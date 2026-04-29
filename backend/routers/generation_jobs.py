@@ -3,7 +3,7 @@ import json
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from PIL import UnidentifiedImageError
 
-from backend.schemas import GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord
+from backend.schemas import GenerationJobAcceptAsNewItemRequest, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord
 from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository
 from backend.services.openai_codex_native import CodexNativeAuthError, OpenAICodexNativeProvider
 
@@ -89,9 +89,9 @@ def accept_generation_job(job_id: str, request: Request):
 
 
 @router.post("/{job_id}/accept-as-new-item", response_model=GenerationJobAcceptResult)
-def accept_generation_job_as_new_item(job_id: str, request: Request):
+def accept_generation_job_as_new_item(job_id: str, request: Request, payload: GenerationJobAcceptAsNewItemRequest | None = None):
     try:
-        return repo(request).accept_result_as_new_item(job_id)
+        return repo(request).accept_result_as_new_item(job_id, payload)
     except KeyError as exc:
         raise HTTPException(status_code=404) from exc
     except GenerationJobConflict as exc:

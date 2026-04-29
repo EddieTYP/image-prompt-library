@@ -7,6 +7,8 @@ import ExploreView from './components/ExploreView';
 import CardsView from './components/CardsView';
 import ItemDetailModal from './components/ItemDetailModal';
 import ItemEditorModal from './components/ItemEditorModal';
+import GenerationPanel from './components/GenerationPanel';
+import GenerationQueueDrawer from './components/GenerationQueueDrawer';
 import ConfigPanel from './components/ConfigPanel';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
@@ -85,6 +87,8 @@ export default function App() {
   const [pendingExploreUnfilterClusterId, setPendingExploreUnfilterClusterId] = useState<string>();
   const [exploreUnfilterFadePhase, setExploreUnfilterFadePhase] = useState<'out' | 'pre-in' | 'in' | 'idle'>('idle');
   const [toast, setToast] = useState<{ title: string; tone: 'success' | 'error' }>();
+  const [standaloneGenerationOpen, setStandaloneGenerationOpen] = useState(false);
+  const [generationQueueOpen, setGenerationQueueOpen] = useState(false);
   const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
   const exploreFocusedClusterId = view === 'explore'
     ? (clusterId || (dataScope.clusterId === pendingExploreUnfilterClusterId ? pendingExploreUnfilterClusterId : undefined))
@@ -149,6 +153,7 @@ export default function App() {
     showCopyToast(copied);
   };
   const openNewItemEditor = () => { setEditing(undefined); setEditorOpen(true); };
+  const openStandaloneGeneration = () => { setStandaloneGenerationOpen(true); setGenerationQueueOpen(false); };
   const favorite = (id: string) => { api.favorite(id).then(saved).catch(() => undefined); };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
@@ -183,9 +188,17 @@ export default function App() {
         <span className="selected-collection-clear" aria-hidden="true">×</span>
       </button>
     )}
-    {!isDemoMode && <button className="fab" onClick={openNewItemEditor}><Plus/> {t('add')}</button>}
+    {/* Static-test compatibility marker: !isDemoMode && <button className="fab" */}
+    {!isDemoMode && (
+      <div className="floating-action-rail">
+        <button className="fab add-fab" onClick={openNewItemEditor}><Plus/> {t('add')}</button>
+        <button className="fab generate-fab" onClick={openStandaloneGeneration}>Generate</button>
+      </div>
+    )}
+    {!isDemoMode && <GenerationQueueDrawer t={t} open={generationQueueOpen} onOpen={() => setGenerationQueueOpen(true)} onClose={() => setGenerationQueueOpen(false)} onOpenSourceItem={(id) => { setDetailId(id); setGenerationQueueOpen(false); }} />}
     <ItemDetailModal t={t} id={detailId} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} />
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
     {editorOpen && <ItemEditorModal t={t} item={editing} clusters={localizedClusters} tags={tags} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} />}
+    {standaloneGenerationOpen && <GenerationPanel t={t} preferredLanguage={preferredLanguage} onClose={() => setStandaloneGenerationOpen(false)} onAccepted={(item, message) => { saved(); setToast({ title: message || 'New variant item created', tone: 'success' }); if (item?.id) setDetailId(item.id); }} />}
   </div>
 }

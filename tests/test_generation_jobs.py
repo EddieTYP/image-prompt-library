@@ -6,6 +6,7 @@ from PIL import Image
 
 from backend.db import connect
 from backend.main import create_app
+from backend.services.generation_jobs import GenerationJobRepository
 
 
 def png_bytes(color="orange", size=(18, 12)) -> bytes:
@@ -136,6 +137,88 @@ def test_generation_job_can_accept_result_as_new_variant_item(tmp_path):
 
     original_after = c.get(f"/api/items/{source_item['id']}").json()
     assert original_after["images"] == []
+
+
+def test_accept_as_new_item_uses_metadata_overrides_and_keeps_provenance(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "text_to_image",
+        "provider": "manual_upload",
+        "model": "manual-test-model",
+        "prompt_language": "en",
+        "prompt_text": "Original generated prompt",
+        "parameters": {"quality": "high"},
+    }).json()
+    c.post(f"/api/generation-jobs/{job['id']}/result", files={"file": ("generated.png", png_bytes("pink"), "image/png")})
+
+    accepted = c.post(f"/api/generation-jobs/{job['id']}/accept-as-new-item", json={
+        "title": "Edited generated title",
+        "cluster_name": "Generated Drafts",
+        "tags": ["edited", "variant"],
+        "model": "edited-model-label",
+        "source_name": "Edited source",
+        "author": "Edward",
+        "notes": "Edited notes before save.",
+        "prompts": [{"language": "en", "text": "Edited prompt before save", "is_primary": True, "is_original": True}],
+    })
+
+    assert accepted.status_code == 200
+    item = accepted.json()["item"]
+    assert item["title"] == "Edited generated title"
+    assert item["cluster"]["name"] == "Generated Drafts"
+    assert item["model"] == "edited-model-label"
+    assert item["source_name"] == "Edited source"
+    assert item["author"] == "Edward"
+    assert item["notes"] == "Edited notes before save."
+    assert {tag["name"] for tag in item["tags"]} == {"edited", "variant"}
+    assert item["prompts"][0]["text"] == "Edited prompt before save"
+    provenance = item["prompts"][0]["provenance"]
+    assert provenance["kind"] == "generation_variant"
+    assert provenance["source_item_id"] == source_item["id"]
+    assert provenance["source_generation_job_id"] == job["id"]
+    assert provenance["provider"] == "manual_upload"
+    assert provenance["model"] == "manual-test-model"
+    assert provenance["mode"] == "text_to_image"
+    assert provenance["parameters"] == {"quality": "high"}
+
+
+def test_standalone_generation_job_can_save_as_new_item(tmp_path):
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={
+        "mode": "text_to_image",
+        "provider": "manual_upload",
+        "model": "standalone-model",
+        "prompt_language": "en",
+        "prompt_text": "A standalone glowing library",
+    }).json()
+    c.post(f"/api/generation-jobs/{job['id']}/result", files={"file": ("generated.png", png_bytes("cyan"), "image/png")})
+
+    accepted = c.post(f"/api/generation-jobs/{job['id']}/accept-as-new-item", json={"title": "Standalone generated item"})
+
+    assert accepted.status_code == 200
+    item = accepted.json()["item"]
+    assert item["title"] == "Standalone generated item"
+    assert item["images"][0]["role"] == "result_image"
+    provenance = item["prompts"][0]["provenance"]
+    assert provenance["kind"] == "generation_standalone"
+    assert provenance["source_item_id"] is None
+    assert provenance["source_generation_job_id"] == job["id"]
+
+
+def test_generation_failure_classifies_policy_and_rate_limit_errors(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    policy_job = c.post("/api/generation-jobs", json={"source_item_id": source_item["id"], "prompt_text": "blocked prompt"}).json()
+    rate_job = c.post("/api/generation-jobs", json={"source_item_id": source_item["id"], "prompt_text": "busy prompt"}).json()
+    repo = GenerationJobRepository(tmp_path / "library")
+
+    policy_failed = repo.mark_failed(policy_job["id"], "Policy violated: request was refused by safety system")
+    rate_failed = repo.mark_failed(rate_job["id"], "429 too many requests, retry later")
+
+    assert policy_failed.metadata["error_kind"] == "policy_violation"
+    assert rate_failed.metadata["error_kind"] == "rate_limited"
 
 
 def test_generation_job_discard_does_not_attach_result(tmp_path):

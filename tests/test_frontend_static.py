@@ -316,11 +316,24 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "generation-job-card.has-result" in css
     assert "generation-shimmer" in css
     assert "toast" in css
+    assert "GenerationJobAcceptAsNewItemPayload" in types
+    assert "api.acceptGenerationJobAsNewItem(reviewJob.id, metadataPayload)" in panel
+    assert "save-new-metadata-panel" in panel
+    assert "Save generated image as new item" in panel
+    assert "Review metadata" in panel
+    assert "readonly-provenance" in panel
+    assert "Cannot generate this image" in panel
+    assert "Generation is temporarily rate limited" in panel
+    assert "Provider connection needs attention" in panel
+    assert "Generate image" in panel
+    assert "source_item_id: item?.id" in panel
 
     assert "selectedImageId" in detail
     assert "image-gallery-thumb" in detail
     assert "image-counter" in detail
     assert "setSelectedImageId" in detail
+    assert "mobile-generate-variant-button" in detail
+    assert "setGenerationOpen(true)" in detail
 
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
@@ -333,6 +346,35 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "loading=\"lazy\"" in explore
     assert "decoding=\"async\"" in explore
     assert ".orbit-node.lod-dot" not in css
+
+
+def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    queue_path = ROOT / "frontend" / "src" / "components" / "GenerationQueueDrawer.tsx"
+    assert queue_path.exists()
+    queue = queue_path.read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    compact_css = css.replace(" ", "")
+
+    assert "GenerationPanel" in app
+    assert "GenerationQueueDrawer" in app
+    assert "standaloneGenerationOpen" in app
+    assert "openStandaloneGeneration" in app
+    assert "floating-action-rail" in app
+    assert "generate-fab" in app
+    assert "!isDemoMode && (" in app
+    assert "!isDemoMode && <GenerationQueueDrawer" in app
+    assert "Generation work queue" in queue
+    assert "generation-queue-trigger" in queue
+    assert "queue-dot active" in queue
+    assert "queue-dot ready" in queue
+    assert "queue-dot failed" in queue
+    assert "1 generating" not in queue
+    assert "api.generationJobs({ limit: 50 })" in queue
+    assert "generation-queue-drawer" in css
+    assert ".generation-queue-trigger" in css
+    assert ".queue-dot.active" in compact_css
+    assert ".mobile-generate-variant-button{display:inline-grid}" in compact_css
 
 
 def test_global_explore_fits_viewport_and_cards_remain_scrollable():

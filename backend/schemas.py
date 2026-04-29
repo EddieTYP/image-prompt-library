@@ -196,6 +196,17 @@ class GenerationJobRecord(GenerationJobCreate):
     accepted_at: Optional[str] = None
     discarded_at: Optional[str] = None
 
+class GenerationJobAcceptAsNewItemRequest(BaseModel):
+    title: Optional[str] = None
+    cluster_name: Optional[str] = None
+    tags: Optional[List[str]] = None
+    prompts: Optional[List[PromptIn]] = None
+    model: Optional[str] = None
+    source_name: Optional[str] = None
+    source_url: Optional[str] = None
+    author: Optional[str] = None
+    notes: Optional[str] = None
+
 class GenerationJobList(BaseModel):
     jobs: List[GenerationJobRecord]
     total: int

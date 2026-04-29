@@ -9,6 +9,7 @@ from PIL import Image
 from backend.db import connect, init_db
 from backend.repositories import ItemRepository, StoredImageInput, new_id, now
 from backend.schemas import (
+    GenerationJobAcceptAsNewItemRequest,
     GenerationJobAcceptResult,
     GenerationJobCreate,
     GenerationJobList,
@@ -35,6 +36,19 @@ def _from_json(raw: str | None, fallback):
         return parsed if parsed is not None else fallback
     except json.JSONDecodeError:
         return fallback
+
+
+def _classify_error(message: str) -> str:
+    lowered = (message or "").lower()
+    if any(term in lowered for term in ("policy", "safety", "refus", "not allowed", "violat")):
+        return "policy_violation"
+    if any(term in lowered for term in ("rate limit", "too many", "slow down", "retry later", "429")):
+        return "rate_limited"
+    if any(term in lowered for term in ("auth", "login", "token", "credential", "unauthorized", "forbidden", "401", "403")):
+        return "auth_required"
+    if any(term in lowered for term in ("unavailable", "timeout", "temporarily", "503", "502")):
+        return "provider_unavailable"
+    return "unknown"
 
 
 def _redact_error(error: str) -> str:
@@ -124,14 +138,17 @@ class GenerationJobRepository:
     def mark_failed(self, job_id: str, error: str) -> GenerationJobRecord:
         timestamp = now()
         redacted_error = _redact_error(error)
+        existing = self.get_job(job_id)
+        metadata = dict(existing.metadata or {})
+        metadata["error_kind"] = _classify_error(redacted_error)
         with connect(self.library_path) as conn:
             conn.execute(
                 """
                 UPDATE generation_jobs
-                SET status='failed', error=?, updated_at=?, completed_at=?
+                SET status='failed', error=?, metadata=?, updated_at=?, completed_at=?
                 WHERE id=? AND status NOT IN ('accepted', 'discarded')
                 """,
-                (redacted_error, timestamp, timestamp, job_id),
+                (redacted_error, _to_json(metadata), timestamp, timestamp, job_id),
             )
             conn.commit()
         return self.get_job(job_id)
@@ -211,18 +228,17 @@ class GenerationJobRepository:
         )
         return GenerationJobAcceptResult(job=self._mark_accepted(job_id, image.id), item=self.items.get_item(job.source_item_id))
 
-    def accept_result_as_new_item(self, job_id: str) -> GenerationJobAcceptResult:
+    def accept_result_as_new_item(self, job_id: str, overrides: GenerationJobAcceptAsNewItemRequest | None = None) -> GenerationJobAcceptResult:
         job = self.get_job(job_id)
-        if not job.source_item_id:
-            raise GenerationJobConflict("Generation job has no source item to use as a variant source")
         if job.status != "succeeded" or not job.result_path:
             raise GenerationJobConflict("Generation job must be succeeded before accept")
-        source_item = self.items.get_item(job.source_item_id)
+        source_item = self.items.get_item(job.source_item_id) if job.source_item_id else None
         prompt_text = (job.edited_prompt_text or job.prompt_text).strip()
         if not prompt_text:
-            raise GenerationJobConflict("Generation job has no prompt text for a new variant item")
+            raise GenerationJobConflict("Generation job has no prompt text for a new item")
+        overrides = overrides or GenerationJobAcceptAsNewItemRequest()
         provenance = {
-            "kind": "generation_variant",
+            "kind": "generation_variant" if job.source_item_id else "generation_standalone",
             "source_language": job.prompt_language or "en",
             "source_item_id": job.source_item_id,
             "source_generation_job_id": job.id,
@@ -231,22 +247,39 @@ class GenerationJobRepository:
             "mode": job.mode,
             "parameters": job.parameters,
         }
-        new_item = self.items.create_item(ItemCreate(
-            title=f"{source_item.title} Variant",
-            model=job.model or source_item.model,
-            source_name="Generation variant",
-            source_url=source_item.source_url,
-            author=source_item.author,
-            cluster_id=source_item.cluster.id if source_item.cluster else None,
-            tags=[tag.name for tag in source_item.tags],
-            prompts=[PromptIn(
+        if overrides.prompts:
+            prompts = []
+            for index, prompt in enumerate(overrides.prompts):
+                prompt_provenance = dict(prompt.provenance or {})
+                prompt_provenance.update(provenance)
+                prompts.append(PromptIn(
+                    language=prompt.language,
+                    text=prompt.text,
+                    is_primary=prompt.is_primary or index == 0,
+                    is_original=prompt.is_original or index == 0,
+                    provenance=prompt_provenance,
+                ))
+        else:
+            prompts = [PromptIn(
                 language=job.prompt_language or "en",
                 text=prompt_text,
                 is_primary=True,
                 is_original=True,
                 provenance=provenance,
-            )],
-            notes=f"Variant generated from item {job.source_item_id} via GenerationJob {job.id}.",
+            )]
+        default_title = f"{source_item.title} Variant" if source_item else "Generated image"
+        default_notes = f"Variant generated from item {job.source_item_id} via GenerationJob {job.id}." if source_item else f"Generated via GenerationJob {job.id}."
+        new_item = self.items.create_item(ItemCreate(
+            title=(overrides.title or default_title).strip() or default_title,
+            model=overrides.model or job.model or (source_item.model if source_item else "ChatGPT Image2"),
+            source_name=overrides.source_name if overrides.source_name is not None else "Generation variant",
+            source_url=overrides.source_url if overrides.source_url is not None else (source_item.source_url if source_item else None),
+            author=overrides.author if overrides.author is not None else (source_item.author if source_item else None),
+            cluster_id=None if overrides.cluster_name else (source_item.cluster.id if source_item and source_item.cluster else None),
+            cluster_name=overrides.cluster_name,
+            tags=overrides.tags if overrides.tags is not None else ([tag.name for tag in source_item.tags] if source_item else []),
+            prompts=prompts,
+            notes=overrides.notes if overrides.notes is not None else default_notes,
         ))
         stored = self._store_result_image(job)
         image = self.items.add_image(
