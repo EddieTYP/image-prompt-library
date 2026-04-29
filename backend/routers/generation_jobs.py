@@ -5,7 +5,8 @@ from PIL import UnidentifiedImageError
 
 from backend.schemas import GenerationJobAcceptAsNewItemRequest, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord
 from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository
-from backend.services.openai_codex_native import CodexNativeAuthError, OpenAICodexNativeProvider
+from backend.services.generation_queue import enqueue_generation_jobs
+from backend.services.openai_codex_native import PROVIDER_ID as CODEX_NATIVE_PROVIDER_ID, CodexNativeAuthError, OpenAICodexNativeProvider
 
 router = APIRouter(prefix="/generation-jobs", tags=["generation-jobs"])
 
@@ -19,9 +20,12 @@ def repo(request: Request) -> GenerationJobRepository:
 @router.post("", response_model=GenerationJobRecord)
 def create_generation_job(payload: GenerationJobCreate, request: Request):
     try:
-        return repo(request).create_job(payload)
+        created = repo(request).create_job(payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Source item not found") from exc
+    if created.provider == CODEX_NATIVE_PROVIDER_ID:
+        enqueue_generation_jobs(request.app.state.library_path, provider=created.provider)
+    return created
 
 
 @router.get("", response_model=GenerationJobList)
@@ -92,6 +96,19 @@ def accept_generation_job(job_id: str, request: Request):
 def accept_generation_job_as_new_item(job_id: str, request: Request, payload: GenerationJobAcceptAsNewItemRequest | None = None):
     try:
         return repo(request).accept_result_as_new_item(job_id, payload)
+    except KeyError as exc:
+        raise HTTPException(status_code=404) from exc
+    except GenerationJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/{job_id}/cancel", response_model=GenerationJobRecord)
+def cancel_generation_job(job_id: str, request: Request):
+    try:
+        cancelled = repo(request).cancel_job(job_id)
+        if cancelled.provider == CODEX_NATIVE_PROVIDER_ID:
+            enqueue_generation_jobs(request.app.state.library_path, provider=cancelled.provider)
+        return cancelled
     except KeyError as exc:
         raise HTTPException(status_code=404) from exc
     except GenerationJobConflict as exc:

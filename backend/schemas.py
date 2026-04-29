@@ -195,6 +195,7 @@ class GenerationJobRecord(GenerationJobCreate):
     completed_at: Optional[str] = None
     accepted_at: Optional[str] = None
     discarded_at: Optional[str] = None
+    cancelled_at: Optional[str] = None
 
 class GenerationJobAcceptAsNewItemRequest(BaseModel):
     title: Optional[str] = None

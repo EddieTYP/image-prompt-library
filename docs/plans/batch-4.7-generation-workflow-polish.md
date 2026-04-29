@@ -166,3 +166,56 @@ git diff --check
 - Build and full pytest pass.
 - Browser QA confirms local non-demo flow.
 - Commit is created locally; push only if Edward asks.
+
+---
+
+## Revisit note: Generation tab layout polish
+
+Captured for a later design pass; do not implement until we revisit the direction.
+
+### Problem
+
+The current Generation tab works functionally, but it feels too rough/debug-panel-like. The issue is mainly information hierarchy and visual rhythm rather than missing core capability.
+
+### Preferred direction
+
+Use a clearer creative-workspace layout:
+
+1. **Desktop two-column layout**
+   - Left column: composer card for creating a new image.
+   - Right column: result workbench / active and recent jobs.
+
+2. **Composer card hierarchy**
+   - Prompt textarea is the primary focus.
+   - Secondary settings sit below the prompt in a compact row:
+     - Aspect ratio dropdown.
+     - Quality dropdown, if exposed.
+   - Primary action: `Generate`.
+   - Provider status should be compact, e.g. `ChatGPT connected`, not a large technical block.
+
+3. **Result workbench**
+   - Show current running job, ready-to-review results, failures, and recent jobs as compact cards.
+   - Result review should own the save actions:
+     - `Save as new`.
+     - `Attach to existing`.
+     - `Discard`.
+   - Metadata/provenance should be visible during review but not dominate the composer.
+
+4. **Mobile layout**
+   - Keep a single-column card flow:
+     - Header.
+     - Composer card.
+     - Active job compact card.
+     - Result inbox cards.
+   - Avoid cramped controls; keep aspect ratio / quality compact.
+
+### Avoid for now
+
+- Heavy wizard flow.
+- Photoshop-like editor sidebars.
+- Always-visible provider/debug metadata.
+- Too many collapsible advanced panels.
+
+### Product framing
+
+Generation should feel like a lightweight creative entry point plus result inbox inside the prompt library, not a separate full image studio.

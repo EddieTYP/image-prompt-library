@@ -351,6 +351,51 @@ def test_codex_native_run_executes_job_and_stages_result_without_leaking_tokens(
     assert fake_jwt() not in dumped
 
 
+def test_codex_native_injects_requested_aspect_ratio_and_records_effective_prompt(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
+    captured = {}
+
+    def collect(self, prompt, *, size, quality):
+        captured["prompt"] = prompt
+        captured["size"] = size
+        captured["quality"] = quality
+        return base64.b64encode(png_bytes()).decode()
+
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "text_to_image",
+        "provider": "openai_codex_oauth_native",
+        "model": "gpt-image-2",
+        "prompt_text": "A neon library in the rain",
+        "parameters": {"requested_aspect_ratio": "4:3", "aspect_ratio_prompt_injection": True},
+    }).json()
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert captured == {
+        "prompt": "A neon library in the rain\n\nMake the aspect ratio 4:3.",
+        "size": None,
+        "quality": "high",
+    }
+    assert payload["metadata"]["requested_aspect_ratio"] == "4:3"
+    assert payload["metadata"]["aspect_ratio_prompt_injection"] == "Make the aspect ratio 4:3."
+    assert payload["metadata"]["effective_prompt"] == captured["prompt"]
+    assert payload["metadata"]["size"] == "auto"
+    assert payload["metadata"]["native_size_parameter"] is None
+
+
 def test_codex_native_run_marks_job_failed_on_provider_errors(tmp_path, monkeypatch):
     auth_path = tmp_path / "auth" / "auth.json"
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))

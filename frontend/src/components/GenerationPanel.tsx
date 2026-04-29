@@ -15,6 +15,7 @@ function statusLabel(status: string) {
   if (status === 'succeeded') return 'Ready';
   if (status === 'accepted') return 'Accepted';
   if (status === 'discarded') return 'Discarded';
+  if (status === 'cancelled') return 'Cancelled';
   if (status === 'failed') return 'Failed';
   return status;
 }
@@ -22,6 +23,20 @@ function statusLabel(status: string) {
 function jobResultUrl(job: GenerationJobRecord) {
   return job.result_path ? mediaUrl(job.result_path) : '';
 }
+
+const ASPECT_RATIO_OPTIONS = [
+  { value: '1:1', label: '1:1 Square' },
+  { value: '3:4', label: '3:4 Portrait' },
+  { value: '9:16', label: '9:16 Vertical' },
+  { value: '4:3', label: '4:3 Landscape' },
+  { value: '16:9', label: '16:9 Wide' },
+];
+
+const QUALITY_OPTIONS = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'standard', label: 'Standard' },
+  { value: 'high', label: 'High' },
+];
 
 function friendlyFailure(job: GenerationJobRecord) {
   const rawKind = typeof job.metadata?.error_kind === 'string' ? job.metadata.error_kind : '';
@@ -72,6 +87,8 @@ export default function GenerationPanel({
   const [providers, setProviders] = useState<GenerationProviderStatus[]>([]);
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
   const [provider, setProvider] = useState('manual_upload');
+  const [aspectRatio, setAspectRatio] = useState('1:1');
+  const [quality, setQuality] = useState('auto');
   const [promptText, setPromptText] = useState(defaultPrompt);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -130,11 +147,15 @@ export default function GenerationPanel({
         prompt_text: defaultPrompt || prompt,
         edited_prompt_text: prompt === defaultPrompt.trim() ? null : prompt,
         reference_image_ids: [],
-        parameters: {},
+        parameters: {
+          requested_aspect_ratio: aspectRatio,
+          aspect_ratio_prompt_injection: true,
+          quality,
+        },
       });
       setJobs(current => [created, ...current.filter(job => job.id !== created.id)]);
       setActiveJobId(created.id);
-      setMessage(provider === 'manual_upload' ? 'Job created. Upload a generated result when ready.' : 'Job created. Run it when the provider is connected.');
+      setMessage(provider === 'manual_upload' ? 'Job created. Upload a generated result when ready.' : 'Generation queued. It will start automatically.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not create generation job.');
     } finally {
@@ -228,6 +249,22 @@ export default function GenerationPanel({
     }
   };
 
+  const cancelJob = async (job: GenerationJobRecord) => {
+    setBusy(true);
+    setActiveJobId(job.id);
+    setMessage('');
+    try {
+      const updated = await api.cancelGenerationJob(job.id);
+      setJobs(current => current.map(candidate => candidate.id === updated.id ? updated : candidate));
+      setMessage('Generation job cancelled.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not cancel job.');
+      await refreshJobs().catch(() => undefined);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const discardJob = async (job: GenerationJobRecord) => {
     setBusy(true);
     setMessage('');
@@ -249,15 +286,25 @@ export default function GenerationPanel({
           <div>
             <p className="drawer-eyebrow">Generation</p>
             <h2>{panelTitle}</h2>
-            <p className="muted">Create a GenerationJob, then review the result before it enters the library.</p>
+            <p className="muted">Create, review, and save generated images before they enter the library.</p>
           </div>
           <button className="modal-icon-button close" onClick={onClose} aria-label={t('close')}>×</button>
         </div>
 
-        <div className="generation-grid">
-          <section className="generation-compose-card">
-            <h3>Prompt</h3>
-            <label>
+        <div className="generation-layout">
+          <section className="generation-compose-card generation-composer-card">
+            <div className="generation-card-head">
+              <div>
+                <p className="drawer-eyebrow">Composer</p>
+                <h3>Generate New Image</h3>
+                <p className="muted">Describe the image you want to create.</p>
+              </div>
+              <span className={`generation-provider-pill ${selectedProvider && providerReady(selectedProvider) ? 'is-ready' : 'is-unavailable'}`}>
+                {selectedProvider && providerReady(selectedProvider) ? `${selectedProvider.display_name} connected` : 'Provider not ready'}
+              </span>
+            </div>
+
+            <label className="generation-provider-field">
               <span>Provider</span>
               <select value={provider} onChange={event => setProvider(event.currentTarget.value)}>
                 {primaryProviders.map(nextProvider => (
@@ -272,17 +319,41 @@ export default function GenerationPanel({
             {selectedProvider && !providerReady(selectedProvider) && (
               <p className="provider-help">This provider is not ready. Configure it in Providers before running generation.</p>
             )}
-            <textarea value={promptText} onChange={event => setPromptText(event.currentTarget.value)} placeholder="Describe the image to generate" />
-            <button className="primary" onClick={createJob} disabled={busy || !promptText.trim()}>Create GenerationJob</button>
+
+            <label className="generation-prompt-field">
+              <span>Prompt</span>
+              <textarea value={promptText} onChange={event => setPromptText(event.currentTarget.value)} placeholder="Describe the image to generate" />
+            </label>
+
+            <div className="generation-settings-row" aria-label="Generation settings">
+              <label>
+                <span>Aspect ratio</span>
+                <select value={aspectRatio} onChange={event => setAspectRatio(event.currentTarget.value)}>
+                  {ASPECT_RATIO_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+              <label>
+                <span>Quality</span>
+                <select value={quality} onChange={event => setQuality(event.currentTarget.value)}>
+                  {QUALITY_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+                </select>
+              </label>
+            </div>
+            <button className="primary generation-primary-action" onClick={createJob} disabled={busy || !promptText.trim()}>Generate</button>
+            <p className="provider-help">Aspect ratio is sent as a ChatGPT-style instruction; quality uses the selected provider preset.</p>
             <details className="generation-advanced">
               <summary>Upload external result</summary>
               <p className="muted">Manual upload is kept as an advanced fallback for images generated outside the app.</p>
             </details>
           </section>
 
-          <section className="generation-inbox-card">
-            <div className="generation-inbox-head">
-              <h3>Result inbox</h3>
+          <section className="generation-inbox-card generation-workbench-card">
+            <div className="generation-inbox-head generation-card-head">
+              <div>
+                <p className="drawer-eyebrow">Workbench</p>
+                <h3>Review generated results</h3>
+                <p className="muted">Result inbox</p>
+              </div>
               <button className="secondary" onClick={() => refreshJobs()} disabled={busy}>Refresh</button>
             </div>
             {jobs.length === 0 && <p className="muted">No generation jobs for this prompt yet.</p>}
@@ -304,8 +375,9 @@ export default function GenerationPanel({
                   )}
                   {failure && <div className="generation-failure"><strong>{failure.title}</strong><p>{failure.guidance}</p>{job.error && <small>{job.error}</small>}</div>}
                   <div className="generation-job-actions">
-                    {job.provider === 'openai_codex_oauth_native' && ['queued', 'failed'].includes(job.status) && <button className="secondary" onClick={() => runJob(job)} disabled={busy}>{busy && activeJobId === job.id ? 'Generating…' : 'Run'}</button>}
-                    {job.provider === 'manual_upload' && !job.result_path && !['accepted', 'discarded'].includes(job.status) && (
+                    {job.provider === 'openai_codex_oauth_native' && job.status === 'failed' && <button className="secondary" onClick={() => runJob(job)} disabled={busy}>{busy && activeJobId === job.id ? 'Retrying…' : 'Retry'}</button>}
+                    {job.provider === 'openai_codex_oauth_native' && ['queued', 'running'].includes(job.status) && <button className="secondary" onClick={() => cancelJob(job)} disabled={busy}>{busy && activeJobId === job.id ? 'Cancelling…' : 'Cancel'}</button>}
+                    {job.provider === 'manual_upload' && !job.result_path && !['accepted', 'discarded', 'cancelled'].includes(job.status) && (
                       <details className="generation-advanced inline-upload">
                         <summary>Upload external result</summary>
                         <label className="secondary file-button">Choose image<input type="file" accept="image/*" onChange={event => uploadManualResult(job, event.currentTarget.files?.[0])} /></label>
@@ -317,7 +389,7 @@ export default function GenerationPanel({
                         <button className="secondary" onClick={() => openSaveAsNewReview(job)} disabled={busy}>Save as new item</button>
                       </span>
                     )}
-                    {!['accepted', 'discarded'].includes(job.status) && <button className="secondary" onClick={() => discardJob(job)} disabled={busy}>Discard</button>}
+                    {!['accepted', 'discarded', 'cancelled', 'queued', 'running'].includes(job.status) && <button className="secondary" onClick={() => discardJob(job)} disabled={busy}>Discard</button>}
                   </div>
                 </article>
               );

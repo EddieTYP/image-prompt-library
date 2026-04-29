@@ -1,11 +1,14 @@
 from io import BytesIO
 from pathlib import Path
+import threading
+import time
 
 from fastapi.testclient import TestClient
 from PIL import Image
 
 from backend.db import connect
 from backend.main import create_app
+from backend.schemas import GenerationJobCreate
 from backend.services.generation_jobs import GenerationJobRepository
 
 
@@ -261,4 +264,84 @@ def test_generation_job_tables_are_migrated(tmp_path):
     assert c.get("/api/health").status_code == 200
     with connect(tmp_path / "library") as conn:
         tables = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(generation_jobs)")}
     assert "generation_jobs" in tables
+    assert "cancelled_at" in columns
+
+
+def test_generation_job_can_be_cancelled_before_result(tmp_path):
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={"prompt_text": "cancel me"}).json()
+
+    cancelled = c.post(f"/api/generation-jobs/{job['id']}/cancel")
+
+    assert cancelled.status_code == 200
+    payload = cancelled.json()
+    assert payload["status"] == "cancelled"
+    assert payload["cancelled_at"]
+    assert payload["completed_at"]
+    assert c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("red"), "image/png")},
+    ).status_code == 409
+    assert c.post(f"/api/generation-jobs/{job['id']}/cancel").status_code == 409
+
+
+def test_native_generation_job_create_enqueues_background_runner(tmp_path, monkeypatch):
+    c = client(tmp_path)
+    calls = []
+
+    def fake_enqueue(library_path, *, provider):
+        calls.append((Path(library_path), provider))
+
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", fake_enqueue)
+
+    created = c.post("/api/generation-jobs", json={
+        "provider": "openai_codex_oauth_native",
+        "prompt_text": "start immediately",
+    })
+
+    assert created.status_code == 200
+    assert calls == [(tmp_path / "library", "openai_codex_oauth_native")]
+
+
+def test_generation_queue_runs_at_most_two_native_jobs(tmp_path, monkeypatch):
+    from backend.services import generation_queue
+
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    job_ids = [repo.create_job(GenerationJobCreate(
+        provider="openai_codex_oauth_native",
+        prompt_text=f"queued job {index}",
+    )).id for index in range(3)]
+    active = 0
+    max_seen = 0
+    completed: list[str] = []
+    lock = threading.Lock()
+
+    class FakeProvider:
+        def run_job(self, library_path, job_id):
+            nonlocal active, max_seen
+            fake_repo = GenerationJobRepository(library_path)
+            fake_repo.mark_running(job_id)
+            with lock:
+                active += 1
+                max_seen = max(max_seen, active)
+            time.sleep(0.05)
+            fake_repo.stage_result(job_id, png_bytes("yellow"), "generated.png", {"fake": True})
+            with lock:
+                active -= 1
+                completed.append(job_id)
+
+    monkeypatch.setattr(generation_queue, "OpenAICodexNativeProvider", FakeProvider)
+
+    generation_queue.enqueue_generation_jobs(library)
+    deadline = time.time() + 3
+    while time.time() < deadline:
+        if len(completed) == 3:
+            break
+        time.sleep(0.02)
+
+    assert sorted(completed) == sorted(job_ids)
+    assert max_seen == 2
+    assert [repo.get_job(job_id).status for job_id in job_ids] == ["succeeded", "succeeded", "succeeded"]

@@ -5,6 +5,7 @@ import binascii
 import json
 import os
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -28,11 +29,37 @@ DEFAULT_QUALITY = "high"
 SIZES = {
     "square": "1024x1024",
     "1:1": "1024x1024",
-    "landscape": "1536x1024",
-    "16:9": "1536x1024",
+    "3:4": "1024x1536",
     "portrait": "1024x1536",
     "9:16": "1024x1536",
+    "4:3": "1536x1024",
+    "landscape": "1536x1024",
+    "16:9": "1536x1024",
 }
+CHATGPT_ASPECT_RATIO_OPTIONS = {"1:1", "3:4", "9:16", "4:3", "16:9"}
+ASPECT_RATIO_ALIASES = {
+    "square": "1:1",
+    "portrait": "3:4",
+    "landscape": "4:3",
+}
+
+
+def _normalize_requested_aspect_ratio(value: Any) -> str:
+    aspect = str(value or "1:1").strip().lower()
+    return ASPECT_RATIO_ALIASES.get(aspect, aspect if aspect in CHATGPT_ASPECT_RATIO_OPTIONS else "1:1")
+
+
+def _aspect_ratio_instruction(aspect_ratio: str) -> str:
+    return f"Make the aspect ratio {aspect_ratio}."
+
+
+def _prompt_with_aspect_ratio_instruction(prompt: str, aspect_ratio: str, enabled: bool) -> tuple[str, str | None]:
+    if not enabled:
+        return prompt, None
+    instruction = _aspect_ratio_instruction(aspect_ratio)
+    if prompt.rstrip().endswith(instruction):
+        return prompt, instruction
+    return f"{prompt.rstrip()}\n\n{instruction}", instruction
 
 
 class CodexNativeAuthError(RuntimeError):
@@ -405,6 +432,26 @@ class OpenAICodexNativeProvider:
         job = repo.get_job(job_id)
         if job.provider != PROVIDER_ID:
             raise GenerationJobConflict(f"Generation job provider must be {PROVIDER_ID}")
+        if job.status == "succeeded":
+            return job
+        if job.status == "running":
+            deadline = time.time() + min(self.timeout, 30.0)
+            while time.time() < deadline:
+                current = repo.get_job(job_id)
+                if current.status != "running":
+                    if current.status == "succeeded":
+                        return current
+                    if current.status == "cancelled":
+                        raise GenerationJobConflict("Generation job is cancelled")
+                    if current.status == "failed":
+                        raise CodexNativeAuthError(current.error or "Generation job failed")
+                    job = current
+                    break
+                time.sleep(0.05)
+            else:
+                return repo.get_job(job_id)
+        if job.status == "cancelled":
+            raise GenerationJobConflict("Generation job is cancelled")
         if job.status not in {"queued", "failed"}:
             raise GenerationJobConflict("Generation job must be queued or failed before run")
         prompt = (job.edited_prompt_text or job.prompt_text or "").strip()
@@ -413,11 +460,19 @@ class OpenAICodexNativeProvider:
         repo.mark_running(job_id)
         try:
             parameters = job.parameters or {}
-            aspect_ratio = str(parameters.get("aspect_ratio") or "square")
-            size = SIZES.get(aspect_ratio, SIZES["square"])
+            requested_aspect_ratio = _normalize_requested_aspect_ratio(
+                parameters.get("requested_aspect_ratio") or parameters.get("aspect_ratio")
+            )
+            injection_enabled = bool(parameters.get("aspect_ratio_prompt_injection", True))
+            size = None if injection_enabled else SIZES.get(requested_aspect_ratio, SIZES["1:1"])
+            effective_prompt, aspect_ratio_instruction = _prompt_with_aspect_ratio_instruction(
+                prompt,
+                requested_aspect_ratio,
+                injection_enabled,
+            )
             quality = str(parameters.get("quality") or DEFAULT_QUALITY)
             model = job.model or IMAGE_MODEL
-            image_b64 = self._collect_image_b64(prompt, size=size, quality=quality)
+            image_b64 = self._collect_image_b64(effective_prompt, size=size, quality=quality)
             try:
                 image_bytes = base64.b64decode(image_b64, validate=True)
             except (binascii.Error, ValueError) as exc:
@@ -426,8 +481,12 @@ class OpenAICodexNativeProvider:
                 "provider": PROVIDER_ID,
                 "auth_mode": AUTH_MODE,
                 "model": model,
-                "size": size,
+                "size": size or "auto",
                 "quality": quality,
+                "requested_aspect_ratio": requested_aspect_ratio,
+                "aspect_ratio_prompt_injection": aspect_ratio_instruction,
+                "effective_prompt": effective_prompt,
+                "native_size_parameter": size,
                 "source_job_id": job_id,
             }
             return repo.stage_result(job_id, image_bytes, "openai-codex-native.png", metadata)
@@ -439,9 +498,19 @@ class OpenAICodexNativeProvider:
                 raise
             raise CodexNativeAuthError("Codex native generation failed") from exc
 
-    def _collect_image_b64(self, prompt: str, *, size: str, quality: str) -> str:
+    def _collect_image_b64(self, prompt: str, *, size: str | None, quality: str) -> str:
         tokens = self.auth_store.read_tokens()
         access_token = tokens["access_token"]
+        image_tool = {
+            "type": "image_generation",
+            "model": IMAGE_MODEL,
+            "quality": quality,
+            "output_format": "png",
+            "background": "opaque",
+            "partial_images": 1,
+        }
+        if size:
+            image_tool["size"] = size
         payload = {
             "model": CODEX_CHAT_MODEL,
             "store": False,
@@ -451,15 +520,7 @@ class OpenAICodexNativeProvider:
                 "role": "user",
                 "content": [{"type": "input_text", "text": prompt}],
             }],
-            "tools": [{
-                "type": "image_generation",
-                "model": IMAGE_MODEL,
-                "size": size,
-                "quality": quality,
-                "output_format": "png",
-                "background": "opaque",
-                "partial_images": 1,
-            }],
+            "tools": [image_tool],
             "tool_choice": {
                 "type": "allowed_tools",
                 "mode": "required",

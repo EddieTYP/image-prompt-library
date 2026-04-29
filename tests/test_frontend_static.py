@@ -296,6 +296,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "createGenerationJob:" in api
     assert "generationJobs:" in api
     assert "runGenerationJob:" in api
+    assert "cancelGenerationJob:" in api
     assert "uploadGenerationResult:" in api
     assert "acceptGenerationJob:" in api
     assert "discardGenerationJob:" in api
@@ -308,8 +309,13 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "api.acceptGenerationJob" in panel
     assert "api.acceptGenerationJobAsNewItem" in panel
     assert "api.discardGenerationJob" in panel
+    assert "api.cancelGenerationJob" in panel
     assert "manual_upload" in panel
     assert "openai_codex_oauth_native" in panel
+    assert "Cancel" in panel
+    assert "Retry" in panel
+    assert "Run it when the provider is connected" not in panel
+    assert "Generation queued. It will start automatically." in panel
     assert "Attach to current item" in panel
     assert "Save as new item" in panel
     assert "generation-shimmer" in panel
@@ -338,6 +344,34 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Provider connection needs attention" in panel
     assert "Generate image" in panel
     assert "source_item_id: item?.id" in panel
+    assert "Aspect ratio" in panel
+    assert "1:1 Square" in panel
+    assert "3:4 Portrait" in panel
+    assert "9:16 Vertical" in panel
+    assert "4:3 Landscape" in panel
+    assert "16:9 Wide" in panel
+    assert "requested_aspect_ratio: aspectRatio" in panel
+    assert "aspect_ratio_prompt_injection: true" in panel
+    assert "quality" in panel
+    assert "QUALITY_OPTIONS" in panel
+    assert "Auto" in panel
+    assert "Standard" in panel
+    assert "High" in panel
+    assert "generation-layout" in panel
+    assert "generation-composer-card" in panel
+    assert "generation-workbench-card" in panel
+    assert "generation-settings-row" in panel
+    assert "Review generated results" in panel
+    assert "Describe the image you want to create." in panel
+    assert "Uses a ChatGPT-style aspect-ratio instruction" not in panel
+    compact_css = css.replace(" ", "")
+    assert ".generation-layout{display:grid;grid-template-columns:minmax(320px,.9fr)minmax(380px,1.1fr);" in compact_css
+    assert ".generation-settings-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));" in compact_css
+    assert ".generation-provider-pill" in compact_css
+    assert ".generation-provider-pill{display:inline-flex;align-items:center;justify-content:center" in compact_css
+    assert "text-align:center" in compact_css
+    assert "@media(max-width:760px)" in compact_css
+    assert ".generation-layout{grid-template-columns:1fr" in compact_css
 
     assert "selectedImageId" in detail
     assert "image-gallery-thumb" in detail
@@ -386,10 +420,13 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "queue-dot active" in queue
     assert "queue-dot ready" in queue
     assert "queue-dot failed" in queue
-    assert "1 generating" not in queue
+    assert "{counts.running} running · {counts.queued} queued · {counts.ready} ready" in queue
+    assert "Cancelled" in queue
     assert "api.generationJobs({ limit: 50 })" in queue
     assert "generation-queue-drawer" in css
     assert ".generation-queue-trigger" in css
+    assert ".floating-action-rail.fab{position:static;right:auto;bottom:auto;height:46px;min-width:112px;padding:016px;justify-content:center;box-sizing:border-box}" in compact_css
+    assert ".floating-action-rail.fabsvg{width:18px;height:18px;flex:00auto}" in compact_css
     assert ".queue-dot.active" in compact_css
     assert ".mobile-generate-variant-button{display:inline-flex" in compact_css
 

@@ -146,7 +146,7 @@ class GenerationJobRepository:
                 """
                 UPDATE generation_jobs
                 SET status='failed', error=?, metadata=?, updated_at=?, completed_at=?
-                WHERE id=? AND status NOT IN ('accepted', 'discarded')
+                WHERE id=? AND status NOT IN ('accepted', 'discarded', 'cancelled')
                 """,
                 (redacted_error, _to_json(metadata), timestamp, timestamp, job_id),
             )
@@ -155,7 +155,7 @@ class GenerationJobRepository:
 
     def stage_result(self, job_id: str, data: bytes, filename: str, metadata: dict | None = None) -> GenerationJobRecord:
         job = self.get_job(job_id)
-        if job.status in {"accepted", "discarded"}:
+        if job.status in {"accepted", "discarded", "cancelled"}:
             raise GenerationJobConflict("Generation job is already finalized")
         suffix = Path(filename).suffix.lower()
         if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
@@ -180,7 +180,7 @@ class GenerationJobRepository:
                 UPDATE generation_jobs
                 SET status='succeeded', result_path=?, result_width=?, result_height=?, result_sha256=?,
                     metadata=?, error=NULL, updated_at=?, completed_at=?
-                WHERE id=? AND status NOT IN ('accepted', 'discarded')
+                WHERE id=? AND status NOT IN ('accepted', 'discarded', 'cancelled')
                 """,
                 (result_rel.as_posix(), width, height, sha, _to_json(metadata or {}), timestamp, timestamp, job_id),
             )
@@ -308,6 +308,39 @@ class GenerationJobRepository:
             )
             conn.commit()
         return self.get_job(job_id)
+
+    def cancel_job(self, job_id: str) -> GenerationJobRecord:
+        job = self.get_job(job_id)
+        if job.status not in {"queued", "running"}:
+            raise GenerationJobConflict(f"Only queued or running generation jobs can be cancelled; current status is {job.status}")
+        timestamp = now()
+        with connect(self.library_path) as conn:
+            cursor = conn.execute(
+                """
+                UPDATE generation_jobs
+                SET status='cancelled', cancelled_at=?, completed_at=?, updated_at=?
+                WHERE id=? AND status IN ('queued', 'running')
+                """,
+                (timestamp, timestamp, timestamp, job_id),
+            )
+            conn.commit()
+        if cursor.rowcount != 1:
+            current = self.get_job(job_id)
+            raise GenerationJobConflict(f"Only queued or running generation jobs can be cancelled; current status is {current.status}")
+        return self.get_job(job_id)
+
+    def next_queued_provider_jobs(self, provider: str, *, limit: int) -> list[GenerationJobRecord]:
+        with connect(self.library_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM generation_jobs
+                WHERE provider=? AND status='queued'
+                ORDER BY created_at ASC
+                LIMIT ?
+                """,
+                (provider, limit),
+            ).fetchall()
+        return [self._record_from_row(row) for row in rows]
 
     def _record_from_row(self, row) -> GenerationJobRecord:
         data = dict(row)
