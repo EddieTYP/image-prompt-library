@@ -19,6 +19,9 @@ AUTH_MODE = "codex_oauth_native"
 DISPLAY_NAME = "ChatGPT / Codex OAuth"
 DEFAULT_AUTH_PATH = Path.home() / ".image-prompt-library" / "auth.json"
 DEFAULT_CONFIG_PATH = Path.home() / ".image-prompt-library" / "config.json"
+# Public native Codex OAuth client id used by the upstream openai/codex CLI.
+# Users may still override this with IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID or local config.
+DEFAULT_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 CODEX_AUTH_ISSUER = "https://auth.openai.com"
 CODEX_TOKEN_URL = f"{CODEX_AUTH_ISSUER}/oauth/token"
@@ -104,7 +107,10 @@ def configured_client_id() -> str | None:
     client_id = os.environ.get("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "").strip()
     if client_id:
         return client_id
-    return _client_id_from_config()
+    config_client_id = _client_id_from_config()
+    if config_client_id:
+        return config_client_id
+    return DEFAULT_CODEX_CLIENT_ID
 
 
 def _codex_client_id() -> str:

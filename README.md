@@ -250,7 +250,7 @@ Generate images directly in local installs after connecting the optional **ChatG
 
 Current local generation behavior:
 
-- Connect an optional provider from the Config drawer. The experimental native provider is labelled `openai_codex_oauth_native` and stores its app-owned auth outside the prompt library data path.
+- Connect an optional provider from the Config drawer. The experimental native provider is labelled `openai_codex_oauth_native`, uses the public native Codex OAuth client by default, and stores its app-owned auth outside the prompt library data path. Advanced users can override the client id with `IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID` or `~/.image-prompt-library/config.json`.
 - Open an item and use `Generate variant`, or use the standalone `Generate` entry when a provider is connected.
 - Generated outputs land in a GenerationJob result inbox first; they are not silently written into the library.
 - Choose `Attach to current item` to add another image to the same reference, or `Save as new item` to review/edit title, collection, tags, prompt, and notes before creating a new variant item.

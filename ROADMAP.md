@@ -136,7 +136,7 @@ Planned provider-adapter architecture:
 
 - Local-only experimental adapter labelled as OpenAI via ChatGPT/Codex login, no `OPENAI_API_KEY` required.
 - Uses an app-owned auth file outside the prompt library by default: `~/.image-prompt-library/auth.json`, overrideable with `IMAGE_PROMPT_LIBRARY_AUTH_PATH`; saved auth files are written with restrictive permissions where supported.
-- The device-code helper can start the Codex/ChatGPT device-code flow and poll/exchange approved device auth into the app-owned token store. Starting the flow uses `IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID` or local config at `~/.image-prompt-library/config.json` / `IMAGE_PROMPT_LIBRARY_CONFIG_PATH`; tokens are never returned by status/API responses.
+- The device-code helper can start the Codex/ChatGPT device-code flow and poll/exchange approved device auth into the app-owned token store. Starting the flow uses the same public native Codex OAuth client id as the upstream Codex CLI by default; `IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID` or local config at `~/.image-prompt-library/config.json` / `IMAGE_PROMPT_LIBRARY_CONFIG_PATH` can override it; tokens are never returned by status/API responses.
 - `GET /api/generation-providers` lists `manual_upload` plus optional native Codex provider capability/status for frontend gating; the Config drawer now renders those provider cards in local installs and a demo-only read-only fallback on GitHub Pages.
 - `GET /api/generation-providers/openai-codex-native/status` returns frontend-ready optional provider state (`not_configured`, `not_connected`, `connected`), configured/authenticated/available flags, feature gates, and redacted account/path metadata only.
 - `POST /api/generation-providers/openai-codex-native/auth/start` starts the device-code login and returns `user_code`, `verification_url`, `device_auth_id`, `interval`, and expiry metadata.
@@ -150,7 +150,6 @@ Planned provider-adapter architecture:
 
 `openai_codex_oauth_native` remaining hardening:
 
-- Stabilize/document the native-client configuration before publicizing the adapter; current live QA can use env/local config rather than hardcoding a client id in repo.
 - Add cross-process token refresh locking; failed refresh should require re-login rather than silently falling back.
 - Live-account QA against the current ChatGPT/Codex backend and clearer error mapping for auth expiry, Cloudflare/challenge, empty image results, and upstream API drift.
 - Add Text+Reference→Image and Image Edit request payload support using `reference_image_ids`; current backend slice covers Text→Image-style jobs.

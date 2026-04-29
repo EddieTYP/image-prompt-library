@@ -85,11 +85,11 @@ def test_codex_native_status_api_is_optional_frontend_ready_and_redacted(tmp_pat
     assert payload["provider"] == "openai_codex_oauth_native"
     assert payload["display_name"] == "ChatGPT / Codex OAuth"
     assert payload["optional"] is True
-    assert payload["configured"] is False
+    assert payload["configured"] is True
     assert payload["authenticated"] is False
     assert payload["available"] is False
-    assert payload["state"] == "not_configured"
-    assert payload["reason"] == "missing_client_id"
+    assert payload["state"] == "not_connected"
+    assert payload["reason"] == "not_authenticated"
     assert payload["features"] == {
         "text_to_image": False,
         "text_reference_to_image": False,
@@ -184,7 +184,7 @@ def test_codex_native_smoke_script_reports_optional_status_without_tokens(tmp_pa
 
     assert result.returncode == 0
     payload = json.loads(result.stdout)
-    assert payload["state"] == "not_configured"
+    assert payload["state"] == "not_connected"
     assert payload["available"] is False
     assert "access_token" not in result.stdout
 
