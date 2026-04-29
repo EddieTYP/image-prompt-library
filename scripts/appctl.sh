@@ -13,15 +13,22 @@ ENV_FILE="$APP_PREFIX/.env"
 # Default private library path: ~/ImagePromptLibrary
 
 load_env() {
+  INCOMING_IMAGE_PROMPT_LIBRARY_PATH="${IMAGE_PROMPT_LIBRARY_PATH-}"
+  INCOMING_BACKEND_HOST="${BACKEND_HOST-}"
+  INCOMING_BACKEND_PORT="${BACKEND_PORT-}"
   if [ -f "$ENV_FILE" ]; then
     set -a
     # shellcheck disable=SC1090
     source "$ENV_FILE"
     set +a
   fi
-  export IMAGE_PROMPT_LIBRARY_PATH="${IMAGE_PROMPT_LIBRARY_PATH:-$HOME/ImagePromptLibrary}"
-  export BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
-  export BACKEND_PORT="${BACKEND_PORT:-8000}"
+  export IMAGE_PROMPT_LIBRARY_PATH="${INCOMING_IMAGE_PROMPT_LIBRARY_PATH:-${IMAGE_PROMPT_LIBRARY_PATH:-$HOME/ImagePromptLibrary}}"
+  export BACKEND_HOST="${INCOMING_BACKEND_HOST:-${BACKEND_HOST:-127.0.0.1}}"
+  export BACKEND_PORT="${INCOMING_BACKEND_PORT:-${BACKEND_PORT:-8000}}"
+}
+
+is_wsl() {
+  grep -qiE '(microsoft|wsl)' /proc/version 2>/dev/null
 }
 
 print_version() {
@@ -33,7 +40,50 @@ print_version() {
 }
 
 start_app() {
+  START_HOST=""
+  START_PORT=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --host)
+        if [ "$#" -lt 2 ] || [ -z "${2:-}" ]; then
+          echo "Missing value for --host" >&2
+          echo "Usage: image-prompt-library start [--host HOST] [--port PORT]" >&2
+          exit 2
+        fi
+        START_HOST="$2"
+        shift 2
+        ;;
+      --port)
+        if [ "$#" -lt 2 ] || [ -z "${2:-}" ]; then
+          echo "Missing value for --port" >&2
+          echo "Usage: image-prompt-library start [--host HOST] [--port PORT]" >&2
+          exit 2
+        fi
+        START_PORT="$2"
+        shift 2
+        ;;
+      *)
+        echo "Unknown start option: $1" >&2
+        echo "Usage: image-prompt-library start [--host HOST] [--port PORT]" >&2
+        exit 2
+        ;;
+    esac
+  done
   load_env
+  if [ -n "$START_HOST" ]; then
+    BACKEND_HOST="$START_HOST"
+  fi
+  if [ -n "$START_PORT" ]; then
+    BACKEND_PORT="$START_PORT"
+  fi
+  export BACKEND_HOST BACKEND_PORT
+  if is_wsl && [ "$BACKEND_HOST" = "127.0.0.1" ]; then
+    cat >&2 <<WSL_HINT
+WSL detected. If your Windows browser cannot open http://127.0.0.1:$BACKEND_PORT/, stop this server with Ctrl-C and run:
+  image-prompt-library start --host 0.0.0.0 --port $BACKEND_PORT
+Then open http://localhost:$BACKEND_PORT/ from Windows. Binding to 0.0.0.0 may expose the app beyond WSL; use only on a trusted machine/network.
+WSL_HINT
+  fi
   PYTHON_BIN="${PYTHON:-python3}"
   if [ -x "$APP_ROOT/.venv/bin/python" ]; then
     PYTHON_BIN="$APP_ROOT/.venv/bin/python"
@@ -162,7 +212,8 @@ usage() {
 Usage: image-prompt-library <command>
 
 Commands:
-  start                 Start the local app server
+  start [--host H] [--port P]
+                        Start the local app server
   version               Print installed app version
   update [--version V]  Install latest or selected release version
   rollback              Switch current app symlink back to app/previous

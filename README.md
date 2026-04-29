@@ -169,7 +169,7 @@ For clarity: normal release installs do not require Node.js; Node.js/npm are onl
 ## Platform support
 
 - macOS and Linux are the primary supported local-install targets today.
-- Windows can run the app stack through **WSL 2** using the same commands as Linux.
+- Windows can run the app stack through **WSL 2** using the same commands as Linux. If the server starts in WSL but your Windows browser cannot open `http://127.0.0.1:8000/`, stop the server with Ctrl-C and run `image-prompt-library start --host 0.0.0.0`, then open `http://localhost:8000/`. Binding to `0.0.0.0` can expose the app outside WSL, so use it only on a trusted machine/network.
 - Native Windows PowerShell/CMD is not a supported quick-start path yet because the current helper scripts are Bash scripts and assume Unix-style virtualenv paths such as `.venv/bin/activate`. Native Windows support should use equivalent PowerShell scripts or a Docker/Compose path in a future pass.
 
 ## Quick start for normal users

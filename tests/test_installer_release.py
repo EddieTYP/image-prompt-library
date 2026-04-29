@@ -59,6 +59,13 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "git clone" not in install
 
     assert "start)" in appctl
+    assert "--host" in appctl
+    assert "--port" in appctl
+    assert "Missing value for --host" in appctl
+    assert "Missing value for --port" in appctl
+    assert 'http://127.0.0.1:$BACKEND_PORT/' in appctl
+    assert "INCOMING_BACKEND_HOST" in appctl
+    assert "WSL" in appctl
     assert "version)" in appctl
     assert "update)" in appctl
     assert "rollback)" in appctl
@@ -126,6 +133,8 @@ def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developer
     assert "~/ImagePromptLibrary" in readme
     assert "~/.image-prompt-library/app/versions" in readme
     assert "Add, edit, and private library management are local-only" in readme
+    assert "image-prompt-library start --host 0.0.0.0" in readme
+    assert "Binding to `0.0.0.0` can expose the app" in readme
 
 
 def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_path):
@@ -297,6 +306,93 @@ def test_installer_auto_detects_supported_python_when_python3_is_too_old(tmp_pat
     assert result.returncode == 0, result.stdout + result.stderr
     assert (prefix / "app" / "versions" / "v9.9.4-test").is_dir()
     assert "fake old python3 should not be used" not in result.stderr
+
+
+def test_installed_start_flags_override_env_host_and_port(tmp_path):
+    subprocess.run(
+        ["bash", "scripts/package-release.sh", "v9.9.3-test", "--skip-build"],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library-data"
+    env = os.environ.copy()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
+    env["PYTHON"] = sys.executable
+    install = subprocess.run(
+        [
+            "bash",
+            "scripts/install.sh",
+            "--version",
+            "v9.9.3-test",
+            "--prefix",
+            str(prefix),
+            "--library-path",
+            str(library),
+            "--no-shim",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert install.returncode == 0, install.stdout + install.stderr
+
+    fake_python = tmp_path / "fake-python"
+    fake_python.write_text(
+        "#!/usr/bin/env sh\n"
+        "printf '%s\\n' \"$@\"\n",
+        encoding="utf-8",
+    )
+    fake_python.chmod(0o755)
+    start = subprocess.run(
+        [
+            "bash",
+            str(prefix / "app" / "current" / "scripts" / "appctl.sh"),
+            "start",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "8123",
+        ],
+        cwd=tmp_path,
+        env={**env, "PYTHON": str(fake_python)},
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert start.returncode == 0, start.stdout + start.stderr
+    assert "--host\n0.0.0.0" in start.stdout
+    assert "--port\n8123" in start.stdout
+
+    missing_host = subprocess.run(
+        ["bash", str(prefix / "app" / "current" / "scripts" / "appctl.sh"), "start", "--host"],
+        cwd=tmp_path,
+        env={**env, "PYTHON": str(fake_python)},
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    assert missing_host.returncode == 2
+    assert "Missing value for --host" in missing_host.stderr
+
+    missing_port = subprocess.run(
+        ["bash", str(prefix / "app" / "current" / "scripts" / "appctl.sh"), "start", "--port"],
+        cwd=tmp_path,
+        env={**env, "PYTHON": str(fake_python)},
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    assert missing_port.returncode == 2
+    assert "Missing value for --port" in missing_port.stderr
 
 
 def test_installed_uninstall_removes_app_but_keeps_library_by_default(tmp_path):
