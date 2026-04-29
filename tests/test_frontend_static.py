@@ -33,13 +33,15 @@ def test_mobile_has_real_viewport_meta_for_iphone_breakpoints():
     assert "initial-scale=1" in index
 
 
-def test_mobile_defaults_to_cards_without_stale_pre_mobile_saved_view():
+def test_default_view_is_cards_without_overriding_saved_preference():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     assert "VIEW_STORAGE_KEY = 'image-prompt-library.view_mode.v2'" in app
     assert "function loadPreferredView(): ViewMode" in app
     assert "window.localStorage.getItem(VIEW_STORAGE_KEY)" in app
-    assert "window.matchMedia('(max-width: 760px)').matches" in app
-    assert "return isMobileViewport ? 'cards' : 'explore'" in app
+    assert "if (savedView === 'explore' || savedView === 'cards') return savedView" in app
+    assert "return 'cards'" in app
+    assert "window.matchMedia('(max-width: 760px)').matches" not in app
+    assert "return isMobileViewport ? 'cards' : 'explore'" not in app
     assert "const [view, setView] = useState<ViewMode>(loadPreferredView)" in app
     assert "const updateView = (nextView: ViewMode) => {" in app
     assert "window.localStorage.setItem(VIEW_STORAGE_KEY, nextView)" in app

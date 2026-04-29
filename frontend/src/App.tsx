@@ -34,11 +34,10 @@ function loadUiLanguage(): UiLanguage {
 }
 
 function loadPreferredView(): ViewMode {
-  if (typeof window === 'undefined') return 'explore';
+  if (typeof window === 'undefined') return 'cards';
   const savedView = window.localStorage.getItem(VIEW_STORAGE_KEY);
   if (savedView === 'explore' || savedView === 'cards') return savedView;
-  const isMobileViewport = window.matchMedia('(max-width: 760px)').matches;
-  return isMobileViewport ? 'cards' : 'explore';
+  return 'cards';
 }
 
 function loadNumberSetting(key: string, fallback: number, min: number, max: number) {
