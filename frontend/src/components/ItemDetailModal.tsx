@@ -163,6 +163,7 @@ export default function ItemDetailModal({
   onEdit,
   onChanged,
   showMutations = true,
+  canGenerate = false,
 }: {
   id?: string;
   t: Translator;
@@ -174,6 +175,7 @@ export default function ItemDetailModal({
   onEdit: (item: ItemDetail) => void;
   onChanged: () => void;
   showMutations?: boolean;
+  canGenerate?: boolean;
 }) {
   const [item, setItem] = useState<ItemDetail>();
   const [lang, setLang] = useState<string>(preferredLanguage);
@@ -193,6 +195,12 @@ export default function ItemDetailModal({
     setItem(undefined);
     api.item(id).then(setItem);
   }, [id]);
+
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = window.setTimeout(() => setToast(undefined), 2600);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   const availablePromptRecords = useMemo(() => {
     if (!item) return [];
@@ -329,9 +337,9 @@ export default function ItemDetailModal({
                       <button className="modal-icon-button edit-button" onClick={() => onEdit(item)} aria-label={t('edit')}>
                         <Pencil size={18} />
                       </button>
-                      <button className="modal-icon-button mobile-generate-variant-button" onClick={() => setGenerationOpen(true)} aria-label="Generate variant">
+                      {canGenerate && <button className="modal-icon-button mobile-generate-variant-button" onClick={() => setGenerationOpen(true)} aria-label="Generate variant">
                         <Plus size={18} />
-                      </button>
+                      </button>}
                     </span>
                   )}
                 </div>
@@ -356,7 +364,7 @@ export default function ItemDetailModal({
               <aside className="detail-side">
                 <div className="detail-side-actions">
                   <span className="detail-side-primary-actions">
-                    {showMutations && <button className="secondary generate-variant-button" onClick={() => setGenerationOpen(true)}>Generate variant</button>}
+                    {showMutations && canGenerate && <button className="secondary generate-variant-button" onClick={() => setGenerationOpen(true)}>Generate variant</button>}
                     {showMutations && <button className="modal-icon-button favorite-button" onClick={toggleFavorite} aria-label={item.favorite ? t('saved') : t('favorite')}>
                       <Heart size={18} fill={item.favorite ? 'currentColor' : 'none'} />
                     </button>}

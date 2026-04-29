@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api, mediaUrl } from '../api/client';
 import type { GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ItemDetail } from '../types';
 import type { Translator } from '../utils/i18n';
@@ -78,6 +78,7 @@ export default function GenerationPanel({
   const [activeJobId, setActiveJobId] = useState<string>();
   const [reviewJob, setReviewJob] = useState<GenerationJobRecord>();
   const [metadataDraft, setMetadataDraft] = useState<GenerationJobAcceptAsNewItemPayload>();
+  const metadataPanelRef = useRef<HTMLElement | null>(null);
 
   const activeJob = useMemo(() => jobs.find(job => job.id === activeJobId), [jobs, activeJobId]);
   const selectedProvider = providers.find(candidate => candidate.provider === provider);
@@ -105,6 +106,14 @@ export default function GenerationPanel({
     refreshJobs().catch(() => undefined);
     return () => { cancelled = true; };
   }, [item?.id]);
+
+  useEffect(() => {
+    if (!reviewJob || !metadataDraft) return;
+    window.requestAnimationFrame(() => {
+      metadataPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      metadataPanelRef.current?.focus({ preventScroll: true });
+    });
+  }, [reviewJob?.id]);
 
   const createJob = async () => {
     const prompt = promptText.trim();
@@ -209,6 +218,7 @@ export default function GenerationPanel({
       setReviewJob(undefined);
       setMetadataDraft(undefined);
       setMessage('New variant item created');
+      window.setTimeout(() => setMessage(''), 2200);
       onAccepted(result.item, 'New variant item created');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not save new item.');
@@ -314,7 +324,7 @@ export default function GenerationPanel({
           </section>
         </div>
         {reviewJob && metadataDraft && (
-          <section className="save-new-metadata-panel" aria-label="Save generated image as new item">
+          <section ref={metadataPanelRef} tabIndex={-1} className="save-new-metadata-panel" aria-label="Save generated image as new item">
             <div className="drawer-head">
               <div>
                 <p className="drawer-eyebrow">Review metadata</p>

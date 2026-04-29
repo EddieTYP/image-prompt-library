@@ -309,6 +309,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "generation-shimmer" in panel
     assert "Image added to item" in panel
     assert "New variant item created" in panel
+    assert "window.setTimeout(() => setMessage(''), 2200)" in panel
     assert "Upload external result" in panel
     assert "generation-advanced" in panel
     assert "generation-panel" in css
@@ -319,6 +320,9 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "GenerationJobAcceptAsNewItemPayload" in types
     assert "api.acceptGenerationJobAsNewItem(reviewJob.id, metadataPayload)" in panel
     assert "save-new-metadata-panel" in panel
+    assert "metadataPanelRef" in panel
+    assert "scrollIntoView({ behavior: 'smooth', block: 'start' })" in panel
+    assert "focus({ preventScroll: true })" in panel
     assert "Save generated image as new item" in panel
     assert "Review metadata" in panel
     assert "readonly-provenance" in panel
@@ -360,9 +364,13 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "GenerationQueueDrawer" in app
     assert "standaloneGenerationOpen" in app
     assert "openStandaloneGeneration" in app
+    assert "generationAvailable" in app
+    assert "refreshGenerationAvailability" in app
+    assert "provider.available && provider.authenticated && provider.configured" in app
     assert "floating-action-rail" in app
     assert "generate-fab" in app
     assert "!isDemoMode && (" in app
+    assert "generationAvailable && <button className=\"fab generate-fab\"" in app
     assert "!isDemoMode && <GenerationQueueDrawer" in app
     assert "Generation work queue" in queue
     assert "generation-queue-trigger" in queue

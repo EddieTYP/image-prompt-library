@@ -12,7 +12,7 @@ import GenerationQueueDrawer from './components/GenerationQueueDrawer';
 import ConfigPanel from './components/ConfigPanel';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
-import type { ClusterRecord, ItemDetail, ItemSummary, TagRecord, ViewMode } from './types';
+import type { ClusterRecord, GenerationProviderStatus, ItemDetail, ItemSummary, TagRecord, ViewMode } from './types';
 import { copyTextToClipboard } from './utils/clipboard';
 import { DEFAULT_UI_LANGUAGE, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
 import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptCopyLanguage } from './utils/prompts';
@@ -66,6 +66,10 @@ function localizeItemCluster(item: ItemSummary, language: UiLanguage): ItemSumma
   return item.cluster ? { ...item, cluster: localizeCluster(item.cluster, language) } : item;
 }
 
+function generationProviderConnected(provider: GenerationProviderStatus) {
+  return provider.provider !== 'manual_upload' && provider.available && provider.authenticated && provider.configured;
+}
+
 export default function App() {
   const [q, setQ] = useState('');
   const debouncedQ = useDebouncedValue(q);
@@ -89,6 +93,7 @@ export default function App() {
   const [toast, setToast] = useState<{ title: string; tone: 'success' | 'error' }>();
   const [standaloneGenerationOpen, setStandaloneGenerationOpen] = useState(false);
   const [generationQueueOpen, setGenerationQueueOpen] = useState(false);
+  const [generationAvailable, setGenerationAvailable] = useState(false);
   const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
   const exploreFocusedClusterId = view === 'explore'
     ? (clusterId || (dataScope.clusterId === pendingExploreUnfilterClusterId ? pendingExploreUnfilterClusterId : undefined))
@@ -100,7 +105,15 @@ export default function App() {
   const localizedSelectedCluster = selectedCluster ? localizeCluster(selectedCluster, uiLanguage) : undefined;
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
   const refreshTags = () => api.tags().then(setTags).catch(() => setTags([]));
-  useEffect(() => { refreshClusters(); refreshTags(); }, []);
+  const refreshGenerationAvailability = () => api.generationProviders()
+    .then(providers => setGenerationAvailable(providers.some(generationProviderConnected)))
+    .catch(() => setGenerationAvailable(false));
+  useEffect(() => { refreshClusters(); refreshTags(); refreshGenerationAvailability(); }, []);
+  useEffect(() => {
+    if (!toast) return undefined;
+    const timer = window.setTimeout(() => setToast(undefined), 2600);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
   useEffect(() => {
     if (pendingExploreUnfilterClusterId && dataScope.clusterId !== pendingExploreUnfilterClusterId) {
       setPendingExploreUnfilterClusterId(undefined);
@@ -153,7 +166,7 @@ export default function App() {
     showCopyToast(copied);
   };
   const openNewItemEditor = () => { setEditing(undefined); setEditorOpen(true); };
-  const openStandaloneGeneration = () => { setStandaloneGenerationOpen(true); setGenerationQueueOpen(false); };
+  const openStandaloneGeneration = () => { if (!generationAvailable) return; setStandaloneGenerationOpen(true); setGenerationQueueOpen(false); };
   const favorite = (id: string) => { api.favorite(id).then(saved).catch(() => undefined); };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
@@ -192,11 +205,11 @@ export default function App() {
     {!isDemoMode && (
       <div className="floating-action-rail">
         <button className="fab add-fab" onClick={openNewItemEditor}><Plus/> {t('add')}</button>
-        <button className="fab generate-fab" onClick={openStandaloneGeneration}>Generate</button>
+        {generationAvailable && <button className="fab generate-fab" onClick={openStandaloneGeneration}>Generate</button>}
       </div>
     )}
     {!isDemoMode && <GenerationQueueDrawer t={t} open={generationQueueOpen} onOpen={() => setGenerationQueueOpen(true)} onClose={() => setGenerationQueueOpen(false)} onOpenSourceItem={(id) => { setDetailId(id); setGenerationQueueOpen(false); }} />}
-    <ItemDetailModal t={t} id={detailId} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} />
+    <ItemDetailModal t={t} id={detailId} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} canGenerate={generationAvailable} />
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
     {editorOpen && <ItemEditorModal t={t} item={editing} clusters={localizedClusters} tags={tags} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} />}
     {standaloneGenerationOpen && <GenerationPanel t={t} preferredLanguage={preferredLanguage} onClose={() => setStandaloneGenerationOpen(false)} onAccepted={(item, message) => { saved(); setToast({ title: message || 'New variant item created', tone: 'success' }); if (item?.id) setDetailId(item.id); }} />}
