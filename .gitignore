@@ -17,6 +17,7 @@ __pycache__/
 .ruff_cache/
 dist/
 frontend/dist/
+dist-release/
 .pages-artifact/
 .page-build/
 *.egg-info/

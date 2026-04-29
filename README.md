@@ -86,9 +86,20 @@ The detail view keeps the large image preview, prompt, language tabs, attributio
 
 ## Requirements
 
+For normal release installs:
+
+- Python 3.10+
+- `curl` or a browser to download the installer
+
+For source/development installs:
+
 - Python 3.10+
 - Node.js 20+ recommended
 - npm
+
+Normal release installs do not require Node.js because tagged release assets include the built frontend.
+
+For clarity: normal release installs do not require Node.js; Node.js/npm are only needed for source/development installs.
 
 ## Platform support
 
@@ -96,7 +107,54 @@ The detail view keeps the large image preview, prompt, language tabs, attributio
 - Windows can run the app stack through **WSL 2** using the same commands as Linux.
 - Native Windows PowerShell/CMD is not a supported quick-start path yet because the current helper scripts are Bash scripts and assume Unix-style virtualenv paths such as `.venv/bin/activate`. Native Windows support should use equivalent PowerShell scripts or a Docker/Compose path in a future pass.
 
-## Quick start
+## Quick start for normal users
+
+Install the latest tagged release without cloning the repo:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash
+image-prompt-library start
+```
+
+Open <http://127.0.0.1:8000/>.
+
+The installer keeps replaceable app code under:
+
+```text
+~/.image-prompt-library/app/versions/<version>
+```
+
+Your private prompt library defaults to:
+
+```text
+~/ImagePromptLibrary
+```
+
+That data directory is separate from app code, so future updates or rollbacks should not overwrite your private SQLite database or images.
+
+Update later with:
+
+```bash
+image-prompt-library update
+```
+
+Install or switch to a specific version with:
+
+```bash
+image-prompt-library update --version v0.3.0-alpha
+```
+
+Rollback to the previous installed version with:
+
+```bash
+image-prompt-library rollback
+```
+
+Normal release installs do not require Node.js because the release artifact includes the built frontend. Node.js/npm are only needed for source/development installs.
+
+## Developer setup from source
+
+Use this path if you want to develop the app, inspect unreleased `main`, or run from a checkout:
 
 ```bash
 git clone https://github.com/EddieTYP/image-prompt-library.git
@@ -107,7 +165,7 @@ cd image-prompt-library
 
 Open <http://127.0.0.1:8000/>.
 
-`scripts/start.sh` builds the frontend and serves the built app through FastAPI, so normal local use only needs one server.
+`scripts/start.sh` builds the frontend and serves the built app through FastAPI, so source local use only needs one server after setup.
 
 ## Development mode
 
