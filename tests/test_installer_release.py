@@ -132,7 +132,8 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
         ["tar", "-tzf", str(tarball_path)], cwd=ROOT, text=True, timeout=30
     )
     assert "backend/" in listing
-    assert "dist/" in listing
+    assert "frontend/dist/index.html" in listing
+    assert "frontend/dist/assets/" in listing
     assert "scripts/appctl.sh" in listing
     assert "scripts/setup-runtime.sh" in listing
     assert "pyproject.toml" in listing

@@ -19,9 +19,9 @@ cd "$(dirname "$0")/.."
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
   npm run build
-elif [ ! -f dist/index.html ]; then
-  mkdir -p dist/assets
-  printf '<!doctype html><html><body>Image Prompt Library</body></html>\n' > dist/index.html
+elif [ ! -f frontend/dist/index.html ]; then
+  mkdir -p frontend/dist/assets
+  printf '<!doctype html><html><body><div id="root"></div><script type="module" src="/assets/test.js"></script></body></html>\n' > frontend/dist/index.html
 fi
 
 RELEASE_DIR="dist-release"
@@ -49,7 +49,6 @@ copy_path() {
 
 for path in \
   backend \
-  dist \
   scripts/appctl.sh \
   scripts/install.sh \
   scripts/setup-runtime.sh \
@@ -60,6 +59,9 @@ for path in \
   SECURITY.md; do
   copy_path "$path"
 done
+
+mkdir -p "$STAGING/frontend"
+cp -R frontend/dist "$STAGING/frontend/dist"
 
 printf '%s\n' "$VERSION" > "$STAGING/VERSION"
 
