@@ -77,6 +77,10 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert "Add/edit require local install; run locally to create your private prompt library." in text
     assert "Latest v0.4 supports direct image generation" in text
     assert "View on GitHub" in text
+    assert "Inject v0.4 upgrade notice into archived v0.3 preview" in text
+    assert "This v0.3 preview is archived." in text
+    assert "Go to the latest v0.4 demo" in text
+    assert "localStorage.getItem('image-prompt-library-hide-v03-upgrade')" in text
     assert "Multilingual provenance-aware prompt vault" in text
     assert "Archived 0.2 preview" in text
     assert "Original alpha demo" in text

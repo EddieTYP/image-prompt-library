@@ -56,6 +56,105 @@ jobs:
         run: |
           mkdir -p .pages-artifact/${ARCHIVED_03_DEMO_PATH}
           cp -R .page-build/${ARCHIVED_03_DEMO_PATH}/frontend/dist/. .pages-artifact/${ARCHIVED_03_DEMO_PATH}/
+      - name: Inject v0.4 upgrade notice into archived v0.3 preview
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          index_path = Path('.pages-artifact/v0.3/index.html')
+          html = index_path.read_text(encoding='utf-8')
+          notice = r'''
+          <script>
+            (() => {
+              const storageKey = 'image-prompt-library-hide-v03-upgrade';
+              if (localStorage.getItem('image-prompt-library-hide-v03-upgrade') === '1') return;
+
+              const overlay = document.createElement('div');
+              overlay.setAttribute('role', 'dialog');
+              overlay.setAttribute('aria-modal', 'true');
+              overlay.setAttribute('aria-label', 'v0.4 upgrade notice');
+              overlay.innerHTML = `
+                <style>
+                  .ipl-v03-upgrade-overlay {
+                    position: fixed;
+                    inset: 0;
+                    z-index: 9999;
+                    display: grid;
+                    place-items: center;
+                    padding: 20px;
+                    background: rgba(25, 18, 31, .48);
+                    backdrop-filter: blur(5px);
+                  }
+                  .ipl-v03-upgrade-card {
+                    width: min(460px, 100%);
+                    border: 1px solid rgba(109, 74, 255, .24);
+                    border-radius: 24px;
+                    padding: 24px;
+                    color: #2c2230;
+                    background: #fffaf7;
+                    box-shadow: 0 28px 80px rgba(25, 18, 31, .24);
+                    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                  }
+                  .ipl-v03-upgrade-card h2 {
+                    margin: 0 0 10px;
+                    font-size: 24px;
+                    line-height: 1.15;
+                    letter-spacing: -.03em;
+                  }
+                  .ipl-v03-upgrade-card p {
+                    margin: 0 0 18px;
+                    color: #655b68;
+                    line-height: 1.55;
+                  }
+                  .ipl-v03-upgrade-actions {
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                  }
+                  .ipl-v03-upgrade-actions a,
+                  .ipl-v03-upgrade-actions button {
+                    border: 0;
+                    border-radius: 999px;
+                    padding: 11px 15px;
+                    font: inherit;
+                    font-weight: 800;
+                    cursor: pointer;
+                  }
+                  .ipl-v03-upgrade-actions a {
+                    color: #fff;
+                    background: #6d4aff;
+                    text-decoration: none;
+                  }
+                  .ipl-v03-upgrade-actions button {
+                    color: #5d5260;
+                    background: #f0e9e2;
+                  }
+                </style>
+                <div class="ipl-v03-upgrade-overlay">
+                  <section class="ipl-v03-upgrade-card">
+                    <h2>This v0.3 preview is archived.</h2>
+                    <p>Latest v0.4 has the current Online Read Only Demo and points local installs to ChatGPT OAuth direct image generation.</p>
+                    <div class="ipl-v03-upgrade-actions">
+                      <a href="/image-prompt-library/v0.4/">Go to the latest v0.4 demo</a>
+                      <button type="button" data-close>Stay on v0.3</button>
+                    </div>
+                  </section>
+                </div>
+              `;
+              overlay.querySelector('[data-close]').addEventListener('click', () => {
+                localStorage.setItem(storageKey, '1');
+                overlay.remove();
+              });
+              document.addEventListener('DOMContentLoaded', () => document.body.appendChild(overlay));
+            })();
+          </script>
+          '''
+          if notice in html:
+              raise SystemExit('v0.3 upgrade notice already injected')
+          if '</body>' not in html:
+              raise SystemExit('Cannot inject v0.3 upgrade notice: </body> missing')
+          index_path.write_text(html.replace('</body>', notice + '\n</body>'), encoding='utf-8')
+          PY
       - name: Build archived v0.2 preview
         run: |
           git fetch --tags origin
