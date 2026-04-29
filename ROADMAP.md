@@ -62,9 +62,26 @@ Mobile-native browsing remains in scope:
 - Full interface language setting.
 - Optional semantic/vector search.
 
+## Versioned installer / updater roadmap
+
+Goal: make Image Prompt Library easy to install and update from tagged releases without requiring normal users to clone the repository or repeatedly run `git pull`.
+
+Recommended next implementation focus before Batch 5:
+
+- Publish release artifacts that include the backend, built frontend `dist/`, runtime scripts, public docs, and checksum/manifest files.
+- Add a bootstrap installer that downloads a selected GitHub Release asset, verifies SHA256, extracts it under `~/.image-prompt-library/app/versions/<version>/`, and switches a `current` symlink.
+- Keep replaceable app code separate from durable private data. Default app data should live outside the versioned app directory, for example `~/ImagePromptLibrary`, while app config/auth stays under `~/.image-prompt-library/`.
+- Provide `image-prompt-library start`, `update --version <tag>`, and `rollback` commands.
+- Do not require Node.js for normal release installs; the release artifact should include the prebuilt frontend. Node remains part of source/development setup.
+- Keep GitHub Pages read-only and informational. The installer path must not introduce hosted accounts, checkout, payment, SaaS sync, or public/private library hosting.
+
+Planning doc: [`docs/plans/versioned-installer-updater.md`](docs/plans/versioned-installer-updater.md).
+
 ## Import and agent-ingestion roadmap
 
 Goal: make it easy to pull useful prompt/image references from external repositories and public social posts into the local library through a reviewable import-draft flow. These importers should stay local-first and user-confirmed rather than becoming an automated hosted scraping service.
+
+Status note: Batch 5 generic URL plus X/Threads import remains the next import feature batch, but it is now queued behind the versioned installer/updater work so normal users do not need to pull the full repo for every update.
 
 Current status: **Batch 1 ImportDraft core**, **Batch 2 local markdown repository ingestion**, **Batch 3 GenerationJob plus result inbox foundation**, **Batch 4 `openai_codex_oauth_native` backend/provider UI slices**, and the **Batch 4.4 Generation UX first slice** are implemented. Generation jobs can be created provider-agnostically, receive manually staged or native Codex-provider staged result images under `generation-results/`, be listed/reviewed, and accept/discard results; accepted results are copied into normal library media storage. The Config drawer lists optional generation providers and exposes the native Codex connect/poll/disconnect controls for local installs. Local item detail views can launch a `Generate variant` workflow, create GenerationJobs, review the result inbox, upload manual results, and accept/discard outputs. Next implementation milestone: **Batch 4.5 Generation Result UX correctness**, then **Batch 4.6 Save as new variant item**, before **Batch 5 generic URL plus X/Threads import**.
 

@@ -230,6 +230,7 @@ Recommended implementation order:
 
 Next implementation focus:
 
+0. **Versioned installer / updater — planned next before Batch 5**: normal users should be able to install/update a tagged release without cloning the repo or running `git pull`. The planned shape is a GitHub Release app artifact with built frontend assets, SHA256/manifest verification, versioned app directories under `~/.image-prompt-library/app/versions/`, a `current` symlink, update/rollback commands, and durable user data outside the app code directory. See `docs/plans/versioned-installer-updater.md`.
 1. **ImportDraft core — done in backend**: persistent schema/storage, preview/list/detail/confirm API, duplicate checks, derived Traditional Chinese normalization on accepted items, and accept-draft writes into the normal library repository layer are implemented and tested.
 2. **Repository/dataset ingestion MVP — done for local markdown repositories**: the backend scans local markdown folders, extracts heading/fenced-prompt/image records, stages local image assets safely under the selected library, preserves source file/ref metadata, and emits ImportDraft records for review. Remote GitHub clone/download orchestration and richer dataset-specific parsers remain future hardening.
 3. **GenerationJob plus result inbox foundation — done in backend**: provider-agnostic generation job records, manual/stub result staging under `generation-results/`, list/detail review API, accept/discard lifecycle, and accept-to-library media attachment are implemented and tested.
