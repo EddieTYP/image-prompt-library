@@ -36,7 +36,20 @@ The 0.4 preview keeps the public Online Read Only Demo as a multilingual provena
 
 ## Screenshots
 
-The screenshots below show the main browsing and detail flows. The current 0.4 preview keeps the mobile Cards/detail improvements from 0.2 and the richer multilingual read-only prompt vault from 0.3, while the local install path adds ChatGPT OAuth direct image generation.
+The screenshots below show the main browsing, detail, and local generation flows. The current 0.4 preview keeps the mobile Cards/detail improvements from 0.2 and the richer multilingual read-only prompt vault from 0.3, while the local install path adds ChatGPT OAuth direct image generation.
+
+### Generate with ChatGPT OAuth
+
+Once the optional ChatGPT OAuth provider is connected, local installs can generate a new image from a fresh prompt or create a variant from an existing reference. Results land in the local inbox first, where you can attach them to the current item or save them as a new item with editable metadata.
+
+<p>
+  <img src="docs/assets/screenshots/generation-provider-connected.jpeg" width="49%" alt="Config drawer showing ChatGPT Codex OAuth connected" />
+  <img src="docs/assets/screenshots/generation-standalone-panel.jpeg" width="49%" alt="Standalone Generate image panel with result inbox" />
+</p>
+<p>
+  <img src="docs/assets/screenshots/generation-variant-detail.jpeg" width="49%" alt="Generate variant panel from an existing reference" />
+  <img src="docs/assets/screenshots/generation-result-inbox-save-new.jpeg" width="49%" alt="Save generated result as a new item with editable metadata" />
+</p>
 
 ### Browse with image-first cards
 

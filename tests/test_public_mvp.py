@@ -95,12 +95,18 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "install the app locally" in readme
     assert "Add, edit, and private library management are local-only" in readme
     assert "Generate images directly in local installs" in readme
+    assert "Generate with ChatGPT OAuth" in readme
+    assert "generate a new image from a fresh prompt or create a variant from an existing reference" in readme
     assert "Add your own prompts & images" in readme
     assert "## Add your own prompts\n" not in readme
     assert "Save as new item" in readme
     assert "openai_codex_oauth_native" in readme
 
     screenshots = [
+        "generation-provider-connected.jpeg",
+        "generation-standalone-panel.jpeg",
+        "generation-variant-detail.jpeg",
+        "generation-result-inbox-save-new.jpeg",
         "card-view-all.png",
         "mobile-cards-view.jpg",
         "mobile-filter-drawer.jpg",
