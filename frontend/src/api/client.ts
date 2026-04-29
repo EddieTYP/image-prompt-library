@@ -55,7 +55,7 @@ async function demoItem(id: string): Promise<ItemDetail> {
   const allItems = await demoItems();
   const item = allItems.find(candidate => candidate.id === id);
   if (!item) throw new Error('Demo item not found');
-  return { ...item, images: item.first_image ? [item.first_image] : [], notes: 'Online sandbox sample. Images are compressed for the web demo; run the app locally for your own private full library.', author: (item as ItemDetail).author };
+  return { ...item, images: item.first_image ? [item.first_image] : [], notes: 'Online Read Only Demo sample. Demo images are compressed; run the app locally for your own private full library.', author: (item as ItemDetail).author };
 }
 
 function demoReadOnly(): Promise<never> {

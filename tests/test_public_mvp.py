@@ -72,21 +72,29 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Explore view" in readme
     assert "Cards view" in readme
     assert "one-click prompt copy" in readme
-    assert "The current 0.3 preview is available" in readme
-    assert "v0.3.0-alpha" in readme
+    assert "The current 0.4 preview is available" in readme
+    assert "v0.4.0-alpha" in readme
     assert "Multilingual provenance-aware prompt vault" in readme
     assert "mobile browsing preview" not in readme
     assert "next-release mobile browsing and management plan" not in readme
     assert "Mobile-first browsing behavior" in readme
     assert "stable two-column masonry layout" in readme
     assert "bottom dock instead of crowding the header" in readme
-    assert "current 0.3 preview" in readme
+    assert "current 0.4 preview" in readme
+    assert "archived 0.3 preview" in readme
     assert "archived 0.2 preview" in readme
     assert "archived 0.1 alpha demo" in readme
+    assert "Online Read Only Demo" in readme
+    assert "ChatGPT OAuth" in readme
+    assert "direct image generation" in readme
+    assert "Latest v0.4 supports direct image generation" in readme
+    assert "Online sandbox" not in readme
+    assert "只读 sample library" not in readme
+    assert "唯讀 sample library" not in readme
     assert "The online demo is read-only" in readme
     assert "install the app locally" in readme
     assert "Add, edit, and private library management are local-only" in readme
-    assert "Generate new variants in local installs" in readme
+    assert "Generate images directly in local installs" in readme
     assert "Save as new item" in readme
     assert "openai_codex_oauth_native" in readme
 

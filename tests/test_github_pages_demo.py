@@ -31,12 +31,15 @@ def test_github_pages_demo_is_read_only_and_discloses_compressed_images():
 
     assert "isDemoMode" in app
     assert "demo-banner" in app
-    assert "onlineSandbox" in i18n
-    assert "readOnlySampleLibrary" in i18n
+    assert "onlineReadOnlyDemo" in i18n
+    assert "readOnlySampleLibrary" not in i18n
     assert "compressedForDemo" in i18n
     assert "runLocallyForPrivateLibrary" in i18n
-    assert "Add/edit require local install" in i18n
-    assert "新增／編輯需要本機安裝" in i18n
+    assert "localV04SupportsDirectGeneration" in i18n
+    assert "Online Read Only Demo" in i18n
+    assert "Demo 圖片已壓縮。" in i18n
+    assert "新增／編輯需要本機安裝，請在本機運行以建立你的私人 prompt library。" in i18n
+    assert "最新 v0.4 支援直接生圖" in i18n
     assert "showActions" in cards
     assert "showMutations" in detail
     assert "!isDemoMode && <button className=\"fab\"" in app
@@ -54,21 +57,28 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert "actions/deploy-pages" in text
     assert "fetch-depth: 0" in text
     assert "LEGACY_DEMO_REF: v0.1.0-alpha" in text
-    assert "CURRENT_PREVIEW_PATH: v0.3" in text
+    assert "CURRENT_PREVIEW_PATH: v0.4" in text
+    assert "ARCHIVED_03_DEMO_REF: v0.3.0-alpha" in text
+    assert "ARCHIVED_03_DEMO_PATH: v0.3" in text
     assert "ARCHIVED_02_DEMO_REF: v0.2.0-alpha" in text
     assert "ARCHIVED_02_DEMO_PATH: v0.2" in text
     assert "VITE_BASE_PATH=/image-prompt-library/${CURRENT_PREVIEW_PATH}/ npm run build" in text
+    assert "VITE_BASE_PATH=/image-prompt-library/${ARCHIVED_03_DEMO_PATH}/ npm run build" in text
+    assert "git worktree add .page-build/${ARCHIVED_03_DEMO_PATH} ${ARCHIVED_03_DEMO_REF}" in text
     assert "VITE_BASE_PATH=/image-prompt-library/${ARCHIVED_02_DEMO_PATH}/ npm run build" in text
     assert "git worktree add .page-build/${LEGACY_DEMO_PATH} ${LEGACY_DEMO_REF}" in text
     assert "VITE_BASE_PATH=/image-prompt-library/${LEGACY_DEMO_PATH}/ npm run build" in text
     assert ".pages-artifact/${CURRENT_PREVIEW_PATH}" in text
+    assert ".pages-artifact/${ARCHIVED_03_DEMO_PATH}" in text
     assert ".pages-artifact/${ARCHIVED_02_DEMO_PATH}" in text
     assert ".pages-artifact/${LEGACY_DEMO_PATH}" in text
-    assert "Choose a preview" in text
+    assert "Online Read Only Demo" in text
+    assert "Demo images are compressed." in text
+    assert "Add/edit require local install; run locally to create your private prompt library." in text
+    assert "Latest v0.4 supports direct image generation" in text
+    assert "View on GitHub" in text
     assert "Multilingual provenance-aware prompt vault" in text
     assert "Archived 0.2 preview" in text
-    assert "Add/edit require local install" in text
-    assert "private library management are local-only" in text
     assert "Original alpha demo" in text
     assert "path: .pages-artifact" in text
 
@@ -78,9 +88,11 @@ def test_package_exposes_versioned_demo_build_scripts():
     assert '"build:demo:v0.1"' in package_json
     assert '"build:demo:v0.2"' in package_json
     assert '"build:demo:v0.3"' in package_json
+    assert '"build:demo:v0.4"' in package_json
     assert "VITE_BASE_PATH=/image-prompt-library/v0.1/" in package_json
     assert "VITE_BASE_PATH=/image-prompt-library/v0.2/" in package_json
     assert "VITE_BASE_PATH=/image-prompt-library/v0.3/" in package_json
+    assert "VITE_BASE_PATH=/image-prompt-library/v0.4/" in package_json
 
 
 def test_demo_export_script_outputs_compact_static_assets():

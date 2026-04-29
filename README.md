@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.3.0-alpha)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.4.0-alpha)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 ChatGPT image generation has become good enough that the prompts are worth keeping. The problem is that once you start saving great outputs, screenshots, and variations, there still is not a simple private tool for managing image prompts like a real reference library.
@@ -11,15 +11,17 @@ ChatGPT image generation has become good enough that the prompts are worth keepi
 
 Your library stays on your own machine: local SQLite, local image files, no accounts, no cloud sync, and no hosted database required.
 
-**Online sandbox:** <https://eddietyp.github.io/image-prompt-library/> — a read-only GitHub Pages version chooser using public sample prompts. The current 0.3 preview is available at <https://eddietyp.github.io/image-prompt-library/v0.3/>, with the 0.2 preview archived at <https://eddietyp.github.io/image-prompt-library/v0.2/> and the original 0.1 alpha archived at <https://eddietyp.github.io/image-prompt-library/v0.1/>. Sandbox images are compressed for web preview. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own full library.
+**Online Read Only Demo:** <https://eddietyp.github.io/image-prompt-library/> — a GitHub Pages version chooser using public sample prompts and compressed preview images. The current 0.4 preview is available at <https://eddietyp.github.io/image-prompt-library/v0.4/>, with the 0.3 preview archived at <https://eddietyp.github.io/image-prompt-library/v0.3/>, the 0.2 preview archived at <https://eddietyp.github.io/image-prompt-library/v0.2/>, and the original 0.1 alpha demo archived at <https://eddietyp.github.io/image-prompt-library/v0.1/>. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own full library. Latest v0.4 supports direct image generation in local installs.
 
-**Alpha release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.3.0-alpha> — Multilingual provenance-aware prompt vault with combined sample sources, schema v2 provenance, full prompt-language coverage, and versioned public previews.
+**v0.4 highlight:** local installs can connect via **ChatGPT OAuth** using the experimental `openai_codex_oauth_native` provider, generate images directly from saved prompts, review results in a local result inbox, then `Attach to current item` or `Save as new item` with editable metadata. No hosted account, cloud sync, or public API key is required by the app.
+
+**Alpha release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.4.0-alpha> — Local ChatGPT OAuth direct image generation workflow, result inbox review, Save-as-new variant metadata editing, versioned installer/update/rollback, and the Multilingual provenance-aware prompt vault in the read-only demo.
 
 **Roadmap:** See [`ROADMAP.md`](ROADMAP.md) for follow-up work around mobile Explore, versioned release installs, local generation, import flows, and public release polish.
 
 ![Image Prompt Library Cards view](docs/assets/screenshots/card-view-all.png)
 
-The 0.3 preview turns the public sandbox into a multilingual provenance-aware prompt vault: 510 public references, two attributed sample sources, English / Traditional Chinese / Simplified Chinese prompt variants, and source/original provenance for every item.
+The 0.4 preview keeps the public Online Read Only Demo as a multilingual provenance-aware prompt vault: 510 public references, two attributed sample sources, English / Traditional Chinese / Simplified Chinese prompt variants, and source/original provenance for every item. The v0.4 local app release adds ChatGPT OAuth direct image generation on top of the private install workflow.
 
 ## What it does
 
@@ -33,7 +35,7 @@ The 0.3 preview turns the public sandbox into a multilingual provenance-aware pr
 
 ## Screenshots
 
-The screenshots below show the main browsing and detail flows. The current 0.3 preview keeps the mobile Cards/detail improvements from 0.2 and adds the richer multilingual read-only prompt vault.
+The screenshots below show the main browsing and detail flows. The current 0.4 preview keeps the mobile Cards/detail improvements from 0.2 and the richer multilingual read-only prompt vault from 0.3, while the local install path adds ChatGPT OAuth direct image generation.
 
 ### Browse with image-first cards
 
@@ -81,7 +83,8 @@ The detail view keeps the large image preview, prompt, language tabs, attributio
 - Detail modal with lightweight inline editing, prompt language tabs, source/origin prompt styling, multi-image browsing, generated-image badges, and copy feedback.
 - Add/edit modal with English, Traditional Chinese, and Simplified Chinese prompt fields plus metadata and a single source/origin marker.
 - Result image and optional reference image uploads.
-- Local generation workflow: optional provider setup, `Generate variant`, result inbox review, `Attach to current item`, and `Save as new item` with editable metadata before saving.
+- Generate images directly in local installs through optional **ChatGPT OAuth** (`openai_codex_oauth_native`) without adding an OpenAI API key to the app.
+- Local generation workflow: `Generate variant`, result inbox review, `Attach to current item`, and `Save as new item` with editable metadata before saving.
 - Provider-gated generation UI: generation controls stay hidden until a configured/authenticated provider is available, while Add/Edit remains usable without any generation provider.
 - Global generation queue drawer for active/succeeded/failed jobs, plus friendlier policy/rate-limit/auth/provider failure messages.
 - Phone-friendly Cards behavior: two-column masonry, compact header, touch-visible actions, and bottom selected-collection dock.
@@ -122,7 +125,7 @@ image-prompt-library start
 Install a specific tagged release instead:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.3.0-alpha
+curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.4.0-alpha
 image-prompt-library start
 ```
 
@@ -151,7 +154,7 @@ image-prompt-library update
 Install or switch to a specific version with:
 
 ```bash
-image-prompt-library update --version v0.3.0-alpha
+image-prompt-library update --version v0.4.0-alpha
 ```
 
 Rollback to the previous installed version with:
@@ -166,7 +169,7 @@ The selected release must have matching GitHub Release assets: `image-prompt-lib
 
 ## Local generation workflow
 
-Generate new variants in local installs when an optional generation provider is configured. This remains local-only: the GitHub Pages sandbox is read-only and does not expose generation or mutation controls.
+Generate images directly in local installs after connecting the optional **ChatGPT OAuth** provider (`openai_codex_oauth_native`). This remains local-only: the GitHub Pages Online Read Only Demo is read-only and does not expose generation or mutation controls.
 
 Current local generation behavior:
 
@@ -295,23 +298,24 @@ The backup includes:
 
 Restore by stopping the app, extracting the archive, and replacing the corresponding library directory contents. Keep backups somewhere outside the repo if the library matters to you.
 
-## GitHub Pages sandbox
+## GitHub Pages Online Read Only Demo
 
 The repository also ships static read-only demos for GitHub Pages:
 
 ```bash
 npm run build:demo
-npm run build:demo:v0.3
+npm run build:demo:v0.4
 ```
 
 The public Pages deployment is versioned:
 
 - `/` — version chooser
-- `/v0.3/` — current 0.3 preview
+- `/v0.4/` — current 0.4 preview
+- `/v0.3/` — archived 0.3 preview
 - `/v0.2/` — archived 0.2 preview
 - `/v0.1/` — archived 0.1 alpha demo
 
-The demos read public sample metadata from `frontend/public/demo-data/`, use compressed WebP preview images, and disable write actions. They are intended only as online sandboxes. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own private prompt library.
+The demos read public sample metadata from `frontend/public/demo-data/`, use compressed WebP preview images, and disable write actions. They are intended only as online read-only demos. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own private prompt library. Latest v0.4 supports direct image generation in local installs with ChatGPT OAuth.
 
 ## Verification
 
@@ -382,7 +386,7 @@ Check `IMAGE_PROMPT_LIBRARY_PATH` in `.env`. Your database and image folders mus
 
 ## Project status
 
-This is an alpha local-first app. Core browse/search/filter/detail/copy/add/edit flows exist, the public read-only sandbox is versioned, and the current 0.3 preview adds a multilingual provenance-aware public vault while preserving desktop and mobile browsing improvements. Local installs now also include versioned release installer/update/rollback scripts and an optional provider-gated generation workflow with result inbox review, attach-current-item, save-as-new-variant, metadata review, and a compact generation queue. Remaining work includes publishing the next tagged release assets, deeper mobile Explore gestures, import-flow polish, and public-release hardening.
+This is an alpha local-first app. Core browse/search/filter/detail/copy/add/edit flows exist, the public Online Read Only Demo is versioned, and the current 0.4 preview keeps the multilingual provenance-aware public vault while highlighting local-only ChatGPT OAuth direct image generation. Local installs now include versioned release installer/update/rollback scripts and an optional provider-gated generation workflow with result inbox review, attach-current-item, save-as-new-variant, metadata review, and a compact generation queue. Remaining work includes publishing the v0.4 tagged release assets, deeper mobile Explore gestures, import-flow polish, and public-release hardening.
 
 See `ROADMAP.md` for the current roadmap and follow-up priorities.
 

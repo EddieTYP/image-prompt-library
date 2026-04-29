@@ -178,11 +178,10 @@ export default function App() {
     <TopBar t={t} q={q} onQ={setQ} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
     {isDemoMode && (
       <div className="demo-banner" role="status">
-        <strong>{t('onlineSandbox')}</strong>
-        <span>{t('readOnlySampleLibrary')}</span>
+        <strong>{t('onlineReadOnlyDemo')}</strong>
         <span>{t('compressedForDemo')}</span>
-        <span>{t('demoEditRequiresLocalInstall')}</span>
         <span>{t('runLocallyForPrivateLibrary')}</span>
+        <span>{t('localV04SupportsDirectGeneration')}</span>
         <a href="https://github.com/EddieTYP/image-prompt-library" target="_blank" rel="noreferrer">{t('viewOnGitHub')}</a>
       </div>
     )}

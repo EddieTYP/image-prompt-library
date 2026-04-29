@@ -25,9 +25,9 @@ Goal: make Image Prompt Library easy for someone to clone from GitHub, run on th
 - Clean up or roll back prompt-only items if required image upload fails.
 - Verify optional sample-library install idempotency.
 
-## Current 0.3 preview direction
+## Current v0.4 preview direction
 
-The current 0.3 preview positions the public site as a multilingual provenance-aware read-only prompt vault, not merely a lightweight demo. Visitors can browse, search, inspect images and prompts, switch UI language, and copy public sample prompts directly from GitHub Pages. Users who want to build or edit their own private vault should clone and run the project locally.
+The current 0.4 preview keeps the public site as a multilingual provenance-aware **Online Read Only Demo** while highlighting the new local-only generation workflow. Visitors can browse, search, inspect images and prompts, switch UI language, and copy public sample prompts directly from GitHub Pages. Users who want to build or edit their own private vault, or use ChatGPT OAuth direct image generation, should install and run the project locally.
 
 Implemented focus areas:
 

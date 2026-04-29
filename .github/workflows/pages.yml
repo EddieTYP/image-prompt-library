@@ -19,7 +19,9 @@ env:
   LEGACY_DEMO_PATH: v0.1
   ARCHIVED_02_DEMO_REF: v0.2.0-alpha
   ARCHIVED_02_DEMO_PATH: v0.2
-  CURRENT_PREVIEW_PATH: v0.3
+  ARCHIVED_03_DEMO_REF: v0.3.0-alpha
+  ARCHIVED_03_DEMO_PATH: v0.3
+  CURRENT_PREVIEW_PATH: v0.4
 
 jobs:
   build:
@@ -37,12 +39,23 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install
-      - name: Build current v0.3 prompt vault preview
+      - name: Build current v0.4 read-only preview
         run: VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/${CURRENT_PREVIEW_PATH}/ npm run build
-      - name: Stage current v0.3 prompt vault preview
+      - name: Stage current v0.4 read-only preview
         run: |
           mkdir -p .pages-artifact/${CURRENT_PREVIEW_PATH}
           cp -R frontend/dist/. .pages-artifact/${CURRENT_PREVIEW_PATH}/
+      - name: Build archived v0.3 preview
+        run: |
+          git fetch --tags origin
+          git worktree add .page-build/${ARCHIVED_03_DEMO_PATH} ${ARCHIVED_03_DEMO_REF}
+          cd .page-build/${ARCHIVED_03_DEMO_PATH}
+          npm install
+          VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/${ARCHIVED_03_DEMO_PATH}/ npm run build
+      - name: Stage archived v0.3 preview
+        run: |
+          mkdir -p .pages-artifact/${ARCHIVED_03_DEMO_PATH}
+          cp -R .page-build/${ARCHIVED_03_DEMO_PATH}/frontend/dist/. .pages-artifact/${ARCHIVED_03_DEMO_PATH}/
       - name: Build archived v0.2 preview
         run: |
           git fetch --tags origin
@@ -114,10 +127,28 @@ jobs:
                 }
                 .intro {
                   max-width: 680px;
-                  margin: 22px 0 32px;
+                  margin: 22px 0 18px;
                   color: #6c5f6f;
                   font-size: clamp(17px, 2.4vw, 21px);
                   line-height: 1.6;
+                }
+                .local-banner {
+                  display: flex;
+                  flex-wrap: wrap;
+                  gap: 10px;
+                  align-items: center;
+                  margin: 0 0 32px;
+                  padding: 14px 16px;
+                  border: 1px solid rgba(109, 74, 255, .2);
+                  border-radius: 18px;
+                  background: rgba(238, 232, 255, .72);
+                  color: #4d31d8;
+                  font-size: 14px;
+                  font-weight: 700;
+                }
+                .local-banner a {
+                  color: #2c1aa6;
+                  font-weight: 900;
                 }
                 .versions {
                   display: grid;
@@ -171,16 +202,24 @@ jobs:
             </head>
             <body>
               <main>
-                <p class="eyebrow">Image Prompt Library demos</p>
-                <h1>Choose a preview</h1>
+                <p class="eyebrow">Image Prompt Library</p>
+                <h1>Online Read Only Demo</h1>
                 <p class="intro">
-                  The online demos are read-only GitHub Pages sandboxes using public sample prompts and compressed preview images.
-                  Add/edit require local install; private library management are local-only.
-                  Run the app locally for your own private full library.
+                  Browse public sample prompts and compressed preview images. Demo images are compressed.
+                  Add/edit require local install; run locally to create your private prompt library.
+                </p>
+                <p class="local-banner">
+                  <span>Latest v0.4 supports direct image generation with ChatGPT OAuth in local installs.</span>
+                  <a href="https://github.com/EddieTYP/image-prompt-library">View on GitHub</a>
                 </p>
                 <section class="versions" aria-label="Demo versions">
-                  <a class="version-card" href="./v0.3/">
-                    <span class="version-label">New · v0.3</span>
+                  <a class="version-card" href="./v0.4/">
+                    <span class="version-label">New · v0.4</span>
+                    <h2>Online Read Only Demo plus local generation banner</h2>
+                    <p>Browse 510 multilingual references online. Install locally for ChatGPT OAuth direct image generation, result inbox review, Add/Edit, and your private prompt library.</p>
+                  </a>
+                  <a class="version-card stable" href="./v0.3/">
+                    <span class="version-label">Archive · v0.3</span>
                     <h2>Multilingual provenance-aware prompt vault</h2>
                     <p>Browse 510 references from two attributed sample sources with Origin, English, Traditional Chinese, and Simplified Chinese prompt variants.</p>
                   </a>

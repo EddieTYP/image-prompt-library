@@ -104,3 +104,30 @@ def test_v03_release_notes_describe_multilingual_provenance_vault():
     assert "OpenNana" not in notes
     assert "token" not in notes.lower()
     assert "secret" not in notes.lower()
+
+def test_v04_release_notes_describe_chatgpt_oauth_generation_and_installer():
+    notes_path = ROOT / "docs" / "releases" / "v0.4.0-alpha.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text()
+
+    assert "# Image Prompt Library v0.4.0-alpha" in notes
+    assert "ChatGPT OAuth" in notes
+    assert "direct image generation" in notes
+    assert "Online Read Only Demo" in notes
+    assert "https://eddietyp.github.io/image-prompt-library/v0.4/" in notes
+    assert "https://eddietyp.github.io/image-prompt-library/v0.3/" in notes
+    assert "openai_codex_oauth_native" in notes
+    assert "GenerationJob result inbox" in notes
+    assert "Save as new item" in notes
+    assert "versioned release installer" in notes
+    assert "--version" in notes
+    assert "image-prompt-library update --version v0.4.0-alpha" in notes
+    assert "image-prompt-library rollback" in notes
+    assert "131" in notes
+    assert "AGPL-3.0-or-later" in notes
+
+    assert "/Users/" not in notes
+    assert ".local-work" not in notes
+    assert "OpenNana" not in notes
+    assert "token" not in notes.lower()
+    assert "secret" not in notes.lower()

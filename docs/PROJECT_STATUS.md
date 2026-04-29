@@ -162,8 +162,9 @@ Recent preparation work includes:
 - verified a fresh clone setup/start/smoke-test path on a non-reserved port with Python 3.12, including empty-library onboarding and public sample-library installation
 - after public release, set the GitHub repo homepage to the read-only sandbox URL, polished README badges/release/demo affordances, drafted launch-post copy in the MacBook Downloads folder, verified unauthenticated public sample-data installation, and added SHA256 verification for the sample image ZIP
 - verified tests and frontend build before the latest public-alpha preparation commit
-- promoted the current preview to `v0.3.0-alpha` positioning: a multilingual provenance-aware prompt vault rather than a small patch on the 0.2 mobile preview
-- added versioned `/v0.3/` Pages output while preserving `/v0.2/` and `/v0.1/` as archived previews
+- promoted the previous preview to `v0.3.0-alpha` positioning: a multilingual provenance-aware prompt vault rather than a small patch on the 0.2 mobile preview
+- prepared `v0.4.0-alpha` positioning around local ChatGPT OAuth direct image generation, versioned installer/update/rollback, and an Online Read Only Demo banner that keeps GitHub Pages non-mutating
+- added versioned `/v0.4/` Pages output while preserving `/v0.3/`, `/v0.2/`, and `/v0.1/` as archived previews
 
 ## Sample data notes
 
