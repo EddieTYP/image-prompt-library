@@ -1,6 +1,7 @@
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -91,8 +92,8 @@ def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developer
     assert "scripts/install.sh" in readme
     assert "image-prompt-library start" in readme
     assert "image-prompt-library update" in readme
-    assert "image-prompt-library update --version v0.4.0-alpha" in readme
-    assert "curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.4.0-alpha" in readme
+    assert "image-prompt-library update --version v0.5.0-beta" in readme
+    assert "curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.5.0-beta" in readme
     assert "image-prompt-library rollback" in readme
     assert "GitHub Release assets" in readme
     assert "Developer setup from source" in readme
@@ -165,6 +166,7 @@ def test_installer_supports_file_release_base_and_installs_without_git(tmp_path)
     env = os.environ.copy()
     env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
     env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
+    env["PYTHON"] = sys.executable
 
     result = subprocess.run(
         [

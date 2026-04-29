@@ -39,7 +39,7 @@ def test_github_pages_demo_is_read_only_and_discloses_compressed_images():
     assert "Online Read Only Demo" in i18n
     assert "Demo 圖片已壓縮。" in i18n
     assert "新增／編輯需要本機安裝，請在本機運行以建立你的私人 prompt library。" in i18n
-    assert "最新 v0.4 支援直接生圖" in i18n
+    assert "最新 v0.5 beta 支援 Local Generation Workbench" in i18n
     assert "showActions" in cards
     assert "showMutations" in detail
     assert "!isDemoMode && <button className=\"fab\"" in app
@@ -75,7 +75,7 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert "Online Read Only Demo" in text
     assert "Demo images are compressed." in text
     assert "Add/edit require local install; run locally to create your private prompt library." in text
-    assert "Latest v0.4 supports direct image generation" in text
+    assert "Latest v0.5 beta supports the Local Generation Workbench" in text
     assert "View on GitHub" in text
     assert "Inject v0.4 upgrade notice into archived v0.3 preview" in text
     assert "This v0.3 preview is archived." in text

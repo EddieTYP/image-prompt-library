@@ -143,3 +143,30 @@ def test_v04_release_notes_describe_chatgpt_oauth_generation_and_installer():
     assert "OpenNana" not in notes
     assert "token" not in notes.lower()
     assert "secret" not in notes.lower()
+
+def test_v05_release_notes_describe_local_generation_workbench_beta():
+    notes_path = ROOT / "docs" / "releases" / "v0.5.0-beta.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text()
+
+    assert "# Image Prompt Library v0.5.0-beta" in notes
+    assert "Local Generation Workbench" in notes
+    assert "Online Read Only Demo" in notes
+    assert "https://eddietyp.github.io/image-prompt-library/v0.4/" in notes
+    assert "openai_codex_oauth_native" in notes
+    assert "aspect ratio" in notes
+    assert "Auto`, `Standard`, and `High`" in notes
+    assert "two concurrent jobs" in notes
+    assert "Cancel" in notes
+    assert "cancelled" in notes
+    assert "soft cancellation" in notes
+    assert "image-prompt-library update --version v0.5.0-beta" in notes
+    assert "image-prompt-library rollback" in notes
+    assert "137" in notes
+    assert "AGPL-3.0-or-later" in notes
+
+    assert "/Users/" not in notes
+    assert ".local-work" not in notes
+    assert "OpenNana" not in notes
+    assert "token" not in notes.lower()
+    assert "secret" not in notes.lower()

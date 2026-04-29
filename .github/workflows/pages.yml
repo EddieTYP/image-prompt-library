@@ -308,14 +308,14 @@ jobs:
                   Add/edit require local install; run locally to create your private prompt library.
                 </p>
                 <p class="local-banner">
-                  <span>Latest v0.4 supports direct image generation with ChatGPT OAuth in local installs.</span>
+                  <span>Latest v0.5 beta supports the Local Generation Workbench with ChatGPT OAuth in local installs.</span>
                   <a href="https://github.com/EddieTYP/image-prompt-library">View on GitHub</a>
                 </p>
                 <section class="versions" aria-label="Demo versions">
                   <a class="version-card" href="./v0.4/">
-                    <span class="version-label">New · v0.4</span>
-                    <h2>Online Read Only Demo plus local generation banner</h2>
-                    <p>Browse 510 multilingual references online. Install locally for ChatGPT OAuth direct image generation, result inbox review, Add/Edit, and your private prompt library.</p>
+                    <span class="version-label">Current demo · v0.4</span>
+                    <h2>Online Read Only Demo plus local v0.5 beta banner</h2>
+                    <p>Browse 510 multilingual references online. Install locally for the v0.5 beta Local Generation Workbench, ChatGPT OAuth direct generation, Add/Edit, and your private prompt library.</p>
                   </a>
                   <a class="version-card stable" href="./v0.3/">
                     <span class="version-label">Archive · v0.3</span>
