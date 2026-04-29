@@ -72,7 +72,7 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Explore view" in readme
     assert "Cards view" in readme
     assert "one-click prompt copy" in readme
-    assert "The current 0.4 preview is available" in readme
+    assert "Generate New Image from a prompt, or generate a Variant of an existing one with ChatGPT Image 2.0 once you have completed OAuth." in readme
     assert "v0.4.0-alpha" in readme
     assert "Multilingual provenance-aware prompt vault" in readme
     assert "mobile browsing preview" not in readme
@@ -81,9 +81,9 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "stable two-column masonry layout" in readme
     assert "bottom dock instead of crowding the header" in readme
     assert "current 0.4 preview" in readme
-    assert "archived 0.3 preview" in readme
-    assert "archived 0.2 preview" in readme
-    assert "archived 0.1 alpha demo" in readme
+    assert "archived 0.3 preview" not in readme
+    assert "archived 0.2 preview" not in readme
+    assert "archived 0.1 alpha demo" not in readme
     assert "Online Read Only Demo" in readme
     assert "ChatGPT OAuth" in readme
     assert "direct image generation" in readme
@@ -95,6 +95,8 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "install the app locally" in readme
     assert "Add, edit, and private library management are local-only" in readme
     assert "Generate images directly in local installs" in readme
+    assert "Add your own prompts & images" in readme
+    assert "## Add your own prompts\n" not in readme
     assert "Save as new item" in readme
     assert "openai_codex_oauth_native" in readme
 

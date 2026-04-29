@@ -339,6 +339,7 @@ export default function ItemDetailModal({
                       </button>
                       {canGenerate && <button className="modal-icon-button mobile-generate-variant-button" onClick={() => setGenerationOpen(true)} aria-label="Generate variant">
                         <Plus size={18} />
+                        <span className="mobile-generate-variant-label">Generate variant</span>
                       </button>}
                     </span>
                   )}

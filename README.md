@@ -11,7 +11,7 @@ ChatGPT image generation has become good enough that the prompts are worth keepi
 
 Your library stays on your own machine: local SQLite, local image files, no accounts, no cloud sync, and no hosted database required.
 
-**Online Read Only Demo:** <https://eddietyp.github.io/image-prompt-library/> — a GitHub Pages version chooser using public sample prompts and compressed preview images. The current 0.4 preview is available at <https://eddietyp.github.io/image-prompt-library/v0.4/>, with the 0.3 preview archived at <https://eddietyp.github.io/image-prompt-library/v0.3/>, the 0.2 preview archived at <https://eddietyp.github.io/image-prompt-library/v0.2/>, and the original 0.1 alpha demo archived at <https://eddietyp.github.io/image-prompt-library/v0.1/>. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own full library. Latest v0.4 supports direct image generation in local installs.
+**Online Read Only Demo:** <https://eddietyp.github.io/image-prompt-library/> — browse public sample prompts and compressed preview images on GitHub Pages. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own full library. Latest v0.4 supports direct image generation in local installs.
 
 **v0.4 highlight:** local installs can connect via **ChatGPT OAuth** using the experimental `openai_codex_oauth_native` provider, generate images directly from saved prompts, review results in a local result inbox, then `Attach to current item` or `Save as new item` with editable metadata. No hosted account, cloud sync, or public API key is required by the app.
 
@@ -31,6 +31,7 @@ The 0.4 preview keeps the public Online Read Only Demo as a multilingual provena
 - Browse densely in **Cards view**, an image-first masonry gallery for scanning many prompt references quickly on desktop and mobile.
 - Search across titles, prompts, tags, collections, sources, and notes.
 - Filter by collection, open a detail view, and copy the prompt with one click.
+- Generate New Image from a prompt, or generate a Variant of an existing one with ChatGPT Image 2.0 once you have completed OAuth.
 - Keep everything local for privacy and long-term ownership.
 
 ## Screenshots
@@ -243,7 +244,7 @@ library/thumbs/         generated thumbnail images
 
 Do not commit runtime `library/` data to git. It is your private prompt/image collection.
 
-## Add your own prompts
+## Add your own prompts & images
 
 1. Start the app.
 2. Click `+ Add`.
@@ -307,13 +308,7 @@ npm run build:demo
 npm run build:demo:v0.4
 ```
 
-The public Pages deployment is versioned:
-
-- `/` — version chooser
-- `/v0.4/` — current 0.4 preview
-- `/v0.3/` — archived 0.3 preview
-- `/v0.2/` — archived 0.2 preview
-- `/v0.1/` — archived 0.1 alpha demo
+The public Pages deployment is versioned. Use `/` for the version chooser or `/v0.4/` for the current 0.4 preview.
 
 The demos read public sample metadata from `frontend/public/demo-data/`, use compressed WebP preview images, and disable write actions. They are intended only as online read-only demos. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own private prompt library. Latest v0.4 supports direct image generation in local installs with ChatGPT OAuth.
 

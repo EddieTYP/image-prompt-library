@@ -151,13 +151,17 @@ def test_mobile_detail_modal_has_image_first_floating_controls():
     assert "mobile-hero-close" in detail
     assert "mobile-hero-primary-actions" in detail
     assert "aria-label={item.favorite ? t('saved') : t('favorite')}" in detail
-    assert "aria-label={t('edit')}" in detail
+    assert "mobile-generate-variant-button" in detail
+    assert "mobile-generate-variant-label" in detail
+    assert "Generate variant" in detail
     assert ".detail.modal{width:100vw;max-height:100dvh;" in compact_css
     assert ".modal-hero{min-height:0;height:auto;" in compact_css
     assert ".hero-image{width:100%;height:auto;max-height:none;object-fit:contain}" in compact_css
     assert ".mobile-hero-actions{display:block}" in compact_css
     assert ".mobile-hero-close{position:absolute;right:12px;top:calc(12px+env(safe-area-inset-top));" in compact_css
     assert ".mobile-hero-primary-actions{position:absolute;right:12px;bottom:12px;" in compact_css
+    assert ".mobile-generate-variant-button{display:inline-flex" in compact_css
+    assert ".mobile-generate-variant-label{display:inline" in compact_css
 
 
 def test_topbar_uses_attached_header_logo_branding():
@@ -387,7 +391,7 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "generation-queue-drawer" in css
     assert ".generation-queue-trigger" in css
     assert ".queue-dot.active" in compact_css
-    assert ".mobile-generate-variant-button{display:inline-grid}" in compact_css
+    assert ".mobile-generate-variant-button{display:inline-flex" in compact_css
 
 
 def test_global_explore_fits_viewport_and_cards_remain_scrollable():
