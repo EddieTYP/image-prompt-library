@@ -62,18 +62,24 @@ Mobile-native browsing remains in scope:
 - Full interface language setting.
 - Optional semantic/vector search.
 
-## Versioned installer / updater roadmap
+## Versioned installer / updater
 
 Goal: make Image Prompt Library easy to install and update from tagged releases without requiring normal users to clone the repository or repeatedly run `git pull`.
 
-Recommended next implementation focus before Batch 5:
+Current MVP status:
 
-- Publish release artifacts that include the backend, built frontend `dist/`, runtime scripts, public docs, and checksum/manifest files.
-- Add a bootstrap installer that downloads a selected GitHub Release asset, verifies SHA256, extracts it under `~/.image-prompt-library/app/versions/<version>/`, and switches a `current` symlink.
-- Keep replaceable app code separate from durable private data. Default app data should live outside the versioned app directory, for example `~/ImagePromptLibrary`, while app config/auth stays under `~/.image-prompt-library/`.
-- Provide `image-prompt-library start`, `update --version <tag>`, and `rollback` commands.
-- Do not require Node.js for normal release installs; the release artifact should include the prebuilt frontend. Node remains part of source/development setup.
-- Keep GitHub Pages read-only and informational. The installer path must not introduce hosted accounts, checkout, payment, SaaS sync, or public/private library hosting.
+- `scripts/install.sh` downloads selected GitHub Release assets, verifies SHA256, extracts under `~/.image-prompt-library/app/versions/<version>/`, and switches `app/current`.
+- Normal users can install the latest release or a selected tag with `--version <tag>`.
+- Installed apps expose `image-prompt-library start`, `version`, `update --version <tag>`, and `rollback` through `scripts/appctl.sh` / the install shim.
+- Release artifacts are packaged by `scripts/package-release.sh` and include backend code, runtime scripts, public docs, `pyproject.toml`, and the built frontend at `frontend/dist`.
+- Normal release installs do not require Node.js; Node remains part of source/development setup.
+- Durable private library data stays outside the versioned app directory, defaulting to `~/ImagePromptLibrary`, while app config/auth stays under `~/.image-prompt-library/`.
+- GitHub Pages remains read-only and informational. The installer path does not introduce hosted accounts, checkout, payment, SaaS sync, or public/private library hosting.
+
+Next release work:
+
+- Push the current installer work, tag the next alpha, let `.github/workflows/release-assets.yml` publish `tar.gz`, `.sha256`, and `.manifest.json` release assets, then verify a real GitHub Release install/update/rollback path.
+- Optional polish later: release list command, interactive version chooser, status/stop helpers, Docker or native Windows scripts.
 
 Planning doc: [`docs/plans/versioned-installer-updater.md`](docs/plans/versioned-installer-updater.md).
 
@@ -83,7 +89,7 @@ Goal: make it easy to pull useful prompt/image references from external reposito
 
 Status note: Batch 5 generic URL plus X/Threads import remains the next import feature batch, but it is now queued behind the versioned installer/updater work so normal users do not need to pull the full repo for every update.
 
-Current status: **Batch 1 ImportDraft core**, **Batch 2 local markdown repository ingestion**, **Batch 3 GenerationJob plus result inbox foundation**, **Batch 4 `openai_codex_oauth_native` backend/provider UI slices**, and the **Batch 4.4 Generation UX first slice** are implemented. Generation jobs can be created provider-agnostically, receive manually staged or native Codex-provider staged result images under `generation-results/`, be listed/reviewed, and accept/discard results; accepted results are copied into normal library media storage. The Config drawer lists optional generation providers and exposes the native Codex connect/poll/disconnect controls for local installs. Local item detail views can launch a `Generate variant` workflow, create GenerationJobs, review the result inbox, upload manual results, and accept/discard outputs. Next implementation milestone: **Batch 4.5 Generation Result UX correctness**, then **Batch 4.6 Save as new variant item**, before **Batch 5 generic URL plus X/Threads import**.
+Current status: **Batch 1 ImportDraft core**, **Batch 2 local markdown repository ingestion**, **Batch 3 GenerationJob plus result inbox foundation**, **Batch 4 `openai_codex_oauth_native` backend/provider UI**, **Batch 4.4–4.7 Generation UX/result workflow polish**, and the **versioned installer/updater MVP** are implemented. Generation jobs can be created provider-agnostically, receive manually staged or native Codex-provider staged result images under `generation-results/`, be listed/reviewed, and be explicitly attached to the current item or saved as a new variant item after metadata review. The Config drawer lists optional generation providers and exposes the native Codex connect/poll/disconnect controls for local installs. Generation controls are hidden until a provider is configured/authenticated, provider availability refreshes after OAuth, failed jobs get friendly failure states, and the compact queue drawer shows active/review/failed work. Next implementation milestone after publishing installer release assets: **Batch 5 generic URL plus X/Threads import**.
 
 Shared architecture:
 
@@ -106,11 +112,13 @@ Recommended order:
 2. **Batch 2: repository/dataset ingestion MVP — done for local markdown repositories.** The backend can scan local markdown folders, extract heading/fenced-prompt/image records, stage repository images safely under the selected library, preserve source file/ref metadata, and emit ImportDraft records for review. Future hardening can add remote GitHub clone/download orchestration and richer dataset-specific parsers.
 3. **Batch 3: GenerationJob plus result inbox foundation — done in backend.** Provider-agnostic generation job records, manual/stub result staging under `generation-results/`, list/detail review API, accept/discard lifecycle, and accept-to-library media attachment are implemented and tested.
 4. **Batch 4: `openai_codex_oauth_native` — backend/provider UI slices done.** The backend now has an app-owned native Codex auth store outside the library, frontend-ready optional provider status, device-code start/poll helpers, disconnect, env/local-config client-id bootstrap, access-token refresh before expiry, Codex-compatible headers with `ChatGPT-Account-ID`, a provider runner that calls the Codex Responses `image_generation` path, and `POST /api/generation-jobs/{job_id}/run` to stage generated results into the existing result inbox. The frontend Config drawer now loads provider status, shows manual/native Codex provider cards, keeps demo mode read-only/local-only, and supports native Codex connect, auth polling, and disconnect. Remaining work includes live-account QA, refresh lock hardening, Text+Reference/Image Edit payloads, retry controls, and stable native-client configuration.
-5. **Batch 4.4: Generation UX/result inbox frontend first slice — done for local installs.** Local item detail views now expose `Generate variant` when mutations are allowed. The workflow creates GenerationJobs from saved prompts, shows a result inbox, supports manual result upload, can run provider jobs when a provider is available, and accepts/discards reviewed outputs without changing the public read-only Pages demo.
-6. **Batch 4.5: Generation Result UX correctness — planned next.** Fix accepted generated images that render only as placeholders, add first-class multi-image browsing in item detail, hide/demote manual result upload from the primary flow, add a pending shimmer card while a provider run is in progress, fade in the completed result card, and show a toast when accepting a result into the current item.
-7. **Batch 4.6: Save as new variant item — planned after 4.5.** Change result acceptance to an explicit split/dropdown action with `Attach to current item` and `Save as new item`; add backend/service support for creating a new variant item from a GenerationJob result; preserve variant provenance such as source item id, source generation job id, provider/model metadata, and generation prompt; show a `New variant item created` toast with a `View item` action.
-8. **Batch 5: generic URL plus X/Threads import** — public URL extraction and social-post/thread import behind local-only/experimental warnings.
-9. **Batch 6: Instagram import** — only after the generic URL and X/Threads flow is useful, because IG auth/browser-session requirements and anti-bot behavior make it less reliable.
+5. **Batch 4.4: Generation UX/result inbox frontend first slice — done for local installs.** Local item detail views expose `Generate variant`, create GenerationJobs from saved prompts, show a result inbox, support manual result upload as an advanced/fallback path, can run provider jobs when a provider is available, and accept/discard reviewed outputs without changing the public read-only Pages demo.
+6. **Batch 4.5: Generation Result UX correctness — done.** Generated results are served through the app media route before accept, item detail supports first-class multi-image browsing, manual result upload is demoted from the primary flow, provider runs show a pending shimmer card, completed results fade in, and accepting a result gives toast feedback.
+7. **Batch 4.6: Save as new variant item — done.** Users explicitly choose `Attach to current item` or `Save as new item`; save-as-new creates a new variant item from a GenerationJob result, preserves source item / source generation job / provider-model provenance, and shows a metadata review/edit panel before creating the item.
+8. **Batch 4.7: Generation workflow polish — done.** The app now has separate Add and Generate entries, provider-gated generation controls, mobile Generate variant, mobile metadata-panel auto-scroll/focus, a compact generation queue drawer, post-OAuth provider refresh, confirm-save navigation back to the library, and friendly policy/rate-limit/auth/provider failure states.
+9. **Versioned installer/updater MVP — done.** Normal users can install/update from selected release assets without cloning or pulling source; app code is versioned under `~/.image-prompt-library/app/versions/`, private library data stays outside app code, runtime installs do not require Node.js, and update/rollback commands are available.
+10. **Batch 5: generic URL plus X/Threads import** — public URL extraction and social-post/thread import behind local-only/experimental warnings.
+11. **Batch 6: Instagram import** — only after the generic URL and X/Threads flow is useful, because IG auth/browser-session requirements and anti-bot behavior make it less reliable.
 
 Keep all live-import and generation flows independent from the public GitHub Pages demo; Pages remains read-only and does not perform live imports or generation.
 
@@ -147,7 +155,7 @@ Planned provider-adapter architecture:
 - Live-account QA against the current ChatGPT/Codex backend and clearer error mapping for auth expiry, Cloudflare/challenge, empty image results, and upstream API drift.
 - Add Text+Reference→Image and Image Edit request payload support using `reference_image_ids`; current backend slice covers Text→Image-style jobs.
 - Add retry controls and richer job state transitions around running/failed/retry attempts.
-- Polish the Generation UX/result inbox controls after the first slice: fix accepted generated images that currently can appear as broken placeholders, support multiple images per item in the detail modal, use pending shimmer cards during provider runs, fade in completed result cards, show toast feedback after accept, hide/demote external manual result upload from the primary flow, and add a split/dropdown accept action that supports both attaching to the current item and saving the result as a new variant item with provenance.
+- Continue polishing the local-only Generation UX after the current 4.7 slice: fuller retry flows, richer history/status for queued jobs, Text+Reference/Image Edit payload UI, and clearer fresh-OAuth onboarding.
 - Treat this adapter as experimental because it depends on the ChatGPT/Codex backend rather than the stable public OpenAI Images API.
 
 ## Current non-goals

@@ -15,7 +15,7 @@ Your library stays on your own machine: local SQLite, local image files, no acco
 
 **Alpha release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.3.0-alpha> — Multilingual provenance-aware prompt vault with combined sample sources, schema v2 provenance, full prompt-language coverage, and versioned public previews.
 
-**Roadmap:** See [`ROADMAP.md`](ROADMAP.md) for follow-up work around mobile Explore, management flows, packaging, and public release polish.
+**Roadmap:** See [`ROADMAP.md`](ROADMAP.md) for follow-up work around mobile Explore, versioned release installs, local generation, import flows, and public release polish.
 
 ![Image Prompt Library Cards view](docs/assets/screenshots/card-view-all.png)
 
@@ -78,9 +78,12 @@ The detail view keeps the large image preview, prompt, language tabs, attributio
 - Cards mode: image-first masonry/Pinterest-style prompt gallery.
 - Search across titles, prompts, tags, collections, sources, and notes.
 - Collections and tags for organizing references.
-- Detail modal with lightweight inline editing, prompt language tabs, source/origin prompt styling, and copy feedback.
+- Detail modal with lightweight inline editing, prompt language tabs, source/origin prompt styling, multi-image browsing, generated-image badges, and copy feedback.
 - Add/edit modal with English, Traditional Chinese, and Simplified Chinese prompt fields plus metadata and a single source/origin marker.
 - Result image and optional reference image uploads.
+- Local generation workflow: optional provider setup, `Generate variant`, result inbox review, `Attach to current item`, and `Save as new item` with editable metadata before saving.
+- Provider-gated generation UI: generation controls stay hidden until a configured/authenticated provider is available, while Add/Edit remains usable without any generation provider.
+- Global generation queue drawer for active/succeeded/failed jobs, plus friendlier policy/rate-limit/auth/provider failure messages.
 - Phone-friendly Cards behavior: two-column masonry, compact header, touch-visible actions, and bottom selected-collection dock.
 - Adaptive card/detail image display for mixed portrait, landscape, and tall reference images.
 
@@ -109,10 +112,17 @@ For clarity: normal release installs do not require Node.js; Node.js/npm are onl
 
 ## Quick start for normal users
 
-Install the latest tagged release without cloning the repo:
+Install the latest tagged release from GitHub Release assets without cloning the repo:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash
+image-prompt-library start
+```
+
+Install a specific tagged release instead:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.3.0-alpha
 image-prompt-library start
 ```
 
@@ -151,6 +161,21 @@ image-prompt-library rollback
 ```
 
 Normal release installs do not require Node.js because the release artifact includes the built frontend. Node.js/npm are only needed for source/development installs.
+
+The selected release must have matching GitHub Release assets: `image-prompt-library-<version>.tar.gz`, `.sha256`, and `.manifest.json`. The installer verifies the SHA256 checksum before switching `app/current` to the new version.
+
+## Local generation workflow
+
+Generate new variants in local installs when an optional generation provider is configured. This remains local-only: the GitHub Pages sandbox is read-only and does not expose generation or mutation controls.
+
+Current local generation behavior:
+
+- Connect an optional provider from the Config drawer. The experimental native provider is labelled `openai_codex_oauth_native` and stores its app-owned auth outside the prompt library data path.
+- Open an item and use `Generate variant`, or use the standalone `Generate` entry when a provider is connected.
+- Generated outputs land in a GenerationJob result inbox first; they are not silently written into the library.
+- Choose `Attach to current item` to add another image to the same reference, or `Save as new item` to review/edit title, collection, tags, prompt, and notes before creating a new variant item.
+- Active, completed, and failed generation jobs appear in the compact global generation queue drawer.
+- Policy, rate-limit, auth, and provider failures are shown as friendly reviewable states instead of raw error dumps.
 
 ## Developer setup from source
 
@@ -357,7 +382,7 @@ Check `IMAGE_PROMPT_LIBRARY_PATH` in `.env`. Your database and image folders mus
 
 ## Project status
 
-This is an alpha local-first app. Core browse/search/filter/detail/copy/add/edit flows exist, the public read-only sandbox is versioned, and the current 0.3 preview adds a multilingual provenance-aware public vault while preserving desktop and mobile browsing improvements. Remaining work includes deeper mobile Explore gestures, management-flow polish, packaging, and public-release hardening.
+This is an alpha local-first app. Core browse/search/filter/detail/copy/add/edit flows exist, the public read-only sandbox is versioned, and the current 0.3 preview adds a multilingual provenance-aware public vault while preserving desktop and mobile browsing improvements. Local installs now also include versioned release installer/update/rollback scripts and an optional provider-gated generation workflow with result inbox review, attach-current-item, save-as-new-variant, metadata review, and a compact generation queue. Remaining work includes publishing the next tagged release assets, deeper mobile Explore gestures, import-flow polish, and public-release hardening.
 
 See `ROADMAP.md` for the current roadmap and follow-up priorities.
 
@@ -367,10 +392,14 @@ See `ROADMAP.md` for the current roadmap and follow-up priorities.
 backend/                 FastAPI app, SQLite migrations, repositories, services, routers
 frontend/                Vite/React app
 library/                 Local runtime data, ignored except .gitkeep placeholders
-scripts/dev.sh           Backend + Vite development mode
-scripts/setup.sh         Local setup helper
-scripts/start.sh         Single-service local mode
-scripts/backup.sh        Timestamped local data backup
-scripts/smoke-test.sh    Basic running-server smoke test
+scripts/install.sh         Versioned release installer for normal users
+scripts/appctl.sh          Installed-app start/version/update/rollback helper
+scripts/setup-runtime.sh   Runtime Python dependency setup for release installs
+scripts/package-release.sh Release artifact packager with built frontend assets
+scripts/dev.sh             Backend + Vite development mode
+scripts/setup.sh           Source/developer setup helper
+scripts/start.sh           Single-service source local mode
+scripts/backup.sh          Timestamped local data backup
+scripts/smoke-test.sh      Basic running-server smoke test
 tests/                   Backend/API/static regression tests
 ```

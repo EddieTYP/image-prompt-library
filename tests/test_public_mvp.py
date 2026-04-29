@@ -58,9 +58,10 @@ def test_public_import_and_example_data_section_prefers_attributed_demo_source()
     assert "Sample screenshot/demo dataset" not in readme
     assert removed_source_name not in readme
     assert f"{removed_source_name} scrape" not in readme
-    assert "GitHub Release asset" not in readme
-    assert "bootstrapping a library" not in readme
-    assert "local/exported source" not in readme
+    sample_section = readme.split("## Import and example data", 1)[1].split("## Backup", 1)[0]
+    assert "GitHub Release asset" not in sample_section
+    assert "bootstrapping a library" not in sample_section
+    assert "local/exported source" not in sample_section
 
 
 def test_public_readme_includes_product_story_and_screenshots():
@@ -85,6 +86,9 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "The online demo is read-only" in readme
     assert "install the app locally" in readme
     assert "Add, edit, and private library management are local-only" in readme
+    assert "Generate new variants in local installs" in readme
+    assert "Save as new item" in readme
+    assert "openai_codex_oauth_native" in readme
 
     screenshots = [
         "card-view-all.png",
