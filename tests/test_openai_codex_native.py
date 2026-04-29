@@ -311,6 +311,7 @@ def test_codex_native_uses_gpt_55_as_default_orchestration_model():
 def test_codex_native_run_executes_job_and_stages_result_without_leaking_tokens(tmp_path, monkeypatch):
     auth_path = tmp_path / "auth" / "auth.json"
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda *args, **kwargs: None)
 
     from backend.services import openai_codex_native
     from backend.services.openai_codex_native import CodexNativeAuthStore
@@ -354,6 +355,7 @@ def test_codex_native_run_executes_job_and_stages_result_without_leaking_tokens(
 def test_codex_native_injects_requested_aspect_ratio_and_records_effective_prompt(tmp_path, monkeypatch):
     auth_path = tmp_path / "auth" / "auth.json"
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda *args, **kwargs: None)
 
     from backend.services import openai_codex_native
     from backend.services.openai_codex_native import CodexNativeAuthStore
@@ -399,6 +401,7 @@ def test_codex_native_injects_requested_aspect_ratio_and_records_effective_promp
 def test_codex_native_run_marks_job_failed_on_provider_errors(tmp_path, monkeypatch):
     auth_path = tmp_path / "auth" / "auth.json"
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda *args, **kwargs: None)
 
     from backend.services import openai_codex_native
     from backend.services.openai_codex_native import CodexNativeAuthStore
