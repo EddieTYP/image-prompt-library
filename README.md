@@ -42,6 +42,22 @@ image-prompt-library start
 
 Then open <http://127.0.0.1:8000/> in your browser.
 
+To print a local health report, run:
+
+```bash
+image-prompt-library doctor
+```
+
+On macOS, install a launchd user service if you want the app to survive Terminal closure and start when you log in:
+
+```bash
+image-prompt-library service install --host 0.0.0.0 --port 7500
+```
+
+If a plist for the same service label already exists, install refuses to overwrite it. Use `image-prompt-library service install --replace ...` only when you intentionally want to replace and restart that managed service.
+
+Binding to `0.0.0.0` can expose the app to your LAN depending on your firewall. Use `--host 127.0.0.1` if you only want browser access from the same machine.
+
 If the `image-prompt-library` command is not found, add `~/.local/bin` to your shell `PATH`, or use the fallback command printed by the installer:
 
 ```bash
@@ -190,6 +206,27 @@ image-prompt-library start
 
 Open <http://127.0.0.1:8000/>.
 
+For diagnostics, run:
+
+```bash
+image-prompt-library doctor
+```
+
+On macOS, install/manage a user launchd service for a long-running local instance:
+
+```bash
+image-prompt-library service install --host 0.0.0.0 --port 7500
+image-prompt-library service status
+image-prompt-library service restart
+image-prompt-library service stop
+image-prompt-library service start
+image-prompt-library service uninstall
+```
+
+Service install refuses to overwrite an existing plist for the same label unless you pass `--replace`, so a managed service is not silently replaced during reinstall.
+
+Use `--host 127.0.0.1` for same-machine-only access. Use `--host 0.0.0.0` only when you intentionally want the app reachable through available network interfaces, subject to firewall rules.
+
 The installer keeps replaceable app code under:
 
 ```text
@@ -243,6 +280,10 @@ image-prompt-library uninstall --delete-library
 Normal release installs do not require Node.js because the release artifact includes the built frontend. Node.js/npm are only needed for source/development installs.
 
 The selected release must have matching GitHub Release assets: `image-prompt-library-<version>.tar.gz`, `.sha256`, and `.manifest.json`. The installer verifies the SHA256 checksum before switching `app/current` to the new version.
+
+### Release policy
+
+Use the next release tag for public installer changes instead of force-replacing `v0.5.0-beta`. For example, after this line of work, publish `v0.5.1-beta` or a later tag, then install/update with that explicit version. Keep `main` release-ready and do day-to-day development on `develop` or feature branches.
 
 ## Local generation workflow
 

@@ -67,6 +67,11 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "INCOMING_BACKEND_HOST" in appctl
     assert "WSL" in appctl
     assert "version)" in appctl
+    assert "doctor)" in appctl
+    assert "service)" in appctl
+    assert "service install" in appctl
+    assert "launchctl" in appctl
+    assert "LaunchAgents" in appctl
     assert "update)" in appctl
     assert "rollback)" in appctl
     assert "sample-data)" in appctl
@@ -135,6 +140,9 @@ def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developer
     assert "Add, edit, and private library management are local-only" in readme
     assert "image-prompt-library start --host 0.0.0.0" in readme
     assert "Binding to `0.0.0.0` can expose the app" in readme
+    assert "image-prompt-library doctor" in readme
+    assert "image-prompt-library service install --host 0.0.0.0 --port 7500" in readme
+    assert "Use the next release tag" in readme
 
 
 def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_path):
@@ -393,6 +401,219 @@ def test_installed_start_flags_override_env_host_and_port(tmp_path):
     )
     assert missing_port.returncode == 2
     assert "Missing value for --port" in missing_port.stderr
+
+
+def test_installed_doctor_reports_paths_db_and_provider_state_without_sensitive_values(tmp_path):
+    subprocess.run(
+        ["bash", "scripts/package-release.sh", "v9.9.2-test", "--skip-build"],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library-data"
+    env = os.environ.copy()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
+    env["PYTHON"] = sys.executable
+    install = subprocess.run(
+        [
+            "bash",
+            "scripts/install.sh",
+            "--version",
+            "v9.9.2-test",
+            "--prefix",
+            str(prefix),
+            "--library-path",
+            str(library),
+            "--no-shim",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert install.returncode == 0, install.stdout + install.stderr
+
+    appctl = prefix / "app" / "current" / "scripts" / "appctl.sh"
+    doctor = subprocess.run(
+        ["bash", str(appctl), "doctor"],
+        cwd=tmp_path,
+        env={**env, "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix)},
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+
+    assert doctor.returncode == 0, doctor.stdout + doctor.stderr
+    assert "Image Prompt Library doctor" in doctor.stdout
+    assert "Version: v9.9.2-test" in doctor.stdout
+    assert f"Install prefix: {prefix}" in doctor.stdout
+    assert f"Library path: {library}" in doctor.stdout
+    assert "Backend: 127.0.0.1:8000" in doctor.stdout
+    assert "Database integrity: ok" in doctor.stdout
+    assert "Generation provider: openai_codex_oauth_native state=" in doctor.stdout
+    assert "[REDACTED]" not in doctor.stdout
+    assert "app_" not in doctor.stdout
+
+
+def test_installed_service_commands_manage_macos_launchagent_with_fake_launchctl(tmp_path):
+    subprocess.run(
+        ["bash", "scripts/package-release.sh", "v9.9.1-test", "--skip-build"],
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library-data"
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    calls = tmp_path / "launchctl-calls.log"
+    (fake_bin / "launchctl").write_text(
+        "#!/usr/bin/env sh\n"
+        f"printf '%s ' \"$@\" >> {calls}\n"
+        f"printf '\\n' >> {calls}\n"
+        "if [ \"$1\" = \"print\" ]; then echo 'state = running'; fi\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "launchctl").chmod(0o755)
+    (fake_bin / "plutil").write_text("#!/usr/bin/env sh\necho \"$2: OK\"\n", encoding="utf-8")
+    (fake_bin / "plutil").chmod(0o755)
+
+    env = os.environ.copy()
+    env["HOME"] = str(fake_home)
+    env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
+    env["PYTHON"] = sys.executable
+    install = subprocess.run(
+        [
+            "bash",
+            "scripts/install.sh",
+            "--version",
+            "v9.9.1-test",
+            "--prefix",
+            str(prefix),
+            "--library-path",
+            str(library),
+            "--no-shim",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert install.returncode == 0, install.stdout + install.stderr
+
+    appctl = prefix / "app" / "current" / "scripts" / "appctl.sh"
+    service_env = {**env, "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix)}
+    install_service = subprocess.run(
+        [
+            "bash",
+            str(appctl),
+            "service",
+            "install",
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "7500",
+            "--label",
+            "com.example.ipl-test",
+        ],
+        cwd=tmp_path,
+        env=service_env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert install_service.returncode == 0, install_service.stdout + install_service.stderr
+    plist = fake_home / "Library" / "LaunchAgents" / "com.example.ipl-test.plist"
+    assert plist.exists()
+    plist_text = plist.read_text(encoding="utf-8")
+    assert str(appctl) in plist_text
+    assert "0.0.0.0" in plist_text
+    assert "7500" in plist_text
+    assert str(prefix) in plist_text
+    assert "bootstrap gui/" in calls.read_text(encoding="utf-8")
+    assert "kickstart -k gui/" in calls.read_text(encoding="utf-8")
+
+    status = subprocess.run(
+        ["bash", str(appctl), "service", "status", "--label", "com.example.ipl-test"],
+        cwd=tmp_path,
+        env=service_env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert status.returncode == 0, status.stdout + status.stderr
+    assert "state = running" in status.stdout
+
+    stop = subprocess.run(
+        ["bash", str(appctl), "service", "stop", "--label", "com.example.ipl-test"],
+        cwd=tmp_path,
+        env=service_env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert stop.returncode == 0, stop.stdout + stop.stderr
+
+    start = subprocess.run(
+        ["bash", str(appctl), "service", "start", "--label", "com.example.ipl-test"],
+        cwd=tmp_path,
+        env=service_env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert start.returncode == 0, start.stdout + start.stderr
+    call_text = calls.read_text(encoding="utf-8")
+    assert call_text.count("bootstrap gui/") >= 2
+    assert "enable gui/" in call_text
+
+    reinstall_without_replace = subprocess.run(
+        [
+            "bash",
+            str(appctl),
+            "service",
+            "install",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "8010",
+            "--label",
+            "com.example.ipl-test",
+        ],
+        cwd=tmp_path,
+        env=service_env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert reinstall_without_replace.returncode == 2
+    assert "already exists" in reinstall_without_replace.stderr
+
+    uninstall = subprocess.run(
+        ["bash", str(appctl), "service", "uninstall", "--label", "com.example.ipl-test"],
+        cwd=tmp_path,
+        env=service_env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert uninstall.returncode == 0, uninstall.stdout + uninstall.stderr
+    assert not plist.exists()
+    assert "bootout gui/" in calls.read_text(encoding="utf-8")
 
 
 def test_installed_uninstall_removes_app_but_keeps_library_by_default(tmp_path):
