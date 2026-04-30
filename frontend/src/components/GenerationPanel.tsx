@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ImagePlus, Paperclip, RefreshCw, Save, Trash2, XCircle } from 'lucide-react';
+import { ArrowLeft, Clipboard, Clock3, ImagePlus, Paperclip, RefreshCw, Save, Trash2, XCircle } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import type { GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ItemDetail } from '../types';
 import type { Translator } from '../utils/i18n';
@@ -14,7 +14,7 @@ function statusLabel(status: string) {
   if (status === 'queued') return 'Queued';
   if (status === 'running') return 'Running';
   if (status === 'succeeded') return 'Ready';
-  if (status === 'accepted') return 'Accepted';
+  if (status === 'accepted') return 'Saved';
   if (status === 'discarded') return 'Discarded';
   if (status === 'cancelled') return 'Cancelled';
   if (status === 'failed') return 'Failed';
@@ -26,11 +26,11 @@ function jobResultUrl(job: GenerationJobRecord) {
 }
 
 const ASPECT_RATIO_OPTIONS = [
-  { value: '1:1', label: '1:1 Square' },
-  { value: '3:4', label: '3:4 Portrait' },
-  { value: '9:16', label: '9:16 Vertical' },
-  { value: '4:3', label: '4:3 Landscape' },
-  { value: '16:9', label: '16:9 Wide' },
+  { value: '1:1', label: '1:1 Square', short: '1:1' },
+  { value: '3:4', label: '3:4 Portrait', short: '3:4' },
+  { value: '9:16', label: '9:16 Vertical', short: '9:16' },
+  { value: '4:3', label: '4:3 Landscape', short: '4:3' },
+  { value: '16:9', label: '16:9 Wide', short: '16:9' },
 ];
 
 const QUALITY_OPTIONS = [
@@ -69,6 +69,20 @@ function buildInitialMetadata(job: GenerationJobRecord, item?: ItemDetail): Gene
   };
 }
 
+function jobPrompt(job?: GenerationJobRecord) {
+  return job ? (job.edited_prompt_text || job.prompt_text || '').trim() : '';
+}
+
+function jobAspectRatio(job?: GenerationJobRecord) {
+  const value = job?.parameters?.requested_aspect_ratio;
+  return typeof value === 'string' && value ? value : '1:1';
+}
+
+function jobQuality(job?: GenerationJobRecord) {
+  const value = job?.parameters?.quality;
+  return typeof value === 'string' && value ? value : 'auto';
+}
+
 export default function GenerationPanel({
   item,
   preferredLanguage,
@@ -99,14 +113,22 @@ export default function GenerationPanel({
   const [focusedJobHighlightId, setFocusedJobHighlightId] = useState<string | undefined>(initialJobId);
   const [reviewJob, setReviewJob] = useState<GenerationJobRecord>();
   const [metadataDraft, setMetadataDraft] = useState<GenerationJobAcceptAsNewItemPayload>();
+  const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const [historyReviewJobId, setHistoryReviewJobId] = useState<string | undefined>(initialJobId);
   const metadataPanelRef = useRef<HTMLElement | null>(null);
-  const focusedJobRef = useRef<HTMLElement | null>(null);
+  const focusedJobRef = useRef<HTMLDivElement | null>(null);
 
   const activeJob = useMemo(() => jobs.find(job => job.id === activeJobId), [jobs, activeJobId]);
-  const visibleJobs = useMemo(() => jobs.filter(job => !['accepted', 'discarded', 'cancelled'].includes(job.status)), [jobs]);
+  const historyReviewJob = useMemo(() => jobs.find(job => job.id === historyReviewJobId), [jobs, historyReviewJobId]);
+  const selectedStageJob = historyReviewJob || activeJob;
+  const visibleJobs = useMemo(() => jobs.filter(job => job.status !== 'discarded'), [jobs]);
   const selectedProvider = providers.find(candidate => candidate.provider === provider);
   const primaryProviders = providers.filter(candidate => candidate.provider !== 'manual_upload');
+  const providerChip = selectedProvider && providerReady(selectedProvider) ? `${selectedProvider.display_name} connected` : 'Provider not ready';
   const panelTitle = item ? 'Generate variant' : 'Generate image';
+  const isHistoryReview = Boolean(historyReviewJob);
+  const selectedPrompt = jobPrompt(selectedStageJob);
+  const selectedFailure = selectedStageJob?.status === 'failed' ? friendlyFailure(selectedStageJob) : undefined;
 
   const refreshJobs = async (options: { preserveActive?: boolean } = {}) => {
     const result = await api.generationJobs({ limit: 100 });
@@ -116,6 +138,7 @@ export default function GenerationPanel({
     if (focusedJob) {
       setActiveJobId(focusedJob.id);
       setFocusedJobHighlightId(focusedJob.id);
+      if (!historyReviewJobId) setHistoryReviewJobId(focusedJob.id);
     } else if (!options.preserveActive && !activeJobId && nextJobs[0]) {
       setActiveJobId(nextJobs[0].id);
     }
@@ -140,6 +163,7 @@ export default function GenerationPanel({
     if (!initialJobId) return;
     setActiveJobId(initialJobId);
     setFocusedJobHighlightId(initialJobId);
+    setHistoryReviewJobId(initialJobId);
   }, [initialJobId]);
 
   useEffect(() => {
@@ -168,6 +192,7 @@ export default function GenerationPanel({
     if (!prompt) return;
     setBusy(true);
     setMessage('');
+    setHistoryReviewJobId(undefined);
     try {
       const created = await api.createGenerationJob({
         source_item_id: item?.id,
@@ -197,6 +222,7 @@ export default function GenerationPanel({
   const runJob = async (job: GenerationJobRecord) => {
     setBusy(true);
     setActiveJobId(job.id);
+    setHistoryReviewJobId(undefined);
     setMessage('Generating image…');
     setJobs(current => current.map(candidate => candidate.id === job.id ? { ...candidate, status: 'running' } : candidate));
     try {
@@ -218,6 +244,8 @@ export default function GenerationPanel({
     try {
       const updated = await api.uploadGenerationResult(job.id, file);
       setJobs(current => current.map(candidate => candidate.id === updated.id ? updated : candidate));
+      setActiveJobId(updated.id);
+      setHistoryReviewJobId(undefined);
       setMessage('Manual result uploaded. Review it before accepting.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not upload result.');
@@ -302,6 +330,8 @@ export default function GenerationPanel({
     try {
       const updated = await api.discardGenerationJob(job.id);
       setJobs(current => current.map(candidate => candidate.id === updated.id ? updated : candidate));
+      if (activeJobId === updated.id) setActiveJobId(undefined);
+      if (historyReviewJobId === updated.id) setHistoryReviewJobId(undefined);
       setMessage('Generation job discarded.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not discard job.');
@@ -323,6 +353,11 @@ export default function GenerationPanel({
           .filter(candidate => candidate.id !== result.retry_job.id),
       ]);
       setActiveJobId(result.retry_job.id);
+      setHistoryReviewJobId(undefined);
+      setPromptText(jobPrompt(result.retry_job));
+      setAspectRatio(jobAspectRatio(result.retry_job));
+      setQuality(jobQuality(result.retry_job));
+      setProvider(result.retry_job.provider || provider);
       setFocusedJobHighlightId(result.retry_job.id);
       setMessage('Retry queued.');
     } catch (error) {
@@ -333,6 +368,112 @@ export default function GenerationPanel({
     }
   };
 
+  const previewHistoryJob = (job: GenerationJobRecord) => {
+    setHistoryReviewJobId(job.id);
+    setActiveJobId(job.id);
+    setShowHistoryDrawer(false);
+  };
+
+  const useJobAsDraft = (job: GenerationJobRecord) => {
+    setPromptText(jobPrompt(job));
+    setAspectRatio(jobAspectRatio(job));
+    setQuality(jobQuality(job));
+    setProvider(job.provider || provider);
+    setHistoryReviewJobId(undefined);
+    setMessage('Prompt copied to draft.');
+  };
+
+  const copyJobPrompt = async (job: GenerationJobRecord) => {
+    const text = jobPrompt(job);
+    try {
+      await navigator.clipboard?.writeText(text);
+      setMessage('Prompt copied.');
+    } catch {
+      setMessage(text ? 'Prompt ready to copy.' : 'No prompt to copy.');
+    }
+  };
+
+  const renderStageActions = (job: GenerationJobRecord) => (
+    <span className="generation-stage-actions generation-icon-actions" aria-label="Result actions">
+      {item && job.status === 'succeeded' && (
+        <button className="generation-icon-action primary" onClick={() => acceptAttach(job)} disabled={busy} aria-label="Attach to current item" title="Attach to current item">
+          <Paperclip size={17} />
+        </button>
+      )}
+      {job.status === 'succeeded' && (
+        <button className="generation-icon-action primary" onClick={() => openSaveAsNewReview(job)} disabled={busy} aria-label="Save as new item" title="Save as new item">
+          {item ? <ImagePlus size={17} /> : <Save size={17} />}
+        </button>
+      )}
+      {job.status === 'succeeded' && (
+        <button className="generation-icon-action" onClick={() => discardAndRetryJob(job)} disabled={busy} aria-label="Retry" title="Retry">
+          <RefreshCw size={17} />
+        </button>
+      )}
+      {job.status === 'failed' && job.provider === 'openai_codex_oauth_native' && (
+        <button className="generation-icon-action" onClick={() => runJob(job)} disabled={busy} aria-label="Retry" title="Retry">
+          <RefreshCw size={17} />
+        </button>
+      )}
+      {['queued', 'running'].includes(job.status) && job.provider === 'openai_codex_oauth_native' && (
+        <button className="generation-icon-action danger" onClick={() => cancelJob(job)} disabled={busy} aria-label="Cancel" title="Cancel">
+          <XCircle size={17} />
+        </button>
+      )}
+      {['succeeded', 'failed'].includes(job.status) && (
+        <button className="generation-icon-action danger" onClick={() => discardJob(job)} disabled={busy} aria-label="Discard" title="Discard">
+          <Trash2 size={17} />
+        </button>
+      )}
+    </span>
+  );
+
+  const renderStage = () => {
+    if (!selectedStageJob) {
+      return <div className="generation-stage generation-stage-ready"><strong>Ready</strong></div>;
+    }
+    const resultUrl = jobResultUrl(selectedStageJob);
+    if (selectedStageJob.status === 'queued' || selectedStageJob.status === 'running') {
+      return (
+        <div className="generation-stage generation-stage-generating">
+          <div className="generation-generating-block generation-shimmer" />
+          <strong>{selectedStageJob.status === 'queued' ? 'Queued' : 'Generating…'}</strong>
+          {selectedStageJob.provider === 'manual_upload' && !selectedStageJob.result_path && (
+            <details className="generation-advanced inline-upload">
+              <summary>Upload external result</summary>
+              <label className="secondary file-button">Choose image<input type="file" accept="image/*" onChange={event => uploadManualResult(selectedStageJob, event.currentTarget.files?.[0])} /></label>
+            </details>
+          )}
+          {renderStageActions(selectedStageJob)}
+        </div>
+      );
+    }
+    if (selectedStageJob.status === 'failed') {
+      return (
+        <div className="generation-stage generation-stage-error">
+          <strong>{selectedFailure?.title || 'Failed'}</strong>
+          <p>{selectedFailure?.guidance}</p>
+          {selectedStageJob.error && <small title={selectedStageJob.error}>{selectedStageJob.error}</small>}
+          {renderStageActions(selectedStageJob)}
+        </div>
+      );
+    }
+    if (resultUrl) {
+      return (
+        <div className="generation-stage generation-stage-result">
+          <img className="generation-result-image generation-result-fade-in" src={resultUrl} alt="Generation result" />
+          {renderStageActions(selectedStageJob)}
+        </div>
+      );
+    }
+    return (
+      <div className="generation-stage generation-stage-ready">
+        <strong>{statusLabel(selectedStageJob.status)}</strong>
+        {renderStageActions(selectedStageJob)}
+      </div>
+    );
+  };
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <section className="generation-panel modal polished-modal" onClick={event => event.stopPropagation()} aria-label="Generation workflow">
@@ -340,132 +481,89 @@ export default function GenerationPanel({
           <div>
             <p className="drawer-eyebrow">Generation</p>
             <h2>{panelTitle}</h2>
-            <p className="muted">Create, review, and save generated images before they enter the library.</p>
           </div>
           <button className="modal-icon-button close" onClick={onClose} aria-label={t('close')}>×</button>
         </div>
 
         <div className="generation-layout">
           <section className="generation-compose-card generation-composer-card">
-            <div className="generation-card-head">
-              <div>
-                <p className="drawer-eyebrow">Composer</p>
-                <h3>Generate New Image</h3>
-                <p className="muted">Describe the image you want to create.</p>
+            {!isHistoryReview ? (
+              <>
+                <label className="generation-prompt-area">
+                  <span className="sr-only">Prompt</span>
+                  <textarea value={promptText} onChange={event => setPromptText(event.currentTarget.value)} placeholder="Describe the image…" />
+                </label>
+                <div className="generation-composer-controls">
+                  <span className={`generation-provider-pill ${selectedProvider && providerReady(selectedProvider) ? 'is-ready' : 'is-unavailable'}`}>{providerChip}</span>
+                  {selectedProvider && !providerReady(selectedProvider) && <p className="provider-help">This provider is not ready. Configure it in Providers before running generation.</p>}
+                  <div className="generation-settings-chips" aria-label="Aspect ratio">
+                    {ASPECT_RATIO_OPTIONS.map(option => (
+                      <button key={option.value} className={aspectRatio === option.value ? 'is-selected' : ''} onClick={() => setAspectRatio(option.value)} title={option.label} type="button">{option.short}</button>
+                    ))}
+                  </div>
+                  <div className="generation-settings-chips" aria-label="Quality">
+                    {QUALITY_OPTIONS.map(option => (
+                      <button key={option.value} className={quality === option.value ? 'is-selected' : ''} onClick={() => setQuality(option.value)} type="button">{option.label}</button>
+                    ))}
+                  </div>
+                  <button className="primary generation-primary-action" onClick={createJob} disabled={busy || !promptText.trim()}>Generate</button>
+                  <details className="generation-advanced">
+                    <summary>Upload external result</summary>
+                    <p className="muted">Manual upload is kept as an advanced fallback for images generated outside the app.</p>
+                  </details>
+                </div>
+              </>
+            ) : historyReviewJob && (
+              <div className="generation-history-prompt-preview">
+                <p className="drawer-eyebrow">History prompt</p>
+                <textarea readOnly value={jobPrompt(historyReviewJob)} aria-label="Selected history prompt" />
+                <p className="muted">{jobAspectRatio(historyReviewJob)} · {jobQuality(historyReviewJob)} · {historyReviewJob.provider === 'openai_codex_oauth_native' ? 'ChatGPT' : historyReviewJob.provider}</p>
+                <div className="generation-history-prompt-actions">
+                  <button className="primary" onClick={() => useJobAsDraft(historyReviewJob)}>Use as draft</button>
+                  <button className="secondary" onClick={() => copyJobPrompt(historyReviewJob)}><Clipboard size={15} /> Copy prompt</button>
+                  <button className="secondary" onClick={() => setHistoryReviewJobId(undefined)}><ArrowLeft size={15} /> Back to draft</button>
+                </div>
               </div>
-              <span className={`generation-provider-pill ${selectedProvider && providerReady(selectedProvider) ? 'is-ready' : 'is-unavailable'}`}>
-                {selectedProvider && providerReady(selectedProvider) ? `${selectedProvider.display_name} connected` : 'Provider not ready'}
-              </span>
-            </div>
-
-            <label className="generation-provider-field">
-              <span>Provider</span>
-              <select value={provider} onChange={event => setProvider(event.currentTarget.value)}>
-                {primaryProviders.map(nextProvider => (
-                  <option key={nextProvider.provider} value={nextProvider.provider} disabled={!providerReady(nextProvider)}>
-                    {nextProvider.display_name}{providerReady(nextProvider) ? '' : ' · unavailable'}
-                  </option>
-                ))}
-                {primaryProviders.length === 0 && <option value="manual_upload">No connected image provider</option>}
-                {!providers.some(nextProvider => nextProvider.provider === 'openai_codex_oauth_native') && <option value="openai_codex_oauth_native">ChatGPT / Codex OAuth</option>}
-              </select>
-            </label>
-            {selectedProvider && !providerReady(selectedProvider) && (
-              <p className="provider-help">This provider is not ready. Configure it in Providers before running generation.</p>
             )}
-
-            <label className="generation-prompt-field">
-              <span>Prompt</span>
-              <textarea value={promptText} onChange={event => setPromptText(event.currentTarget.value)} placeholder="Describe the image to generate" />
-            </label>
-
-            <div className="generation-settings-row" aria-label="Generation settings">
-              <label>
-                <span>Aspect ratio</span>
-                <select value={aspectRatio} onChange={event => setAspectRatio(event.currentTarget.value)}>
-                  {ASPECT_RATIO_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-              </label>
-              <label>
-                <span>Quality</span>
-                <select value={quality} onChange={event => setQuality(event.currentTarget.value)}>
-                  {QUALITY_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                </select>
-              </label>
-            </div>
-            <button className="primary generation-primary-action" onClick={createJob} disabled={busy || !promptText.trim()}>Generate</button>
-            <p className="provider-help">Aspect ratio is sent as a ChatGPT-style instruction; quality uses the selected provider preset.</p>
-            <details className="generation-advanced">
-              <summary>Upload external result</summary>
-              <p className="muted">Manual upload is kept as an advanced fallback for images generated outside the app.</p>
-            </details>
           </section>
 
-          <section className="generation-inbox-card generation-workbench-card">
-            <div className="generation-inbox-head generation-card-head">
-              <div>
-                <p className="drawer-eyebrow">Workbench</p>
-                <h3>Review generated results</h3>
-                <p className="muted">Result inbox</p>
-              </div>
-              <button className="secondary" onClick={() => refreshJobs()} disabled={busy}>Refresh</button>
+          <section className="generation-stage-card">
+            <div className="generation-stage-head">
+              <span>{isHistoryReview ? 'History' : 'Stage'}</span>
+              <button className="generation-history-button" onClick={() => setShowHistoryDrawer(true)} aria-label="History" title="History"><Clock3 size={17} /> History</button>
             </div>
-            {visibleJobs.length === 0 && <p className="muted">No generation jobs for this prompt yet.</p>}
-            {visibleJobs.map(job => {
-              const failure = job.status === 'failed' ? friendlyFailure(job) : undefined;
-              return (
-                <article
-                  ref={job.id === focusedJobHighlightId ? focusedJobRef : undefined}
-                  className={`generation-job-card status-${job.status} ${job.result_path ? 'has-result' : ''} ${job.id === focusedJobHighlightId ? 'is-focused' : ''}`}
-                  key={job.id}
-                >
-                  <header>
-                    <strong>{job.provider === 'openai_codex_oauth_native' ? 'ChatGPT / Codex OAuth' : job.provider}</strong>
-                    <b>{statusLabel(job.status)}</b>
-                  </header>
-                  <p className="muted">{job.edited_prompt_text || job.prompt_text}</p>
-                  {jobResultUrl(job) ? (
-                    <img className="generation-result-image generation-result-fade-in" src={jobResultUrl(job)} alt="Generation result" />
-                  ) : job.status === 'running' ? (
-                    <div className="generation-result-placeholder generation-shimmer">Generating image…</div>
-                  ) : (
-                    <div className="generation-result-placeholder">No result image yet</div>
-                  )}
-                  {failure && <div className="generation-failure"><strong>{failure.title}</strong><p>{failure.guidance}</p>{job.error && <small>{job.error}</small>}</div>}
-                  <div className="generation-job-actions">
-                    {job.provider === 'openai_codex_oauth_native' && job.status === 'failed' && <button className="secondary" onClick={() => runJob(job)} disabled={busy}>{busy && activeJobId === job.id ? 'Retrying…' : 'Retry'}</button>}
-                    {job.provider === 'openai_codex_oauth_native' && ['queued', 'running'].includes(job.status) && <button className="secondary" onClick={() => cancelJob(job)} disabled={busy}>{busy && activeJobId === job.id ? 'Cancelling…' : 'Cancel'}</button>}
-                    {job.provider === 'manual_upload' && !job.result_path && !['accepted', 'discarded', 'cancelled'].includes(job.status) && (
-                      <details className="generation-advanced inline-upload">
-                        <summary>Upload external result</summary>
-                        <label className="secondary file-button">Choose image<input type="file" accept="image/*" onChange={event => uploadManualResult(job, event.currentTarget.files?.[0])} /></label>
-                      </details>
-                    )}
-                    {job.status === 'succeeded' && (
-                      <span className="generation-icon-actions" aria-label="Result actions">
-                        {item && (
-                          <button className="generation-icon-action primary" onClick={() => acceptAttach(job)} disabled={busy} aria-label="Attach to current item" title="Attach to current item">
-                            <Paperclip size={17} />
-                          </button>
-                        )}
-                        <button className="generation-icon-action primary" onClick={() => openSaveAsNewReview(job)} disabled={busy} aria-label="Save as new item" title="Save as new item">
-                          {item ? <ImagePlus size={17} /> : <Save size={17} />}
-                        </button>
-                        <button className="generation-icon-action" onClick={() => discardAndRetryJob(job)} disabled={busy} aria-label="Retry" title="Retry">
-                          <RefreshCw size={17} />
-                        </button>
-                        <button className="generation-icon-action danger" onClick={() => discardJob(job)} disabled={busy} aria-label="Discard" title="Discard">
-                          <Trash2 size={17} />
-                        </button>
-                      </span>
-                    )}
-                    {job.status === 'failed' && <button className="generation-icon-action danger" onClick={() => discardJob(job)} disabled={busy} aria-label="Discard" title="Discard"><XCircle size={17} /></button>}
-                  </div>
-                </article>
-              );
-            })}
+            {renderStage()}
+            {selectedStageJob && (
+              <div ref={selectedStageJob.id === focusedJobHighlightId ? focusedJobRef : undefined} className="generation-stage-meta">
+                <b>{statusLabel(selectedStageJob.status)}</b>
+                {selectedPrompt && <span>{selectedPrompt}</span>}
+              </div>
+            )}
           </section>
         </div>
+
+        {showHistoryDrawer && (
+          <aside className="generation-history-drawer" aria-label="Generation history">
+            <div className="drawer-head">
+              <div>
+                <p className="drawer-eyebrow">History</p>
+                <h3>Recent generations</h3>
+              </div>
+              <button className="modal-icon-button" onClick={() => setShowHistoryDrawer(false)} aria-label={t('close')}>×</button>
+            </div>
+            {visibleJobs.length === 0 && <p className="muted">No generation jobs yet.</p>}
+            {visibleJobs.map(job => (
+              <button key={job.id} className={`generation-history-item status-${job.status}`} onClick={() => previewHistoryJob(job)}>
+                {jobResultUrl(job) ? <img src={jobResultUrl(job)} alt="" /> : <span className="generation-history-placeholder">{statusLabel(job.status)}</span>}
+                <span>
+                  <b>{jobPrompt(job) || 'Untitled generation'}</b>
+                  <small>{jobAspectRatio(job)} · {jobQuality(job)} · {statusLabel(job.status)}</small>
+                </span>
+              </button>
+            ))}
+          </aside>
+        )}
+
         {reviewJob && metadataDraft && (
           <section ref={metadataPanelRef} tabIndex={-1} className="save-new-metadata-panel" aria-label="Save generated image as new item">
             <div className="drawer-head">

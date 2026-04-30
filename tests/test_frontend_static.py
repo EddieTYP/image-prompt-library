@@ -304,7 +304,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "discardGenerationJob:" in api
     assert "GenerationPanel" in app or "GenerationPanel" in detail
     assert "Generate variant" in detail
-    assert "Result inbox" in panel
+    assert "Result inbox" not in panel
     assert "api.createGenerationJob" in panel
     assert "api.runGenerationJob" in panel
     assert "api.uploadGenerationResult" in panel
@@ -374,17 +374,36 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "High" in panel
     assert "generation-layout" in panel
     assert "generation-composer-card" in panel
-    assert "generation-workbench-card" in panel
-    assert "generation-settings-row" in panel
-    assert "Review generated results" in panel
-    assert "Describe the image you want to create." in panel
+    assert "generation-stage-card" in panel
+    assert "generation-prompt-area" in panel
+    assert "generation-stage" in panel
+    assert "generation-stage-ready" in panel
+    assert "Ready" in panel
+    assert "History" in panel
+    assert "showHistoryDrawer" in panel
+    assert "generation-history-drawer" in panel
+    assert "generation-history-item" in panel
+    assert "Use as draft" in panel
+    assert "Copy prompt" in panel
+    assert "Back to draft" in panel
+    assert "setHistoryReviewJobId" in panel
+    assert "useJobAsDraft" in panel
+    assert "copyJobPrompt" in panel
+    assert "generation-settings-chips" in panel
+    assert "generation-provider-field" not in panel
+    assert "<select value={aspectRatio}" not in panel
+    assert "<select value={quality}" not in panel
+    assert "Review generated results" not in panel
+    assert "Describe the image you want to create." not in panel
     assert "Uses a ChatGPT-style aspect-ratio instruction" not in panel
     compact_css = css.replace(" ", "")
-    assert ".generation-layout{display:grid;grid-template-columns:minmax(320px,.9fr)minmax(380px,1.1fr);" in compact_css
-    assert ".generation-settings-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));" in compact_css
-    assert ".generation-provider-pill" in compact_css
-    assert ".generation-provider-pill{display:inline-flex;align-items:center;justify-content:center" in compact_css
-    assert "text-align:center" in compact_css
+    assert ".generation-layout{display:grid;grid-template-columns:minmax(320px,.92fr)minmax(420px,1.08fr);" in compact_css
+    assert ".generation-prompt-area" in compact_css
+    assert ".generation-stage{position:relative;" in compact_css
+    assert ".generation-stage-generating" in compact_css
+    assert ".generation-history-drawer" in compact_css
+    assert ".generation-history-item" in compact_css
+    assert ".generation-settings-chips" in compact_css
     assert "@media(max-width:760px)" in compact_css
     assert ".generation-layout{grid-template-columns:1fr" in compact_css
 
