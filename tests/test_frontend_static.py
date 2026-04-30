@@ -381,7 +381,8 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Ready" in panel
     assert "Generating…" in panel
     assert "stage-shimmer" in panel
-    assert "generation-history-overlay" in panel
+    assert "generation-history-control" in panel
+    assert "generation-close-overlay" in panel
     assert "aria-label=\"History\"" in panel
     assert "showHistoryDrawer" in panel
     assert "generation-history-drawer" in panel
@@ -415,11 +416,14 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert ".generation-stage-card{position:relative;" in compact_css
     assert ".generation-stage{position:relative;" in compact_css
     assert ".generation-stage-generating" in compact_css
-    assert "background:#111315" in compact_css
+    assert "background:rgba(255,255,255,.94)" in compact_css
+    assert "background:rgba(250,248,255,.82)" in compact_css
+    assert "inset:0" in compact_css
     assert "animation:stage-shimmer-sweep" in compact_css
-    assert "rgba(255,255,255,.10)" in compact_css
-    assert "rgba(124,92,255,.12)" in compact_css
-    assert ".generation-history-overlay" in compact_css
+    assert "rgba(255,255,255,.86)" in compact_css
+    assert "rgba(124,92,255,.14)" in compact_css
+    assert ".generation-history-control" in compact_css
+    assert ".generation-close-overlay" in compact_css
     assert ".generation-stage-action-bar" in compact_css
     assert "backdrop-filter:blur" in compact_css
     assert ".generation-history-drawer" in compact_css

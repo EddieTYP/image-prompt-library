@@ -431,8 +431,6 @@ export default function GenerationPanel({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <section className="generation-panel modal polished-modal" onClick={event => event.stopPropagation()} aria-label="Generation workflow">
-        <button className="modal-icon-button close generation-close" onClick={onClose} aria-label={t('close')}>×</button>
-
         <div className="generation-layout">
           <section className="generation-compose-card generation-composer-card">
             {!isHistoryReview ? (
@@ -467,6 +465,7 @@ export default function GenerationPanel({
                     )}
                   </div>
                   <button className="primary generation-primary-action" onClick={createJob} disabled={busy || !promptText.trim()}>Generate</button>
+                  <button className="generation-history-control" onClick={() => setShowHistoryDrawer(true)} aria-label="History" title="History" type="button"><Clock3 size={17} /></button>
                 </div>
               </>
             ) : historyReviewJob && (
@@ -482,7 +481,7 @@ export default function GenerationPanel({
           </section>
 
           <section className="generation-stage-card">
-            <button className="generation-history-overlay" onClick={() => setShowHistoryDrawer(true)} aria-label="History" title="History"><Clock3 size={17} /></button>
+            <button className="modal-icon-button close generation-close-overlay" onClick={onClose} aria-label={t('close')}>×</button>
             {renderStage()}
           </section>
         </div>
