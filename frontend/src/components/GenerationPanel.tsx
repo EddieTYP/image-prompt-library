@@ -35,7 +35,8 @@ const ASPECT_RATIO_OPTIONS = [
 ];
 
 const QUALITY_OPTIONS = [
-  { value: 'medium', label: 'Standard' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
 ];
 
@@ -81,7 +82,7 @@ function jobAspectRatio(job?: GenerationJobRecord) {
 function jobQuality(job?: GenerationJobRecord) {
   const value = job?.parameters?.quality;
   if (value === 'standard') return 'medium';
-  return typeof value === 'string' && ['medium', 'high'].includes(value) ? value : 'high';
+  return typeof value === 'string' && ['low', 'medium', 'high'].includes(value) ? value : 'high';
 }
 
 function optionLabel(options: { value: string; label: string }[], value: string) {

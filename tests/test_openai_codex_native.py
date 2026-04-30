@@ -302,20 +302,20 @@ def test_codex_native_device_flow_rejects_invalid_upstream_json(tmp_path, monkey
         raise AssertionError("expected invalid interval to be converted to CodexNativeAuthError")
 
 
-def test_codex_native_uses_gpt_55_as_only_default_image_orchestration_model():
+def test_codex_native_uses_verified_default_image_orchestration_models():
     from backend.services.openai_codex_native import CODEX_CHAT_MODEL, DEFAULT_CODEX_ORCHESTRATOR_MODELS, codex_orchestrator_models
 
     assert CODEX_CHAT_MODEL == "gpt-5.5"
-    assert DEFAULT_CODEX_ORCHESTRATOR_MODELS == ["gpt-5.5"]
-    assert codex_orchestrator_models() == ["gpt-5.5"]
+    assert DEFAULT_CODEX_ORCHESTRATOR_MODELS == ["gpt-5.5", "gpt-5.4", "gpt-5.3-codex"]
+    assert codex_orchestrator_models() == ["gpt-5.5", "gpt-5.4", "gpt-5.3-codex"]
 
 
 def test_codex_native_filters_known_text_only_orchestrator_models_from_env(monkeypatch):
-    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_ORCHESTRATOR_MODELS", "gpt-5.5,gpt-5.3-codex-spark,gpt-5.4")
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_ORCHESTRATOR_MODELS", "gpt-5.5,gpt-5.3-codex-spark,gpt-5.3,gpt-5.4")
 
     from backend.services.openai_codex_native import codex_orchestrator_models
 
-    assert codex_orchestrator_models() == ["gpt-5.5", "gpt-5.4"]
+    assert codex_orchestrator_models() == ["gpt-5.5", "gpt-5.4", "gpt-5.3-codex"]
 
 
 def test_codex_native_status_exposes_orchestrator_and_image_models(tmp_path, monkeypatch):
@@ -330,7 +330,7 @@ def test_codex_native_status_exposes_orchestrator_and_image_models(tmp_path, mon
 
     codex = next(provider for provider in c.get("/api/generation-providers").json() if provider["provider"] == "openai_codex_oauth_native")
 
-    assert codex["orchestrator_models"] == ["gpt-5.5"]
+    assert codex["orchestrator_models"] == ["gpt-5.5", "gpt-5.4", "gpt-5.3-codex"]
     assert codex["default_orchestrator_model"] == "gpt-5.5"
     assert codex["image_models"] == ["gpt-image-2"]
     assert codex["default_image_model"] == "gpt-image-2"

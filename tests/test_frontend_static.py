@@ -284,6 +284,18 @@ def test_config_prompt_copy_language_is_mobile_safe():
     assert ".prompt-copy-language-control{grid-template-columns:repeat(2,minmax(0,1fr));" in compact_css
 
 
+def test_config_language_buttons_are_center_aligned():
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    compact_css = css.replace(" ", "")
+
+    assert ".segmented-controlbutton{" in compact_css
+    segment_button_css = compact_css[compact_css.find(".segmented-controlbutton{") : compact_css.find(".segmented-controlbutton.active")]
+    assert "display:flex" in segment_button_css
+    assert "align-items:center" in segment_button_css
+    assert "justify-content:center" in segment_button_css
+    assert "text-align:center" in segment_button_css
+
+
 def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
@@ -368,7 +380,8 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "9:16" in panel
     assert "4:3" in panel
     assert "16:9" in panel
-    assert "Standard" in panel
+    assert "Low" in panel
+    assert "Medium" in panel
     assert "High" in panel
     assert "generation-layout" in panel
     assert "generation-composer-card" in panel
@@ -442,7 +455,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert ".generation-fullscreen-overlay" in compact_css
     assert "max-height:none" in compact_css
     assert "object-fit:contain" in compact_css
-    assert "background:inherit" in compact_css
+    assert "background:#faf8ff" in compact_css
     assert "margin-top:0" in compact_css
     assert ".generation-stage-actions" in compact_css
     assert ".generation-stage-action-bar" not in compact_css
@@ -455,10 +468,15 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert ".generation-stage-actions{position:absolute;" in compact_css
     assert "transform:none" in compact_css
     assert ".generation-stage-actions{position:absolute;left:14px;right:14px;" in compact_css
+    final_generation_css = compact_css[compact_css.rfind("/*Regressionfixes:preventcomposercontrols") :]
+    assert "justify-content:flex-end" in final_generation_css
+    assert ".generation-stage-actions.stage-action.danger{margin-right:0" in final_generation_css
     assert ".stage-action{width:42px;padding:0" in compact_css
     assert ".generation-fullscreen-frame" in compact_css
     assert ".generation-fullscreen-close" in compact_css
     assert ".generation-result-image.generation-result-fade-in{border-radius:0" in compact_css
+    assert "animation:generation-result-crisp-fade" in compact_css
+    assert "clip-path:inset(0)" in compact_css
     assert ".generation-composer-card{display:grid;" in compact_css and "overflow:visible" in compact_css
     assert ".generation-history-drawer" in compact_css
     assert ".generation-history-item" in compact_css
