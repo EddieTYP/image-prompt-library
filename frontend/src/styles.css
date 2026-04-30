@@ -28,7 +28,8 @@ button{color:inherit}
 .vista-button:hover,.iconbtn:hover,.chip:hover,.toggle button:hover,.actions button:hover,.actions a:hover,.secondary:hover{background:#e1dccf;transform:translateY(-1px)}
 .filter-button{font-weight:800;height:46px;position:relative}
 .filter-button.active{background:#eee8ff;color:var(--accent-strong);box-shadow:0 0 0 1px rgba(109,74,255,.13)}
-.iconbtn{width:46px;height:46px;padding:0;border-radius:50%}
+.iconbtn{width:46px;height:46px;padding:0;border-radius:50%;position:relative}
+.update-available-badge{position:absolute;right:-8px;top:-8px;max-width:120px;border-radius:999px;background:#211922;color:white;padding:4px 7px;font-size:10px;font-weight:900;line-height:1;white-space:nowrap;box-shadow:0 8px 18px rgba(33,25,34,.22)}
 .search{position:relative;display:flex;align-items:center;gap:12px;padding:0 18px;border:1px solid #d8d1c3;border-radius:22px;background:#fff;box-shadow:0 12px 32px rgba(33,25,34,.08)}
 .toolbar-search{height:52px;min-width:0}
 .search svg{color:#8a8376;flex:0 0 auto}

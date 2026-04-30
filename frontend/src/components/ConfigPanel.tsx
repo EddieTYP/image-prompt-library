@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { api, isDemoMode } from '../api/client';
-import type { AppConfig, CodexNativeAuthStart, GenerationProviderStatus } from '../types';
+import type { AppConfig, AppUpdateStatus, CodexNativeAuthStart, GenerationProviderStatus } from '../types';
 import { UI_LANGUAGE_LABELS, type Translator, type UiLanguage } from '../utils/i18n';
 import { getPromptCopyLanguageLabel, type PromptCopyLanguage } from '../utils/prompts';
 
@@ -94,6 +94,10 @@ export default function ConfigPanel({
   const [authStart, setAuthStart] = useState<CodexNativeAuthStart>();
   const [providerMessage, setProviderMessage] = useState<string>();
   const [providerBusy, setProviderBusy] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>();
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string>();
+  const [showActiveUpdateConfirm, setShowActiveUpdateConfirm] = useState(false);
 
   const loadProviders = () => api.generationProviders().then(nextProviders => {
     setProviders(nextProviders);
@@ -107,6 +111,7 @@ export default function ConfigPanel({
   useEffect(() => {
     if (open) {
       api.config().then(setCfg).catch(() => undefined);
+      api.updateStatus().then(setUpdateStatus).catch(() => undefined);
       loadProviders();
     }
   }, [open]);
@@ -155,6 +160,35 @@ export default function ConfigPanel({
     } finally {
       setProviderBusy(false);
     }
+  };
+
+  const activeUpdateJobs = (updateStatus?.active_generation_jobs.running || 0) + (updateStatus?.active_generation_jobs.queued || 0);
+  const refreshUpdateStatus = () => api.updateStatus().then(setUpdateStatus).catch(() => setUpdateMessage('Could not check app updates.'));
+  const beginUpdate = async (cancelActiveGenerationJobs: boolean) => {
+    if (!updateStatus?.latest_version) return;
+    setUpdateBusy(true);
+    setUpdateMessage(undefined);
+    try {
+      const result = await api.startAppUpdate({ target_version: updateStatus.latest_version, cancel_active_generation_jobs: cancelActiveGenerationJobs });
+      setShowActiveUpdateConfirm(false);
+      setUpdateMessage(result.requires_manual_restart
+        ? `Update installed. Restart the app from Terminal to use ${result.target_version}.`
+        : `Update installed. Restart the service to use ${result.target_version}.`);
+      await refreshUpdateStatus();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not install update.';
+      if (message.includes('active_generation_jobs')) setShowActiveUpdateConfirm(true);
+      setUpdateMessage(message);
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
+  const requestUpdate = () => {
+    if (activeUpdateJobs > 0) {
+      setShowActiveUpdateConfirm(true);
+      return;
+    }
+    void beginUpdate(false);
   };
 
   return (
@@ -229,6 +263,35 @@ export default function ConfigPanel({
           onChange={event => onFocusThumbnailBudget(Number(event.currentTarget.value))}
         />
         <div className="range-ticks"><span>{t('compact')}</span><span>{t('gallery')}</span><span>{t('full')}</span></div>
+      </section>
+
+      <section className="setting-group app-update-section">
+        <h3>App update</h3>
+        {!updateStatus && <p className="muted">Checking for updates…</p>}
+        {updateStatus && !updateStatus.update_available && <p className="muted">Image Prompt Library is up to date. Current version: <code>{updateStatus.current_version}</code></p>}
+        {updateStatus?.update_available && (
+          <div className="update-card">
+            <p className="muted"><strong>Update available</strong>: <code>{updateStatus.latest_version}</code></p>
+            <p className="muted">Current version: <code>{updateStatus.current_version}</code></p>
+            {showActiveUpdateConfirm ? (
+              <div className="update-warning">
+                <p>Updating requires restarting the app.</p>
+                <p>There are {updateStatus.active_generation_jobs.running} generation jobs running and {updateStatus.active_generation_jobs.queued} queued. If you continue now, unfinished jobs will be cancelled and unfinished results will not be saved.</p>
+                <div className="provider-actions">
+                  <button className="secondary" onClick={() => setShowActiveUpdateConfirm(false)} disabled={updateBusy}>Update later</button>
+                  <button className="danger" onClick={() => beginUpdate(true)} disabled={updateBusy}>Cancel jobs and update</button>
+                </div>
+              </div>
+            ) : (
+              <div className="provider-actions">
+                <button className="primary" onClick={requestUpdate} disabled={updateBusy}>{updateBusy ? 'Installing…' : 'Update and restart'}</button>
+                {updateStatus.release_url && <a className="secondary" href={updateStatus.release_url} target="_blank" rel="noreferrer">View release</a>}
+              </div>
+            )}
+            <p className="provider-help">Foreground Terminal installs will need a manual restart after installation. macOS service installs can be restarted via service management.</p>
+          </div>
+        )}
+        {updateMessage && <p className="provider-message">{updateMessage}</p>}
       </section>
 
       <section className="setting-group provider-section">

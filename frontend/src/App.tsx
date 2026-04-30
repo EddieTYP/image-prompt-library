@@ -12,7 +12,7 @@ import GenerationQueueDrawer from './components/GenerationQueueDrawer';
 import ConfigPanel from './components/ConfigPanel';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
-import type { ClusterRecord, GenerationJobRecord, GenerationProviderStatus, ItemDetail, ItemSummary, TagRecord, ViewMode } from './types';
+import type { AppUpdateStatus, ClusterRecord, GenerationJobRecord, GenerationProviderStatus, ItemDetail, ItemSummary, TagRecord, ViewMode } from './types';
 import { copyTextToClipboard } from './utils/clipboard';
 import { DEFAULT_UI_LANGUAGE, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
 import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptCopyLanguage } from './utils/prompts';
@@ -95,6 +95,7 @@ export default function App() {
   const [focusedGenerationJobId, setFocusedGenerationJobId] = useState<string>();
   const [pendingGenerationSourceItemId, setPendingGenerationSourceItemId] = useState<string>();
   const [generationAvailable, setGenerationAvailable] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>();
   const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
   const exploreFocusedClusterId = view === 'explore'
     ? (clusterId || (dataScope.clusterId === pendingExploreUnfilterClusterId ? pendingExploreUnfilterClusterId : undefined))
@@ -109,7 +110,8 @@ export default function App() {
   const refreshGenerationAvailability = () => api.generationProviders()
     .then(providers => setGenerationAvailable(providers.some(generationProviderConnected)))
     .catch(() => setGenerationAvailable(false));
-  useEffect(() => { refreshClusters(); refreshTags(); refreshGenerationAvailability(); }, []);
+  const refreshUpdateStatus = () => api.updateStatus().then(setUpdateStatus).catch(() => setUpdateStatus(undefined));
+  useEffect(() => { refreshClusters(); refreshTags(); refreshGenerationAvailability(); refreshUpdateStatus(); }, []);
   useEffect(() => {
     const timer = window.setInterval(refreshGenerationAvailability, 3000);
     return () => window.clearInterval(timer);
@@ -190,7 +192,7 @@ export default function App() {
   const focusedItemGenerationJobId = pendingGenerationSourceItemId ? focusedGenerationJobId : undefined;
   const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
   return <div className={`app ${view === 'explore' ? 'explore-mode' : 'cards-mode'}`}>
-    <TopBar t={t} q={q} onQ={setQ} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
+    <TopBar t={t} q={q} updateAvailable={Boolean(updateStatus?.update_available)} onQ={setQ} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
     {isDemoMode && (
       <div className="demo-banner" role="status">
         <strong>{t('onlineReadOnlyDemo')}</strong>
