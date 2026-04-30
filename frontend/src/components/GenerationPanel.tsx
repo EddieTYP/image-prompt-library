@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Clipboard, Clock3 } from 'lucide-react';
+import { ArrowLeft, Clipboard, Clock3, Maximize2 } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import type { GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ItemDetail } from '../types';
 import type { Translator } from '../utils/i18n';
@@ -118,23 +118,28 @@ export default function GenerationPanel({
   const [focusedJobHighlightId, setFocusedJobHighlightId] = useState<string | undefined>(initialJobId);
   const [reviewJob, setReviewJob] = useState<GenerationJobRecord>();
   const [metadataDraft, setMetadataDraft] = useState<GenerationJobAcceptAsNewItemPayload>();
+  const [isSavePanelClosing, setIsSavePanelClosing] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [historyReviewJobId, setHistoryReviewJobId] = useState<string | undefined>(initialJobId);
   const metadataPanelRef = useRef<HTMLElement | null>(null);
   const focusedJobRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLElement | null>(null);
+  const initialFocusAppliedRef = useRef(false);
 
   const activeJob = useMemo(() => jobs.find(job => job.id === activeJobId), [jobs, activeJobId]);
   const historyReviewJob = useMemo(() => jobs.find(job => job.id === historyReviewJobId), [jobs, historyReviewJobId]);
   const selectedStageJob = historyReviewJob || activeJob;
   const visibleJobs = useMemo(() => jobs.filter(job => job.status !== 'discarded'), [jobs]);
   const isHistoryReview = Boolean(historyReviewJob);
+  const canUseResultActions = (job?: GenerationJobRecord) => Boolean(job && job.status === 'succeeded' && !job.accepted_image_id);
 
   const refreshJobs = async (options: { preserveActive?: boolean } = {}) => {
     const result = await api.generationJobs({ limit: 100 });
     const nextJobs = result.jobs.filter(job => item ? job.source_item_id === item.id : !job.source_item_id);
     setJobs(nextJobs);
-    const focusedJob = initialJobId ? nextJobs.find(job => job.id === initialJobId) : undefined;
+    const focusedJob = initialJobId && !initialFocusAppliedRef.current ? nextJobs.find(job => job.id === initialJobId) : undefined;
     if (focusedJob) {
+      initialFocusAppliedRef.current = true;
       setActiveJobId(focusedJob.id);
       setFocusedJobHighlightId(focusedJob.id);
       if (!historyReviewJobId) setHistoryReviewJobId(focusedJob.id);
@@ -160,6 +165,7 @@ export default function GenerationPanel({
 
   useEffect(() => {
     if (!initialJobId) return;
+    initialFocusAppliedRef.current = false;
     setActiveJobId(initialJobId);
     setFocusedJobHighlightId(initialJobId);
     setHistoryReviewJobId(initialJobId);
@@ -253,8 +259,28 @@ export default function GenerationPanel({
   };
 
   const openSaveAsNewReview = (job: GenerationJobRecord) => {
+    setIsSavePanelClosing(false);
     setReviewJob(job);
     setMetadataDraft(buildInitialMetadata(job, item));
+  };
+
+  const closeSaveAsNewReview = () => {
+    setIsSavePanelClosing(true);
+    window.setTimeout(() => {
+      setReviewJob(undefined);
+      setMetadataDraft(undefined);
+      setIsSavePanelClosing(false);
+    }, 180);
+  };
+
+  const toggleStageFullscreen = async () => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    if (document.fullscreenElement) {
+      await document.exitFullscreen?.();
+      return;
+    }
+    await stage.requestFullscreen?.();
   };
 
   const updateMetadataDraft = (patch: Partial<GenerationJobAcceptAsNewItemPayload>) => {
@@ -377,16 +403,16 @@ export default function GenerationPanel({
 
   const renderStageActions = (job: GenerationJobRecord) => (
     <div className="generation-stage-action-bar" aria-label="Result actions">
-      <button className="stage-action" onClick={() => acceptAttach(job)} disabled={busy || !item || job.status !== 'succeeded'} title={item ? 'Attach to current item' : 'Open from an item to attach'}>
+      <button className="stage-action" onClick={() => acceptAttach(job)} disabled={busy || !item} title={item ? 'Attach to current item' : 'Open from an item to attach'}>
         Attach
       </button>
-      <button className="stage-action primary" onClick={() => openSaveAsNewReview(job)} disabled={busy || job.status !== 'succeeded'} title="Save as new item">
+      <button className="stage-action" onClick={() => openSaveAsNewReview(job)} disabled={busy} title="Save as new item">
         Save as new
       </button>
-      <button className="stage-action" onClick={() => discardAndRetryJob(job)} disabled={busy || job.status !== 'succeeded'} aria-label="Retry" title="Retry">
+      <button className="stage-action" onClick={() => discardAndRetryJob(job)} disabled={busy} aria-label="Retry" title="Retry">
         Retry
       </button>
-      <button className="stage-action danger" onClick={() => discardJob(job)} disabled={busy || !['succeeded', 'failed'].includes(job.status)} title="Discard">
+      <button className="stage-action danger" onClick={() => discardJob(job)} disabled={busy} title="Discard">
         Discard
       </button>
     </div>
@@ -416,9 +442,12 @@ export default function GenerationPanel({
       return (
         <div className="generation-stage generation-stage-result">
           <img className="generation-result-image generation-result-fade-in" src={resultUrl} alt="Generation result" />
-          {renderStageActions(selectedStageJob)}
+          {canUseResultActions(selectedStageJob) && renderStageActions(selectedStageJob)}
         </div>
       );
+    }
+    if (selectedStageJob.status === 'accepted') {
+      return <div className="generation-stage generation-stage-ready"><strong>Saved</strong></div>;
     }
     return (
       <div className="generation-stage generation-stage-ready">
@@ -480,7 +509,8 @@ export default function GenerationPanel({
             )}
           </section>
 
-          <section className="generation-stage-card">
+          <section ref={stageRef} className="generation-stage-card">
+            <button className="modal-icon-button generation-fullscreen-overlay" onClick={toggleStageFullscreen} aria-label="View fullscreen" title="View fullscreen"><Maximize2 size={16} /></button>
             <button className="modal-icon-button close generation-close-overlay" onClick={onClose} aria-label={t('close')}>×</button>
             {renderStage()}
           </section>
@@ -509,13 +539,13 @@ export default function GenerationPanel({
         )}
 
         {reviewJob && metadataDraft && (
-          <section ref={metadataPanelRef} tabIndex={-1} className="save-new-metadata-panel" aria-label="Save generated image as new item">
+          <section ref={metadataPanelRef} tabIndex={-1} className={`save-new-metadata-panel${isSavePanelClosing ? ' is-closing' : ''}`} aria-label="Save generated image as new item">
             <div className="drawer-head">
               <div>
                 <p className="drawer-eyebrow">Review metadata</p>
                 <h3>Save generated image as new item</h3>
               </div>
-              <button className="modal-icon-button" onClick={() => { setReviewJob(undefined); setMetadataDraft(undefined); }} aria-label={t('close')}>×</button>
+              <button className="modal-icon-button generation-save-panel-close" onClick={closeSaveAsNewReview} aria-label={t('close')}>×</button>
             </div>
             <div className="save-new-metadata-grid">
               {jobResultUrl(reviewJob) && <img src={jobResultUrl(reviewJob)} alt="Generated result preview" />}
@@ -534,7 +564,7 @@ export default function GenerationPanel({
                 </div>
                 <span className="generation-actions">
                   <button className="primary" onClick={acceptAsNew} disabled={busy}>Confirm save</button>
-                  <button className="secondary" onClick={() => { setReviewJob(undefined); setMetadataDraft(undefined); }} disabled={busy}>Cancel</button>
+                  <button className="secondary" onClick={closeSaveAsNewReview} disabled={busy}>Cancel</button>
                 </span>
               </div>
             </div>

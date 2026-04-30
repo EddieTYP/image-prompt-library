@@ -323,7 +323,6 @@ export default function ItemDetailModal({
                       alt={item.title}
                     />
                     {uniqueImages.length > 1 && <span className="image-counter">{selectedImageIndex + 1} / {uniqueImages.length}</span>}
-                    {selectedImage.role === 'result_image' && <span className="image-role-badge">Generated</span>}
                   </>
                 ) : (
                   <div className="placeholder hero-image">{t('noImage')}</div>

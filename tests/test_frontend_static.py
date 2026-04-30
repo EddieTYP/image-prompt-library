@@ -383,6 +383,9 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "stage-shimmer" in panel
     assert "generation-history-control" in panel
     assert "generation-close-overlay" in panel
+    assert "generation-fullscreen-overlay" in panel
+    assert "toggleStageFullscreen" in panel
+    assert "stageRef" in panel
     assert "aria-label=\"History\"" in panel
     assert "showHistoryDrawer" in panel
     assert "generation-history-drawer" in panel
@@ -394,6 +397,8 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "useJobAsDraft" in panel
     assert "copyJobPrompt" in panel
     assert "generation-stage-action-bar" in panel
+    assert "canUseResultActions" in panel
+    assert "selectedStageJob.status === 'accepted'" in panel
     assert "Attach" in panel
     assert "Save as new" in panel
     assert "Retry" in panel
@@ -424,10 +429,20 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "rgba(124,92,255,.14)" in compact_css
     assert ".generation-history-control" in compact_css
     assert ".generation-close-overlay" in compact_css
+    assert ".generation-fullscreen-overlay" in compact_css
+    assert "max-height:none" in compact_css
+    assert "object-fit:contain" in compact_css
+    assert "background:inherit" in compact_css
+    assert "margin-top:0" in compact_css
     assert ".generation-stage-action-bar" in compact_css
     assert "backdrop-filter:blur" in compact_css
     assert ".generation-history-drawer" in compact_css
     assert ".generation-history-item" in compact_css
+    assert "-webkit-line-clamp:2" in compact_css
+    assert ".save-new-metadata-panel" in compact_css
+    assert ".save-new-metadata-panel.is-closing" in compact_css
+    assert "generation-save-panel-close" in panel
+    assert "image-role-badge" not in detail
     assert "@media(max-width:760px)" in compact_css
     assert ".generation-layout{grid-template-columns:1fr" in compact_css
 
