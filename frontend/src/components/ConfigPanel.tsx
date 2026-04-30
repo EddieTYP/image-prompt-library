@@ -74,6 +74,9 @@ export default function ConfigPanel({
   onGlobalThumbnailBudget,
   focusThumbnailBudget,
   onFocusThumbnailBudget,
+  updateStatus,
+  onRefreshUpdateStatus,
+  onUpdateInstalled,
   onProvidersChanged = () => undefined,
 }: {
   open: boolean;
@@ -87,6 +90,9 @@ export default function ConfigPanel({
   onGlobalThumbnailBudget: (budget: number) => void;
   focusThumbnailBudget: number;
   onFocusThumbnailBudget: (budget: number) => void;
+  updateStatus?: AppUpdateStatus;
+  onRefreshUpdateStatus: () => Promise<AppUpdateStatus | undefined>;
+  onUpdateInstalled: (targetVersion: string) => void;
   onProvidersChanged?: () => void;
 }) {
   const [cfg, setCfg] = useState<AppConfig>();
@@ -94,9 +100,9 @@ export default function ConfigPanel({
   const [authStart, setAuthStart] = useState<CodexNativeAuthStart>();
   const [providerMessage, setProviderMessage] = useState<string>();
   const [providerBusy, setProviderBusy] = useState(false);
-  const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>();
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string>();
+  const [updateInstalled, setUpdateInstalled] = useState<{ targetVersion: string; requiresManualRestart: boolean }>();
   const [showActiveUpdateConfirm, setShowActiveUpdateConfirm] = useState(false);
 
   const loadProviders = () => api.generationProviders().then(nextProviders => {
@@ -111,10 +117,10 @@ export default function ConfigPanel({
   useEffect(() => {
     if (open) {
       api.config().then(setCfg).catch(() => undefined);
-      api.updateStatus().then(setUpdateStatus).catch(() => undefined);
+      onRefreshUpdateStatus().catch(() => undefined);
       loadProviders();
     }
-  }, [open]);
+  }, [open, onRefreshUpdateStatus]);
 
   const startCodexAuth = async () => {
     setProviderBusy(true);
@@ -163,7 +169,10 @@ export default function ConfigPanel({
   };
 
   const activeUpdateJobs = (updateStatus?.active_generation_jobs.running || 0) + (updateStatus?.active_generation_jobs.queued || 0);
-  const refreshUpdateStatus = () => api.updateStatus().then(setUpdateStatus).catch(() => setUpdateMessage('Could not check app updates.'));
+  const refreshUpdateStatus = () => onRefreshUpdateStatus().catch(() => {
+    setUpdateMessage('Could not check app updates.');
+    return undefined;
+  });
   const beginUpdate = async (cancelActiveGenerationJobs: boolean) => {
     if (!updateStatus?.latest_version) return;
     setUpdateBusy(true);
@@ -171,9 +180,9 @@ export default function ConfigPanel({
     try {
       const result = await api.startAppUpdate({ target_version: updateStatus.latest_version, cancel_active_generation_jobs: cancelActiveGenerationJobs });
       setShowActiveUpdateConfirm(false);
-      setUpdateMessage(result.requires_manual_restart
-        ? `Update installed. Restart the app from Terminal to use ${result.target_version}.`
-        : `Update installed. Restart the service to use ${result.target_version}.`);
+      setUpdateInstalled({ targetVersion: result.target_version, requiresManualRestart: result.requires_manual_restart });
+      onUpdateInstalled(result.target_version);
+      setUpdateMessage(undefined);
       await refreshUpdateStatus();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not install update.';
@@ -190,6 +199,9 @@ export default function ConfigPanel({
     }
     void beginUpdate(false);
   };
+  const restartInstruction = updateInstalled?.requiresManualRestart
+    ? 'Stop the running Terminal server, then start Image Prompt Library again to use the new version.'
+    : 'The update has been installed. The macOS service restart has been scheduled; reconnect after it comes back online.';
 
   return (
     <aside className={`config drawer ${open ? 'open' : ''}`}>
@@ -268,8 +280,16 @@ export default function ConfigPanel({
       <section className="setting-group app-update-section">
         <h3>App update</h3>
         {!updateStatus && <p className="muted">Checking for updates…</p>}
-        {updateStatus && !updateStatus.update_available && <p className="muted">Image Prompt Library is up to date. Current version: <code>{updateStatus.current_version}</code></p>}
-        {updateStatus?.update_available && (
+        {updateInstalled ? (
+          <div className="update-card update-complete-card" role="status">
+            <p className="update-kicker">Update installed</p>
+            <p className="update-title">Restart required to finish updating to <code>{updateInstalled.targetVersion}</code>.</p>
+            <p className="provider-help">{restartInstruction}</p>
+            {updateInstalled.requiresManualRestart && <p className="update-command-hint"><code>image-prompt-library start</code></p>}
+          </div>
+        ) : updateStatus && !updateStatus.update_available ? (
+          <p className="muted">Image Prompt Library is up to date. Current version: <code>{updateStatus.current_version}</code></p>
+        ) : updateStatus?.update_available && (
           <div className="update-card">
             <p className="muted"><strong>Update available</strong>: <code>{updateStatus.latest_version}</code></p>
             <p className="muted">Current version: <code>{updateStatus.current_version}</code></p>
@@ -288,7 +308,7 @@ export default function ConfigPanel({
                 {updateStatus.release_url && <a className="secondary" href={updateStatus.release_url} target="_blank" rel="noreferrer">View release</a>}
               </div>
             )}
-            <p className="provider-help">Foreground Terminal installs will need a manual restart after installation. macOS service installs can be restarted via service management.</p>
+            <p className="provider-help">{updateStatus.requires_manual_restart ? 'This app is running from Terminal. After installation, stop the server and start it again to use the new version.' : 'This app is running as a macOS service. The updater can restart the service after installation.'}</p>
           </div>
         )}
         {updateMessage && <p className="provider-message">{updateMessage}</p>}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Check, Plus, XCircle } from 'lucide-react';
 import { api, isDemoMode } from './api/client';
 import TopBar from './components/TopBar';
@@ -96,6 +96,7 @@ export default function App() {
   const [pendingGenerationSourceItemId, setPendingGenerationSourceItemId] = useState<string>();
   const [generationAvailable, setGenerationAvailable] = useState(false);
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>();
+  const [restartRequiredVersion, setRestartRequiredVersion] = useState<string>();
   const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
   const exploreFocusedClusterId = view === 'explore'
     ? (clusterId || (dataScope.clusterId === pendingExploreUnfilterClusterId ? pendingExploreUnfilterClusterId : undefined))
@@ -110,8 +111,15 @@ export default function App() {
   const refreshGenerationAvailability = () => api.generationProviders()
     .then(providers => setGenerationAvailable(providers.some(generationProviderConnected)))
     .catch(() => setGenerationAvailable(false));
-  const refreshUpdateStatus = () => api.updateStatus().then(setUpdateStatus).catch(() => setUpdateStatus(undefined));
-  useEffect(() => { refreshClusters(); refreshTags(); refreshGenerationAvailability(); refreshUpdateStatus(); }, []);
+  const refreshUpdateStatus = useCallback(() => api.updateStatus().then(status => {
+    setUpdateStatus(status);
+    if (!status.update_available) setRestartRequiredVersion(undefined);
+    return status;
+  }).catch(() => {
+    setUpdateStatus(undefined);
+    return undefined;
+  }), []);
+  useEffect(() => { refreshClusters(); refreshTags(); refreshGenerationAvailability(); refreshUpdateStatus(); }, [refreshUpdateStatus]);
   useEffect(() => {
     const timer = window.setInterval(refreshGenerationAvailability, 3000);
     return () => window.clearInterval(timer);
@@ -191,8 +199,9 @@ export default function App() {
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   const focusedItemGenerationJobId = pendingGenerationSourceItemId ? focusedGenerationJobId : undefined;
   const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
+  const updateBadgeLabel = restartRequiredVersion ? 'Restart required' : (updateStatus?.update_available ? 'Update available' : undefined);
   return <div className={`app ${view === 'explore' ? 'explore-mode' : 'cards-mode'}`}>
-    <TopBar t={t} q={q} updateAvailable={Boolean(updateStatus?.update_available)} onQ={setQ} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
+    <TopBar t={t} q={q} updateBadgeLabel={updateBadgeLabel} onQ={setQ} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
     {isDemoMode && (
       <div className="demo-banner" role="status">
         <strong>{t('onlineReadOnlyDemo')}</strong>
@@ -203,7 +212,7 @@ export default function App() {
       </div>
     )}
     <FiltersPanel t={t} open={filtersOpen} clusters={localizedClusters} selected={clusterId} onSelect={handleFilterSelect} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
-    <ConfigPanel t={t} open={configOpen} onClose={() => setConfigOpen(false)} uiLanguage={uiLanguage} onUiLanguage={updateUiLanguage} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} onProvidersChanged={refreshGenerationAvailability} />
+    <ConfigPanel t={t} open={configOpen} onClose={() => setConfigOpen(false)} uiLanguage={uiLanguage} onUiLanguage={updateUiLanguage} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} updateStatus={updateStatus} onRefreshUpdateStatus={refreshUpdateStatus} onUpdateInstalled={setRestartRequiredVersion} onProvidersChanged={refreshGenerationAvailability} />
     {/* Static-test compatibility marker: <main className="app-main"> */}
     <main className={`app-main ${refreshing ? 'is-refreshing' : ''}`} aria-busy={refreshing}>
       {refreshing && <div className="refresh-indicator" role="status">{t('loading')}</div>}

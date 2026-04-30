@@ -7,7 +7,7 @@ import ViewToggle from './ViewToggle';
 interface Props {
   q: string;
   t: Translator;
-  updateAvailable?: boolean;
+  updateBadgeLabel?: string;
   onQ: (v: string) => void;
   view: ViewMode;
   onView: (v: ViewMode) => void;
@@ -21,7 +21,7 @@ interface Props {
 export default function TopBar({
   q,
   t,
-  updateAvailable = false,
+  updateBadgeLabel,
   onQ,
   view,
   onView,
@@ -57,7 +57,7 @@ export default function TopBar({
 
         <button className="iconbtn config-button" onClick={onConfig} aria-label={t('config')}>
           <Settings size={19} />
-          {updateAvailable && <span className="update-available-badge">Update available</span>}
+          {updateBadgeLabel && <span className="update-available-badge">{updateBadgeLabel}</span>}
         </button>
       </nav>
 

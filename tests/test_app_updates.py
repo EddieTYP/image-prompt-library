@@ -95,6 +95,7 @@ def test_frontend_static_update_wizard_contract():
     client = (root / "frontend" / "src" / "api" / "client.ts").read_text(encoding="utf-8")
     config = (root / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text(encoding="utf-8")
     topbar = (root / "frontend" / "src" / "components" / "TopBar.tsx").read_text(encoding="utf-8")
+    app = (root / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
 
     assert "updateStatus:" in client
     assert "startAppUpdate:" in client
@@ -102,4 +103,7 @@ def test_frontend_static_update_wizard_contract():
     assert "Cancel jobs and update" in config
     assert "Update later" in config
     assert "Wait" not in config and "等待" not in config
-    assert "Update available" in topbar
+    assert "Restart required" in config
+    assert "Update available" in app
+    assert "Restart required" in app
+    assert "updateBadgeLabel" in topbar
