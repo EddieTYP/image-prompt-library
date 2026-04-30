@@ -307,7 +307,6 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Result inbox" not in panel
     assert "api.createGenerationJob" in panel
     assert "api.runGenerationJob" in panel
-    assert "api.uploadGenerationResult" in panel
     assert "api.acceptGenerationJob" in panel
     assert "api.acceptGenerationJobAsNewItem" in panel
     assert "api.discardGenerationJob" in panel
@@ -321,17 +320,17 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Generation queued. It will start automatically." in panel
     assert "Attach to current item" in panel
     assert "Save as new item" in panel
+    assert "Save as new" in panel
     assert "aria-label=\"Retry\"" in panel
     assert "title=\"Retry\"" in panel
-    assert "RefreshCw" in panel
-    assert "generation-icon-actions" in panel
+    assert "generation-stage-action-bar" in panel
     assert "generation-shimmer" in panel
     assert "Image added to item" in panel
     assert "New variant item created" in panel
     assert "window.setTimeout(() => setMessage(''), 2200)" in panel
     assert "onAccepted(result.item, 'New variant item created');\n      onClose();" in panel
-    assert "Upload external result" in panel
-    assert "generation-advanced" in panel
+    assert "Upload external result" not in panel
+    assert "generation-advanced" not in panel
     assert "generation-panel" in css
     assert "generation-job-card" in css
     assert "generation-job-card.has-result" in css
@@ -357,29 +356,33 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Cannot generate this image" in panel
     assert "Generation is temporarily rate limited" in panel
     assert "Provider connection needs attention" in panel
-    assert "Generate image" in panel
     assert "source_item_id: item?.id" in panel
-    assert "Aspect ratio" in panel
-    assert "1:1 Square" in panel
-    assert "3:4 Portrait" in panel
-    assert "9:16 Vertical" in panel
-    assert "4:3 Landscape" in panel
-    assert "16:9 Wide" in panel
     assert "requested_aspect_ratio: aspectRatio" in panel
     assert "aspect_ratio_prompt_injection: true" in panel
     assert "quality" in panel
+    assert "ASPECT_RATIO_OPTIONS" in panel
     assert "QUALITY_OPTIONS" in panel
     assert "Auto" in panel
+    assert "1:1" in panel
+    assert "3:4" in panel
+    assert "9:16" in panel
+    assert "4:3" in panel
+    assert "16:9" in panel
     assert "Standard" in panel
     assert "High" in panel
     assert "generation-layout" in panel
     assert "generation-composer-card" in panel
     assert "generation-stage-card" in panel
     assert "generation-prompt-area" in panel
+    assert "generation-compact-controls" in panel
+    assert "generation-control-popover" in panel
     assert "generation-stage" in panel
     assert "generation-stage-ready" in panel
     assert "Ready" in panel
-    assert "History" in panel
+    assert "Generating…" in panel
+    assert "stage-shimmer" in panel
+    assert "generation-history-overlay" in panel
+    assert "aria-label=\"History\"" in panel
     assert "showHistoryDrawer" in panel
     assert "generation-history-drawer" in panel
     assert "generation-history-item" in panel
@@ -389,21 +392,38 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "setHistoryReviewJobId" in panel
     assert "useJobAsDraft" in panel
     assert "copyJobPrompt" in panel
-    assert "generation-settings-chips" in panel
+    assert "generation-stage-action-bar" in panel
+    assert "Attach" in panel
+    assert "Save as new" in panel
+    assert "Retry" in panel
+    assert "Discard" in panel
+    assert "Upload external result" not in panel
+    assert "generation-settings-chips" not in panel
+    assert "generation-provider-pill" not in panel
     assert "generation-provider-field" not in panel
     assert "<select value={aspectRatio}" not in panel
     assert "<select value={quality}" not in panel
     assert "Review generated results" not in panel
     assert "Describe the image you want to create." not in panel
     assert "Uses a ChatGPT-style aspect-ratio instruction" not in panel
+    assert "Selected job:" not in panel
     compact_css = css.replace(" ", "")
-    assert ".generation-layout{display:grid;grid-template-columns:minmax(320px,.92fr)minmax(420px,1.08fr);" in compact_css
+    assert ".generation-layout{display:grid;grid-template-columns:minmax(320px,.82fr)minmax(520px,1.18fr);" in compact_css
+    assert ".generation-composer-card{display:grid;grid-template-rows:minmax(0,1fr)auto;" in compact_css
     assert ".generation-prompt-area" in compact_css
+    assert ".generation-compact-controls" in compact_css
+    assert ".generation-stage-card{position:relative;" in compact_css
     assert ".generation-stage{position:relative;" in compact_css
     assert ".generation-stage-generating" in compact_css
+    assert "background:#111315" in compact_css
+    assert "animation:stage-shimmer-sweep" in compact_css
+    assert "rgba(255,255,255,.10)" in compact_css
+    assert "rgba(124,92,255,.12)" in compact_css
+    assert ".generation-history-overlay" in compact_css
+    assert ".generation-stage-action-bar" in compact_css
+    assert "backdrop-filter:blur" in compact_css
     assert ".generation-history-drawer" in compact_css
     assert ".generation-history-item" in compact_css
-    assert ".generation-settings-chips" in compact_css
     assert "@media(max-width:760px)" in compact_css
     assert ".generation-layout{grid-template-columns:1fr" in compact_css
 
