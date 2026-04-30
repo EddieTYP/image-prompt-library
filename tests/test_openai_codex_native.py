@@ -302,12 +302,20 @@ def test_codex_native_device_flow_rejects_invalid_upstream_json(tmp_path, monkey
         raise AssertionError("expected invalid interval to be converted to CodexNativeAuthError")
 
 
-def test_codex_native_uses_gpt_55_as_default_orchestration_model():
+def test_codex_native_uses_gpt_55_as_only_default_image_orchestration_model():
     from backend.services.openai_codex_native import CODEX_CHAT_MODEL, DEFAULT_CODEX_ORCHESTRATOR_MODELS, codex_orchestrator_models
 
     assert CODEX_CHAT_MODEL == "gpt-5.5"
-    assert DEFAULT_CODEX_ORCHESTRATOR_MODELS == ["gpt-5.5", "gpt-5.3-codex-spark"]
-    assert codex_orchestrator_models()[:2] == ["gpt-5.5", "gpt-5.3-codex-spark"]
+    assert DEFAULT_CODEX_ORCHESTRATOR_MODELS == ["gpt-5.5"]
+    assert codex_orchestrator_models() == ["gpt-5.5"]
+
+
+def test_codex_native_filters_known_text_only_orchestrator_models_from_env(monkeypatch):
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_ORCHESTRATOR_MODELS", "gpt-5.5,gpt-5.3-codex-spark,gpt-5.4")
+
+    from backend.services.openai_codex_native import codex_orchestrator_models
+
+    assert codex_orchestrator_models() == ["gpt-5.5", "gpt-5.4"]
 
 
 def test_codex_native_status_exposes_orchestrator_and_image_models(tmp_path, monkeypatch):
@@ -322,7 +330,7 @@ def test_codex_native_status_exposes_orchestrator_and_image_models(tmp_path, mon
 
     codex = next(provider for provider in c.get("/api/generation-providers").json() if provider["provider"] == "openai_codex_oauth_native")
 
-    assert codex["orchestrator_models"] == ["gpt-5.5", "gpt-5.3-codex-spark"]
+    assert codex["orchestrator_models"] == ["gpt-5.5"]
     assert codex["default_orchestrator_model"] == "gpt-5.5"
     assert codex["image_models"] == ["gpt-image-2"]
     assert codex["default_image_model"] == "gpt-image-2"
@@ -420,6 +428,50 @@ def test_codex_native_injects_requested_aspect_ratio_and_records_effective_promp
     assert payload["metadata"]["effective_prompt"] == captured["prompt"]
     assert payload["metadata"]["size"] == "auto"
     assert payload["metadata"]["native_size_parameter"] is None
+
+
+def test_codex_native_maps_standard_ui_quality_to_sdk_medium(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda *args, **kwargs: None)
+
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
+    captured = {}
+
+    def collect(self, prompt, *, size, quality, image_model, orchestrator_model):
+        captured["quality"] = quality
+        return base64.b64encode(png_bytes()).decode()
+
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "text_to_image",
+        "provider": "openai_codex_oauth_native",
+        "model": "gpt-image-2",
+        "prompt_text": "A neon library in the rain",
+        "parameters": {"quality": "standard"},
+    }).json()
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+
+    assert response.status_code == 200
+    assert captured["quality"] == "medium"
+    assert response.json()["metadata"]["quality"] == "medium"
+
+
+def test_codex_native_surfaces_non_200_responses_without_secrets():
+    import httpx
+    from backend.services.openai_codex_native import _codex_response_error_message
+
+    response = httpx.Response(400, json={"error": {"message": "Tool 'image_generation' is not supported with gpt-5.3-codex-spark. access_token=secret"}})
+
+    assert _codex_response_error_message(response) == "Codex Responses API returned status 400: Tool 'image_generation' is not supported with gpt-5.3-codex-spark."
 
 
 def test_codex_native_run_marks_job_failed_on_provider_errors(tmp_path, monkeypatch):

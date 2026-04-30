@@ -26,9 +26,11 @@ CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 CODEX_AUTH_ISSUER = "https://auth.openai.com"
 CODEX_TOKEN_URL = f"{CODEX_AUTH_ISSUER}/oauth/token"
 CODEX_CHAT_MODEL = "gpt-5.5"
-DEFAULT_CODEX_ORCHESTRATOR_MODELS = [CODEX_CHAT_MODEL, "gpt-5.3-codex-spark"]
+DEFAULT_CODEX_ORCHESTRATOR_MODELS = [CODEX_CHAT_MODEL]
+UNSUPPORTED_IMAGE_ORCHESTRATOR_MODELS = {"gpt-5.3-codex-spark"}
 IMAGE_MODEL = "gpt-image-2"
 DEFAULT_QUALITY = "high"
+QUALITY_ALIASES = {"standard": "medium", "medium": "medium", "high": "high", "low": "low", "auto": "auto"}
 
 
 def _comma_list(value: str) -> list[str]:
@@ -46,7 +48,7 @@ def codex_orchestrator_models() -> list[str]:
     configured = _comma_list(os.environ.get("IMAGE_PROMPT_LIBRARY_CODEX_ORCHESTRATOR_MODELS", ""))
     models = list(DEFAULT_CODEX_ORCHESTRATOR_MODELS)
     for model in configured:
-        if model not in models:
+        if model not in UNSUPPORTED_IMAGE_ORCHESTRATOR_MODELS and model not in models:
             models.append(model)
     return models
 
@@ -68,6 +70,34 @@ def normalize_codex_image_model(value: Any) -> str:
     requested = str(value or "").strip()
     allowed = codex_image_models()
     return requested if requested in allowed else allowed[0]
+
+
+def normalize_codex_quality(value: Any) -> str:
+    requested = str(value or DEFAULT_QUALITY).strip().lower()
+    return QUALITY_ALIASES.get(requested, DEFAULT_QUALITY)
+
+
+def _codex_response_error_message(response: httpx.Response) -> str:
+    detail = ""
+    try:
+        data = response.json()
+        if isinstance(data, dict):
+            error = data.get("error")
+            if isinstance(error, dict):
+                detail = str(error.get("message") or "").strip()
+            elif isinstance(error, str):
+                detail = error.strip()
+    except Exception:
+        try:
+            detail = response.text.strip()
+        except Exception:
+            detail = ""
+    for marker in ("access_token", "refresh_token", "Bearer "):
+        if marker in detail:
+            detail = detail.split(marker, 1)[0].rstrip(" ;:")
+            break
+    prefix = f"Codex Responses API returned status {response.status_code}"
+    return f"{prefix}: {detail[:500]}" if detail else prefix
 
 SIZES = {
     "square": "1024x1024",
@@ -520,7 +550,7 @@ class OpenAICodexNativeProvider:
                 requested_aspect_ratio,
                 injection_enabled,
             )
-            quality = str(parameters.get("quality") or DEFAULT_QUALITY)
+            quality = normalize_codex_quality(parameters.get("quality"))
             image_model = normalize_codex_image_model(job.model or parameters.get("image_model"))
             orchestrator_model = normalize_codex_orchestrator_model(parameters.get("orchestrator_model"))
             image_b64 = self._collect_image_b64(
@@ -592,7 +622,8 @@ class OpenAICodexNativeProvider:
         with httpx.Client(timeout=httpx.Timeout(self.timeout)) as client:
             with client.stream("POST", url, headers=codex_cloudflare_headers(access_token), json=payload) as response:
                 if response.status_code != 200:
-                    raise CodexNativeAuthError(f"Codex Responses API returned status {response.status_code}")
+                    response.read()
+                    raise CodexNativeAuthError(_codex_response_error_message(response))
                 for line in response.iter_lines():
                     if not line or not line.startswith("data:"):
                         continue

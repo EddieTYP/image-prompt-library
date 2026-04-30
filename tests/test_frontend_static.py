@@ -405,8 +405,12 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "orchestrator_models" in types
     assert "generation-model-trigger" in panel
     assert "selectedStageJob.status === 'accepted'" in panel
-    assert "Attach" in panel
-    assert "Save as new" in panel
+    assert "Paperclip" in panel
+    assert "FilePlus2" in panel
+    assert "RotateCcw" in panel
+    assert "Trash2" in panel
+    assert ">Attach<" not in panel
+    assert ">Save as new<" not in panel
     assert "Retry" in panel
     assert "Discard" in panel
     assert "Upload external result" not in panel
@@ -446,10 +450,12 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert ".generation-control-trigger.generation-aspect-trigger{width:" in compact_css
     assert ".generation-control-trigger.generation-quality-trigger{width:" in compact_css
     assert ".generation-control-trigger.generation-model-trigger{width:" in compact_css
-    assert "grid-template-columns:74px104px132pxminmax(120px,1fr)44px" in compact_css
+    assert "grid-template-columns:74px104px132pxminmax(0,1fr)44px" in compact_css
+    assert ".generation-compact-controls{width:100%;max-width:100%;min-width:0;" in compact_css
     assert ".generation-stage-actions{position:absolute;" in compact_css
     assert "transform:none" in compact_css
     assert ".generation-stage-actions{position:absolute;left:14px;right:14px;" in compact_css
+    assert ".stage-action{width:42px;padding:0" in compact_css
     assert ".generation-fullscreen-frame" in compact_css
     assert ".generation-fullscreen-close" in compact_css
     assert ".generation-result-image.generation-result-fade-in{border-radius:0" in compact_css

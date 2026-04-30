@@ -91,7 +91,7 @@ def main() -> int:
     parser.add_argument("--models", default="", help="Comma-separated orchestrator models. Defaults to provider API models.")
     parser.add_argument("--prompt", default="A small porcelain robot reading a book beside a rainy neon window.")
     parser.add_argument("--aspect", default="1:1")
-    parser.add_argument("--quality", default="standard", choices=["standard", "high"])
+    parser.add_argument("--quality", default="medium", choices=["medium", "high"])
     parser.add_argument("--timeout", type=float, default=240.0)
     args = parser.parse_args()
 

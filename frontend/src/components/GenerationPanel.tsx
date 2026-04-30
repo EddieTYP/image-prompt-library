@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Clipboard, Clock3, Maximize2 } from 'lucide-react';
+import { ArrowLeft, Clipboard, Clock3, FilePlus2, Maximize2, Paperclip, RotateCcw, Trash2 } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import type { GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ItemDetail } from '../types';
 import type { Translator } from '../utils/i18n';
@@ -35,7 +35,7 @@ const ASPECT_RATIO_OPTIONS = [
 ];
 
 const QUALITY_OPTIONS = [
-  { value: 'standard', label: 'Standard' },
+  { value: 'medium', label: 'Standard' },
   { value: 'high', label: 'High' },
 ];
 
@@ -80,7 +80,8 @@ function jobAspectRatio(job?: GenerationJobRecord) {
 
 function jobQuality(job?: GenerationJobRecord) {
   const value = job?.parameters?.quality;
-  return typeof value === 'string' && ['standard', 'high'].includes(value) ? value : 'high';
+  if (value === 'standard') return 'medium';
+  return typeof value === 'string' && ['medium', 'high'].includes(value) ? value : 'high';
 }
 
 function optionLabel(options: { value: string; label: string }[], value: string) {
@@ -416,17 +417,17 @@ export default function GenerationPanel({
 
   const renderStageActions = (job: GenerationJobRecord) => (
     <div className="generation-stage-actions" aria-label="Result actions">
-      <button className="stage-action" onClick={() => acceptAttach(job)} disabled={busy || !item} title={item ? 'Attach to current item' : 'Open from an item to attach'}>
-        Attach
+      <button className="stage-action" onClick={() => acceptAttach(job)} disabled={busy || !item} aria-label="Attach to current item" title={item ? 'Attach to current item' : 'Open from an item to attach'}>
+        <Paperclip size={16} aria-hidden="true" />
       </button>
-      <button className="stage-action" onClick={() => openSaveAsNewReview(job)} disabled={busy} title="Save as new item">
-        Save as new
+      <button className="stage-action" onClick={() => openSaveAsNewReview(job)} disabled={busy} aria-label="Save as new item" title="Save as new item">
+        <FilePlus2 size={16} aria-hidden="true" />
       </button>
       <button className="stage-action" onClick={() => discardAndRetryJob(job)} disabled={busy} aria-label="Retry" title="Retry">
-        Retry
+        <RotateCcw size={16} aria-hidden="true" />
       </button>
-      <button className="stage-action danger" onClick={() => discardJob(job)} disabled={busy} title="Discard">
-        Discard
+      <button className="stage-action danger" onClick={() => discardJob(job)} disabled={busy} aria-label="Discard" title="Discard">
+        <Trash2 size={16} aria-hidden="true" />
       </button>
     </div>
   );

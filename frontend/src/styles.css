@@ -198,3 +198,8 @@ main{max-width:1680px;margin:0 auto;padding:26px 30px 88px}.app.explore-mode{hei
 .detail-fullscreen-frame{position:absolute;inset:0;display:grid;place-items:center;background:inherit}
 .detail-fullscreen-frame .hero-image{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 @media(max-width:760px){.generation-compact-controls{grid-template-columns:74px 104px 132px minmax(120px,1fr) 44px;overflow-x:auto}.generation-stage-actions{transform:none;max-width:none;overflow:auto}}
+
+/* Regression fixes: prevent composer controls from intruding into result stage */
+.generation-compact-controls{width:100%;max-width:100%;min-width:0;box-sizing:border-box;grid-template-columns:74px 104px 132px minmax(0,1fr) 44px;overflow:visible}
+.generation-compact-controls>*{min-width:0}.generation-primary-action{min-width:0;padding:0 14px;white-space:nowrap}.generation-stage-actions{max-width:calc(100% - 28px);overflow:visible;pointer-events:none}.generation-stage-actions .stage-action{pointer-events:auto}.stage-action{width:42px;padding:0;flex:0 0 42px}.stage-action svg{display:block}.generation-stage-result,.generation-fullscreen-frame{overflow:hidden}
+@media(max-width:760px){.generation-compact-controls{grid-template-columns:74px 104px 132px minmax(0,1fr) 44px;overflow-x:auto}.generation-stage-actions{max-width:calc(100% - 28px);overflow:visible}}
