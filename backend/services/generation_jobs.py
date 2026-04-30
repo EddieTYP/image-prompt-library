@@ -14,6 +14,7 @@ from backend.schemas import (
     GenerationJobCreate,
     GenerationJobList,
     GenerationJobRecord,
+    GenerationJobRetryResult,
     ItemCreate,
     PromptIn,
 )
@@ -308,6 +309,57 @@ class GenerationJobRepository:
             )
             conn.commit()
         return self.get_job(job_id)
+
+    def discard_and_retry_job(self, job_id: str) -> GenerationJobRetryResult:
+        job = self.get_job(job_id)
+        if job.status == "accepted" or job.accepted_image_id:
+            raise GenerationJobConflict("Saved generation jobs cannot be retried. Create a variant instead.")
+        if job.status != "succeeded" or not job.result_path:
+            raise GenerationJobConflict("Only unsaved ready generation results can be retried")
+        retry_id = new_id("gen")
+        timestamp = now()
+        retry_metadata = {
+            "retry_of_generation_job_id": job.id,
+            "retry_reason": "discard_and_retry",
+        }
+        discarded_metadata = dict(job.metadata or {})
+        discarded_metadata["retried_by_generation_job_id"] = retry_id
+        with connect(self.library_path) as conn:
+            conn.execute(
+                """
+                UPDATE generation_jobs
+                SET status='discarded', metadata=?, discarded_at=?, updated_at=?
+                WHERE id=? AND status='succeeded' AND accepted_image_id IS NULL
+                """,
+                (_to_json(discarded_metadata), timestamp, timestamp, job.id),
+            )
+            conn.execute(
+                """
+                INSERT INTO generation_jobs(
+                    id, source_item_id, mode, provider, model, status, prompt_language,
+                    prompt_text, edited_prompt_text, reference_image_ids, parameters,
+                    metadata, created_at, updated_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    retry_id,
+                    job.source_item_id,
+                    job.mode,
+                    job.provider,
+                    job.model,
+                    "queued",
+                    job.prompt_language,
+                    job.prompt_text,
+                    job.edited_prompt_text,
+                    _to_json(job.reference_image_ids),
+                    _to_json(job.parameters),
+                    _to_json(retry_metadata),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            conn.commit()
+        return GenerationJobRetryResult(discarded_job=self.get_job(job.id), retry_job=self.get_job(retry_id))
 
     def cancel_job(self, job_id: str) -> GenerationJobRecord:
         job = self.get_job(job_id)

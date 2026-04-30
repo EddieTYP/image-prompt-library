@@ -20,6 +20,7 @@ export interface GenerationJobRecord extends GenerationJobCreate { id: string; s
 export interface GenerationJobList { jobs: GenerationJobRecord[]; total: number; limit: number; offset: number }
 export interface GenerationJobAcceptAsNewItemPayload { title?: string; cluster_name?: string; tags?: string[]; prompts?: Array<{language: string; text: string; is_primary?: boolean; is_original?: boolean; provenance?: Record<string, unknown>}>; model?: string; source_name?: string; source_url?: string; author?: string; notes?: string }
 export interface GenerationJobAcceptResult { job: GenerationJobRecord; item: ItemDetail }
+export interface GenerationJobRetryResult { discarded_job: GenerationJobRecord; retry_job: GenerationJobRecord }
 export interface ItemSummary { id: string; title: string; slug: string; model: string; source_name?: string; source_url?: string; cluster?: ClusterRecord; tags: TagRecord[]; prompts: PromptRecord[]; prompt_snippet?: string; first_image?: ImageRecord; rating: number; favorite: boolean; archived: boolean; updated_at: string; created_at: string }
 export interface ItemDetail extends ItemSummary { images: ImageRecord[]; notes?: string; author?: string }
 export interface ItemList { items: ItemSummary[]; total: number; limit: number; offset: number }

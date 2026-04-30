@@ -1,4 +1,4 @@
-import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationProviderStatus, ItemCreate, ItemDetail, ItemList, ItemSummary, TagRecord, UploadImageRole } from '../types';
+import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationProviderStatus, ItemCreate, ItemDetail, ItemList, ItemSummary, TagRecord, UploadImageRole } from '../types';
 
 const API = '';
 const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
@@ -118,6 +118,7 @@ export const api = isDemoMode ? {
   acceptGenerationJobAsNewItem: (_id: string, _payload?: GenerationJobAcceptAsNewItemPayload) => demoReadOnly(),
   cancelGenerationJob: (_id: string) => demoReadOnly(),
   discardGenerationJob: (_id: string) => demoReadOnly(),
+  discardAndRetryGenerationJob: (_id: string) => demoReadOnly(),
   clusters: () => demoJson<ClusterRecord[]>('demo-data/clusters.json'),
   tags: () => demoJson<TagRecord[]>('demo-data/tags.json'),
 } : {
@@ -144,6 +145,7 @@ export const api = isDemoMode ? {
   acceptGenerationJobAsNewItem: (id: string, payload: GenerationJobAcceptAsNewItemPayload = {}) => json<GenerationJobAcceptResult>(`/api/generation-jobs/${id}/accept-as-new-item`, { method: 'POST', body: JSON.stringify(payload) }),
   cancelGenerationJob: (id: string) => json<GenerationJobRecord>(`/api/generation-jobs/${id}/cancel`, { method: 'POST' }),
   discardGenerationJob: (id: string) => json<GenerationJobRecord>(`/api/generation-jobs/${id}/discard`, { method: 'POST' }),
+  discardAndRetryGenerationJob: (id: string) => json<GenerationJobRetryResult>(`/api/generation-jobs/${id}/discard-and-retry`, { method: 'POST' }),
   clusters: () => json<ClusterRecord[]>('/api/clusters'),
   tags: () => json<TagRecord[]>('/api/tags'),
 };

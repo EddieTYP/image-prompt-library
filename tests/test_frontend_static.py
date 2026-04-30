@@ -311,6 +311,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "api.acceptGenerationJob" in panel
     assert "api.acceptGenerationJobAsNewItem" in panel
     assert "api.discardGenerationJob" in panel
+    assert "api.discardAndRetryGenerationJob" in panel
     assert "api.cancelGenerationJob" in panel
     assert "manual_upload" in panel
     assert "openai_codex_oauth_native" in panel
@@ -320,6 +321,10 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Generation queued. It will start automatically." in panel
     assert "Attach to current item" in panel
     assert "Save as new item" in panel
+    assert "aria-label=\"Retry\"" in panel
+    assert "title=\"Retry\"" in panel
+    assert "RefreshCw" in panel
+    assert "generation-icon-actions" in panel
     assert "generation-shimmer" in panel
     assert "Image added to item" in panel
     assert "New variant item created" in panel
@@ -330,6 +335,8 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "generation-panel" in css
     assert "generation-job-card" in css
     assert "generation-job-card.has-result" in css
+    assert "generation-icon-action" in css
+    assert "generation-icon-action.danger" in css
     assert "generation-shimmer" in css
     assert "toast" in css
     assert "GenerationJobAcceptAsNewItemPayload" in types

@@ -217,3 +217,7 @@ class GenerationJobList(BaseModel):
 class GenerationJobAcceptResult(BaseModel):
     job: GenerationJobRecord
     item: ItemDetail
+
+class GenerationJobRetryResult(BaseModel):
+    discarded_job: GenerationJobRecord
+    retry_job: GenerationJobRecord

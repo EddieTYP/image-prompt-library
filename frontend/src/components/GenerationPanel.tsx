@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ImagePlus, Paperclip, RefreshCw, Save, Trash2, XCircle } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import type { GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ItemDetail } from '../types';
 import type { Translator } from '../utils/i18n';
@@ -102,6 +103,7 @@ export default function GenerationPanel({
   const focusedJobRef = useRef<HTMLElement | null>(null);
 
   const activeJob = useMemo(() => jobs.find(job => job.id === activeJobId), [jobs, activeJobId]);
+  const visibleJobs = useMemo(() => jobs.filter(job => !['accepted', 'discarded', 'cancelled'].includes(job.status)), [jobs]);
   const selectedProvider = providers.find(candidate => candidate.provider === provider);
   const primaryProviders = providers.filter(candidate => candidate.provider !== 'manual_upload');
   const panelTitle = item ? 'Generate variant' : 'Generate image';
@@ -308,6 +310,29 @@ export default function GenerationPanel({
     }
   };
 
+  const discardAndRetryJob = async (job: GenerationJobRecord) => {
+    setBusy(true);
+    setActiveJobId(job.id);
+    setMessage('');
+    try {
+      const result = await api.discardAndRetryGenerationJob(job.id);
+      setJobs(current => [
+        result.retry_job,
+        ...current
+          .map(candidate => candidate.id === result.discarded_job.id ? result.discarded_job : candidate)
+          .filter(candidate => candidate.id !== result.retry_job.id),
+      ]);
+      setActiveJobId(result.retry_job.id);
+      setFocusedJobHighlightId(result.retry_job.id);
+      setMessage('Retry queued.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not retry job.');
+      await refreshJobs().catch(() => undefined);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <section className="generation-panel modal polished-modal" onClick={event => event.stopPropagation()} aria-label="Generation workflow">
@@ -385,8 +410,8 @@ export default function GenerationPanel({
               </div>
               <button className="secondary" onClick={() => refreshJobs()} disabled={busy}>Refresh</button>
             </div>
-            {jobs.length === 0 && <p className="muted">No generation jobs for this prompt yet.</p>}
-            {jobs.map(job => {
+            {visibleJobs.length === 0 && <p className="muted">No generation jobs for this prompt yet.</p>}
+            {visibleJobs.map(job => {
               const failure = job.status === 'failed' ? friendlyFailure(job) : undefined;
               return (
                 <article
@@ -417,12 +442,24 @@ export default function GenerationPanel({
                       </details>
                     )}
                     {job.status === 'succeeded' && (
-                      <span className="accept-dropdown">
-                        {item && <button className="primary" onClick={() => acceptAttach(job)} disabled={busy}>Attach to current item</button>}
-                        <button className="secondary" onClick={() => openSaveAsNewReview(job)} disabled={busy}>Save as new item</button>
+                      <span className="generation-icon-actions" aria-label="Result actions">
+                        {item && (
+                          <button className="generation-icon-action primary" onClick={() => acceptAttach(job)} disabled={busy} aria-label="Attach to current item" title="Attach to current item">
+                            <Paperclip size={17} />
+                          </button>
+                        )}
+                        <button className="generation-icon-action primary" onClick={() => openSaveAsNewReview(job)} disabled={busy} aria-label="Save as new item" title="Save as new item">
+                          {item ? <ImagePlus size={17} /> : <Save size={17} />}
+                        </button>
+                        <button className="generation-icon-action" onClick={() => discardAndRetryJob(job)} disabled={busy} aria-label="Retry" title="Retry">
+                          <RefreshCw size={17} />
+                        </button>
+                        <button className="generation-icon-action danger" onClick={() => discardJob(job)} disabled={busy} aria-label="Discard" title="Discard">
+                          <Trash2 size={17} />
+                        </button>
                       </span>
                     )}
-                    {!['accepted', 'discarded', 'cancelled', 'queued', 'running'].includes(job.status) && <button className="secondary" onClick={() => discardJob(job)} disabled={busy}>Discard</button>}
+                    {job.status === 'failed' && <button className="generation-icon-action danger" onClick={() => discardJob(job)} disabled={busy} aria-label="Discard" title="Discard"><XCircle size={17} /></button>}
                   </div>
                 </article>
               );
