@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Check, Copy, ExternalLink, Heart, Pencil, Plus, X } from 'lucide-react';
+import { Check, Copy, ExternalLink, Heart, Maximize2, Pencil, Plus, X } from 'lucide-react';
 import GenerationPanel from './GenerationPanel';
 import { api, mediaUrl } from '../api/client';
 import type { ClusterRecord, ImageRecord, ItemDetail, PromptRecord, TagRecord } from '../types';
@@ -188,9 +188,26 @@ export default function ItemDetailModal({
   const [generationOpen, setGenerationOpen] = useState(false);
   const [selectedImageId, setSelectedImageId] = useState<string>();
   const [toast, setToast] = useState<{ message: string; actionLabel?: string; item?: ItemDetail }>();
+  const [isClosing, setIsClosing] = useState(false);
   const lastDefaultPromptKeyRef = useRef('');
+  const heroImageRef = useRef<HTMLImageElement | null>(null);
+  const heroFullscreenFrameRef = useRef<HTMLDivElement | null>(null);
+
+  const handleClose = () => {
+    setIsClosing(true);
+    window.setTimeout(onClose, 180);
+  };
+
+  const toggleHeroFullscreen = async () => {
+    if (document.fullscreenElement) {
+      await document.exitFullscreen?.();
+      return;
+    }
+    await heroFullscreenFrameRef.current?.requestFullscreen?.();
+  };
 
   useEffect(() => { setLang(preferredLanguage); }, [preferredLanguage, id]);
+  useEffect(() => { if (id) setIsClosing(false); }, [id]);
   useEffect(() => { setGenerationOpen(Boolean(initialGenerationJobId)); }, [initialGenerationJobId]);
 
   useEffect(() => {
@@ -307,7 +324,7 @@ export default function ItemDetailModal({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className={`modal-backdrop${isClosing ? ' is-closing' : ''}`} onClick={handleClose}>
       <div className="detail modal polished-modal" onClick={e => e.stopPropagation()}>
         {!item ? (
           <p className="modal-loading">{t('loading')}</p>
@@ -317,18 +334,25 @@ export default function ItemDetailModal({
               <section className="modal-hero">
                 {selectedImage ? (
                   <>
-                    <img
-                      className="hero-image"
-                      src={mediaUrl(imageHeroPath(selectedImage))}
-                      alt={item.title}
-                    />
+                    <div ref={heroFullscreenFrameRef} className="detail-fullscreen-frame">
+                      <img
+                        ref={heroImageRef}
+                        className="hero-image"
+                        src={mediaUrl(imageHeroPath(selectedImage))}
+                        alt={item.title}
+                      />
+                      <button className="modal-icon-button detail-fullscreen-close" type="button" onClick={() => document.exitFullscreen?.()} aria-label="Close fullscreen">×</button>
+                    </div>
                     {uniqueImages.length > 1 && <span className="image-counter">{selectedImageIndex + 1} / {uniqueImages.length}</span>}
+                    <button className="modal-icon-button detail-fullscreen-overlay" type="button" onClick={toggleHeroFullscreen} aria-label="View fullscreen" title="View fullscreen">
+                      <Maximize2 size={16} />
+                    </button>
                   </>
                 ) : (
                   <div className="placeholder hero-image">{t('noImage')}</div>
                 )}
                 <div className="mobile-hero-actions" aria-label={t('itemActions')}>
-                  <button className="modal-icon-button mobile-hero-close" onClick={onClose} aria-label={t('close')}>
+                  <button className="modal-icon-button mobile-hero-close" onClick={handleClose} aria-label={t('close')}>
                     <X size={20} />
                   </button>
                   {showMutations && (
@@ -375,7 +399,7 @@ export default function ItemDetailModal({
                       <Pencil size={18} />
                     </button>}
                   </span>
-                  <button className="modal-icon-button close" onClick={onClose} aria-label={t('close')}>
+                  <button className="modal-icon-button close" onClick={handleClose} aria-label={t('close')}>
                     <X size={20} />
                   </button>
                 </div>

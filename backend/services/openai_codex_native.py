@@ -26,8 +26,48 @@ CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 CODEX_AUTH_ISSUER = "https://auth.openai.com"
 CODEX_TOKEN_URL = f"{CODEX_AUTH_ISSUER}/oauth/token"
 CODEX_CHAT_MODEL = "gpt-5.5"
+DEFAULT_CODEX_ORCHESTRATOR_MODELS = [CODEX_CHAT_MODEL, "gpt-5.3-codex-spark"]
 IMAGE_MODEL = "gpt-image-2"
 DEFAULT_QUALITY = "high"
+
+
+def _comma_list(value: str) -> list[str]:
+    seen: set[str] = set()
+    items: list[str] = []
+    for raw in value.split(","):
+        item = raw.strip()
+        if item and item not in seen:
+            seen.add(item)
+            items.append(item)
+    return items
+
+
+def codex_orchestrator_models() -> list[str]:
+    configured = _comma_list(os.environ.get("IMAGE_PROMPT_LIBRARY_CODEX_ORCHESTRATOR_MODELS", ""))
+    models = list(DEFAULT_CODEX_ORCHESTRATOR_MODELS)
+    for model in configured:
+        if model not in models:
+            models.append(model)
+    return models
+
+
+def codex_image_models() -> list[str]:
+    configured = _comma_list(os.environ.get("IMAGE_PROMPT_LIBRARY_CODEX_IMAGE_MODELS", ""))
+    if IMAGE_MODEL not in configured:
+        configured.insert(0, IMAGE_MODEL)
+    return configured
+
+
+def normalize_codex_orchestrator_model(value: Any) -> str:
+    requested = str(value or "").strip()
+    allowed = codex_orchestrator_models()
+    return requested if requested in allowed else allowed[0]
+
+
+def normalize_codex_image_model(value: Any) -> str:
+    requested = str(value or "").strip()
+    allowed = codex_image_models()
+    return requested if requested in allowed else allowed[0]
 
 SIZES = {
     "square": "1024x1024",
@@ -315,6 +355,10 @@ class CodexNativeAuthStore:
                 "text_reference_to_image": False,
                 "image_edit": False,
             },
+            "orchestrator_models": codex_orchestrator_models(),
+            "default_orchestrator_model": codex_orchestrator_models()[0],
+            "image_models": codex_image_models(),
+            "default_image_model": codex_image_models()[0],
             "token_present": token_present,
             "account_id": account_id,
             "auth_store_path": str(self.path),
@@ -477,8 +521,15 @@ class OpenAICodexNativeProvider:
                 injection_enabled,
             )
             quality = str(parameters.get("quality") or DEFAULT_QUALITY)
-            model = job.model or IMAGE_MODEL
-            image_b64 = self._collect_image_b64(effective_prompt, size=size, quality=quality)
+            image_model = normalize_codex_image_model(job.model or parameters.get("image_model"))
+            orchestrator_model = normalize_codex_orchestrator_model(parameters.get("orchestrator_model"))
+            image_b64 = self._collect_image_b64(
+                effective_prompt,
+                size=size,
+                quality=quality,
+                image_model=image_model,
+                orchestrator_model=orchestrator_model,
+            )
             try:
                 image_bytes = base64.b64decode(image_b64, validate=True)
             except (binascii.Error, ValueError) as exc:
@@ -486,7 +537,9 @@ class OpenAICodexNativeProvider:
             metadata = {
                 "provider": PROVIDER_ID,
                 "auth_mode": AUTH_MODE,
-                "model": model,
+                "model": image_model,
+                "image_model": image_model,
+                "orchestrator_model": orchestrator_model,
                 "size": size or "auto",
                 "quality": quality,
                 "requested_aspect_ratio": requested_aspect_ratio,
@@ -504,12 +557,12 @@ class OpenAICodexNativeProvider:
                 raise
             raise CodexNativeAuthError("Codex native generation failed") from exc
 
-    def _collect_image_b64(self, prompt: str, *, size: str | None, quality: str) -> str:
+    def _collect_image_b64(self, prompt: str, *, size: str | None, quality: str, image_model: str, orchestrator_model: str) -> str:
         tokens = self.auth_store.read_tokens()
         access_token = tokens["access_token"]
         image_tool = {
             "type": "image_generation",
-            "model": IMAGE_MODEL,
+            "model": image_model,
             "quality": quality,
             "output_format": "png",
             "background": "opaque",
@@ -518,7 +571,7 @@ class OpenAICodexNativeProvider:
         if size:
             image_tool["size"] = size
         payload = {
-            "model": CODEX_CHAT_MODEL,
+            "model": orchestrator_model,
             "store": False,
             "instructions": "Create exactly one image using the image_generation tool when provided.",
             "input": [{

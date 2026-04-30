@@ -108,9 +108,10 @@ export default function GenerationPanel({
   const [providers, setProviders] = useState<GenerationProviderStatus[]>([]);
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
   const [provider, setProvider] = useState('manual_upload');
+  const [orchestratorModel, setOrchestratorModel] = useState('gpt-5.5');
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [quality, setQuality] = useState('high');
-  const [openControl, setOpenControl] = useState<'aspect' | 'quality' | null>(null);
+  const [openControl, setOpenControl] = useState<'aspect' | 'quality' | 'model' | null>(null);
   const [promptText, setPromptText] = useState(defaultPrompt);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
@@ -121,15 +122,20 @@ export default function GenerationPanel({
   const [isSavePanelClosing, setIsSavePanelClosing] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [historyReviewJobId, setHistoryReviewJobId] = useState<string | undefined>(initialJobId);
+  const [isClosing, setIsClosing] = useState(false);
   const metadataPanelRef = useRef<HTMLElement | null>(null);
   const focusedJobRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLElement | null>(null);
+  const resultImageRef = useRef<HTMLImageElement | null>(null);
+  const fullscreenFrameRef = useRef<HTMLDivElement | null>(null);
   const initialFocusAppliedRef = useRef(false);
 
   const activeJob = useMemo(() => jobs.find(job => job.id === activeJobId), [jobs, activeJobId]);
   const historyReviewJob = useMemo(() => jobs.find(job => job.id === historyReviewJobId), [jobs, historyReviewJobId]);
   const selectedStageJob = historyReviewJob || activeJob;
   const visibleJobs = useMemo(() => jobs.filter(job => job.status !== 'discarded'), [jobs]);
+  const selectedProvider = useMemo(() => providers.find(candidate => candidate.provider === provider), [providers, provider]);
+  const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.5'];
   const isHistoryReview = Boolean(historyReviewJob);
   const canUseResultActions = (job?: GenerationJobRecord) => Boolean(job && job.status === 'succeeded' && !job.accepted_image_id);
 
@@ -156,7 +162,10 @@ export default function GenerationPanel({
         if (cancelled) return;
         setProviders(nextProviders);
         const firstReady = nextProviders.find(nextProvider => nextProvider.provider !== 'manual_upload' && providerReady(nextProvider)) || nextProviders.find(providerReady) || nextProviders[0];
-        if (firstReady) setProvider(firstReady.provider);
+        if (firstReady) {
+          setProvider(firstReady.provider);
+          setOrchestratorModel(firstReady.default_orchestrator_model || firstReady.orchestrator_models?.[0] || 'gpt-5.5');
+        }
       })
       .catch(() => setProviders([{ provider: 'manual_upload', display_name: 'Manual upload', optional: false, configured: true, authenticated: true, available: true, state: 'available', reason: null, features: { manual_result_upload: true } }]));
     refreshJobs().catch(() => undefined);
@@ -212,6 +221,7 @@ export default function GenerationPanel({
           requested_aspect_ratio: aspectRatio,
           aspect_ratio_prompt_injection: true,
           quality,
+          orchestrator_model: orchestratorModel,
         },
       });
       setJobs(current => [created, ...current.filter(job => job.id !== created.id)]);
@@ -273,14 +283,17 @@ export default function GenerationPanel({
     }, 180);
   };
 
+  const handleClose = () => {
+    setIsClosing(true);
+    window.setTimeout(onClose, 180);
+  };
+
   const toggleStageFullscreen = async () => {
-    const stage = stageRef.current;
-    if (!stage) return;
     if (document.fullscreenElement) {
       await document.exitFullscreen?.();
       return;
     }
-    await stage.requestFullscreen?.();
+    await fullscreenFrameRef.current?.requestFullscreen?.();
   };
 
   const updateMetadataDraft = (patch: Partial<GenerationJobAcceptAsNewItemPayload>) => {
@@ -402,7 +415,7 @@ export default function GenerationPanel({
   };
 
   const renderStageActions = (job: GenerationJobRecord) => (
-    <div className="generation-stage-action-bar" aria-label="Result actions">
+    <div className="generation-stage-actions" aria-label="Result actions">
       <button className="stage-action" onClick={() => acceptAttach(job)} disabled={busy || !item} title={item ? 'Attach to current item' : 'Open from an item to attach'}>
         Attach
       </button>
@@ -441,7 +454,10 @@ export default function GenerationPanel({
     if (resultUrl) {
       return (
         <div className="generation-stage generation-stage-result">
-          <img className="generation-result-image generation-result-fade-in" src={resultUrl} alt="Generation result" />
+          <div ref={fullscreenFrameRef} className="generation-fullscreen-frame">
+            <img ref={resultImageRef} className="generation-result-image generation-result-fade-in" src={resultUrl} alt="Generation result" />
+            <button className="modal-icon-button generation-fullscreen-close" type="button" onClick={() => document.exitFullscreen?.()} aria-label="Close fullscreen">×</button>
+          </div>
           {canUseResultActions(selectedStageJob) && renderStageActions(selectedStageJob)}
         </div>
       );
@@ -458,7 +474,7 @@ export default function GenerationPanel({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className={`modal-backdrop${isClosing ? ' is-closing' : ''}`} onClick={handleClose}>
       <section className="generation-panel modal polished-modal" onClick={event => event.stopPropagation()} aria-label="Generation workflow">
         <div className="generation-layout">
           <section className="generation-compose-card generation-composer-card">
@@ -470,7 +486,7 @@ export default function GenerationPanel({
                 </label>
                 <div className="generation-compact-controls">
                   <div className="generation-control-wrap">
-                    <button className="generation-control-trigger" type="button" onClick={() => setOpenControl(openControl === 'aspect' ? null : 'aspect')}>
+                    <button className="generation-control-trigger generation-aspect-trigger" type="button" onClick={() => setOpenControl(openControl === 'aspect' ? null : 'aspect')}>
                       {optionLabel(ASPECT_RATIO_OPTIONS, aspectRatio)} ▾
                     </button>
                     {openControl === 'aspect' && (
@@ -482,13 +498,25 @@ export default function GenerationPanel({
                     )}
                   </div>
                   <div className="generation-control-wrap">
-                    <button className="generation-control-trigger" type="button" onClick={() => setOpenControl(openControl === 'quality' ? null : 'quality')}>
+                    <button className="generation-control-trigger generation-quality-trigger" type="button" onClick={() => setOpenControl(openControl === 'quality' ? null : 'quality')}>
                       {optionLabel(QUALITY_OPTIONS, quality)} ▾
                     </button>
                     {openControl === 'quality' && (
                       <div className="generation-control-popover" role="menu">
                         {QUALITY_OPTIONS.map(option => (
                           <button key={option.value} type="button" className={quality === option.value ? 'is-selected' : ''} onClick={() => { setQuality(option.value); setOpenControl(null); }}>{option.label}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="generation-control-wrap generation-model-control">
+                    <button className="generation-control-trigger generation-model-trigger" type="button" onClick={() => setOpenControl(openControl === 'model' ? null : 'model')} disabled={provider !== 'openai_codex_oauth_native'}>
+                      {orchestratorModel} ▾
+                    </button>
+                    {openControl === 'model' && (
+                      <div className="generation-control-popover" role="menu">
+                        {orchestratorModels.map(model => (
+                          <button key={model} type="button" className={orchestratorModel === model ? 'is-selected' : ''} onClick={() => { setOrchestratorModel(model); setOpenControl(null); }}>{model}</button>
                         ))}
                       </div>
                     )}
@@ -511,7 +539,7 @@ export default function GenerationPanel({
 
           <section ref={stageRef} className="generation-stage-card">
             <button className="modal-icon-button generation-fullscreen-overlay" onClick={toggleStageFullscreen} aria-label="View fullscreen" title="View fullscreen"><Maximize2 size={16} /></button>
-            <button className="modal-icon-button close generation-close-overlay" onClick={onClose} aria-label={t('close')}>×</button>
+            <button className="modal-icon-button close generation-close-overlay" onClick={handleClose} aria-label={t('close')}>×</button>
             {renderStage()}
           </section>
         </div>

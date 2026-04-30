@@ -55,6 +55,12 @@ export default function ItemEditorModal({
   const [referenceFile, setReferenceFile] = useState<File>();
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+
+  const handleClose = () => {
+    setIsClosing(true);
+    window.setTimeout(onClose, 180);
+  };
 
   const hasExistingResultImage = Boolean(item?.images?.some(image => image.role === 'result_image'));
   const hasPrompt = Boolean(zhHantPrompt.trim() || zhHansPrompt.trim() || englishPrompt.trim());
@@ -141,9 +147,9 @@ export default function ItemEditorModal({
   };
 
   return (
-    <div className="modal-backdrop">
-      <div className="editor modal polished-modal">
-        <button className="close" onClick={onClose} aria-label={t('close')}>
+    <div className={`modal-backdrop${isClosing ? ' is-closing' : ''}`} onClick={handleClose}>
+      <div className="editor modal polished-modal" onClick={event => event.stopPropagation()}>
+        <button className="close" onClick={handleClose} aria-label={t('close')}>
           <X size={20} />
         </button>
         <div className="editor-head">
@@ -222,7 +228,7 @@ export default function ItemEditorModal({
 
         <div className="editor-actions">
           {item && <button className="danger" disabled={deleting || saving} onClick={deleteReference}><Trash2 size={16} /> {t('deleteReference')}</button>}
-          <button className="secondary" onClick={onClose}>{t('cancel')}</button>
+          <button className="secondary" onClick={handleClose}>{t('cancel')}</button>
           <button className="primary" disabled={!title.trim() || !hasPrompt || missingRequiredImage || saving || deleting} onClick={save}>{saving ? t('saving') : t('saveReference')}</button>
         </div>
       </div>

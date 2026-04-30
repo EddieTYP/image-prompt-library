@@ -303,9 +303,29 @@ def test_codex_native_device_flow_rejects_invalid_upstream_json(tmp_path, monkey
 
 
 def test_codex_native_uses_gpt_55_as_default_orchestration_model():
-    from backend.services.openai_codex_native import CODEX_CHAT_MODEL
+    from backend.services.openai_codex_native import CODEX_CHAT_MODEL, DEFAULT_CODEX_ORCHESTRATOR_MODELS, codex_orchestrator_models
 
     assert CODEX_CHAT_MODEL == "gpt-5.5"
+    assert DEFAULT_CODEX_ORCHESTRATOR_MODELS == ["gpt-5.5", "gpt-5.3-codex-spark"]
+    assert codex_orchestrator_models()[:2] == ["gpt-5.5", "gpt-5.3-codex-spark"]
+
+
+def test_codex_native_status_exposes_orchestrator_and_image_models(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_ORCHESTRATOR_MODELS", "gpt-5.5,gpt-5.3-codex-spark")
+
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
+    c = client(tmp_path)
+
+    codex = next(provider for provider in c.get("/api/generation-providers").json() if provider["provider"] == "openai_codex_oauth_native")
+
+    assert codex["orchestrator_models"] == ["gpt-5.5", "gpt-5.3-codex-spark"]
+    assert codex["default_orchestrator_model"] == "gpt-5.5"
+    assert codex["image_models"] == ["gpt-image-2"]
+    assert codex["default_image_model"] == "gpt-image-2"
 
 
 def test_codex_native_run_executes_job_and_stages_result_without_leaking_tokens(tmp_path, monkeypatch):
@@ -320,7 +340,7 @@ def test_codex_native_run_executes_job_and_stages_result_without_leaking_tokens(
     monkeypatch.setattr(
         openai_codex_native.OpenAICodexNativeProvider,
         "_collect_image_b64",
-        lambda self, prompt, *, size, quality: base64.b64encode(png_bytes()).decode(),
+        lambda self, prompt, *, size, quality, image_model, orchestrator_model: base64.b64encode(png_bytes()).decode(),
     )
 
     c = client(tmp_path)
@@ -363,10 +383,12 @@ def test_codex_native_injects_requested_aspect_ratio_and_records_effective_promp
     CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
     captured = {}
 
-    def collect(self, prompt, *, size, quality):
+    def collect(self, prompt, *, size, quality, image_model, orchestrator_model):
         captured["prompt"] = prompt
         captured["size"] = size
         captured["quality"] = quality
+        captured["image_model"] = image_model
+        captured["orchestrator_model"] = orchestrator_model
         return base64.b64encode(png_bytes()).decode()
 
     monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
@@ -390,6 +412,8 @@ def test_codex_native_injects_requested_aspect_ratio_and_records_effective_promp
         "prompt": "A neon library in the rain\n\nMake the aspect ratio 4:3.",
         "size": None,
         "quality": "high",
+        "image_model": "gpt-image-2",
+        "orchestrator_model": "gpt-5.5",
     }
     assert payload["metadata"]["requested_aspect_ratio"] == "4:3"
     assert payload["metadata"]["aspect_ratio_prompt_injection"] == "Make the aspect ratio 4:3."
@@ -408,7 +432,7 @@ def test_codex_native_run_marks_job_failed_on_provider_errors(tmp_path, monkeypa
 
     CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
 
-    def fail_collect(self, prompt, *, size, quality):
+    def fail_collect(self, prompt, *, size, quality, image_model, orchestrator_model):
         raise openai_codex_native.CodexNativeAuthError("upstream failed with access_token=[REDACTED]")
 
     monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", fail_collect)

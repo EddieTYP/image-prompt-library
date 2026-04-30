@@ -323,7 +323,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Save as new" in panel
     assert "aria-label=\"Retry\"" in panel
     assert "title=\"Retry\"" in panel
-    assert "generation-stage-action-bar" in panel
+    assert "generation-stage-actions" in panel
     assert "generation-shimmer" in panel
     assert "Image added to item" in panel
     assert "New variant item created" in panel
@@ -396,8 +396,14 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "setHistoryReviewJobId" in panel
     assert "useJobAsDraft" in panel
     assert "copyJobPrompt" in panel
-    assert "generation-stage-action-bar" in panel
+    assert "generation-stage-actions" in panel
+    assert "generation-stage-action-bar" not in panel
     assert "canUseResultActions" in panel
+    assert "resultImageRef" in panel
+    assert "fullscreenFrameRef.current?.requestFullscreen" in panel
+    assert "orchestratorModel" in panel
+    assert "orchestrator_models" in types
+    assert "generation-model-trigger" in panel
     assert "selectedStageJob.status === 'accepted'" in panel
     assert "Attach" in panel
     assert "Save as new" in panel
@@ -434,8 +440,20 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "object-fit:contain" in compact_css
     assert "background:inherit" in compact_css
     assert "margin-top:0" in compact_css
-    assert ".generation-stage-action-bar" in compact_css
-    assert "backdrop-filter:blur" in compact_css
+    assert ".generation-stage-actions" in compact_css
+    assert ".generation-stage-action-bar" not in compact_css
+    assert "backdrop-filter:blur" not in compact_css[compact_css.find("/*Generationstagealignment/fullscreenrefinement*/"):]
+    assert ".generation-control-trigger.generation-aspect-trigger{width:" in compact_css
+    assert ".generation-control-trigger.generation-quality-trigger{width:" in compact_css
+    assert ".generation-control-trigger.generation-model-trigger{width:" in compact_css
+    assert "grid-template-columns:74px104px132pxminmax(120px,1fr)44px" in compact_css
+    assert ".generation-stage-actions{position:absolute;" in compact_css
+    assert "transform:none" in compact_css
+    assert ".generation-stage-actions{position:absolute;left:14px;right:14px;" in compact_css
+    assert ".generation-fullscreen-frame" in compact_css
+    assert ".generation-fullscreen-close" in compact_css
+    assert ".generation-result-image.generation-result-fade-in{border-radius:0" in compact_css
+    assert ".generation-composer-card{display:grid;" in compact_css and "overflow:visible" in compact_css
     assert ".generation-history-drawer" in compact_css
     assert ".generation-history-item" in compact_css
     assert "-webkit-line-clamp:2" in compact_css
@@ -455,6 +473,20 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "initialGenerationJobId" in detail
     assert "setGenerationOpen(Boolean(initialGenerationJobId))" in detail
     assert "initialJobId={initialGenerationJobId}" in detail
+    assert "heroImageRef" in detail
+    assert "toggleHeroFullscreen" in detail
+    assert "useEffect(() => { if (id) setIsClosing(false); }, [id])" in detail
+    assert "heroFullscreenFrameRef" in detail
+    assert "detail-fullscreen-close" in detail
+    assert ".rail.glass-rail.image-gallery-rail" in compact_css
+    assert "backdrop-filter:none" in compact_css
+
+    editor = (ROOT / "frontend" / "src" / "components" / "ItemEditorModal.tsx").read_text()
+    assert "onClick={handleClose}" in editor
+    assert "onClick={event => event.stopPropagation()}" in editor
+    assert "isClosing ? ' is-closing'" in editor
+    assert "modal-panel-out" in compact_css
+    assert "modal-backdrop-out" in compact_css
 
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
