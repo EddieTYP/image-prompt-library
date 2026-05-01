@@ -170,3 +170,29 @@ def test_v05_release_notes_describe_local_generation_studio_beta():
     assert "OpenNana" not in notes
     assert "token" not in notes.lower()
     assert "secret" not in notes.lower()
+
+def test_v06_release_notes_describe_generation_workflow_and_attachment_edits_beta():
+    notes_path = ROOT / "docs" / "releases" / "v0.6.0-beta.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text()
+
+    assert "# Image Prompt Library v0.6.0-beta" in notes
+    assert "Generation Workflow & Attachment Edits" in notes
+    assert "Online Read Only Demo" in notes
+    assert "https://eddietyp.github.io/image-prompt-library/v0.6/" in notes
+    assert "first-run UI language" in notes
+    assert "attachment" in notes
+    assert "image edit" in notes
+    assert "aspect ratio `Auto`" in notes
+    assert "Save-as-new author" in notes
+    assert "Account Management" in notes
+    assert "image-prompt-library update --version v0.6.0-beta" in notes
+    assert "image-prompt-library rollback" in notes
+    assert "166" in notes
+    assert "AGPL-3.0-or-later" in notes
+
+    assert "/Users/" not in notes
+    assert ".local-work" not in notes
+    assert "OpenNana" not in notes
+    assert "token" not in notes.lower()
+    assert "secret" not in notes.lower()
