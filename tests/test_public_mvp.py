@@ -80,7 +80,8 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Mobile-first browsing behavior" in readme
     assert "stable two-column masonry layout" in readme
     assert "bottom dock instead of crowding the header" in readme
-    assert "Local Generation Studio" in readme
+    assert "review generated results before saving" in readme
+    assert "Local Generation Studio" not in readme
     assert "archived 0.3 preview" not in readme
     assert "archived 0.2 preview" not in readme
     assert "archived 0.1 alpha demo" not in readme
@@ -100,7 +101,16 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Add your own prompts & images" in readme
     assert "## Add your own prompts\n" not in readme
     assert "Save as new item" in readme
-    assert "openai_codex_oauth_native" in readme
+    assert "openai_codex_oauth_native" not in readme
+    assert "GenerationJob" not in readme
+    assert "IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID" not in readme
+    assert "Use the next release tag" not in readme
+    assert "main` release-ready" not in readme
+    assert "npm run build:demo" not in readme
+    assert "## Verification" not in readme
+    assert "## Repository layout" not in readme
+    assert "For the next version, the default is therefore" not in readme
+    assert "recommended default for this beta line" in readme
 
     screenshots = [
         "generation-provider-connected.jpeg",

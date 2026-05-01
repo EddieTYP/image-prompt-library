@@ -13,11 +13,11 @@ Your library stays on your own machine: local SQLite, local image files, no acco
 
 **Online Read Only Demo:** <https://eddietyp.github.io/image-prompt-library/> — browse public sample prompts and preview images on GitHub Pages. The online demo is read-only: Add, edit, generation, and private library management are local-only, so install the app locally to create, edit, or generate images for your own full library. Latest v0.6 beta improves the generation workflow and supports image edits with attachments.
 
-**v0.6 beta highlight:** local installs can connect via **ChatGPT OAuth** using the experimental `openai_codex_oauth_native` provider, use direct image generation from saved prompts, choose aspect ratio and quality settings, review auto-started queue jobs in the Local Generation Studio, then `Attach to current item` or `Save as new item` with editable metadata. No hosted account, cloud sync, or public API key is required by the app.
+**v0.6 beta highlight:** local installs can connect via **ChatGPT OAuth**, use direct image generation from saved prompts, choose aspect ratio and quality settings, review generated results before saving, then `Attach to current item` or `Save as new item` with editable metadata. No hosted account, cloud sync, or public API key is required by the app.
 
 **Beta release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.0-beta> — generation workflow and mobile polish, ChatGPT image generation, aspect ratio Auto, image edit/reference support, Save-as-new metadata review, versioned installer/update/rollback, and the multilingual provenance-aware prompt vault in the read-only demo.
 
-**Roadmap:** See [`ROADMAP.md`](ROADMAP.md) for follow-up work around mobile Explore, versioned release installs, local generation, import flows, and public release polish.
+**Project status:** This is a public beta. Core browsing, search, local add/edit, optional local generation, versioned installs, and the read-only online demo are available today.
 
 ![Image Prompt Library Cards view](docs/assets/screenshots/card-view-all.png)
 
@@ -51,12 +51,10 @@ image-prompt-library doctor
 On macOS, install a launchd user service if you want the app to survive Terminal closure and start when you log in:
 
 ```bash
-image-prompt-library service install --host 0.0.0.0 --port 7500
+image-prompt-library service install --host 127.0.0.1 --port 8000
 ```
 
-If a plist for the same service label already exists, install refuses to overwrite it. Use `image-prompt-library service install --replace ...` only when you intentionally want to replace and restart that managed service.
-
-Binding to `0.0.0.0` can expose the app to your LAN depending on your firewall. Use `--host 127.0.0.1` if you only want browser access from the same machine.
+Use `--host 0.0.0.0` only when you intentionally want LAN access and understand the firewall exposure.
 
 If the `image-prompt-library` command is not found, add `~/.local/bin` to your shell `PATH`, or use the fallback command printed by the installer:
 
@@ -104,7 +102,7 @@ The screenshots below show the main browsing, detail, and local generation flows
 Once the optional ChatGPT OAuth provider is connected, local installs can generate a new image from a fresh prompt or create a variant from an existing reference. Results land in the local inbox first, where you can attach them to the current item or save them as a new item with editable metadata.
 
 <p>
-  <img src="docs/assets/screenshots/generation-provider-connected.jpeg" width="49%" alt="Config drawer showing ChatGPT Codex OAuth connected" />
+  <img src="docs/assets/screenshots/generation-provider-connected.jpeg" width="49%" alt="Config drawer showing ChatGPT OAuth connected" />
   <img src="docs/assets/screenshots/generation-standalone-panel.jpeg" width="49%" alt="Standalone Generate image panel with result inbox" />
 </p>
 <p>
@@ -158,7 +156,7 @@ The detail view keeps the large image preview, prompt, language tabs, attributio
 - Detail modal with lightweight inline editing, prompt language tabs, source/origin prompt styling, multi-image browsing, generated-image badges, and copy feedback.
 - Add/edit modal with English, Traditional Chinese, and Simplified Chinese prompt fields plus metadata and a single source/origin marker.
 - Result image and optional reference image uploads.
-- Generate images directly in local installs through optional **ChatGPT OAuth** (`openai_codex_oauth_native`) without adding an OpenAI API key to the app.
+- Generate images directly in local installs through optional **ChatGPT OAuth** without adding an OpenAI API key to the app.
 - Local generation workflow: `Generate variant`, result inbox review, `Attach to current item`, and `Save as new item` with editable metadata before saving.
 - Provider-gated generation UI: generation controls stay hidden until a configured/authenticated provider is available, while Add/Edit remains usable without any generation provider.
 - Global generation queue drawer for active/succeeded/failed jobs, plus friendlier policy/rate-limit/auth/provider failure messages.
@@ -215,7 +213,7 @@ image-prompt-library doctor
 On macOS, install/manage a user launchd service for a long-running local instance:
 
 ```bash
-image-prompt-library service install --host 0.0.0.0 --port 7500
+image-prompt-library service install --host 127.0.0.1 --port 8000
 image-prompt-library service status
 image-prompt-library service restart
 image-prompt-library service stop
@@ -223,9 +221,7 @@ image-prompt-library service start
 image-prompt-library service uninstall
 ```
 
-Service install refuses to overwrite an existing plist for the same label unless you pass `--replace`, so a managed service is not silently replaced during reinstall.
-
-Use `--host 127.0.0.1` for same-machine-only access. Use `--host 0.0.0.0` only when you intentionally want the app reachable through available network interfaces, subject to firewall rules.
+Service install refuses to overwrite an existing plist for the same label unless you pass `--replace`, so a managed service is not silently replaced during reinstall. Use `--host 0.0.0.0` only when you intentionally want LAN access and understand the firewall exposure.
 
 The installer keeps replaceable app code under:
 
@@ -281,22 +277,13 @@ Normal release installs do not require Node.js because the release artifact incl
 
 The selected release must have matching GitHub Release assets: `image-prompt-library-<version>.tar.gz`, `.sha256`, and `.manifest.json`. The installer verifies the SHA256 checksum before switching `app/current` to the new version.
 
-### Release policy
-
-Use the next release tag for public installer changes instead of force-replacing `v0.6.0-beta`. For example, after this line of work, publish `v0.6.1-beta` or a later tag, then install/update with that explicit version. Keep `main` release-ready and do day-to-day development on `develop` or feature branches.
-
 ## Local generation workflow
 
-Generate images directly in local installs after connecting the optional **ChatGPT OAuth** provider (`openai_codex_oauth_native`). This remains local-only: the GitHub Pages Online Read Only Demo is read-only and does not expose generation or mutation controls.
+Local installs can optionally connect ChatGPT OAuth for image generation. The GitHub Pages Online Read Only Demo stays read-only and does not expose generation or mutation controls.
 
-Current local generation behavior:
+Once connected, you can generate a new image from a fresh prompt or create a variant from an existing reference. Generated results go to a review inbox first instead of being silently written into your library. From there, choose `Attach to current item` or `Save as new item` with editable metadata before saving.
 
-- Connect an optional provider from the Config drawer. The experimental native provider is labelled `openai_codex_oauth_native`, uses the public native Codex OAuth client by default, and stores its app-owned auth outside the prompt library data path. Advanced users can override the client id with `IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID` or `~/.image-prompt-library/config.json`.
-- Open an item and use `Generate variant`, or use the standalone `Generate` entry when a provider is connected.
-- Generated outputs land in a GenerationJob result inbox first; they are not silently written into the library.
-- Choose `Attach to current item` to add another image to the same reference, or `Save as new item` to review/edit title, collection, tags, prompt, and notes before creating a new variant item.
-- Active, completed, and failed generation jobs appear in the compact global generation queue drawer.
-- Policy, rate-limit, auth, and provider failures are shown as friendly reviewable states instead of raw error dumps.
+No OpenAI API key is required by the app for the ChatGPT OAuth path. Advanced provider configuration is available for users who need it, but the normal flow is handled from the Config drawer.
 
 ### Image 2.0 model/quality benchmark
 
@@ -304,7 +291,7 @@ While building Image Prompt Library's Image 2.0 generation workflow, I also benc
 
 The surprising result was that Low quality was not consistently faster. With the same prompt, GPT-5.5 + Low took 181.4s, while GPT-5.5 + Medium took only 44.6s. Most other combinations were roughly in the 50-60s range, except GPT-5.4 + Low, which was comparatively faster. Subjectively, GPT-5.4 produced the strongest images, followed by GPT-5.5 and then GPT-5.3-Codex.
 
-For the next version, the default is therefore **GPT-5.4 + High**: acceptable speed with the best visual quality in these tests. Users can still change both the tool-calling model and quality setting manually. See the benchmark notes and images in [`docs/generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md`](docs/generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md).
+Based on that benchmark, the recommended default for this beta line is **GPT-5.4 + High**: acceptable speed with the best visual quality in these tests. Users can still change both the tool-calling model and quality setting manually. See the benchmark notes and images in [`docs/generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md`](docs/generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md).
 
 ## Developer setup from source
 
@@ -441,37 +428,9 @@ Restore by stopping the app, extracting the archive, and replacing the correspon
 
 ## GitHub Pages Online Read Only Demo
 
-The repository also ships static read-only demos for GitHub Pages:
+The public Pages deployment is versioned. Use <https://eddietyp.github.io/image-prompt-library/> for the version chooser or <https://eddietyp.github.io/image-prompt-library/v0.6/> for the current 0.6 preview.
 
-```bash
-npm run build:demo
-npm run build:demo:v0.6
-```
-
-The public Pages deployment is versioned. Use `/` for the version chooser or `/v0.6/` for the current 0.6 preview.
-
-The demos read public sample metadata from `frontend/public/demo-data/`, use WebP preview images, and disable write actions. They are intended only as online read-only demos. The online demo is read-only: Add, edit, generation, and private library management are local-only, so install the app locally to create, edit, or generate images for your own private prompt library. Latest v0.6 beta improves the generation workflow and supports image edits with attachments.
-
-## Verification
-
-Run backend/API/static tests:
-
-```bash
-source .venv/bin/activate
-python -m pytest -q
-```
-
-Build the frontend:
-
-```bash
-npm run build
-```
-
-Smoke-test a running local server:
-
-```bash
-./scripts/smoke-test.sh
-```
+The online demo is read-only: Add, edit, generation, and private library management are local-only, so install the app locally to create, edit, or generate images for your own private prompt library. Latest v0.6 beta improves the generation workflow and supports image edits with attachments.
 
 ## License and allowed use
 
@@ -521,24 +480,6 @@ Check `IMAGE_PROMPT_LIBRARY_PATH` in `.env`. Your database and image folders mus
 
 ## Project status
 
-This is a beta local-first app. Core browse/search/filter/detail/copy/add/edit flows exist, the public Online Read Only Demo is versioned, and the local v0.6 beta adds a provider-gated mobile generation workflow with ChatGPT image generation, aspect ratio Auto, image edit/reference support, auto-start queueing, cancellation, result inbox review, attach-current-item, save-as-new-variant, and metadata review. Remaining work includes stronger queue recovery, import-flow polish, deeper mobile Explore gestures, and public-release hardening.
+This is a beta local-first app. Core browse/search/filter/detail/copy/add/edit flows exist, the public Online Read Only Demo is versioned, and the local v0.6 beta adds optional ChatGPT image generation with aspect ratio Auto, image edit/reference support, a review inbox, attach-current-item, save-as-new-item, and metadata review. Remaining work includes import-flow polish, deeper mobile Explore gestures, and public-release hardening.
 
-See `ROADMAP.md` for the current roadmap and follow-up priorities.
-
-## Repository layout
-
-```text
-backend/                 FastAPI app, SQLite migrations, repositories, services, routers
-frontend/                Vite/React app
-library/                 Local runtime data, ignored except .gitkeep placeholders
-scripts/install.sh         Versioned release installer for normal users
-scripts/appctl.sh          Installed-app start/version/update/rollback helper
-scripts/setup-runtime.sh   Runtime Python dependency setup for release installs
-scripts/package-release.sh Release artifact packager with built frontend assets
-scripts/dev.sh             Backend + Vite development mode
-scripts/setup.sh           Source/developer setup helper
-scripts/start.sh           Single-service source local mode
-scripts/backup.sh          Timestamped local data backup
-scripts/smoke-test.sh      Basic running-server smoke test
-tests/                   Backend/API/static regression tests
-```
+For contributor setup, tests, and project structure, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
