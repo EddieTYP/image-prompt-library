@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.0-beta)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.1-beta)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 ChatGPT image generation has become good enough that the prompts are worth keeping. The problem is that once you start saving great outputs, screenshots, and variations, there still is not a simple private tool for managing image prompts like a real reference library.
@@ -11,17 +11,17 @@ ChatGPT image generation has become good enough that the prompts are worth keepi
 
 Your library stays on your own machine: local SQLite, local image files, no accounts, no cloud sync, and no hosted database required.
 
-**Online Read Only Demo:** <https://eddietyp.github.io/image-prompt-library/> — browse public sample prompts and preview images on GitHub Pages. The online demo is read-only: Add, edit, generation, and private library management are local-only, so install the app locally to create, edit, or generate images for your own full library. Latest v0.6 beta improves the generation workflow and supports image edits with attachments.
+**Online Read Only Demo:** <https://eddietyp.github.io/image-prompt-library/> — browse public sample prompts and preview images on GitHub Pages. The online demo is read-only: Add, edit, generation, and private library management are local-only, so install the app locally to create, edit, or generate images for your own full library. Latest v0.6.1 beta refines Save-as-new metadata controls and image download/fullscreen actions.
 
-**v0.6 beta highlight:** local installs can connect via **ChatGPT OAuth**, use direct image generation from saved prompts, choose aspect ratio and quality settings, review generated results before saving, then `Attach to current item` or `Save as new item` with editable metadata. No hosted account, cloud sync, or public API key is required by the app.
+**v0.6.1 beta highlight:** local installs can connect via **ChatGPT OAuth**, use direct image generation from saved prompts, choose aspect ratio and quality settings, review generated results before saving, then `Attach to current item` or `Save as new item` with editable metadata, smart tag/collection suggestions, source-language pills, and direct image downloads. No hosted account, cloud sync, or public API key is required by the app.
 
-**Beta release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.0-beta> — generation workflow and mobile polish, ChatGPT image generation, aspect ratio Auto, image edit/reference support, Save-as-new metadata review, versioned installer/update/rollback, and the multilingual provenance-aware prompt vault in the read-only demo.
+**Beta release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.1-beta> — Save-as-new metadata polish, image download/fullscreen actions, ChatGPT image generation, aspect ratio Auto, image edit/reference support, versioned installer/update/rollback, and the multilingual provenance-aware prompt vault in the read-only demo.
 
 **Project status:** This is a public beta. Core browsing, search, local add/edit, optional local generation, versioned installs, and the read-only online demo are available today.
 
 ![Image Prompt Library Cards view](docs/assets/screenshots/card-view-all.png)
 
-The public Online Read Only Demo remains a multilingual provenance-aware prompt vault: 510 public references, two attributed sample sources, English / Traditional Chinese / Simplified Chinese prompt variants, and source/original provenance for every item. The v0.6 beta local app release adds the polished mobile generation workflow on top of the private install workflow.
+The public Online Read Only Demo remains a multilingual provenance-aware prompt vault: 510 public references, two attributed sample sources, English / Traditional Chinese / Simplified Chinese prompt variants, and source/original provenance for every item. The v0.6.1 beta local app release adds polished generation, Save-as-new metadata, and image action workflows on top of the private install workflow.
 
 ## TL;DR for beginners
 
@@ -95,7 +95,7 @@ image-prompt-library uninstall --delete-library --yes
 
 ## Screenshots
 
-The screenshots below show the main browsing, detail, and local generation flows. The public Online Read Only Demo keeps the mobile Cards/detail improvements from 0.2 and the richer multilingual read-only prompt vault from 0.3, while the v0.6 beta local install path adds the polished ChatGPT image generation workflow.
+The screenshots below show the main browsing, detail, and local generation flows. The public Online Read Only Demo keeps the mobile Cards/detail improvements from 0.2 and the richer multilingual read-only prompt vault from 0.3, while the v0.6.1 beta local install path adds the polished ChatGPT image generation, Save-as-new metadata, and image action workflows.
 
 ### Generate with ChatGPT OAuth
 
@@ -198,7 +198,7 @@ image-prompt-library start
 Install a specific tagged release instead:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.6.0-beta
+curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.6.1-beta
 image-prompt-library start
 ```
 
@@ -246,7 +246,7 @@ image-prompt-library update
 Install or switch to a specific version with:
 
 ```bash
-image-prompt-library update --version v0.6.0-beta
+image-prompt-library update --version v0.6.1-beta
 ```
 
 Rollback to the previous installed version with:
@@ -430,7 +430,7 @@ Restore by stopping the app, extracting the archive, and replacing the correspon
 
 The public Pages deployment is versioned. Use <https://eddietyp.github.io/image-prompt-library/> for the version chooser or <https://eddietyp.github.io/image-prompt-library/v0.6/> for the current 0.6 preview.
 
-The online demo is read-only: Add, edit, generation, and private library management are local-only, so install the app locally to create, edit, or generate images for your own private prompt library. Latest v0.6 beta improves the generation workflow and supports image edits with attachments.
+The online demo is read-only: Add, edit, generation, and private library management are local-only, so install the app locally to create, edit, or generate images for your own private prompt library. Latest v0.6.1 beta refines Save-as-new metadata controls and image download/fullscreen actions.
 
 ## License and allowed use
 
@@ -480,6 +480,6 @@ Check `IMAGE_PROMPT_LIBRARY_PATH` in `.env`. Your database and image folders mus
 
 ## Project status
 
-This is a beta local-first app. Core browse/search/filter/detail/copy/add/edit flows exist, the public Online Read Only Demo is versioned, and the local v0.6 beta adds optional ChatGPT image generation with aspect ratio Auto, image edit/reference support, a review inbox, attach-current-item, save-as-new-item, and metadata review. Remaining work includes import-flow polish, deeper mobile Explore gestures, and public-release hardening.
+This is a beta local-first app. Core browse/search/filter/detail/copy/add/edit flows exist, the public Online Read Only Demo is versioned, and the local v0.6.1 beta adds optional ChatGPT image generation with aspect ratio Auto, image edit/reference support, a review inbox, attach-current-item, save-as-new-item, smart metadata review, and image download/fullscreen actions. Remaining work includes import-flow polish, deeper mobile Explore gestures, and public-release hardening.
 
 For contributor setup, tests, and project structure, see [`CONTRIBUTING.md`](CONTRIBUTING.md).

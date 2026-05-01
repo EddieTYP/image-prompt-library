@@ -111,7 +111,7 @@ def test_release_assets_workflow_packages_only_current_version_assets():
     workflow = workflow_path.read_text()
 
     assert "rm -rf dist-release" in workflow
-    assert "scripts/package-release.sh \"$VERSION\" --skip-build" in workflow
+    assert 'scripts/package-release.sh "$VERSION" --skip-build' in workflow
     assert "dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.tar.gz" in workflow
     assert "dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.tar.gz.sha256" in workflow
     assert "dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.manifest.json" in workflow
@@ -189,6 +189,34 @@ def test_v06_release_notes_describe_generation_workflow_and_attachment_edits_bet
     assert "image-prompt-library update --version v0.6.0-beta" in notes
     assert "image-prompt-library rollback" in notes
     assert "166" in notes
+    assert "AGPL-3.0-or-later" in notes
+
+    assert "/Users/" not in notes
+    assert ".local-work" not in notes
+    assert "OpenNana" not in notes
+    assert "token" not in notes.lower()
+    assert "secret" not in notes.lower()
+
+
+def test_v061_release_notes_describe_save_as_new_metadata_and_image_actions_beta():
+    notes_path = ROOT / "docs" / "releases" / "v0.6.1-beta.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text()
+
+    assert "# Image Prompt Library v0.6.1-beta" in notes
+    assert "Save-as-new Metadata & Image Actions" in notes
+    assert "Online Read Only Demo" in notes
+    assert "https://eddietyp.github.io/image-prompt-library/v0.6/" in notes
+    assert "comma-separated" in notes
+    assert "Collection suggestions" in notes
+    assert "Source Language" in notes
+    assert "ENG`, `繁中`, and `簡中`" in notes
+    assert "notes for new generated items to empty" in notes
+    assert "original image" in notes
+    assert "Download actions" in notes
+    assert "image-prompt-library update --version v0.6.1-beta" in notes
+    assert "image-prompt-library rollback" in notes
+    assert "168" in notes
     assert "AGPL-3.0-or-later" in notes
 
     assert "/Users/" not in notes
