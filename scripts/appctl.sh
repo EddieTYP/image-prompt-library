@@ -189,7 +189,8 @@ update_app() {
         ;;
     esac
   done
-  bash "$SCRIPT_DIR/install.sh" --prefix "$APP_PREFIX" --version "$VERSION_ARG" --no-shim
+  PYTHON_BIN="$(python_bin)"
+  PYTHON="$PYTHON_BIN" bash "$SCRIPT_DIR/install.sh" --prefix "$APP_PREFIX" --version "$VERSION_ARG" --no-shim
 }
 
 rollback_app() {

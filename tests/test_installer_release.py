@@ -73,6 +73,7 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "launchctl" in appctl
     assert "LaunchAgents" in appctl
     assert "update)" in appctl
+    assert "PYTHON=\"$PYTHON_BIN\" bash \"$SCRIPT_DIR/install.sh\"" in appctl
     assert "rollback)" in appctl
     assert "sample-data)" in appctl
     assert "uninstall)" in appctl
