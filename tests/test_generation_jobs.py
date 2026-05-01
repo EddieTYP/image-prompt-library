@@ -22,11 +22,14 @@ def client(tmp_path):
     return TestClient(create_app(library_path=tmp_path / "library"))
 
 
-def create_source_item(c):
-    return c.post("/api/items", json={
+def create_source_item(c, *, author=None):
+    payload = {
         "title": "Source prompt",
         "prompts": [{"language": "en", "text": "A cinematic moonlit robot", "is_original": True}],
-    }).json()
+    }
+    if author is not None:
+        payload["author"] = author
+    return c.post("/api/items", json=payload).json()
 
 
 def test_generation_job_can_stage_result_and_accept_into_source_item(tmp_path):
@@ -142,6 +145,30 @@ def test_generation_job_can_accept_result_as_new_variant_item(tmp_path):
     assert original_after["images"] == []
 
 
+def test_accept_as_new_item_defaults_author_to_current_local_user_not_source_author(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c, author="Original Artist")
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "text_to_image",
+        "provider": "manual_upload",
+        "model": "manual-test-model",
+        "prompt_language": "en",
+        "prompt_text": "A cinematic moonlit robot",
+    }).json()
+    c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("purple"), "image/png")},
+    )
+
+    accepted = c.post(f"/api/generation-jobs/{job['id']}/accept-as-new-item")
+
+    assert accepted.status_code == 200
+    new_item = accepted.json()["item"]
+    assert new_item["author"] == "User"
+    assert new_item["author"] != source_item["author"]
+
+
 def test_accept_as_new_item_uses_metadata_overrides_and_keeps_provenance(tmp_path):
     c = client(tmp_path)
     source_item = create_source_item(c)
@@ -243,6 +270,71 @@ def test_generation_job_discard_does_not_attach_result(tmp_path):
     item = c.get(f"/api/items/{source_item['id']}").json()
     assert item["images"] == []
     assert c.post(f"/api/generation-jobs/{job['id']}/accept").status_code == 409
+
+
+def test_generation_job_can_discard_unsaved_result_and_retry_same_settings(tmp_path, monkeypatch):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    enqueue_calls = []
+
+    def fake_enqueue(library_path, *, provider):
+        enqueue_calls.append((Path(library_path), provider))
+
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", fake_enqueue)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "text_to_image",
+        "provider": "openai_codex_oauth_native",
+        "model": "gpt-image-2",
+        "prompt_language": "en",
+        "prompt_text": "A cinematic moonlit robot",
+        "edited_prompt_text": "A cinematic moonlit robot holding a lantern",
+        "reference_image_ids": ["img_reference"],
+        "parameters": {"requested_aspect_ratio": "1:1", "quality": "high"},
+    }).json()
+    c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("blue"), "image/png")},
+    )
+    enqueue_calls.clear()
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/discard-and-retry")
+
+    assert response.status_code == 200
+    payload = response.json()
+    discarded = payload["discarded_job"]
+    retry = payload["retry_job"]
+    assert discarded["id"] == job["id"]
+    assert discarded["status"] == "discarded"
+    assert discarded["metadata"]["retried_by_generation_job_id"] == retry["id"]
+    assert retry["id"] != job["id"]
+    assert retry["status"] == "queued"
+    assert retry["source_item_id"] == source_item["id"]
+    assert retry["provider"] == "openai_codex_oauth_native"
+    assert retry["model"] == "gpt-image-2"
+    assert retry["prompt_text"] == "A cinematic moonlit robot"
+    assert retry["edited_prompt_text"] == "A cinematic moonlit robot holding a lantern"
+    assert retry["reference_image_ids"] == ["img_reference"]
+    assert retry["parameters"] == {"requested_aspect_ratio": "1:1", "quality": "high"}
+    assert retry["metadata"]["retry_of_generation_job_id"] == job["id"]
+    assert retry["metadata"]["retry_reason"] == "discard_and_retry"
+    assert enqueue_calls == [(tmp_path / "library", "openai_codex_oauth_native")]
+
+
+def test_generation_job_retry_rejects_saved_or_unfinished_jobs(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    queued = c.post("/api/generation-jobs", json={"source_item_id": source_item["id"], "prompt_text": "queued"}).json()
+    assert c.post(f"/api/generation-jobs/{queued['id']}/discard-and-retry").status_code == 409
+
+    saved = c.post("/api/generation-jobs", json={"source_item_id": source_item["id"], "prompt_text": "saved"}).json()
+    c.post(f"/api/generation-jobs/{saved['id']}/result", files={"file": ("generated.png", png_bytes("blue"), "image/png")})
+    c.post(f"/api/generation-jobs/{saved['id']}/accept")
+
+    response = c.post(f"/api/generation-jobs/{saved['id']}/discard-and-retry")
+
+    assert response.status_code == 409
+    assert "Saved generation jobs cannot be retried" in response.json()["detail"]
 
 
 def test_generation_job_rejects_accept_without_result(tmp_path):

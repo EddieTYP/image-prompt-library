@@ -59,7 +59,11 @@ def test_mobile_cards_use_touch_visible_two_column_masonry():
     assert "leftColumnItems" in cards and "rightColumnItems" in cards
     assert "items.filter((_, index) => index % 2 === 0)" in cards
     assert "items.filter((_, index) => index % 2 === 1)" in cards
-    assert "action-label" in card
+    assert "action-label" not in card
+    assert "aria-label={t('copyPrompt')}" in card
+    assert "title={t('copyPrompt')}" in card
+    assert ".item-card{position:relative;display:inline-block;width:100%;margin:0016px;border-radius:0;" in compact_css
+    assert ".mobile-masonry-column.item-card{display:block;width:100%;margin:0;border-radius:0}" in compact_css
     assert ".mobile-masonry-columns{display:none}" in compact_css
     assert ".desktop-cards-grid{display:block}" in compact_css
     assert ".desktop-cards-grid{display:none}" in compact_css
@@ -70,7 +74,6 @@ def test_mobile_cards_use_touch_visible_two_column_masonry():
     assert ".mobile-masonry-columns.card-image-frame.has-reserved-ratio{aspect-ratio:auto!important}" in compact_css
     assert ".mobile-masonry-columns.card-image-frameimg{width:100%;height:auto;object-fit:contain" in compact_css
     assert ".item-card.card-actions{opacity:1;transform:none;flex-direction:row;" in compact_css
-    assert ".hover-action.action-label{display:none}" in compact_css
 
 
 def test_card_display_uses_preview_or_original_before_thumbnail_for_adaptive_images():
@@ -137,7 +140,8 @@ def test_mobile_selected_collection_uses_bottom_floating_dock_and_active_filter_
     assert ".filter-active-count" not in css
     assert "@media(max-width:760px)" in css
     assert ".active-filter-strip.active-filter{display:none}" in compact_css
-    assert ".selected-collection-dock{position:fixed;left:16px;right:16px;bottom:calc(16px+env(safe-area-inset-bottom));" in compact_css
+    assert ".selected-collection-dock{display:none}" in compact_css
+    assert "@media(min-width:761px){.selected-collection-dock{position:fixed;left:16px;right:16px;bottom:calc(16px+env(safe-area-inset-bottom));" in compact_css
     assert ".selected-collection-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:clamp(14px,3.7vw,16px);" in compact_css
     assert ".selected-collection-name.is-long{font-size:clamp(12.5px,3.25vw,14.5px)}" in compact_css
     assert ".selected-collection-name.is-very-long{font-size:clamp(12px,3vw,13.5px)}" in compact_css
@@ -157,10 +161,19 @@ def test_mobile_detail_modal_has_image_first_floating_controls():
     assert "mobile-generate-variant-label" in detail
     assert "Generate variant" in detail
     assert ".detail.modal{width:100vw;max-height:100dvh;" in compact_css
-    assert ".modal-hero{min-height:0;height:auto;" in compact_css
-    assert ".hero-image{width:100%;height:auto;max-height:none;object-fit:contain}" in compact_css
+    assert ".modal-hero{order:0;min-height:360px;height:min(68dvh,620px);" in compact_css
+    assert ".detail-fullscreen-frame{position:absolute;inset:0;" in compact_css
     assert ".mobile-hero-actions{display:block}" in compact_css
+    assert "isHeroFullscreen" in detail
+    assert "setIsHeroFullscreen(true)" in detail
+    assert "document.fullscreenElement === heroFullscreenFrameRef.current" in detail
+    assert "className={`modal-hero${isHeroFullscreen ? ' is-mobile-fullscreen' : ''}`}" in detail
+    assert "<X size={20} strokeWidth={2.25} />" in detail
     assert ".mobile-hero-close{position:absolute;right:12px;top:calc(12px+env(safe-area-inset-top));" in compact_css
+    assert ".detail-fullscreen-overlay{right:64px;top:calc(12px+env(safe-area-inset-top));z-index:12;width:44px;height:44px;" in compact_css
+    assert ".modal-hero.is-mobile-fullscreen{position:fixed;inset:0;z-index:2147483600;width:100vw;height:100dvh;" in compact_css
+    assert "className={`detail-fullscreen-frame${isHeroFullscreen ? ' is-mobile-fullscreen' : ''}`}" in detail
+    assert ".modal-hero.is-mobile-fullscreen.detail-fullscreen-frame,.detail-fullscreen-frame.is-mobile-fullscreen{position:fixed;inset:0;background:#05050a;width:100vw;height:100dvh}" in compact_css
     assert ".mobile-hero-primary-actions{position:absolute;right:12px;bottom:12px;" in compact_css
     assert ".mobile-generate-variant-button{display:inline-flex" in compact_css
     assert ".mobile-generate-variant-label{display:inline" in compact_css
@@ -284,6 +297,18 @@ def test_config_prompt_copy_language_is_mobile_safe():
     assert ".prompt-copy-language-control{grid-template-columns:repeat(2,minmax(0,1fr));" in compact_css
 
 
+def test_config_language_buttons_are_center_aligned():
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    compact_css = css.replace(" ", "")
+
+    assert ".segmented-controlbutton{" in compact_css
+    segment_button_css = compact_css[compact_css.find(".segmented-controlbutton{") : compact_css.find(".segmented-controlbutton.active")]
+    assert "display:flex" in segment_button_css
+    assert "align-items:center" in segment_button_css
+    assert "justify-content:center" in segment_button_css
+    assert "text-align:center" in segment_button_css
+
+
 def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
@@ -304,13 +329,13 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "discardGenerationJob:" in api
     assert "GenerationPanel" in app or "GenerationPanel" in detail
     assert "Generate variant" in detail
-    assert "Result inbox" in panel
+    assert "Result inbox" not in panel
     assert "api.createGenerationJob" in panel
     assert "api.runGenerationJob" in panel
-    assert "api.uploadGenerationResult" in panel
     assert "api.acceptGenerationJob" in panel
     assert "api.acceptGenerationJobAsNewItem" in panel
     assert "api.discardGenerationJob" in panel
+    assert "api.discardAndRetryGenerationJob" in panel
     assert "api.cancelGenerationJob" in panel
     assert "manual_upload" in panel
     assert "openai_codex_oauth_native" in panel
@@ -320,16 +345,22 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Generation queued. It will start automatically." in panel
     assert "Attach to current item" in panel
     assert "Save as new item" in panel
+    assert "Save as new" in panel
+    assert "aria-label=\"Retry\"" in panel
+    assert "title=\"Retry\"" in panel
+    assert "generation-stage-actions" in panel
     assert "generation-shimmer" in panel
     assert "Image added to item" in panel
     assert "New variant item created" in panel
     assert "window.setTimeout(() => setMessage(''), 2200)" in panel
     assert "onAccepted(result.item, 'New variant item created');\n      onClose();" in panel
-    assert "Upload external result" in panel
-    assert "generation-advanced" in panel
+    assert "Upload external result" not in panel
+    assert "generation-advanced" not in panel
     assert "generation-panel" in css
     assert "generation-job-card" in css
     assert "generation-job-card.has-result" in css
+    assert "generation-icon-action" in css
+    assert "generation-icon-action.danger" in css
     assert "generation-shimmer" in css
     assert "toast" in css
     assert "GenerationJobAcceptAsNewItemPayload" in types
@@ -343,43 +374,191 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "setFocusedJobHighlightId" in panel
     assert "window.setInterval(() => refreshJobs({ preserveActive: true }).catch(() => undefined), 2500)" in panel
     assert "['queued', 'running'].includes(job.status)" in panel
-    assert "scrollIntoView({ behavior: 'smooth', block: 'center' })" in panel
+    assert "stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })" in panel
     assert "Save generated image as new item" in panel
     assert "Review metadata" in panel
+    assert "author: 'User'" in panel
+    assert "author: item?.author" not in panel
+    assert "notes: item ? `Variant generated from ${item.title}.` : 'Generated from a standalone prompt.'" in panel
     assert "readonly-provenance" in panel
     assert "Cannot generate this image" in panel
     assert "Generation is temporarily rate limited" in panel
     assert "Provider connection needs attention" in panel
-    assert "Generate image" in panel
     assert "source_item_id: item?.id" in panel
-    assert "Aspect ratio" in panel
-    assert "1:1 Square" in panel
-    assert "3:4 Portrait" in panel
-    assert "9:16 Vertical" in panel
-    assert "4:3 Landscape" in panel
-    assert "16:9 Wide" in panel
+    assert "const [aspectRatio, setAspectRatio] = useState('auto')" in panel
     assert "requested_aspect_ratio: aspectRatio" in panel
-    assert "aspect_ratio_prompt_injection: true" in panel
+    assert "aspect_ratio_prompt_injection: aspectRatio !== 'auto'" in panel
     assert "quality" in panel
+    assert "ASPECT_RATIO_OPTIONS" in panel
     assert "QUALITY_OPTIONS" in panel
     assert "Auto" in panel
-    assert "Standard" in panel
+    assert "1:1" in panel
+    assert "3:4" in panel
+    assert "9:16" in panel
+    assert "4:3" in panel
+    assert "16:9" in panel
+    assert "Low" in panel
+    assert "Medium" in panel
     assert "High" in panel
     assert "generation-layout" in panel
     assert "generation-composer-card" in panel
-    assert "generation-workbench-card" in panel
-    assert "generation-settings-row" in panel
-    assert "Review generated results" in panel
-    assert "Describe the image you want to create." in panel
+    assert "generation-stage-card" in panel
+    assert "generation-prompt-area" in panel
+    assert "generation-compact-controls" in panel
+    assert "generation-control-popover" in panel
+    assert "generation-stage" in panel
+    assert "generation-stage-ready" in panel
+    assert "Ready" in panel
+    assert "Generating…" in panel
+    assert "stage-shimmer" in panel
+    assert "generation-history-control" in panel
+    assert "generation-close-overlay" in panel
+    assert "generation-fullscreen-overlay" in panel
+    assert "toggleStageFullscreen" in panel
+    assert "stageRef" in panel
+    assert "aria-label=\"History\"" in panel
+    assert "showHistoryDrawer" in panel
+    assert "generation-history-drawer" in panel
+    assert "generation-history-media" in panel
+    assert "generation-history-status-grid" in panel
+    assert "generation-history-cell" in panel
+    assert "Aspect ratio" in panel
+    assert "Quality" in panel
+    assert "Model" in panel
+    assert "Status" in panel
+    assert "jobModel(job)" in panel
+    assert "Untitled generation" not in panel
+    assert "Copy prompt" in panel
+    assert "Back to draft" in panel
+    assert "setHistoryReviewJobId" in panel
+    assert "useJobAsDraft" in panel
+    assert "copyJobPrompt" in panel
+    assert "generation-stage-actions" in panel
+    assert "generation-stage-action-bar" not in panel
+    assert "canUseResultActions" in panel
+    assert "resultImageRef" in panel
+    assert "fullscreenFrameRef.current.requestFullscreen" in panel
+    assert "orchestratorModel" in panel
+    assert "useState('gpt-5.4')" in panel
+    assert "MAX_EDIT_ATTACHMENTS = 4" in panel
+    assert "mode: attachments.length > 0 ? 'image_edit' : 'text_to_image'" in panel
+    assert "input_images: attachments" in panel
+    assert "generation-attachment-strip" in panel
+    assert "generation-attachment-thumb" in panel
+    assert "generation-attach-trigger" in panel
+    assert "aria-label=\"Attach image\"" in panel
+    assert "Remove ${attachment.name}" in panel
+    assert "Use result as edit input" in panel
+    assert "canAttachToSourceItem" in panel
+    assert "promptChangedFromSource" in panel
+    assert "stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })" in panel
+    assert "stageRef.current?.scrollIntoView" in panel
+    assert "onClose();" in panel
+    assert "orchestrator_models" in types
+    assert "generation-model-trigger" in panel
+    assert "selectedStageJob.status === 'accepted'" in panel
+    assert "aspectRatioIcon" in panel
+    assert "qualityIcon" in panel
+    assert "brainAiIcon" in panel
+    assert "generation-control-icon" in panel
+    assert "generation-control-value" in panel
+    assert "aria-label={`Aspect ratio: ${optionLabel(ASPECT_RATIO_OPTIONS, aspectRatio)}`}" in panel
+    assert "aria-label={`Quality: ${optionLabel(QUALITY_OPTIONS, quality)}`}" in panel
+    assert "aria-label={`Model: ${orchestratorModel}`}" in panel
+    assert "title={orchestratorModel}" in panel
+    assert "Paperclip" in panel
+    assert "FilePlus2" in panel
+    assert "RotateCcw" in panel
+    assert "Trash2" in panel
+    assert ">Attach<" not in panel
+    assert ">Save as new<" not in panel
+    assert "Retry" in panel
+    assert "Discard" in panel
+    assert "Upload external result" not in panel
+    assert "generation-settings-chips" not in panel
+    assert "generation-provider-pill" not in panel
+    assert "generation-provider-field" not in panel
+    assert "<select value={aspectRatio}" not in panel
+    assert "<select value={quality}" not in panel
+    assert "Review generated results" not in panel
+    assert "Describe the image you want to create." not in panel
     assert "Uses a ChatGPT-style aspect-ratio instruction" not in panel
+    assert "Selected job:" not in panel
     compact_css = css.replace(" ", "")
-    assert ".generation-layout{display:grid;grid-template-columns:minmax(320px,.9fr)minmax(380px,1.1fr);" in compact_css
-    assert ".generation-settings-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));" in compact_css
-    assert ".generation-provider-pill" in compact_css
-    assert ".generation-provider-pill{display:inline-flex;align-items:center;justify-content:center" in compact_css
-    assert "text-align:center" in compact_css
+    assert ".generation-layout{display:grid;grid-template-columns:minmax(320px,.82fr)minmax(520px,1.18fr);" in compact_css
+    assert ".generation-composer-card{display:grid;grid-template-rows:minmax(0,1fr)auto;" in compact_css
+    assert ".generation-prompt-area" in compact_css
+    assert ".generation-compact-controls" in compact_css
+    assert ".generation-stage-card{position:relative;" in compact_css
+    assert ".generation-stage{position:relative;" in compact_css
+    assert ".generation-stage-generating" in compact_css
+    assert "background:rgba(255,255,255,.94)" in compact_css
+    assert "background:rgba(250,248,255,.82)" in compact_css
+    assert "inset:0" in compact_css
+    assert "animation:stage-shimmer-sweep" in compact_css
+    assert "rgba(255,255,255,.86)" in compact_css
+    assert "rgba(124,92,255,.14)" in compact_css
+    assert ".generation-history-control" in compact_css
+    assert ".generation-close-overlay" in compact_css
+    assert ".generation-fullscreen-overlay" in compact_css
+    assert "max-height:none" in compact_css
+    assert "object-fit:contain" in compact_css
+    assert "background:#faf8ff" in compact_css
+    assert "margin-top:0" in compact_css
+    assert ".generation-stage-actions" in compact_css
+    assert ".generation-stage-action-bar" not in compact_css
+    assert "backdrop-filter:blur" not in compact_css[compact_css.find("/*Generationstagealignment/fullscreenrefinement*/"):]
+    assert ".generation-control-trigger.generation-aspect-trigger{width:" in compact_css
+    assert ".generation-control-trigger.generation-quality-trigger{width:" in compact_css
+    assert ".generation-control-trigger.generation-model-trigger{width:" in compact_css
+    assert "grid-template-columns:44px44px44px44pxminmax(112px,1fr)44px" in compact_css
+    assert "grid-template-columns:40px40px40px40pxminmax(96px,1fr)40px" in compact_css
+    assert ".generation-attachment-input{display:none" in compact_css
+    assert ".generation-attachment-strip{position:absolute;left:14px;bottom:12px" in compact_css
+    assert ".generation-attachment-thumbbutton{position:absolute;right:-6px;top:-6px" in compact_css
+    assert ".generation-attach-trigger{display:none" not in compact_css
+    assert ".generation-control-trigger,.generation-history-control,.generation-attach-trigger{width:44px;min-width:44px" in compact_css
+    assert ".generation-control-value{position:absolute" in compact_css
+    assert ".generation-control-icon{width:20px;height:20px" in compact_css
+    assert ".generation-compact-controls{display:grid;grid-template-columns:44px44px44px44pxminmax(112px,1fr)44px" in compact_css
+    assert ".generation-stage-actions{position:absolute;" in compact_css
+    assert "transform:none" in compact_css
+    assert ".generation-stage-actions{position:absolute;left:14px;right:14px;" in compact_css
+    final_generation_css = compact_css[compact_css.rfind("/*Generationcontrols,editattachments,andmobilelayoutstabilization*/") :]
+    assert "justify-content:flex-end" in final_generation_css
+    assert ".stage-action.danger{margin-right:0" in final_generation_css
+    assert ".stage-action{width:42px;flex:0042px" in compact_css
+    assert ".generation-fullscreen-frame" in compact_css
+    assert ".generation-fullscreen-close" in compact_css
+    assert ".generation-result-image.generation-result-fade-in{position:absolute;inset:0" in compact_css
+    assert "animation:generation-result-crisp-fade" not in compact_css
+    assert "transition:none" in compact_css
+    assert "image-rendering:auto" in compact_css
+    assert "clip-path:inset(0)" in compact_css
+    assert ".generation-composer-card{display:grid;" in compact_css and "overflow:visible" in compact_css
+    assert ".generation-history-drawer" in compact_css
+    assert ".generation-history-item" in compact_css
+    assert ".generation-history-media{width:100%;height:auto;" in compact_css
+    assert "aspect-ratio:16/10" not in compact_css[compact_css.find(".generation-history-media"):compact_css.find(".generation-history-status-grid")]
+    assert ".generation-history-mediaimg{display:block;width:100%;height:auto;object-fit:contain" in compact_css
+    assert ".generation-history-status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));" in compact_css
+    assert ".generation-history-cell{display:grid;gap:3px;min-width:0;background:transparent" in compact_css
+    assert "-webkit-line-clamp:2" not in final_generation_css
+    assert ".save-new-metadata-panel" in compact_css
+    assert ".save-new-metadata-panel.is-closing" in compact_css
+    assert "generation-save-panel-close" in panel
+    assert "image-role-badge" in detail
+    assert "image-thumb-role-badge" in detail
+    assert "onOpenItem?.(acceptedItem.id)" in detail
+    assert "onOpenItem={setDetailId}" in app
     assert "@media(max-width:760px)" in compact_css
-    assert ".generation-layout{grid-template-columns:1fr" in compact_css
+    assert ".generation-layout{display:flex;flex-direction:column" in compact_css
+    assert ".generation-stage-card{min-height:calc(100dvh-24px);height:calc(100dvh-24px);" in compact_css
+    assert ".generation-stage-result{height:100%;min-height:100%;" in compact_css
+    assert ".generation-result-image.generation-result-fade-in{position:absolute;inset:0;width:100%;height:100%;" in compact_css
+    assert ".generation-compact-controls{grid-template-columns:40px40px40px40pxminmax(96px,1fr)40px;gap:7px;position:relative;z-index:5;overflow:visible;padding-bottom:2px;scrollbar-width:none}" in compact_css
+    assert ".generation-control-popover{position:absolute;left:0;bottom:calc(100%+8px);min-width:132px;z-index:40;" in compact_css
+    assert "<X size={20} strokeWidth={2.25} />" in panel
 
     assert "selectedImageId" in detail
     assert "image-gallery-thumb" in detail
@@ -390,6 +569,20 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "initialGenerationJobId" in detail
     assert "setGenerationOpen(Boolean(initialGenerationJobId))" in detail
     assert "initialJobId={initialGenerationJobId}" in detail
+    assert "heroImageRef" in detail
+    assert "toggleHeroFullscreen" in detail
+    assert "useEffect(() => { if (id) setIsClosing(false); }, [id])" in detail
+    assert "heroFullscreenFrameRef" in detail
+    assert "detail-fullscreen-close" in detail
+    assert ".rail.glass-rail.image-gallery-rail" in compact_css
+    assert "backdrop-filter:none" in compact_css
+
+    editor = (ROOT / "frontend" / "src" / "components" / "ItemEditorModal.tsx").read_text()
+    assert "onClick={handleClose}" in editor
+    assert "onClick={event => event.stopPropagation()}" in editor
+    assert "isClosing ? ' is-closing'" in editor
+    assert "modal-panel-out" in compact_css
+    assert "modal-backdrop-out" in compact_css
 
     explore = (ROOT / "frontend" / "src" / "components" / "ExploreView.tsx").read_text()
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()

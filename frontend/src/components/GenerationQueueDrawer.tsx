@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Bell, CheckCircle2, Clock3, ImagePlus, XCircle } from 'lucide-react';
+import { Bell, CheckCircle2, Clock3, ImagePlus, X, XCircle } from 'lucide-react';
 import { api } from '../api/client';
 import type { GenerationJobRecord } from '../types';
 import type { Translator } from '../utils/i18n';
@@ -89,7 +89,7 @@ export default function GenerationQueueDrawer({
               <p className="drawer-eyebrow">Work queue</p>
               <h2>Generation queue</h2>
             </div>
-            <button className="modal-icon-button" onClick={onClose} aria-label={t('close')}>×</button>
+            <button className="modal-icon-button" onClick={onClose} aria-label={t('close')}><X size={20} strokeWidth={2.25} /></button>
           </div>
           {loadError && <p className="error">{loadError}</p>}
           <p className="muted queue-summary">{counts.running} running · {counts.queued} queued · {counts.ready} ready</p>

@@ -31,6 +31,16 @@ is_wsl() {
   grep -qiE '(microsoft|wsl)' /proc/version 2>/dev/null
 }
 
+python_bin() {
+  if [ -n "${PYTHON:-}" ]; then
+    printf '%s\n' "$PYTHON"
+  elif [ -x "$APP_ROOT/.venv/bin/python" ]; then
+    printf '%s\n' "$APP_ROOT/.venv/bin/python"
+  else
+    printf '%s\n' "python3"
+  fi
+}
+
 print_version() {
   if [ -f "$VERSION_FILE" ]; then
     printf '%s\n' "$(tr -d '\n\r' < "$VERSION_FILE")"
@@ -84,12 +94,85 @@ WSL detected. If your Windows browser cannot open http://127.0.0.1:$BACKEND_PORT
 Then open http://localhost:$BACKEND_PORT/ from Windows. Binding to 0.0.0.0 may expose the app beyond WSL; use only on a trusted machine/network.
 WSL_HINT
   fi
-  PYTHON_BIN="${PYTHON:-python3}"
-  if [ -x "$APP_ROOT/.venv/bin/python" ]; then
-    PYTHON_BIN="$APP_ROOT/.venv/bin/python"
-  fi
+  PYTHON_BIN="$(python_bin)"
   cd "$APP_ROOT"
   exec "$PYTHON_BIN" -m uvicorn backend.main:app --host "$BACKEND_HOST" --port "$BACKEND_PORT"
+}
+
+doctor_app() {
+  load_env
+  PYTHON_BIN="$(python_bin)"
+  cd "$APP_ROOT"
+  "$PYTHON_BIN" - "$APP_ROOT" "$APP_PREFIX" "$IMAGE_PROMPT_LIBRARY_PATH" "$BACKEND_HOST" "$BACKEND_PORT" "$(print_version)" <<'PY'
+from __future__ import annotations
+
+import os
+import platform
+import sqlite3
+import subprocess
+import sys
+from pathlib import Path
+
+app_root = Path(sys.argv[1])
+app_prefix = Path(sys.argv[2])
+library_path = Path(sys.argv[3]).expanduser()
+backend_host = sys.argv[4]
+backend_port = sys.argv[5]
+version = sys.argv[6]
+sys.path.insert(0, str(app_root))
+
+print("Image Prompt Library doctor")
+print(f"Version: {version}")
+print(f"Install prefix: {app_prefix}")
+print(f"App root: {app_root}")
+print(f"Library path: {library_path}")
+print(f"Backend: {backend_host}:{backend_port}")
+print(f"Platform: {platform.system()} {platform.release()}")
+
+try:
+    library_path.mkdir(parents=True, exist_ok=True)
+    db_path = library_path / "db.sqlite"
+    if not db_path.exists():
+        from backend.db import init_db
+        init_db(library_path)
+    with sqlite3.connect(db_path) as conn:
+        integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
+        item_count = conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+    print(f"Database path: {db_path}")
+    print(f"Database integrity: {integrity}")
+    print(f"Item count: {item_count}")
+except Exception as exc:
+    print(f"Database integrity: error ({type(exc).__name__})")
+
+try:
+    from backend.services.openai_codex_native import CodexNativeAuthStore, PROVIDER_ID, configured_client_id
+    store = CodexNativeAuthStore()
+    configured = bool(configured_client_id())
+    saved_auth_present = store.path.is_file()
+    if not configured:
+        state = "not_configured"
+    elif saved_auth_present:
+        state = "saved_auth_present"
+    else:
+        state = "not_connected"
+    print(f"Generation provider: {PROVIDER_ID} state={state} configured={configured}")
+except Exception as exc:
+    print(f"Generation provider: unavailable ({type(exc).__name__})")
+
+if platform.system() == "Darwin":
+    label = os.environ.get("IMAGE_PROMPT_LIBRARY_SERVICE_LABEL", "com.eddietyp.image-prompt-library")
+    service_ref = f"gui/{os.getuid()}/{label}"
+    try:
+        result = subprocess.run(["launchctl", "print", service_ref], text=True, capture_output=True, timeout=5)
+        state = "running" if "state = running" in result.stdout else "not loaded"
+    except Exception:
+        state = "unknown"
+    print(f"macOS service: {label} {state}")
+    print(f"macOS service plist: {Path.home() / 'Library' / 'LaunchAgents' / (label + '.plist')}")
+    print(f"Logs: {Path.home() / 'Library' / 'Logs' / 'image-prompt-library.out.log'}")
+else:
+    print("macOS service: not applicable")
+PY
 }
 
 update_app() {
@@ -207,6 +290,220 @@ uninstall_app() {
   fi
 }
 
+service_usage() {
+  cat <<'USAGE'
+Usage: image-prompt-library service <command>
+
+Commands:
+  install [--host H] [--port P] [--label L] [--replace]
+  status [--label L]
+  start [--label L]
+  stop [--label L]
+  restart [--label L]
+  uninstall [--label L]
+USAGE
+}
+
+service_label_default() {
+  printf '%s\n' "${IMAGE_PROMPT_LIBRARY_SERVICE_LABEL:-com.eddietyp.image-prompt-library}"
+}
+
+service_domain() {
+  printf 'gui/%s\n' "$(id -u)"
+}
+
+require_macos_service_tools() {
+  if ! command -v launchctl >/dev/null 2>&1; then
+    echo "macOS launchctl is required for image-prompt-library service commands." >&2
+    exit 2
+  fi
+}
+
+parse_label_option() {
+  SERVICE_LABEL="$(service_label_default)"
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --label)
+        if [ "$#" -lt 2 ] || [ -z "${2:-}" ]; then
+          echo "Missing value for --label" >&2
+          exit 2
+        fi
+        SERVICE_LABEL="$2"
+        shift 2
+        ;;
+      *)
+        echo "Unknown service option: $1" >&2
+        service_usage >&2
+        exit 2
+        ;;
+    esac
+  done
+}
+
+service_plist_path() {
+  LABEL="$1"
+  printf '%s\n' "${IMAGE_PROMPT_LIBRARY_SERVICE_PLIST:-$HOME/Library/LaunchAgents/$LABEL.plist}"
+}
+
+service_install() {
+  SERVICE_HOST="127.0.0.1"
+  SERVICE_PORT="8000"
+  SERVICE_LABEL="$(service_label_default)"
+  SERVICE_REPLACE=0
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --host)
+        if [ "$#" -lt 2 ] || [ -z "${2:-}" ]; then
+          echo "Missing value for --host" >&2
+          exit 2
+        fi
+        SERVICE_HOST="$2"
+        shift 2
+        ;;
+      --port)
+        if [ "$#" -lt 2 ] || [ -z "${2:-}" ]; then
+          echo "Missing value for --port" >&2
+          exit 2
+        fi
+        SERVICE_PORT="$2"
+        shift 2
+        ;;
+      --label)
+        if [ "$#" -lt 2 ] || [ -z "${2:-}" ]; then
+          echo "Missing value for --label" >&2
+          exit 2
+        fi
+        SERVICE_LABEL="$2"
+        shift 2
+        ;;
+      --replace)
+        SERVICE_REPLACE=1
+        shift
+        ;;
+      *)
+        echo "Unknown service install option: $1" >&2
+        service_usage >&2
+        exit 2
+        ;;
+    esac
+  done
+  require_macos_service_tools
+  SERVICE_PLIST="$(service_plist_path "$SERVICE_LABEL")"
+  if [ -e "$SERVICE_PLIST" ] && [ "$SERVICE_REPLACE" -ne 1 ]; then
+    echo "Service plist already exists: $SERVICE_PLIST" >&2
+    echo "Use --replace to overwrite and restart this launchd service." >&2
+    exit 2
+  fi
+  mkdir -p "$(dirname "$SERVICE_PLIST")" "$HOME/Library/Logs"
+  /usr/bin/env python3 - "$SERVICE_PLIST" "$SERVICE_LABEL" "$SCRIPT_DIR/appctl.sh" "$APP_PREFIX" "$SERVICE_HOST" "$SERVICE_PORT" "$HOME" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+
+plist_path = Path(sys.argv[1])
+label = sys.argv[2]
+appctl = sys.argv[3]
+prefix = sys.argv[4]
+host = sys.argv[5]
+port = sys.argv[6]
+home = sys.argv[7]
+payload = {
+    "Label": label,
+    "ProgramArguments": [appctl, "start", "--host", host, "--port", port],
+    "EnvironmentVariables": {
+        "HOME": home,
+        "IMAGE_PROMPT_LIBRARY_PREFIX": prefix,
+    },
+    "WorkingDirectory": home,
+    "RunAtLoad": True,
+    "KeepAlive": True,
+    "StandardOutPath": str(Path(home) / "Library" / "Logs" / "image-prompt-library.out.log"),
+    "StandardErrorPath": str(Path(home) / "Library" / "Logs" / "image-prompt-library.err.log"),
+}
+plist_path.write_bytes(plistlib.dumps(payload))
+PY
+  if command -v plutil >/dev/null 2>&1; then
+    plutil -lint "$SERVICE_PLIST" >/dev/null
+  fi
+  DOMAIN="$(service_domain)"
+  if [ "$SERVICE_REPLACE" -eq 1 ]; then
+    launchctl bootout "$DOMAIN/$SERVICE_LABEL" >/dev/null 2>&1 || true
+  fi
+  launchctl bootstrap "$DOMAIN" "$SERVICE_PLIST"
+  launchctl enable "$DOMAIN/$SERVICE_LABEL"
+  launchctl kickstart -k "$DOMAIN/$SERVICE_LABEL"
+  echo "Installed service: $SERVICE_LABEL"
+  echo "Plist: $SERVICE_PLIST"
+  echo "URL: http://127.0.0.1:$SERVICE_PORT/"
+}
+
+service_status() {
+  parse_label_option "$@"
+  require_macos_service_tools
+  launchctl print "$(service_domain)/$SERVICE_LABEL"
+}
+
+service_start() {
+  parse_label_option "$@"
+  require_macos_service_tools
+  SERVICE_PLIST="$(service_plist_path "$SERVICE_LABEL")"
+  if [ ! -f "$SERVICE_PLIST" ]; then
+    echo "Service plist not found: $SERVICE_PLIST" >&2
+    echo "Run image-prompt-library service install first." >&2
+    exit 1
+  fi
+  DOMAIN="$(service_domain)"
+  launchctl bootstrap "$DOMAIN" "$SERVICE_PLIST" >/dev/null 2>&1 || true
+  launchctl enable "$DOMAIN/$SERVICE_LABEL"
+  launchctl kickstart -k "$DOMAIN/$SERVICE_LABEL"
+}
+
+service_stop() {
+  parse_label_option "$@"
+  require_macos_service_tools
+  launchctl bootout "$(service_domain)/$SERVICE_LABEL"
+}
+
+service_restart() {
+  parse_label_option "$@"
+  require_macos_service_tools
+  SERVICE_PLIST="$(service_plist_path "$SERVICE_LABEL")"
+  if [ ! -f "$SERVICE_PLIST" ]; then
+    echo "Service plist not found: $SERVICE_PLIST" >&2
+    echo "Run image-prompt-library service install first." >&2
+    exit 1
+  fi
+  DOMAIN="$(service_domain)"
+  launchctl bootout "$DOMAIN/$SERVICE_LABEL" >/dev/null 2>&1 || true
+  launchctl bootstrap "$DOMAIN" "$SERVICE_PLIST"
+  launchctl enable "$DOMAIN/$SERVICE_LABEL"
+  launchctl kickstart -k "$DOMAIN/$SERVICE_LABEL"
+}
+
+service_uninstall() {
+  parse_label_option "$@"
+  require_macos_service_tools
+  launchctl bootout "$(service_domain)/$SERVICE_LABEL" >/dev/null 2>&1 || true
+  SERVICE_PLIST="$(service_plist_path "$SERVICE_LABEL")"
+  rm -f "$SERVICE_PLIST"
+  echo "Removed service: $SERVICE_LABEL"
+}
+
+service_app() {
+  SUBCOMMAND="${1:-}"
+  if [ -n "$SUBCOMMAND" ]; then shift; fi
+  case "$SUBCOMMAND" in
+    install) service_install "$@" ;;
+    status) service_status "$@" ;;
+    start) service_start "$@" ;;
+    stop) service_stop "$@" ;;
+    restart) service_restart "$@" ;;
+    uninstall) service_uninstall "$@" ;;
+    -h|--help|help|"") service_usage ;;
+    *) echo "Unknown service command: $SUBCOMMAND" >&2; service_usage >&2; exit 2 ;;
+  esac
+}
+
 usage() {
   cat <<'USAGE'
 Usage: image-prompt-library <command>
@@ -214,6 +511,8 @@ Usage: image-prompt-library <command>
 Commands:
   start [--host H] [--port P]
                         Start the local app server
+  doctor                Print local diagnostics with private values omitted
+  service <command>     Manage the macOS launchd user service
   version               Print installed app version
   update [--version V]  Install latest or selected release version
   rollback              Switch current app symlink back to app/previous
@@ -227,6 +526,8 @@ COMMAND="${1:-}"
 if [ -n "$COMMAND" ]; then shift; fi
 case "$COMMAND" in
   start) start_app "$@" ;;
+  doctor) doctor_app "$@" ;;
+  service) service_app "$@" ;;
   version) print_version ;;
   update) update_app "$@" ;;
   rollback) rollback_app "$@" ;;

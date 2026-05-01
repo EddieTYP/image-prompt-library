@@ -62,6 +62,21 @@ Mobile-native browsing remains in scope:
 - Full interface language setting.
 - Optional semantic/vector search.
 
+## v0.7 Account Management todo
+
+Goal: add password-capable local accounts and app-enforced shared/private visibility for local installs while keeping GitHub Pages read-only and account-free.
+
+Planned scope:
+
+- Add SQLite `accounts` and session tables with optional passwords, plus admin/editor/read-only roles.
+- Use an app-level security boundary: every local app user goes through backend auth/permission checks, while raw vault protection relies on OS filesystem permissions and a backend-only vault reader/writer.
+- Support `shared` and `private` item visibility. Admin can access/edit/delete every item; editors can create but only edit/delete their own items; read-only users cannot create content or own private items.
+- Keep existing items safe during migration: old items remain `shared` with `owner_account_id=NULL`; no media files are moved or rewritten.
+- Move authenticated/private media access toward permission-checked API image endpoints before disabling raw `/media/...` in auth mode.
+- Default newly generated save-as-new authors to the active account once account management exists.
+
+Planning doc: [`.hermes/plans/2026-05-01_153750-account-security-shared-vault-plan.md`](.hermes/plans/2026-05-01_153750-account-security-shared-vault-plan.md).
+
 ## Versioned installer / updater
 
 Goal: make Image Prompt Library easy to install and update from tagged releases without requiring normal users to clone the repository or repeatedly run `git pull`.

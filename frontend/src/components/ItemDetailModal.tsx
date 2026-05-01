@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Check, Copy, ExternalLink, Heart, Pencil, Plus, X } from 'lucide-react';
+import { Check, Copy, ExternalLink, Heart, Maximize2, Pencil, Plus, X } from 'lucide-react';
 import GenerationPanel from './GenerationPanel';
 import { api, mediaUrl } from '../api/client';
 import type { ClusterRecord, ImageRecord, ItemDetail, PromptRecord, TagRecord } from '../types';
@@ -26,6 +26,10 @@ function dedupeImages(images: ImageRecord[]) {
     seenImageKeys.add(key);
     return true;
   });
+}
+
+function isReferenceImage(image?: ImageRecord) {
+  return image?.role === 'reference_image';
 }
 
 function resolvePromptRecord<T extends { language: string; text: string }>(
@@ -162,6 +166,7 @@ export default function ItemDetailModal({
   onCopyPrompt,
   onEdit,
   onChanged,
+  onOpenItem,
   showMutations = true,
   canGenerate = false,
   initialGenerationJobId,
@@ -175,6 +180,7 @@ export default function ItemDetailModal({
   onCopyPrompt: (success: boolean) => void;
   onEdit: (item: ItemDetail) => void;
   onChanged: () => void;
+  onOpenItem?: (id: string) => void;
   showMutations?: boolean;
   canGenerate?: boolean;
   initialGenerationJobId?: string;
@@ -188,9 +194,43 @@ export default function ItemDetailModal({
   const [generationOpen, setGenerationOpen] = useState(false);
   const [selectedImageId, setSelectedImageId] = useState<string>();
   const [toast, setToast] = useState<{ message: string; actionLabel?: string; item?: ItemDetail }>();
+  const [isClosing, setIsClosing] = useState(false);
+  const [isHeroFullscreen, setIsHeroFullscreen] = useState(false);
   const lastDefaultPromptKeyRef = useRef('');
+  const heroImageRef = useRef<HTMLImageElement | null>(null);
+  const heroFullscreenFrameRef = useRef<HTMLDivElement | null>(null);
+
+  const handleClose = () => {
+    setIsClosing(true);
+    window.setTimeout(onClose, 180);
+  };
+
+  const closeHeroFullscreen = async () => {
+    if (document.fullscreenElement === heroFullscreenFrameRef.current) {
+      await document.exitFullscreen?.();
+    }
+    setIsHeroFullscreen(false);
+  };
+
+  const toggleHeroFullscreen = async () => {
+    if (document.fullscreenElement === heroFullscreenFrameRef.current || isHeroFullscreen) {
+      await closeHeroFullscreen();
+      return;
+    }
+    if (!heroFullscreenFrameRef.current) return;
+    try {
+      if (heroFullscreenFrameRef.current.requestFullscreen) {
+        await heroFullscreenFrameRef.current.requestFullscreen();
+      } else {
+        setIsHeroFullscreen(true);
+      }
+    } catch {
+      setIsHeroFullscreen(true);
+    }
+  };
 
   useEffect(() => { setLang(preferredLanguage); }, [preferredLanguage, id]);
+  useEffect(() => { if (id) setIsClosing(false); }, [id]);
   useEffect(() => { setGenerationOpen(Boolean(initialGenerationJobId)); }, [initialGenerationJobId]);
 
   useEffect(() => {
@@ -198,6 +238,12 @@ export default function ItemDetailModal({
     setItem(undefined);
     api.item(id).then(setItem);
   }, [id]);
+
+  useEffect(() => {
+    const syncHeroFullscreenState = () => setIsHeroFullscreen(document.fullscreenElement === heroFullscreenFrameRef.current);
+    document.addEventListener('fullscreenchange', syncHeroFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', syncHeroFullscreenState);
+  }, []);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -307,30 +353,37 @@ export default function ItemDetailModal({
   };
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className={`modal-backdrop${isClosing ? ' is-closing' : ''}`} onClick={handleClose}>
       <div className="detail modal polished-modal" onClick={e => e.stopPropagation()}>
         {!item ? (
           <p className="modal-loading">{t('loading')}</p>
         ) : (
           <div className="modal-content-enter" key={item.id}>
             <div className="detail-layout">
-              <section className="modal-hero">
+              <section className={`modal-hero${isHeroFullscreen ? ' is-mobile-fullscreen' : ''}`}>
                 {selectedImage ? (
                   <>
-                    <img
-                      className="hero-image"
-                      src={mediaUrl(imageHeroPath(selectedImage))}
-                      alt={item.title}
-                    />
+                    <div ref={heroFullscreenFrameRef} className={`detail-fullscreen-frame${isHeroFullscreen ? ' is-mobile-fullscreen' : ''}`}>
+                      <img
+                        ref={heroImageRef}
+                        className="hero-image"
+                        src={mediaUrl(imageHeroPath(selectedImage))}
+                        alt={item.title}
+                      />
+                      <button className="modal-icon-button detail-fullscreen-close" type="button" onClick={closeHeroFullscreen} aria-label="Close fullscreen"><X size={20} strokeWidth={2.25} /></button>
+                    </div>
                     {uniqueImages.length > 1 && <span className="image-counter">{selectedImageIndex + 1} / {uniqueImages.length}</span>}
-                    {selectedImage.role === 'result_image' && <span className="image-role-badge">Generated</span>}
+                    {isReferenceImage(selectedImage) && <span className="image-role-badge">Reference</span>}
+                    <button className="modal-icon-button detail-fullscreen-overlay" type="button" onClick={toggleHeroFullscreen} aria-label="View fullscreen" title="View fullscreen">
+                      <Maximize2 size={20} strokeWidth={2.25} />
+                    </button>
                   </>
                 ) : (
                   <div className="placeholder hero-image">{t('noImage')}</div>
                 )}
                 <div className="mobile-hero-actions" aria-label={t('itemActions')}>
-                  <button className="modal-icon-button mobile-hero-close" onClick={onClose} aria-label={t('close')}>
-                    <X size={20} />
+                  <button className="modal-icon-button mobile-hero-close" onClick={handleClose} aria-label={t('close')}>
+                    <X size={20} strokeWidth={2.25} />
                   </button>
                   {showMutations && (
                     <span className="mobile-hero-primary-actions">
@@ -359,6 +412,7 @@ export default function ItemDetailModal({
                         aria-pressed={selectedImage?.id === img.id}
                       >
                         <img src={mediaUrl(imageDisplayPath(img))} alt="" />
+                        {isReferenceImage(img) && <span className="image-thumb-role-badge">Ref</span>}
                       </button>
                     ))}
                   </div>
@@ -376,8 +430,8 @@ export default function ItemDetailModal({
                       <Pencil size={18} />
                     </button>}
                   </span>
-                  <button className="modal-icon-button close" onClick={onClose} aria-label={t('close')}>
-                    <X size={20} />
+                  <button className="modal-icon-button close" onClick={handleClose} aria-label={t('close')}>
+                    <X size={20} strokeWidth={2.25} />
                   </button>
                 </div>
                 <InlineEditableField className="collection-inline-edit" value={item.cluster?.name || ''} placeholder={t('unclustered')} inputList="detail-collection-suggestions" onCommit={value => commitInlineUpdate({ cluster_name: value.trim() || null })} editable={showMutations}>
@@ -492,7 +546,7 @@ export default function ItemDetailModal({
                 {toast.actionLabel}
               </button>
             )}
-            <button type="button" aria-label="Dismiss" onClick={() => setToast(undefined)}>×</button>
+            <button type="button" aria-label="Dismiss" onClick={() => setToast(undefined)}><X size={20} strokeWidth={2.25} /></button>
           </div>
         )}
         {generationOpen && item && (
@@ -506,6 +560,7 @@ export default function ItemDetailModal({
               if (acceptedItem?.id && acceptedItem.id !== item.id) {
                 setToast({ message: message || 'New variant item created', actionLabel: 'View item', item: acceptedItem });
                 onChanged();
+                onOpenItem?.(acceptedItem.id);
                 return;
               }
               api.item(item.id).then(updated => {

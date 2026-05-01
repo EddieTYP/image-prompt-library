@@ -3,7 +3,7 @@ import json
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from PIL import UnidentifiedImageError
 
-from backend.schemas import GenerationJobAcceptAsNewItemRequest, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord
+from backend.schemas import GenerationJobAcceptAsNewItemRequest, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult
 from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository
 from backend.services.generation_queue import enqueue_generation_jobs
 from backend.services.openai_codex_native import PROVIDER_ID as CODEX_NATIVE_PROVIDER_ID, CodexNativeAuthError, OpenAICodexNativeProvider
@@ -119,6 +119,19 @@ def cancel_generation_job(job_id: str, request: Request):
 def discard_generation_job(job_id: str, request: Request):
     try:
         return repo(request).discard_job(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404) from exc
+    except GenerationJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/{job_id}/discard-and-retry", response_model=GenerationJobRetryResult)
+def discard_and_retry_generation_job(job_id: str, request: Request):
+    try:
+        result = repo(request).discard_and_retry_job(job_id)
+        if result.retry_job.provider == CODEX_NATIVE_PROVIDER_ID:
+            enqueue_generation_jobs(request.app.state.library_path, provider=result.retry_job.provider)
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=404) from exc
     except GenerationJobConflict as exc:

@@ -1,4 +1,4 @@
-import type { AppConfig, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationProviderStatus, ItemCreate, ItemDetail, ItemList, ItemSummary, TagRecord, UploadImageRole } from '../types';
+import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationProviderStatus, ItemCreate, ItemDetail, ItemList, ItemSummary, TagRecord, UploadImageRole } from '../types';
 
 const API = '';
 const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
@@ -71,6 +71,8 @@ export const mediaUrl = (path?: string) => {
 export const api = isDemoMode ? {
   health: () => Promise.resolve({ ok: true, version: 'demo' }),
   config: () => Promise.resolve<AppConfig>({ version: 'demo', library_path: 'GitHub Pages read-only sandbox', database_path: 'Static JSON bundle', preferred_prompt_language: 'en' }),
+  updateStatus: () => Promise.resolve<AppUpdateStatus>({ current_version: 'demo', latest_version: null, update_available: false, checked_at: new Date().toISOString(), service_mode: 'not_applicable', active_generation_jobs: { running: 0, queued: 0 }, can_restart: false, requires_manual_restart: true }),
+  startAppUpdate: (_payload: AppUpdateRequest) => demoReadOnly(),
   items: demoItemList,
   item: demoItem,
   createItem: (_payload: ItemCreate) => demoReadOnly(),
@@ -116,11 +118,14 @@ export const api = isDemoMode ? {
   acceptGenerationJobAsNewItem: (_id: string, _payload?: GenerationJobAcceptAsNewItemPayload) => demoReadOnly(),
   cancelGenerationJob: (_id: string) => demoReadOnly(),
   discardGenerationJob: (_id: string) => demoReadOnly(),
+  discardAndRetryGenerationJob: (_id: string) => demoReadOnly(),
   clusters: () => demoJson<ClusterRecord[]>('demo-data/clusters.json'),
   tags: () => demoJson<TagRecord[]>('demo-data/tags.json'),
 } : {
   health: () => json<{ok: boolean; version: string}>('/api/health'),
   config: () => json<AppConfig>('/api/config'),
+  updateStatus: () => json<AppUpdateStatus>('/api/update-status'),
+  startAppUpdate: (payload: AppUpdateRequest) => json<AppUpdateResult>('/api/app-update/jobs', { method: 'POST', body: JSON.stringify(payload) }),
   items: (params: Record<string, string | number | boolean | undefined>) => { const qs = new URLSearchParams(); Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)); }); return json<ItemList>(`/api/items?${qs}`); },
   item: (id: string) => json<ItemDetail>(`/api/items/${id}`),
   createItem: (payload: ItemCreate) => json<ItemDetail>('/api/items', { method: 'POST', body: JSON.stringify(payload) }),
@@ -140,6 +145,7 @@ export const api = isDemoMode ? {
   acceptGenerationJobAsNewItem: (id: string, payload: GenerationJobAcceptAsNewItemPayload = {}) => json<GenerationJobAcceptResult>(`/api/generation-jobs/${id}/accept-as-new-item`, { method: 'POST', body: JSON.stringify(payload) }),
   cancelGenerationJob: (id: string) => json<GenerationJobRecord>(`/api/generation-jobs/${id}/cancel`, { method: 'POST' }),
   discardGenerationJob: (id: string) => json<GenerationJobRecord>(`/api/generation-jobs/${id}/discard`, { method: 'POST' }),
+  discardAndRetryGenerationJob: (id: string) => json<GenerationJobRetryResult>(`/api/generation-jobs/${id}/discard-and-retry`, { method: 'POST' }),
   clusters: () => json<ClusterRecord[]>('/api/clusters'),
   tags: () => json<TagRecord[]>('/api/tags'),
 };

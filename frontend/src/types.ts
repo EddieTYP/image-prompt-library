@@ -6,8 +6,11 @@ export interface ImageRecord { id: string; item_id: string; original_path: strin
 export interface ClusterRecord { id: string; name: string; names?: Partial<Record<UiLanguage, string>>; description?: string; count: number; preview_images: string[] }
 export interface TagRecord { id: string; name: string; kind: string; count: number }
 export interface AppConfig { version: string; library_path: string; database_path: string; preferred_prompt_language?: string }
+export interface AppUpdateStatus { current_version: string; latest_version?: string | null; update_available: boolean; release_url?: string | null; update_command?: string | null; checked_at: string; error?: string | null; service_mode: string; active_generation_jobs: { running: number; queued: number }; can_restart: boolean; requires_manual_restart: boolean }
+export interface AppUpdateRequest { target_version?: string | null; cancel_active_generation_jobs: boolean }
+export interface AppUpdateResult { status: string; target_version: string; cancelled_generation_jobs: number; restart_mode: string; requires_manual_restart: boolean; message: string; stdout?: string; stderr?: string }
 export interface GenerationProviderFeatures { text_to_image?: boolean; text_reference_to_image?: boolean; image_edit?: boolean; manual_result_upload?: boolean }
-export interface GenerationProviderStatus { provider: string; display_name: string; auth_mode?: string; optional: boolean; configured: boolean; authenticated: boolean; available: boolean; state: string; reason?: string | null; features: GenerationProviderFeatures; token_present?: boolean; account_id?: string | null; auth_store_path?: string }
+export interface GenerationProviderStatus { provider: string; display_name: string; auth_mode?: string; optional: boolean; configured: boolean; authenticated: boolean; available: boolean; state: string; reason?: string | null; features: GenerationProviderFeatures; token_present?: boolean; account_id?: string | null; auth_store_path?: string; orchestrator_models?: string[]; default_orchestrator_model?: string; image_models?: string[]; default_image_model?: string }
 export interface CodexNativeAuthStart { device_auth_id: string; user_code: string; verification_url: string; verification_uri?: string; verification_uri_complete?: string; expires_in?: number; interval?: number }
 export interface CodexNativeAuthPending { provider: string; auth_mode?: string; status: 'pending' }
 export type CodexNativeAuthPollResponse = GenerationProviderStatus | CodexNativeAuthPending
@@ -17,6 +20,7 @@ export interface GenerationJobRecord extends GenerationJobCreate { id: string; s
 export interface GenerationJobList { jobs: GenerationJobRecord[]; total: number; limit: number; offset: number }
 export interface GenerationJobAcceptAsNewItemPayload { title?: string; cluster_name?: string; tags?: string[]; prompts?: Array<{language: string; text: string; is_primary?: boolean; is_original?: boolean; provenance?: Record<string, unknown>}>; model?: string; source_name?: string; source_url?: string; author?: string; notes?: string }
 export interface GenerationJobAcceptResult { job: GenerationJobRecord; item: ItemDetail }
+export interface GenerationJobRetryResult { discarded_job: GenerationJobRecord; retry_job: GenerationJobRecord }
 export interface ItemSummary { id: string; title: string; slug: string; model: string; source_name?: string; source_url?: string; cluster?: ClusterRecord; tags: TagRecord[]; prompts: PromptRecord[]; prompt_snippet?: string; first_image?: ImageRecord; rating: number; favorite: boolean; archived: boolean; updated_at: string; created_at: string }
 export interface ItemDetail extends ItemSummary { images: ImageRecord[]; notes?: string; author?: string }
 export interface ItemList { items: ItemSummary[]; total: number; limit: number; offset: number }

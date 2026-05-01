@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { api, isDemoMode } from '../api/client';
-import type { AppConfig, CodexNativeAuthStart, GenerationProviderStatus } from '../types';
+import type { AppConfig, AppUpdateStatus, CodexNativeAuthStart, GenerationProviderStatus } from '../types';
 import { UI_LANGUAGE_LABELS, type Translator, type UiLanguage } from '../utils/i18n';
 import { getPromptCopyLanguageLabel, type PromptCopyLanguage } from '../utils/prompts';
 
@@ -74,6 +74,9 @@ export default function ConfigPanel({
   onGlobalThumbnailBudget,
   focusThumbnailBudget,
   onFocusThumbnailBudget,
+  updateStatus,
+  onRefreshUpdateStatus,
+  onUpdateInstalled,
   onProvidersChanged = () => undefined,
 }: {
   open: boolean;
@@ -87,6 +90,9 @@ export default function ConfigPanel({
   onGlobalThumbnailBudget: (budget: number) => void;
   focusThumbnailBudget: number;
   onFocusThumbnailBudget: (budget: number) => void;
+  updateStatus?: AppUpdateStatus;
+  onRefreshUpdateStatus: () => Promise<AppUpdateStatus | undefined>;
+  onUpdateInstalled: (targetVersion: string) => void;
   onProvidersChanged?: () => void;
 }) {
   const [cfg, setCfg] = useState<AppConfig>();
@@ -94,6 +100,10 @@ export default function ConfigPanel({
   const [authStart, setAuthStart] = useState<CodexNativeAuthStart>();
   const [providerMessage, setProviderMessage] = useState<string>();
   const [providerBusy, setProviderBusy] = useState(false);
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string>();
+  const [updateInstalled, setUpdateInstalled] = useState<{ targetVersion: string; requiresManualRestart: boolean }>();
+  const [showActiveUpdateConfirm, setShowActiveUpdateConfirm] = useState(false);
 
   const loadProviders = () => api.generationProviders().then(nextProviders => {
     setProviders(nextProviders);
@@ -107,9 +117,10 @@ export default function ConfigPanel({
   useEffect(() => {
     if (open) {
       api.config().then(setCfg).catch(() => undefined);
+      onRefreshUpdateStatus().catch(() => undefined);
       loadProviders();
     }
-  }, [open]);
+  }, [open, onRefreshUpdateStatus]);
 
   const startCodexAuth = async () => {
     setProviderBusy(true);
@@ -157,11 +168,46 @@ export default function ConfigPanel({
     }
   };
 
+  const activeUpdateJobs = (updateStatus?.active_generation_jobs.running || 0) + (updateStatus?.active_generation_jobs.queued || 0);
+  const refreshUpdateStatus = () => onRefreshUpdateStatus().catch(() => {
+    setUpdateMessage('Could not check app updates.');
+    return undefined;
+  });
+  const beginUpdate = async (cancelActiveGenerationJobs: boolean) => {
+    if (!updateStatus?.latest_version) return;
+    setUpdateBusy(true);
+    setUpdateMessage(undefined);
+    try {
+      const result = await api.startAppUpdate({ target_version: updateStatus.latest_version, cancel_active_generation_jobs: cancelActiveGenerationJobs });
+      setShowActiveUpdateConfirm(false);
+      setUpdateInstalled({ targetVersion: result.target_version, requiresManualRestart: result.requires_manual_restart });
+      onUpdateInstalled(result.target_version);
+      setUpdateMessage(undefined);
+      await refreshUpdateStatus();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not install update.';
+      if (message.includes('active_generation_jobs')) setShowActiveUpdateConfirm(true);
+      setUpdateMessage(message);
+    } finally {
+      setUpdateBusy(false);
+    }
+  };
+  const requestUpdate = () => {
+    if (activeUpdateJobs > 0) {
+      setShowActiveUpdateConfirm(true);
+      return;
+    }
+    void beginUpdate(false);
+  };
+  const restartInstruction = updateInstalled?.requiresManualRestart
+    ? 'Stop the running Terminal server, then start Image Prompt Library again to use the new version.'
+    : 'The update has been installed. The macOS service restart has been scheduled; reconnect after it comes back online.';
+
   return (
     <aside className={`config drawer ${open ? 'open' : ''}`}>
       <div className="drawer-head">
         <h2>{t('config')}</h2>
-        <button className="panel-close" onClick={onClose} aria-label={t('closeConfig')}><X size={18} /></button>
+        <button className="panel-close" onClick={onClose} aria-label={t('closeConfig')}><X size={20} strokeWidth={2.25} /></button>
       </div>
 
       <section className="setting-group">
@@ -229,6 +275,43 @@ export default function ConfigPanel({
           onChange={event => onFocusThumbnailBudget(Number(event.currentTarget.value))}
         />
         <div className="range-ticks"><span>{t('compact')}</span><span>{t('gallery')}</span><span>{t('full')}</span></div>
+      </section>
+
+      <section className="setting-group app-update-section">
+        <h3>App update</h3>
+        {!updateStatus && <p className="muted">Checking for updates…</p>}
+        {updateInstalled ? (
+          <div className="update-card update-complete-card" role="status">
+            <p className="update-kicker">Update installed</p>
+            <p className="update-title">Restart required to finish updating to <code>{updateInstalled.targetVersion}</code>.</p>
+            <p className="provider-help">{restartInstruction}</p>
+            {updateInstalled.requiresManualRestart && <p className="update-command-hint"><code>image-prompt-library start</code></p>}
+          </div>
+        ) : updateStatus && !updateStatus.update_available ? (
+          <p className="muted">Image Prompt Library is up to date. Current version: <code>{updateStatus.current_version}</code></p>
+        ) : updateStatus?.update_available && (
+          <div className="update-card">
+            <p className="muted"><strong>Update available</strong>: <code>{updateStatus.latest_version}</code></p>
+            <p className="muted">Current version: <code>{updateStatus.current_version}</code></p>
+            {showActiveUpdateConfirm ? (
+              <div className="update-warning">
+                <p>Updating requires restarting the app.</p>
+                <p>There are {updateStatus.active_generation_jobs.running} generation jobs running and {updateStatus.active_generation_jobs.queued} queued. If you continue now, unfinished jobs will be cancelled and unfinished results will not be saved.</p>
+                <div className="provider-actions">
+                  <button className="secondary" onClick={() => setShowActiveUpdateConfirm(false)} disabled={updateBusy}>Update later</button>
+                  <button className="danger" onClick={() => beginUpdate(true)} disabled={updateBusy}>Cancel jobs and update</button>
+                </div>
+              </div>
+            ) : (
+              <div className="provider-actions">
+                <button className="primary" onClick={requestUpdate} disabled={updateBusy}>{updateBusy ? 'Installing…' : 'Update and restart'}</button>
+                {updateStatus.release_url && <a className="secondary" href={updateStatus.release_url} target="_blank" rel="noreferrer">View release</a>}
+              </div>
+            )}
+            <p className="provider-help">{updateStatus.requires_manual_restart ? 'This app is running from Terminal. After installation, stop the server and start it again to use the new version.' : 'This app is running as a macOS service. The updater can restart the service after installation.'}</p>
+          </div>
+        )}
+        {updateMessage && <p className="provider-message">{updateMessage}</p>}
       </section>
 
       <section className="setting-group provider-section">
