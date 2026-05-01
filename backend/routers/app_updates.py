@@ -223,6 +223,7 @@ def detect_service_mode() -> str:
 
 def run_installer_update(*, target_version: str) -> dict[str, str | bool]:
     env = os.environ.copy()
+    env.setdefault("PYTHON", sys.executable)
     command = ["bash", str(appctl_path()), "update", "--version", target_version]
     result = subprocess.run(command, cwd=str(app_root()), env=env, text=True, capture_output=True, timeout=UPDATE_TIMEOUT_SECONDS)
     if result.returncode != 0:

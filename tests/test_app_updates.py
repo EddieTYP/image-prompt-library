@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -88,6 +90,25 @@ def test_cancel_and_update_cancels_active_jobs_and_runs_installer(tmp_path, monk
     assert calls == ["v9.9.9-beta"]
     assert repo.get_job(queued.id).status == "cancelled"
     assert repo.get_job(running.id).status == "cancelled"
+
+
+def test_run_installer_update_passes_current_python_to_installer(monkeypatch):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append({"command": command, **kwargs})
+        return subprocess.CompletedProcess(command, 0, stdout="installed", stderr="")
+
+    monkeypatch.delenv("PYTHON", raising=False)
+    monkeypatch.setattr("backend.routers.app_updates.subprocess.run", fake_run)
+
+    from backend.routers.app_updates import run_installer_update
+
+    result = run_installer_update(target_version="v9.9.9-beta")
+
+    assert result["ok"] is True
+    assert calls[0]["env"]["PYTHON"] == sys.executable
+    assert calls[0]["command"][-2:] == ["--version", "v9.9.9-beta"]
 
 
 def test_frontend_static_update_wizard_contract():
