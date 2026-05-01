@@ -111,6 +111,25 @@ def test_run_installer_update_passes_current_python_to_installer(monkeypatch):
     assert calls[0]["command"][-2:] == ["--version", "v9.9.9-beta"]
 
 
+def test_detect_service_mode_checks_edward_custom_launchd_label(monkeypatch):
+    checked = []
+
+    def fake_run(command, **kwargs):
+        checked.append(command)
+        if command[-1] == "com.edward.image-prompt-library":
+            return subprocess.CompletedProcess(command, 0, stdout="\tstate = running\n", stderr="")
+        return subprocess.CompletedProcess(command, 113, stdout="", stderr="not found")
+
+    monkeypatch.delenv("IMAGE_PROMPT_LIBRARY_SERVICE_LABEL", raising=False)
+    monkeypatch.setattr("backend.routers.app_updates.sys.platform", "darwin")
+    monkeypatch.setattr("backend.routers.app_updates.subprocess.run", fake_run)
+
+    from backend.routers.app_updates import detect_service_mode
+
+    assert detect_service_mode() == "launchd"
+    assert any(command[-1] == "com.edward.image-prompt-library" for command in checked)
+
+
 def test_frontend_static_update_wizard_contract():
     root = Path(__file__).resolve().parents[1]
     client = (root / "frontend" / "src" / "api" / "client.ts").read_text(encoding="utf-8")

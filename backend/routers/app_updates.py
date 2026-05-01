@@ -205,20 +205,32 @@ def cancel_active_generation_jobs(library_path: Path) -> int:
     return cancelled
 
 
+def launchd_candidate_labels() -> list[str]:
+    labels = [
+        os.environ.get("IMAGE_PROMPT_LIBRARY_SERVICE_LABEL", ""),
+        "com.eddietyp.image-prompt-library",
+        "com.edward.image-prompt-library",
+    ]
+    seen: set[str] = set()
+    return [label for label in labels if label and not (label in seen or seen.add(label))]
+
+
+def detected_launchd_service_label() -> str | None:
+    if sys.platform != "darwin" or not appctl_path().exists():
+        return None
+    for label in launchd_candidate_labels():
+        result = subprocess.run(["bash", str(appctl_path()), "service", "status", "--label", label], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and "state =" in result.stdout:
+            return label
+    return None
+
+
 def detect_service_mode() -> str:
     if sys.platform != "darwin":
         return "not_applicable"
     if not appctl_path().exists():
         return "unknown"
-    labels = [
-        os.environ.get("IMAGE_PROMPT_LIBRARY_SERVICE_LABEL", ""),
-        "com.eddietyp.image-prompt-library",
-    ]
-    for label in [value for value in labels if value]:
-        result = subprocess.run(["bash", str(appctl_path()), "service", "status", "--label", label], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0 and "state =" in result.stdout:
-            return "launchd"
-    return "foreground"
+    return "launchd" if detected_launchd_service_label() else "foreground"
 
 
 def run_installer_update(*, target_version: str) -> dict[str, str | bool]:
@@ -232,7 +244,7 @@ def run_installer_update(*, target_version: str) -> dict[str, str | bool]:
 
 
 def schedule_launchd_restart() -> None:
-    label = os.environ.get("IMAGE_PROMPT_LIBRARY_SERVICE_LABEL") or "com.eddietyp.image-prompt-library"
+    label = os.environ.get("IMAGE_PROMPT_LIBRARY_SERVICE_LABEL") or detected_launchd_service_label() or "com.eddietyp.image-prompt-library"
     command = f"sleep 1; exec {str(appctl_path())!r} service restart --label {label!r}"
     subprocess.Popen(["/bin/sh", "-c", command], cwd=str(app_root()), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
 
