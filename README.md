@@ -11,7 +11,7 @@ ChatGPT image generation has become good enough that the prompts are worth keepi
 
 Your library stays on your own machine: local SQLite, local image files, no accounts, no cloud sync, and no hosted database required.
 
-**Online Read Only Demo:** <https://eddietyp.github.io/image-prompt-library/> — browse public sample prompts and compressed preview images on GitHub Pages. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own full library. Latest v0.6 beta improves the mobile generation workflow and local ChatGPT image generation in local installs.
+**Online Read Only Demo:** <https://eddietyp.github.io/image-prompt-library/> — browse public sample prompts and preview images on GitHub Pages. The online demo is read-only: Add, edit, generation, and private library management are local-only, so install the app locally to create, edit, or generate images for your own full library. Latest v0.6 beta improves the generation workflow and supports image edits with attachments.
 
 **v0.6 beta highlight:** local installs can connect via **ChatGPT OAuth** using the experimental `openai_codex_oauth_native` provider, use direct image generation from saved prompts, choose aspect ratio and quality settings, review auto-started queue jobs in the Local Generation Studio, then `Attach to current item` or `Save as new item` with editable metadata. No hosted account, cloud sync, or public API key is required by the app.
 
@@ -450,7 +450,7 @@ npm run build:demo:v0.6
 
 The public Pages deployment is versioned. Use `/` for the version chooser or `/v0.6/` for the current 0.6 preview.
 
-The demos read public sample metadata from `frontend/public/demo-data/`, use compressed WebP preview images, and disable write actions. They are intended only as online read-only demos. The online demo is read-only: Add, edit, and private library management are local-only, so install the app locally to create or edit your own private prompt library. Latest v0.6 beta improves the mobile generation workflow and local ChatGPT image generation in local installs.
+The demos read public sample metadata from `frontend/public/demo-data/`, use WebP preview images, and disable write actions. They are intended only as online read-only demos. The online demo is read-only: Add, edit, generation, and private library management are local-only, so install the app locally to create, edit, or generate images for your own private prompt library. Latest v0.6 beta improves the generation workflow and supports image edits with attachments.
 
 ## Verification
 

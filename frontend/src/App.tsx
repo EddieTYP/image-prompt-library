@@ -230,7 +230,6 @@ export default function App() {
     {isDemoMode && (
       <div className="demo-banner" role="status">
         <strong>{t('onlineReadOnlyDemo')}</strong>
-        <span>{t('compressedForDemo')}</span>
         <span>{t('runLocallyForPrivateLibrary')}</span>
         <span>{t('localV06SupportsMobileGeneration')}</span>
         <a href="https://github.com/EddieTYP/image-prompt-library" target="_blank" rel="noreferrer">{t('viewOnGitHub')}</a>

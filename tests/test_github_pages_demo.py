@@ -23,7 +23,7 @@ def test_github_pages_demo_mode_uses_static_data_and_base_path():
     assert "VITE_BASE_PATH=/image-prompt-library/" in package_json
 
 
-def test_github_pages_demo_is_read_only_and_discloses_compressed_images():
+def test_github_pages_demo_is_read_only_and_discloses_local_generation_boundary():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     cards = (ROOT / "frontend" / "src" / "components" / "CardsView.tsx").read_text()
     detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
@@ -33,13 +33,13 @@ def test_github_pages_demo_is_read_only_and_discloses_compressed_images():
     assert "demo-banner" in app
     assert "onlineReadOnlyDemo" in i18n
     assert "readOnlySampleLibrary" not in i18n
-    assert "compressedForDemo" in i18n
+    assert "compressedForDemo" not in i18n
     assert "runLocallyForPrivateLibrary" in i18n
     assert "localV06SupportsMobileGeneration" in i18n
     assert "Online Read Only Demo" in i18n
-    assert "Demo 圖片已壓縮。" in i18n
-    assert "新增／編輯需要本機安裝，請在本機運行以建立你的私人 prompt library。" in i18n
-    assert "最新 v0.6 beta 改善本機生成流程與流動裝置體驗" in i18n
+    assert "Demo 圖片已壓縮。" not in app
+    assert "新增／編輯／生成需要本機安裝，請在本機運行以建立你的私人 prompt library。" in i18n
+    assert "最新 v0.6 beta 改善生成流程並支援附件改圖" in i18n
     assert "showActions" in cards
     assert "showMutations" in detail
     assert "!isDemoMode && <button className=\"fab\"" in app
@@ -73,9 +73,9 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert ".pages-artifact/${ARCHIVED_02_DEMO_PATH}" in text
     assert ".pages-artifact/${LEGACY_DEMO_PATH}" in text
     assert "Online Read Only Demo" in text
-    assert "Demo images are compressed." in text
-    assert "Add/edit require local install; run locally to create your private prompt library." in text
-    assert "Latest v0.6 beta improves the mobile generation workflow" in text
+    assert "Demo images are compressed." not in text
+    assert "Add/edit/generation require local install; run locally to create your private prompt library." in text
+    assert "Latest v0.6 beta improves generation workflow and supports image edits with attachments" in text
     assert "local-generation-studio-banner.webp" in text
     assert "hero-banner" in text
     assert "View the v0.6 beta Generation Workflow & Mobile Polish release" in text

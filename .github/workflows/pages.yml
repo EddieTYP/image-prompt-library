@@ -338,11 +338,11 @@ jobs:
                 <p class="eyebrow">Image Prompt Library</p>
                 <h1>Online Read Only Demo</h1>
                 <p class="intro">
-                  Browse public sample prompts and compressed preview images. Demo images are compressed.
-                  Add/edit require local install; run locally to create your private prompt library.
+                  Browse public sample prompts and preview images.
+                  Add/edit/generation require local install; run locally to create your private prompt library.
                 </p>
                 <p class="local-banner">
-                  <span>Latest v0.6 beta improves the mobile generation workflow and local ChatGPT image generation. Online demo remains read-only.</span>
+                  <span>Latest v0.6 beta improves generation workflow and supports image edits with attachments. Online demo remains read-only.</span>
                   <a href="https://github.com/EddieTYP/image-prompt-library">View on GitHub</a>
                 </p>
                 <a class="hero-banner-link" href="https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.0-beta" aria-label="View the v0.6 beta Generation Workflow & Mobile Polish release">

@@ -137,7 +137,7 @@ def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developer
     assert "normal release installs do not require Node.js" in readme
     assert "~/ImagePromptLibrary" in readme
     assert "~/.image-prompt-library/app/versions" in readme
-    assert "Add, edit, and private library management are local-only" in readme
+    assert "Add, edit, generation, and private library management are local-only" in readme
     assert "image-prompt-library start --host 0.0.0.0" in readme
     assert "Binding to `0.0.0.0` can expose the app" in readme
     assert "image-prompt-library doctor" in readme

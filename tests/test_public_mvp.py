@@ -87,13 +87,13 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Online Read Only Demo" in readme
     assert "ChatGPT OAuth" in readme
     assert "direct image generation" in readme
-    assert "Latest v0.6 beta improves the mobile generation workflow" in readme
+    assert "Latest v0.6 beta improves the generation workflow and supports image edits with attachments" in readme
     assert "Online sandbox" not in readme
     assert "只读 sample library" not in readme
     assert "唯讀 sample library" not in readme
     assert "The online demo is read-only" in readme
     assert "install the app locally" in readme
-    assert "Add, edit, and private library management are local-only" in readme
+    assert "Add, edit, generation, and private library management are local-only" in readme
     assert "Generate images directly in local installs" in readme
     assert "Generate with ChatGPT OAuth" in readme
     assert "generate a new image from a fresh prompt or create a variant from an existing reference" in readme
