@@ -430,6 +430,47 @@ def test_codex_native_injects_requested_aspect_ratio_and_records_effective_promp
     assert payload["metadata"]["native_size_parameter"] is None
 
 
+def test_codex_native_auto_aspect_ratio_does_not_inject_instruction_or_size(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda *args, **kwargs: None)
+
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
+    captured = {}
+
+    def collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
+        captured["prompt"] = prompt
+        captured["size"] = size
+        return base64.b64encode(png_bytes()).decode()
+
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "text_to_image",
+        "provider": "openai_codex_oauth_native",
+        "model": "gpt-image-2",
+        "prompt_text": "A cinematic city that chooses its own frame",
+        "parameters": {"requested_aspect_ratio": "auto", "aspect_ratio_prompt_injection": False},
+    }).json()
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert captured == {"prompt": "A cinematic city that chooses its own frame", "size": None}
+    assert payload["metadata"]["requested_aspect_ratio"] == "auto"
+    assert payload["metadata"]["aspect_ratio_prompt_injection"] is None
+    assert payload["metadata"]["effective_prompt"] == captured["prompt"]
+    assert payload["metadata"]["size"] == "auto"
+    assert payload["metadata"]["native_size_parameter"] is None
+
+
 def test_codex_native_maps_standard_ui_quality_to_sdk_medium(tmp_path, monkeypatch):
     auth_path = tmp_path / "auth" / "auth.json"
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))

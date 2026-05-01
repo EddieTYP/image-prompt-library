@@ -150,7 +150,7 @@ export default function ItemEditorModal({
     <div className={`modal-backdrop${isClosing ? ' is-closing' : ''}`} onClick={handleClose}>
       <div className="editor modal polished-modal" onClick={event => event.stopPropagation()}>
         <button className="close" onClick={handleClose} aria-label={t('close')}>
-          <X size={20} />
+          <X size={20} strokeWidth={2.25} />
         </button>
         <div className="editor-head">
           <p className="modal-kicker">{item ? t('updateReference') : t('newReference')}</p>

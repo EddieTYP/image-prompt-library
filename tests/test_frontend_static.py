@@ -140,7 +140,8 @@ def test_mobile_selected_collection_uses_bottom_floating_dock_and_active_filter_
     assert ".filter-active-count" not in css
     assert "@media(max-width:760px)" in css
     assert ".active-filter-strip.active-filter{display:none}" in compact_css
-    assert ".selected-collection-dock{position:fixed;left:16px;right:16px;bottom:calc(16px+env(safe-area-inset-bottom));" in compact_css
+    assert ".selected-collection-dock{display:none}" in compact_css
+    assert "@media(min-width:761px){.selected-collection-dock{position:fixed;left:16px;right:16px;bottom:calc(16px+env(safe-area-inset-bottom));" in compact_css
     assert ".selected-collection-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:clamp(14px,3.7vw,16px);" in compact_css
     assert ".selected-collection-name.is-long{font-size:clamp(12.5px,3.25vw,14.5px)}" in compact_css
     assert ".selected-collection-name.is-very-long{font-size:clamp(12px,3vw,13.5px)}" in compact_css
@@ -163,7 +164,16 @@ def test_mobile_detail_modal_has_image_first_floating_controls():
     assert ".modal-hero{order:0;min-height:360px;height:min(68dvh,620px);" in compact_css
     assert ".detail-fullscreen-frame{position:absolute;inset:0;" in compact_css
     assert ".mobile-hero-actions{display:block}" in compact_css
+    assert "isHeroFullscreen" in detail
+    assert "setIsHeroFullscreen(true)" in detail
+    assert "document.fullscreenElement === heroFullscreenFrameRef.current" in detail
+    assert "className={`modal-hero${isHeroFullscreen ? ' is-mobile-fullscreen' : ''}`}" in detail
+    assert "<X size={20} strokeWidth={2.25} />" in detail
     assert ".mobile-hero-close{position:absolute;right:12px;top:calc(12px+env(safe-area-inset-top));" in compact_css
+    assert ".detail-fullscreen-overlay{right:64px;top:calc(12px+env(safe-area-inset-top));z-index:12;width:44px;height:44px;" in compact_css
+    assert ".modal-hero.is-mobile-fullscreen{position:fixed;inset:0;z-index:2147483600;width:100vw;height:100dvh;" in compact_css
+    assert "className={`detail-fullscreen-frame${isHeroFullscreen ? ' is-mobile-fullscreen' : ''}`}" in detail
+    assert ".modal-hero.is-mobile-fullscreen.detail-fullscreen-frame,.detail-fullscreen-frame.is-mobile-fullscreen{position:fixed;inset:0;background:#05050a;width:100vw;height:100dvh}" in compact_css
     assert ".mobile-hero-primary-actions{position:absolute;right:12px;bottom:12px;" in compact_css
     assert ".mobile-generate-variant-button{display:inline-flex" in compact_css
     assert ".mobile-generate-variant-label{display:inline" in compact_css
@@ -364,7 +374,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "setFocusedJobHighlightId" in panel
     assert "window.setInterval(() => refreshJobs({ preserveActive: true }).catch(() => undefined), 2500)" in panel
     assert "['queued', 'running'].includes(job.status)" in panel
-    assert "scrollIntoView({ behavior: 'smooth', block: 'center' })" in panel
+    assert "stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })" in panel
     assert "Save generated image as new item" in panel
     assert "Review metadata" in panel
     assert "readonly-provenance" in panel
@@ -372,8 +382,9 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Generation is temporarily rate limited" in panel
     assert "Provider connection needs attention" in panel
     assert "source_item_id: item?.id" in panel
+    assert "const [aspectRatio, setAspectRatio] = useState('auto')" in panel
     assert "requested_aspect_ratio: aspectRatio" in panel
-    assert "aspect_ratio_prompt_injection: true" in panel
+    assert "aspect_ratio_prompt_injection: aspectRatio !== 'auto'" in panel
     assert "quality" in panel
     assert "ASPECT_RATIO_OPTIONS" in panel
     assert "QUALITY_OPTIONS" in panel
@@ -405,8 +416,15 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "aria-label=\"History\"" in panel
     assert "showHistoryDrawer" in panel
     assert "generation-history-drawer" in panel
-    assert "generation-history-item" in panel
-    assert "Use as draft" in panel
+    assert "generation-history-media" in panel
+    assert "generation-history-status-grid" in panel
+    assert "generation-history-cell" in panel
+    assert "Aspect ratio" in panel
+    assert "Quality" in panel
+    assert "Model" in panel
+    assert "Status" in panel
+    assert "jobModel(job)" in panel
+    assert "Untitled generation" not in panel
     assert "Copy prompt" in panel
     assert "Back to draft" in panel
     assert "setHistoryReviewJobId" in panel
@@ -430,6 +448,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Use result as edit input" in panel
     assert "canAttachToSourceItem" in panel
     assert "promptChangedFromSource" in panel
+    assert "stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })" in panel
     assert "stageRef.current?.scrollIntoView" in panel
     assert "onClose();" in panel
     assert "orchestrator_models" in types
@@ -516,7 +535,12 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert ".generation-composer-card{display:grid;" in compact_css and "overflow:visible" in compact_css
     assert ".generation-history-drawer" in compact_css
     assert ".generation-history-item" in compact_css
-    assert "-webkit-line-clamp:2" in compact_css
+    assert ".generation-history-media{width:100%;height:auto;" in compact_css
+    assert "aspect-ratio:16/10" not in compact_css[compact_css.find(".generation-history-media"):compact_css.find(".generation-history-status-grid")]
+    assert ".generation-history-mediaimg{display:block;width:100%;height:auto;object-fit:contain" in compact_css
+    assert ".generation-history-status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));" in compact_css
+    assert ".generation-history-cell{display:grid;gap:3px;min-width:0;background:transparent" in compact_css
+    assert "-webkit-line-clamp:2" not in final_generation_css
     assert ".save-new-metadata-panel" in compact_css
     assert ".save-new-metadata-panel.is-closing" in compact_css
     assert "generation-save-panel-close" in panel
@@ -526,6 +550,12 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "onOpenItem={setDetailId}" in app
     assert "@media(max-width:760px)" in compact_css
     assert ".generation-layout{display:flex;flex-direction:column" in compact_css
+    assert ".generation-stage-card{min-height:calc(100dvh-24px);height:calc(100dvh-24px);" in compact_css
+    assert ".generation-stage-result{height:100%;min-height:100%;" in compact_css
+    assert ".generation-result-image.generation-result-fade-in{position:absolute;inset:0;width:100%;height:100%;" in compact_css
+    assert ".generation-compact-controls{grid-template-columns:40px40px40px40pxminmax(96px,1fr)40px;gap:7px;position:relative;z-index:5;overflow:visible;padding-bottom:2px;scrollbar-width:none}" in compact_css
+    assert ".generation-control-popover{position:absolute;left:0;bottom:calc(100%+8px);min-width:132px;z-index:40;" in compact_css
+    assert "<X size={20} strokeWidth={2.25} />" in panel
 
     assert "selectedImageId" in detail
     assert "image-gallery-thumb" in detail

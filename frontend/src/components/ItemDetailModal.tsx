@@ -195,6 +195,7 @@ export default function ItemDetailModal({
   const [selectedImageId, setSelectedImageId] = useState<string>();
   const [toast, setToast] = useState<{ message: string; actionLabel?: string; item?: ItemDetail }>();
   const [isClosing, setIsClosing] = useState(false);
+  const [isHeroFullscreen, setIsHeroFullscreen] = useState(false);
   const lastDefaultPromptKeyRef = useRef('');
   const heroImageRef = useRef<HTMLImageElement | null>(null);
   const heroFullscreenFrameRef = useRef<HTMLDivElement | null>(null);
@@ -204,12 +205,28 @@ export default function ItemDetailModal({
     window.setTimeout(onClose, 180);
   };
 
-  const toggleHeroFullscreen = async () => {
-    if (document.fullscreenElement) {
+  const closeHeroFullscreen = async () => {
+    if (document.fullscreenElement === heroFullscreenFrameRef.current) {
       await document.exitFullscreen?.();
+    }
+    setIsHeroFullscreen(false);
+  };
+
+  const toggleHeroFullscreen = async () => {
+    if (document.fullscreenElement === heroFullscreenFrameRef.current || isHeroFullscreen) {
+      await closeHeroFullscreen();
       return;
     }
-    await heroFullscreenFrameRef.current?.requestFullscreen?.();
+    if (!heroFullscreenFrameRef.current) return;
+    try {
+      if (heroFullscreenFrameRef.current.requestFullscreen) {
+        await heroFullscreenFrameRef.current.requestFullscreen();
+      } else {
+        setIsHeroFullscreen(true);
+      }
+    } catch {
+      setIsHeroFullscreen(true);
+    }
   };
 
   useEffect(() => { setLang(preferredLanguage); }, [preferredLanguage, id]);
@@ -221,6 +238,12 @@ export default function ItemDetailModal({
     setItem(undefined);
     api.item(id).then(setItem);
   }, [id]);
+
+  useEffect(() => {
+    const syncHeroFullscreenState = () => setIsHeroFullscreen(document.fullscreenElement === heroFullscreenFrameRef.current);
+    document.addEventListener('fullscreenchange', syncHeroFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', syncHeroFullscreenState);
+  }, []);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -337,22 +360,22 @@ export default function ItemDetailModal({
         ) : (
           <div className="modal-content-enter" key={item.id}>
             <div className="detail-layout">
-              <section className="modal-hero">
+              <section className={`modal-hero${isHeroFullscreen ? ' is-mobile-fullscreen' : ''}`}>
                 {selectedImage ? (
                   <>
-                    <div ref={heroFullscreenFrameRef} className="detail-fullscreen-frame">
+                    <div ref={heroFullscreenFrameRef} className={`detail-fullscreen-frame${isHeroFullscreen ? ' is-mobile-fullscreen' : ''}`}>
                       <img
                         ref={heroImageRef}
                         className="hero-image"
                         src={mediaUrl(imageHeroPath(selectedImage))}
                         alt={item.title}
                       />
-                      <button className="modal-icon-button detail-fullscreen-close" type="button" onClick={() => document.exitFullscreen?.()} aria-label="Close fullscreen">×</button>
+                      <button className="modal-icon-button detail-fullscreen-close" type="button" onClick={closeHeroFullscreen} aria-label="Close fullscreen"><X size={20} strokeWidth={2.25} /></button>
                     </div>
                     {uniqueImages.length > 1 && <span className="image-counter">{selectedImageIndex + 1} / {uniqueImages.length}</span>}
                     {isReferenceImage(selectedImage) && <span className="image-role-badge">Reference</span>}
                     <button className="modal-icon-button detail-fullscreen-overlay" type="button" onClick={toggleHeroFullscreen} aria-label="View fullscreen" title="View fullscreen">
-                      <Maximize2 size={16} />
+                      <Maximize2 size={20} strokeWidth={2.25} />
                     </button>
                   </>
                 ) : (
@@ -360,7 +383,7 @@ export default function ItemDetailModal({
                 )}
                 <div className="mobile-hero-actions" aria-label={t('itemActions')}>
                   <button className="modal-icon-button mobile-hero-close" onClick={handleClose} aria-label={t('close')}>
-                    <X size={20} />
+                    <X size={20} strokeWidth={2.25} />
                   </button>
                   {showMutations && (
                     <span className="mobile-hero-primary-actions">
@@ -408,7 +431,7 @@ export default function ItemDetailModal({
                     </button>}
                   </span>
                   <button className="modal-icon-button close" onClick={handleClose} aria-label={t('close')}>
-                    <X size={20} />
+                    <X size={20} strokeWidth={2.25} />
                   </button>
                 </div>
                 <InlineEditableField className="collection-inline-edit" value={item.cluster?.name || ''} placeholder={t('unclustered')} inputList="detail-collection-suggestions" onCommit={value => commitInlineUpdate({ cluster_name: value.trim() || null })} editable={showMutations}>
@@ -523,7 +546,7 @@ export default function ItemDetailModal({
                 {toast.actionLabel}
               </button>
             )}
-            <button type="button" aria-label="Dismiss" onClick={() => setToast(undefined)}>×</button>
+            <button type="button" aria-label="Dismiss" onClick={() => setToast(undefined)}><X size={20} strokeWidth={2.25} /></button>
           </div>
         )}
         {generationOpen && item && (

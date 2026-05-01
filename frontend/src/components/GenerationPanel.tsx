@@ -90,13 +90,21 @@ function jobPrompt(job?: GenerationJobRecord) {
 
 function jobAspectRatio(job?: GenerationJobRecord) {
   const value = job?.parameters?.requested_aspect_ratio;
-  return typeof value === 'string' && value ? value : '1:1';
+  return typeof value === 'string' && value ? value : 'auto';
 }
 
 function jobQuality(job?: GenerationJobRecord) {
   const value = job?.parameters?.quality;
   if (value === 'standard') return 'medium';
   return typeof value === 'string' && ['low', 'medium', 'high'].includes(value) ? value : 'high';
+}
+
+function jobModel(job?: GenerationJobRecord) {
+  const parameterModel = job?.parameters?.orchestrator_model;
+  const metadataModel = job?.metadata?.orchestrator_model;
+  if (typeof parameterModel === 'string' && parameterModel) return parameterModel;
+  if (typeof metadataModel === 'string' && metadataModel) return metadataModel;
+  return job?.model || 'Default';
 }
 
 function optionLabel(options: { value: string; label: string }[], value: string) {
@@ -125,7 +133,7 @@ export default function GenerationPanel({
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
   const [provider, setProvider] = useState('manual_upload');
   const [orchestratorModel, setOrchestratorModel] = useState('gpt-5.4');
-  const [aspectRatio, setAspectRatio] = useState('1:1');
+  const [aspectRatio, setAspectRatio] = useState('auto');
   const [quality, setQuality] = useState('high');
   const [openControl, setOpenControl] = useState<'aspect' | 'quality' | 'model' | null>(null);
   const [promptText, setPromptText] = useState(defaultPrompt);
@@ -230,7 +238,7 @@ export default function GenerationPanel({
 
   useEffect(() => {
     if (selectedStageJob?.status !== 'succeeded') return;
-    window.requestAnimationFrame(() => stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    window.requestAnimationFrame(() => stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }, [selectedStageJob?.id, selectedStageJob?.status]);
 
   const closeStageFullscreen = async () => {
@@ -246,6 +254,7 @@ export default function GenerationPanel({
     setBusy(true);
     setMessage('');
     setHistoryReviewJobId(undefined);
+    window.requestAnimationFrame(() => stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     try {
       const attachments = imageAttachmentPayload();
       const created = await api.createGenerationJob({
@@ -259,7 +268,7 @@ export default function GenerationPanel({
         reference_image_ids: [],
         parameters: {
           requested_aspect_ratio: aspectRatio,
-          aspect_ratio_prompt_injection: true,
+          aspect_ratio_prompt_injection: aspectRatio !== 'auto',
           quality,
           orchestrator_model: orchestratorModel,
           input_images: attachments,
@@ -267,6 +276,7 @@ export default function GenerationPanel({
       });
       setJobs(current => [created, ...current.filter(job => job.id !== created.id)]);
       setActiveJobId(created.id);
+      window.requestAnimationFrame(() => stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
       setMessage(provider === 'manual_upload' ? 'Job created. Upload a generated result when ready.' : attachments.length > 0 ? 'Edit queued. It will start automatically.' : 'Generation queued. It will start automatically.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not create generation job.');
@@ -557,7 +567,7 @@ export default function GenerationPanel({
         <div className={`generation-stage generation-stage-result${isStageFullscreen ? ' is-mobile-fullscreen' : ''}`}>
           <div ref={fullscreenFrameRef} className="generation-fullscreen-frame">
             <img ref={resultImageRef} className="generation-result-image generation-result-fade-in" src={resultUrl} alt="Generation result" />
-            <button className="modal-icon-button generation-fullscreen-close" type="button" onClick={closeStageFullscreen} aria-label="Close fullscreen">×</button>
+            <button className="modal-icon-button generation-fullscreen-close" type="button" onClick={closeStageFullscreen} aria-label="Close fullscreen"><X size={20} strokeWidth={2.25} /></button>
           </div>
           {canUseResultActions(selectedStageJob) && renderStageActions(selectedStageJob)}
         </div>
@@ -658,7 +668,7 @@ export default function GenerationPanel({
 
           <section ref={stageRef} className="generation-stage-card">
             <button className="modal-icon-button generation-fullscreen-overlay" onClick={toggleStageFullscreen} aria-label="View fullscreen" title="View fullscreen"><Maximize2 size={16} /></button>
-            <button className="modal-icon-button close generation-close-overlay" onClick={handleClose} aria-label={t('close')}>×</button>
+            <button className="modal-icon-button close generation-close-overlay" onClick={handleClose} aria-label={t('close')}><X size={20} strokeWidth={2.25} /></button>
             {renderStage()}
           </section>
         </div>
@@ -670,15 +680,19 @@ export default function GenerationPanel({
                 <p className="drawer-eyebrow">History</p>
                 <h3>Recent generations</h3>
               </div>
-              <button className="modal-icon-button" onClick={() => setShowHistoryDrawer(false)} aria-label={t('close')}>×</button>
+              <button className="modal-icon-button" onClick={() => setShowHistoryDrawer(false)} aria-label={t('close')}><X size={20} strokeWidth={2.25} /></button>
             </div>
             {visibleJobs.length === 0 && <p className="muted">No generation jobs yet.</p>}
             {visibleJobs.map(job => (
-              <button key={job.id} className={`generation-history-item status-${job.status}`} onClick={() => previewHistoryJob(job)}>
-                {jobResultUrl(job) ? <img src={jobResultUrl(job)} alt="" /> : <span className="generation-history-placeholder">{statusLabel(job.status)}</span>}
-                <span>
-                  <b>{jobPrompt(job) || 'Untitled generation'}</b>
-                  <small>{jobAspectRatio(job)} · {jobQuality(job)} · {statusLabel(job.status)}</small>
+              <button key={job.id} className={`generation-history-item status-${job.status}`} onClick={() => previewHistoryJob(job)} aria-label={`${statusLabel(job.status)} generation, ${jobAspectRatio(job)}, ${jobQuality(job)}, ${jobModel(job)}`}>
+                <span className="generation-history-media">
+                  {jobResultUrl(job) ? <img src={jobResultUrl(job)} alt="" /> : <span className="generation-history-placeholder">{statusLabel(job.status)}</span>}
+                </span>
+                <span className="generation-history-status-grid" aria-hidden="true">
+                  <span className="generation-history-cell"><b>Aspect ratio</b><em>{optionLabel(ASPECT_RATIO_OPTIONS, jobAspectRatio(job))}</em></span>
+                  <span className="generation-history-cell"><b>Quality</b><em>{optionLabel(QUALITY_OPTIONS, jobQuality(job))}</em></span>
+                  <span className="generation-history-cell"><b>Model</b><em>{jobModel(job)}</em></span>
+                  <span className="generation-history-cell"><b>Status</b><em>{statusLabel(job.status)}</em></span>
                 </span>
               </button>
             ))}
@@ -692,7 +706,7 @@ export default function GenerationPanel({
                 <p className="drawer-eyebrow">Review metadata</p>
                 <h3>Save generated image as new item</h3>
               </div>
-              <button className="modal-icon-button generation-save-panel-close" onClick={closeSaveAsNewReview} aria-label={t('close')}>×</button>
+              <button className="modal-icon-button generation-save-panel-close" onClick={closeSaveAsNewReview} aria-label={t('close')}><X size={20} strokeWidth={2.25} /></button>
             </div>
             <div className="save-new-metadata-grid">
               {jobResultUrl(reviewJob) && <img src={jobResultUrl(reviewJob)} alt="Generated result preview" />}

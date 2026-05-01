@@ -37,7 +37,7 @@ export default function FiltersPanel({
           <p className="drawer-eyebrow"><SlidersHorizontal size={15} /> {t('filters')}</p>
           <h2>{t('collections')}</h2>
         </div>
-        <button className="panel-close" onClick={onClose} aria-label={t('closeFilters')}><X size={18} /></button>
+        <button className="panel-close" onClick={onClose} aria-label={t('closeFilters')}><X size={20} strokeWidth={2.25} /></button>
       </div>
 
       <label className="filter-search">

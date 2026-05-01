@@ -136,7 +136,9 @@ ASPECT_RATIO_ALIASES = {
 
 
 def _normalize_requested_aspect_ratio(value: Any) -> str:
-    aspect = str(value or "1:1").strip().lower()
+    aspect = str(value or "auto").strip().lower()
+    if aspect == "auto":
+        return "auto"
     return ASPECT_RATIO_ALIASES.get(aspect, aspect if aspect in CHATGPT_ASPECT_RATIO_OPTIONS else "1:1")
 
 
@@ -561,8 +563,8 @@ class OpenAICodexNativeProvider:
             requested_aspect_ratio = _normalize_requested_aspect_ratio(
                 parameters.get("requested_aspect_ratio") or parameters.get("aspect_ratio")
             )
-            injection_enabled = bool(parameters.get("aspect_ratio_prompt_injection", True))
-            size = None if injection_enabled else SIZES.get(requested_aspect_ratio, SIZES["1:1"])
+            injection_enabled = bool(parameters.get("aspect_ratio_prompt_injection", True)) and requested_aspect_ratio != "auto"
+            size = None if requested_aspect_ratio == "auto" or injection_enabled else SIZES.get(requested_aspect_ratio, SIZES["1:1"])
             effective_prompt, aspect_ratio_instruction = _prompt_with_aspect_ratio_instruction(
                 prompt,
                 requested_aspect_ratio,

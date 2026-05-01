@@ -207,7 +207,7 @@ export default function ConfigPanel({
     <aside className={`config drawer ${open ? 'open' : ''}`}>
       <div className="drawer-head">
         <h2>{t('config')}</h2>
-        <button className="panel-close" onClick={onClose} aria-label={t('closeConfig')}><X size={18} /></button>
+        <button className="panel-close" onClick={onClose} aria-label={t('closeConfig')}><X size={20} strokeWidth={2.25} /></button>
       </div>
 
       <section className="setting-group">
