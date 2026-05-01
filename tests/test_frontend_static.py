@@ -377,6 +377,9 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })" in panel
     assert "Save generated image as new item" in panel
     assert "Review metadata" in panel
+    assert "author: 'User'" in panel
+    assert "author: item?.author" not in panel
+    assert "notes: item ? `Variant generated from ${item.title}.` : 'Generated from a standalone prompt.'" in panel
     assert "readonly-provenance" in panel
     assert "Cannot generate this image" in panel
     assert "Generation is temporarily rate limited" in panel

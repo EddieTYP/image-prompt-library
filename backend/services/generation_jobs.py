@@ -323,7 +323,7 @@ class GenerationJobRepository:
             model=overrides.model or job.model or (source_item.model if source_item else "ChatGPT Image2"),
             source_name=overrides.source_name if overrides.source_name is not None else "Generation variant",
             source_url=overrides.source_url if overrides.source_url is not None else (source_item.source_url if source_item else None),
-            author=overrides.author if overrides.author is not None else (source_item.author if source_item else None),
+            author=overrides.author if overrides.author is not None else "User",
             cluster_id=None if overrides.cluster_name else (source_item.cluster.id if source_item and source_item.cluster else None),
             cluster_name=overrides.cluster_name,
             tags=overrides.tags if overrides.tags is not None else ([tag.name for tag in source_item.tags] if source_item else []),

@@ -78,7 +78,7 @@ function buildInitialMetadata(job: GenerationJobRecord, item?: ItemDetail): Gene
     model: job.model || item?.model || 'ChatGPT Image2',
     source_name: 'Generation variant',
     source_url: item?.source_url || '',
-    author: item?.author || '',
+    author: 'User',
     notes: item ? `Variant generated from ${item.title}.` : 'Generated from a standalone prompt.',
     prompts: [{ language: job.prompt_language || 'en', text: prompt, is_primary: true, is_original: true }],
   };

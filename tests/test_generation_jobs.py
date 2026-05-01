@@ -22,11 +22,14 @@ def client(tmp_path):
     return TestClient(create_app(library_path=tmp_path / "library"))
 
 
-def create_source_item(c):
-    return c.post("/api/items", json={
+def create_source_item(c, *, author=None):
+    payload = {
         "title": "Source prompt",
         "prompts": [{"language": "en", "text": "A cinematic moonlit robot", "is_original": True}],
-    }).json()
+    }
+    if author is not None:
+        payload["author"] = author
+    return c.post("/api/items", json=payload).json()
 
 
 def test_generation_job_can_stage_result_and_accept_into_source_item(tmp_path):
@@ -140,6 +143,30 @@ def test_generation_job_can_accept_result_as_new_variant_item(tmp_path):
 
     original_after = c.get(f"/api/items/{source_item['id']}").json()
     assert original_after["images"] == []
+
+
+def test_accept_as_new_item_defaults_author_to_current_local_user_not_source_author(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c, author="Original Artist")
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "text_to_image",
+        "provider": "manual_upload",
+        "model": "manual-test-model",
+        "prompt_language": "en",
+        "prompt_text": "A cinematic moonlit robot",
+    }).json()
+    c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("purple"), "image/png")},
+    )
+
+    accepted = c.post(f"/api/generation-jobs/{job['id']}/accept-as-new-item")
+
+    assert accepted.status_code == 200
+    new_item = accepted.json()["item"]
+    assert new_item["author"] == "User"
+    assert new_item["author"] != source_item["author"]
 
 
 def test_accept_as_new_item_uses_metadata_overrides_and_keeps_provenance(tmp_path):
