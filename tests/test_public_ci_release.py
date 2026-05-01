@@ -224,3 +224,29 @@ def test_v061_release_notes_describe_save_as_new_metadata_and_image_actions_beta
     assert "OpenNana" not in notes
     assert "token" not in notes.lower()
     assert "secret" not in notes.lower()
+
+def test_v062_release_notes_describe_update_reliability_fixes_beta():
+    notes_path = ROOT / "docs" / "releases" / "v0.6.2-beta.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text()
+
+    assert "# Image Prompt Library v0.6.2-beta" in notes
+    assert "Update Reliability Fixes" in notes
+    assert "Online Read Only Demo" in notes
+    assert "https://eddietyp.github.io/image-prompt-library/v0.6/" in notes
+    assert "browser-triggered app updates" in notes
+    assert "macOS launchd" in notes
+    assert "runtime Python" in notes
+    assert "CLI `image-prompt-library update`" in notes
+    assert "non-default service label" in notes
+    assert "No database schema change" in notes
+    assert "image-prompt-library update --version v0.6.2-beta" in notes
+    assert "image-prompt-library rollback" in notes
+    assert "171" in notes
+    assert "AGPL-3.0-or-later" in notes
+
+    assert "/Users/" not in notes
+    assert ".local-work" not in notes
+    assert "OpenNana" not in notes
+    assert "token" not in notes.lower()
+    assert "secret" not in notes.lower()

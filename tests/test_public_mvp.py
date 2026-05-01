@@ -73,7 +73,7 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Cards view" in readme
     assert "one-click prompt copy" in readme
     assert "Generate New Image from a prompt, or generate a Variant of an existing one with ChatGPT Image 2.0 once you have completed OAuth." in readme
-    assert "v0.6.1-beta" in readme
+    assert "v0.6.2-beta" in readme
     assert "multilingual provenance-aware prompt vault" in readme
     assert "mobile browsing preview" not in readme
     assert "next-release mobile browsing and management plan" not in readme

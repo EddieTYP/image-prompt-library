@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.1-beta)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.2-beta)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 ChatGPT image generation has become good enough that the prompts are worth keeping. The problem is that once you start saving great outputs, screenshots, and variations, there still is not a simple private tool for managing image prompts like a real reference library.
@@ -15,7 +15,7 @@ Your library stays on your own machine: local SQLite, local image files, no acco
 
 **v0.6.1 beta highlight:** local installs can connect via **ChatGPT OAuth**, use direct image generation from saved prompts, choose aspect ratio and quality settings, review generated results before saving, then `Attach to current item` or `Save as new item` with editable metadata, smart tag/collection suggestions, source-language pills, and direct image downloads. No hosted account, cloud sync, or public API key is required by the app.
 
-**Beta release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.1-beta> — Save-as-new metadata polish, image download/fullscreen actions, ChatGPT image generation, aspect ratio Auto, image edit/reference support, versioned installer/update/rollback, and the multilingual provenance-aware prompt vault in the read-only demo.
+**Beta release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.2-beta> — Updater reliability fixes for macOS launchd and CLI updates, plus Save-as-new metadata polish, image download/fullscreen actions, ChatGPT image generation, aspect ratio Auto, image edit/reference support, versioned installer/update/rollback, and the multilingual provenance-aware prompt vault in the read-only demo.
 
 **Project status:** This is a public beta. Core browsing, search, local add/edit, optional local generation, versioned installs, and the read-only online demo are available today.
 
@@ -198,7 +198,7 @@ image-prompt-library start
 Install a specific tagged release instead:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.6.1-beta
+curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.6.2-beta
 image-prompt-library start
 ```
 
@@ -246,7 +246,7 @@ image-prompt-library update
 Install or switch to a specific version with:
 
 ```bash
-image-prompt-library update --version v0.6.1-beta
+image-prompt-library update --version v0.6.2-beta
 ```
 
 Rollback to the previous installed version with:

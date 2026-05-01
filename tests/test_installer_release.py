@@ -124,8 +124,8 @@ def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developer
     assert "scripts/install.sh" in readme
     assert "image-prompt-library start" in readme
     assert "image-prompt-library update" in readme
-    assert "image-prompt-library update --version v0.6.1-beta" in readme
-    assert "curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.6.1-beta" in readme
+    assert "image-prompt-library update --version v0.6.2-beta" in readme
+    assert "curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.6.2-beta" in readme
     assert "image-prompt-library rollback" in readme
     assert "image-prompt-library sample-data en" in readme
     assert "image-prompt-library uninstall" in readme
