@@ -21,7 +21,9 @@ env:
   ARCHIVED_02_DEMO_PATH: v0.2
   ARCHIVED_03_DEMO_REF: v0.3.0-alpha
   ARCHIVED_03_DEMO_PATH: v0.3
-  CURRENT_PREVIEW_PATH: v0.4
+  ARCHIVED_04_DEMO_REF: v0.4.0-alpha
+  ARCHIVED_04_DEMO_PATH: v0.4
+  CURRENT_PREVIEW_PATH: v0.6
 
 jobs:
   build:
@@ -39,12 +41,23 @@ jobs:
           cache: npm
       - name: Install dependencies
         run: npm install
-      - name: Build current v0.4 read-only preview
+      - name: Build current v0.6 read-only preview
         run: VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/${CURRENT_PREVIEW_PATH}/ npm run build
-      - name: Stage current v0.4 read-only preview
+      - name: Stage current v0.6 read-only preview
         run: |
           mkdir -p .pages-artifact/${CURRENT_PREVIEW_PATH}
           cp -R frontend/dist/. .pages-artifact/${CURRENT_PREVIEW_PATH}/
+      - name: Build archived v0.4 preview
+        run: |
+          git fetch --tags origin
+          git worktree add .page-build/${ARCHIVED_04_DEMO_PATH} ${ARCHIVED_04_DEMO_REF}
+          cd .page-build/${ARCHIVED_04_DEMO_PATH}
+          npm install
+          VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/${ARCHIVED_04_DEMO_PATH}/ npm run build
+      - name: Stage archived v0.4 preview
+        run: |
+          mkdir -p .pages-artifact/${ARCHIVED_04_DEMO_PATH}
+          cp -R .page-build/${ARCHIVED_04_DEMO_PATH}/frontend/dist/. .pages-artifact/${ARCHIVED_04_DEMO_PATH}/
       - name: Build archived v0.3 preview
         run: |
           git fetch --tags origin
@@ -329,17 +342,22 @@ jobs:
                   Add/edit require local install; run locally to create your private prompt library.
                 </p>
                 <p class="local-banner">
-                  <span>Latest v0.5 beta supports the Local Generation Studio with ChatGPT OAuth in local installs.</span>
+                  <span>Latest v0.6 beta improves the mobile generation workflow and local ChatGPT image generation. Online demo remains read-only.</span>
                   <a href="https://github.com/EddieTYP/image-prompt-library">View on GitHub</a>
                 </p>
-                <a class="hero-banner-link" href="https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.5.0-beta" aria-label="View the v0.5 beta Local Generation Studio release">
-                  <img class="hero-banner" src="./assets/local-generation-studio-banner.webp" width="1800" height="600" alt="Image Prompt Library v0.5.0-beta Local Generation Studio banner showing the app Cards view and local generation workflow highlights" />
+                <a class="hero-banner-link" href="https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.0-beta" aria-label="View the v0.6 beta Generation Workflow & Mobile Polish release">
+                  <img class="hero-banner" src="./assets/local-generation-studio-banner.webp" width="1800" height="600" alt="Image Prompt Library v0.6.0-beta Generation Workflow and Mobile Polish banner showing the app Cards view and local generation workflow highlights" />
                 </a>
                 <section class="versions" aria-label="Demo versions">
-                  <a class="version-card" href="./v0.4/">
-                    <span class="version-label">Current demo · v0.4</span>
-                    <h2>Online Read Only Demo plus local v0.5 beta banner</h2>
-                    <p>Browse 510 multilingual references online. Install locally for the v0.5 beta Local Generation Studio, ChatGPT OAuth direct generation, Add/Edit, and your private prompt library.</p>
+                  <a class="version-card" href="./v0.6/">
+                    <span class="version-label">Current demo · v0.6</span>
+                    <h2>Online Read Only Demo plus local v0.6 beta banner</h2>
+                    <p>Browse 510 multilingual references online. Install locally for the v0.6 beta mobile generation workflow, ChatGPT image generation, Add/Edit, and your private prompt library.</p>
+                  </a>
+                  <a class="version-card stable" href="./v0.4/">
+                    <span class="version-label">Archive · v0.4</span>
+                    <h2>Local generation beta banner preview</h2>
+                    <p>The archived read-only preview that introduced the local install path for ChatGPT OAuth generation and the versioned installer.</p>
                   </a>
                   <a class="version-card stable" href="./v0.3/">
                     <span class="version-label">Archive · v0.3</span>

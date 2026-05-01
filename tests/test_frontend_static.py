@@ -920,6 +920,25 @@ def test_ui_language_setting_localizes_main_chrome():
     assert "Explore 全部 collection 的整體密度。" in i18n
 
 
+def test_first_run_language_picker_uses_ui_language_storage_key():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
+
+    assert "hasChosenUiLanguage" in app
+    assert "setHasChosenUiLanguage" in app
+    assert "window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY)" in app
+    assert "first-run-language-overlay" in app
+    assert "first-run-language-card" in app
+    assert "UI_LANGUAGE_LABELS" in app
+    assert "onClick={() => chooseFirstRunLanguage(language)}" in app
+    assert "chooseLanguage" in i18n
+    assert "選擇介面語言" in i18n
+    assert "You can change this later in Config." in i18n
+    assert ".first-run-language-overlay" in css
+    assert ".first-run-language-options" in css
+
+
 def test_item_editor_uses_ui_language_for_long_tail_strings():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     editor = (ROOT / "frontend" / "src" / "components" / "ItemEditorModal.tsx").read_text()

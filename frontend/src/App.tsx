@@ -14,7 +14,7 @@ import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
 import type { AppUpdateStatus, ClusterRecord, GenerationJobRecord, GenerationProviderStatus, ItemDetail, ItemSummary, TagRecord, ViewMode } from './types';
 import { copyTextToClipboard } from './utils/clipboard';
-import { DEFAULT_UI_LANGUAGE, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
+import { DEFAULT_UI_LANGUAGE, UI_LANGUAGE_LABELS, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
 import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptCopyLanguage } from './utils/prompts';
 
 const UI_LANGUAGE_STORAGE_KEY = 'image-prompt-library.ui_language';
@@ -31,6 +31,11 @@ function loadPreferredLanguage(): PromptCopyLanguage {
 function loadUiLanguage(): UiLanguage {
   if (typeof window === 'undefined') return DEFAULT_UI_LANGUAGE;
   return normalizeUiLanguage(window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY));
+}
+
+function loadHasChosenUiLanguage() {
+  if (typeof window === 'undefined') return true;
+  return Boolean(window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY));
 }
 
 function loadPreferredView(): ViewMode {
@@ -83,6 +88,7 @@ export default function App() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [itemsReloadKey, setItemsReloadKey] = useState(0);
   const [uiLanguage, setUiLanguage] = useState<UiLanguage>(loadUiLanguage);
+  const [hasChosenUiLanguage, setHasChosenUiLanguage] = useState(loadHasChosenUiLanguage);
   const [preferredLanguage, setPreferredLanguage] = useState<PromptCopyLanguage>(loadPreferredLanguage);
   const [globalThumbnailBudget, setGlobalThumbnailBudget] = useState(() => loadNumberSetting(GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 50, 150));
   const [focusThumbnailBudget, setFocusThumbnailBudget] = useState(() => loadNumberSetting(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 24, 100));
@@ -159,6 +165,10 @@ export default function App() {
     setUiLanguage(language);
     window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, language);
   };
+  const chooseFirstRunLanguage = (language: UiLanguage) => {
+    updateUiLanguage(language);
+    setHasChosenUiLanguage(true);
+  };
   const updateView = (nextView: ViewMode) => {
     setView(nextView);
     window.localStorage.setItem(VIEW_STORAGE_KEY, nextView);
@@ -201,13 +211,28 @@ export default function App() {
   const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
   const updateBadgeLabel = restartRequiredVersion ? 'Restart required' : (updateStatus?.update_available ? 'Update available' : undefined);
   return <div className={`app ${view === 'explore' ? 'explore-mode' : 'cards-mode'}`}>
+    {!hasChosenUiLanguage && (
+      <div className="first-run-language-overlay" role="dialog" aria-modal="true" aria-labelledby="first-run-language-title">
+        <section className="first-run-language-card">
+          <p className="first-run-language-eyebrow">Image Prompt Library</p>
+          <h2 id="first-run-language-title">{t('chooseLanguage')}</h2>
+          <p>{t('chooseLanguageHelp')}</p>
+          <div className="first-run-language-options" role="group" aria-label={t('chooseLanguage')}>
+            {(['zh_hant', 'zh_hans', 'en'] as UiLanguage[]).map(language => (
+              <button key={language} type="button" onClick={() => chooseFirstRunLanguage(language)}>{UI_LANGUAGE_LABELS[language]}</button>
+            ))}
+          </div>
+          <p className="first-run-language-note">{t('changeLanguageLater')}</p>
+        </section>
+      </div>
+    )}
     <TopBar t={t} q={q} updateBadgeLabel={updateBadgeLabel} onQ={setQ} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
     {isDemoMode && (
       <div className="demo-banner" role="status">
         <strong>{t('onlineReadOnlyDemo')}</strong>
         <span>{t('compressedForDemo')}</span>
         <span>{t('runLocallyForPrivateLibrary')}</span>
-        <span>{t('localV04SupportsDirectGeneration')}</span>
+        <span>{t('localV06SupportsMobileGeneration')}</span>
         <a href="https://github.com/EddieTYP/image-prompt-library" target="_blank" rel="noreferrer">{t('viewOnGitHub')}</a>
       </div>
     )}
