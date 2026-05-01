@@ -556,6 +556,7 @@ export default function ItemDetailModal({
             preferredLanguage={preferredLanguage}
             t={t}
             initialJobId={initialGenerationJobId}
+            clusters={clusters}
             tags={tags}
             onClose={() => setGenerationOpen(false)}
             onAccepted={(acceptedItem, message) => {

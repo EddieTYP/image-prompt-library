@@ -379,7 +379,9 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Review metadata" in panel
     assert "author: 'User'" in panel
     assert "author: item?.author" not in panel
-    assert "notes: item ? `Variant generated from ${item.title}.` : 'Generated from a standalone prompt.'" in panel
+    assert "notes: ''" in panel
+    assert "Variant generated from ${item.title}" not in panel
+    assert "Generated from a standalone prompt." not in panel
     assert "readonly-provenance" in panel
     assert "Cannot generate this image" in panel
     assert "Generation is temporarily rate limited" in panel
@@ -477,13 +479,21 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Upload external result" not in panel
     assert "Download" in panel
     assert "TagRecord" in panel
+    assert "ClusterRecord" in panel
+    assert "clusters = []" in panel
     assert "metadataTagsText" in panel
     assert "save-new-tag-suggestions" in panel
     assert "filteredMetadataTags" in panel
     assert "addSuggestedMetadataTag" in panel
     assert "placeholder={t('tagsPlaceholder')}" in panel
     assert "event.currentTarget.value.split(',').map(tag => tag.trim()).filter(Boolean)" not in panel
-    assert "Source language" in panel
+    assert "filteredMetadataClusters" in panel
+    assert "save-new-collection-suggestions" in panel
+    assert "list=\"save-new-collection-suggestions\"" in panel
+    assert "Source language" not in panel
+    assert "<select value={metadataDraft.prompts?.[0]?.language" not in panel
+    assert "save-new-language-pills" in panel
+    assert "origin-marker" in panel
     assert "updateMetadataPromptLanguage" in panel
     assert "provenance: { kind: 'manual', source_language: language, derived_from: null, method: null }" in panel
     assert "generation-download-overlay" in panel
@@ -1157,6 +1167,7 @@ def test_editor_supports_multilingual_prompts_collection_suggestions_and_image_r
     i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
 
     assert "clusters={localizedClusters}" in app
+    assert "<GenerationPanel t={t} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags}" in app
     assert "tags={tags}" in app
     assert "clusters: ClusterRecord[]" in editor
     assert "tags: TagRecord[]" in editor

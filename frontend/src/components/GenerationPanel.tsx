@@ -4,7 +4,7 @@ import aspectRatioIcon from '../assets/generation-controls/aspect-ratio.png';
 import brainAiIcon from '../assets/generation-controls/model.png';
 import qualityIcon from '../assets/generation-controls/quality.png';
 import { api, mediaUrl } from '../api/client';
-import type { GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ItemDetail, TagRecord } from '../types';
+import type { ClusterRecord, GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ItemDetail, TagRecord } from '../types';
 import type { Translator } from '../utils/i18n';
 import { downloadFileName } from '../utils/images';
 import { resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage } from '../utils/prompts';
@@ -50,9 +50,9 @@ const QUALITY_OPTIONS = [
 
 const MAX_EDIT_ATTACHMENTS = 4;
 const SAVE_NEW_LANGUAGE_OPTIONS = [
-  { value: 'en', label: 'English' },
-  { value: 'zh_hant', label: '繁體中文' },
-  { value: 'zh_hans', label: '简体中文' },
+  { value: 'en', label: 'ENG' },
+  { value: 'zh_hant', label: '繁中' },
+  { value: 'zh_hans', label: '簡中' },
 ];
 
 type EditAttachment = {
@@ -89,7 +89,7 @@ function buildInitialMetadata(job: GenerationJobRecord, item?: ItemDetail): Gene
     source_name: 'Generation variant',
     source_url: item?.source_url || '',
     author: 'User',
-    notes: item ? `Variant generated from ${item.title}.` : 'Generated from a standalone prompt.',
+    notes: '',
     prompts: [{ language: job.prompt_language || 'en', text: prompt, is_primary: true, is_original: true, provenance: promptProvenance(job.prompt_language || 'en') }],
   };
 }
@@ -128,6 +128,7 @@ export default function GenerationPanel({
   onAccepted,
   t,
   initialJobId,
+  clusters = [],
   tags = [],
 }: {
   item?: ItemDetail;
@@ -136,6 +137,7 @@ export default function GenerationPanel({
   onAccepted: (item?: ItemDetail, message?: string) => void;
   t: Translator;
   initialJobId?: string;
+  clusters?: ClusterRecord[];
   tags?: TagRecord[];
 }) {
   const originalPrompt = resolveOriginalPrompt(item?.prompts);
@@ -188,6 +190,11 @@ export default function GenerationPanel({
       .filter(tag => !selected.has(tag.name) && (!query || tag.name.toLowerCase().includes(query)))
       .slice(0, 10);
   }, [metadataTagsText, metadataTagQuery, tags]);
+  const filteredMetadataClusters = useMemo(() => {
+    const query = (metadataDraft?.cluster_name || '').trim().toLowerCase();
+    if (!query) return clusters.slice(0, 8);
+    return clusters.filter(cluster => cluster.name.toLowerCase().includes(query)).slice(0, 8);
+  }, [metadataDraft?.cluster_name, clusters]);
 
   const refreshJobs = async (options: { preserveActive?: boolean } = {}) => {
     const result = await api.generationJobs({ limit: 100 });
@@ -752,7 +759,10 @@ export default function GenerationPanel({
               {jobResultUrl(reviewJob) && <img src={jobResultUrl(reviewJob)} alt="Generated result preview" />}
               <div className="save-new-fields">
                 <label><span>Title</span><input value={metadataDraft.title || ''} onChange={event => updateMetadataDraft({ title: event.currentTarget.value })} /></label>
-                <label><span>Collection</span><input value={metadataDraft.cluster_name || ''} onChange={event => updateMetadataDraft({ cluster_name: event.currentTarget.value })} /></label>
+                <label><span>Collection</span><input list="save-new-collection-suggestions" value={metadataDraft.cluster_name || ''} onChange={event => updateMetadataDraft({ cluster_name: event.currentTarget.value })} /></label>
+                <datalist id="save-new-collection-suggestions">
+                  {filteredMetadataClusters.map(collection => <option key={collection.id} value={collection.name} />)}
+                </datalist>
                 <label><span>Model</span><input value={metadataDraft.model || ''} onChange={event => updateMetadataDraft({ model: event.currentTarget.value })} /></label>
                 <label><span>Tags</span><input list="save-new-tag-suggestions" placeholder={t('tagsPlaceholder')} value={metadataTagsText} onChange={event => { setMetadataTagsText(event.currentTarget.value); setMetadataTagQuery(event.currentTarget.value.split(',').pop()?.trim() || ''); }} /></label>
                 <datalist id="save-new-tag-suggestions">
@@ -761,10 +771,7 @@ export default function GenerationPanel({
                 {filteredMetadataTags.length > 0 && <div className="tag-suggestions" aria-label={t('existingTagSuggestions')}>
                   {filteredMetadataTags.map(tag => <button type="button" key={tag.id} onClick={() => addSuggestedMetadataTag(tag.name)}>#{tag.name}</button>)}
                 </div>}
-                <label><span>Source language</span><select value={metadataDraft.prompts?.[0]?.language || reviewJob.prompt_language || 'en'} onChange={event => updateMetadataPromptLanguage(event.currentTarget.value)}>
-                  {SAVE_NEW_LANGUAGE_OPTIONS.map(language => <option key={language.value} value={language.value}>{language.label}</option>)}
-                </select></label>
-                <label><span>Prompt</span><textarea value={metadataDraft.prompts?.[0]?.text || ''} onChange={event => updatePromptDraft(event.currentTarget.value)} /></label>
+                <label className="save-new-prompt-field"><span className="prompt-field-title">Prompt <span className="save-new-language-pills" aria-label="Original prompt language"><span>原文</span>{SAVE_NEW_LANGUAGE_OPTIONS.map(language => <button type="button" key={language.value} className={`origin-marker ${metadataDraft.prompts?.[0]?.language === language.value ? 'active' : ''}`} onClick={() => updateMetadataPromptLanguage(language.value)}>{language.label}</button>)}</span></span><textarea value={metadataDraft.prompts?.[0]?.text || ''} onChange={event => updatePromptDraft(event.currentTarget.value)} /></label>
                 <label><span>Notes</span><textarea value={metadataDraft.notes || ''} onChange={event => updateMetadataDraft({ notes: event.currentTarget.value })} /></label>
                 <div className="readonly-provenance">
                   <strong>Readonly provenance</strong>
