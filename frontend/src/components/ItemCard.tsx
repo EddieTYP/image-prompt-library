@@ -58,9 +58,9 @@ export default function ItemCard({
         <h3>{item.title}</h3>
       </div>
       <div className="card-actions" aria-label={t('itemActions')}>
-        <button className="hover-action" onClick={copyPrompt}><Copy size={15} /> <span className="action-label">{t('copyPrompt')}</span></button>
-        {showActions && onFavorite && <button className="hover-action" onClick={favorite}><Heart size={15} fill={item.favorite ? 'currentColor' : 'none'} /> <span className="action-label">{t('favorite')}</span></button>}
-        {showActions && onEdit && <button className="hover-action" onClick={edit}><Pencil size={15} /> <span className="action-label">{t('edit')}</span></button>}
+        <button className="hover-action" onClick={copyPrompt} aria-label={t('copyPrompt')} title={t('copyPrompt')}><Copy size={15} /></button>
+        {showActions && onFavorite && <button className="hover-action" onClick={favorite} aria-label={item.favorite ? t('saved') : t('favorite')} title={item.favorite ? t('saved') : t('favorite')}><Heart size={15} fill={item.favorite ? 'currentColor' : 'none'} /></button>}
+        {showActions && onEdit && <button className="hover-action" onClick={edit} aria-label={t('edit')} title={t('edit')}><Pencil size={15} /></button>}
       </div>
     </article>
   );

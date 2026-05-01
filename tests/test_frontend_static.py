@@ -59,7 +59,11 @@ def test_mobile_cards_use_touch_visible_two_column_masonry():
     assert "leftColumnItems" in cards and "rightColumnItems" in cards
     assert "items.filter((_, index) => index % 2 === 0)" in cards
     assert "items.filter((_, index) => index % 2 === 1)" in cards
-    assert "action-label" in card
+    assert "action-label" not in card
+    assert "aria-label={t('copyPrompt')}" in card
+    assert "title={t('copyPrompt')}" in card
+    assert ".item-card{position:relative;display:inline-block;width:100%;margin:0016px;border-radius:0;" in compact_css
+    assert ".mobile-masonry-column.item-card{display:block;width:100%;margin:0;border-radius:0}" in compact_css
     assert ".mobile-masonry-columns{display:none}" in compact_css
     assert ".desktop-cards-grid{display:block}" in compact_css
     assert ".desktop-cards-grid{display:none}" in compact_css
@@ -70,7 +74,6 @@ def test_mobile_cards_use_touch_visible_two_column_masonry():
     assert ".mobile-masonry-columns.card-image-frame.has-reserved-ratio{aspect-ratio:auto!important}" in compact_css
     assert ".mobile-masonry-columns.card-image-frameimg{width:100%;height:auto;object-fit:contain" in compact_css
     assert ".item-card.card-actions{opacity:1;transform:none;flex-direction:row;" in compact_css
-    assert ".hover-action.action-label{display:none}" in compact_css
 
 
 def test_card_display_uses_preview_or_original_before_thumbnail_for_adaptive_images():
@@ -157,8 +160,8 @@ def test_mobile_detail_modal_has_image_first_floating_controls():
     assert "mobile-generate-variant-label" in detail
     assert "Generate variant" in detail
     assert ".detail.modal{width:100vw;max-height:100dvh;" in compact_css
-    assert ".modal-hero{min-height:0;height:auto;" in compact_css
-    assert ".hero-image{width:100%;height:auto;max-height:none;object-fit:contain}" in compact_css
+    assert ".modal-hero{order:0;min-height:360px;height:min(68dvh,620px);" in compact_css
+    assert ".detail-fullscreen-frame{position:absolute;inset:0;" in compact_css
     assert ".mobile-hero-actions{display:block}" in compact_css
     assert ".mobile-hero-close{position:absolute;right:12px;top:calc(12px+env(safe-area-inset-top));" in compact_css
     assert ".mobile-hero-primary-actions{position:absolute;right:12px;bottom:12px;" in compact_css
