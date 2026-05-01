@@ -413,11 +413,34 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "generation-stage-action-bar" not in panel
     assert "canUseResultActions" in panel
     assert "resultImageRef" in panel
-    assert "fullscreenFrameRef.current?.requestFullscreen" in panel
+    assert "fullscreenFrameRef.current.requestFullscreen" in panel
     assert "orchestratorModel" in panel
+    assert "useState('gpt-5.4')" in panel
+    assert "MAX_EDIT_ATTACHMENTS = 4" in panel
+    assert "mode: attachments.length > 0 ? 'image_edit' : 'text_to_image'" in panel
+    assert "input_images: attachments" in panel
+    assert "generation-attachment-strip" in panel
+    assert "generation-attachment-thumb" in panel
+    assert "generation-attach-trigger" in panel
+    assert "aria-label=\"Attach image\"" in panel
+    assert "Remove ${attachment.name}" in panel
+    assert "Use result as edit input" in panel
+    assert "canAttachToSourceItem" in panel
+    assert "promptChangedFromSource" in panel
+    assert "stageRef.current?.scrollIntoView" in panel
+    assert "onClose();" in panel
     assert "orchestrator_models" in types
     assert "generation-model-trigger" in panel
     assert "selectedStageJob.status === 'accepted'" in panel
+    assert "aspectRatioIcon" in panel
+    assert "qualityIcon" in panel
+    assert "brainAiIcon" in panel
+    assert "generation-control-icon" in panel
+    assert "generation-control-value" in panel
+    assert "aria-label={`Aspect ratio: ${optionLabel(ASPECT_RATIO_OPTIONS, aspectRatio)}`}" in panel
+    assert "aria-label={`Quality: ${optionLabel(QUALITY_OPTIONS, quality)}`}" in panel
+    assert "aria-label={`Model: ${orchestratorModel}`}" in panel
+    assert "title={orchestratorModel}" in panel
     assert "Paperclip" in panel
     assert "FilePlus2" in panel
     assert "RotateCcw" in panel
@@ -463,19 +486,29 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert ".generation-control-trigger.generation-aspect-trigger{width:" in compact_css
     assert ".generation-control-trigger.generation-quality-trigger{width:" in compact_css
     assert ".generation-control-trigger.generation-model-trigger{width:" in compact_css
-    assert "grid-template-columns:74px104px132pxminmax(0,1fr)44px" in compact_css
-    assert ".generation-compact-controls{width:100%;max-width:100%;min-width:0;" in compact_css
+    assert "grid-template-columns:44px44px44px44pxminmax(112px,1fr)44px" in compact_css
+    assert "grid-template-columns:40px40px40px40pxminmax(96px,1fr)40px" in compact_css
+    assert ".generation-attachment-input{display:none" in compact_css
+    assert ".generation-attachment-strip{position:absolute;left:14px;bottom:12px" in compact_css
+    assert ".generation-attachment-thumbbutton{position:absolute;right:-6px;top:-6px" in compact_css
+    assert ".generation-attach-trigger{display:none" not in compact_css
+    assert ".generation-control-trigger,.generation-history-control,.generation-attach-trigger{width:44px;min-width:44px" in compact_css
+    assert ".generation-control-value{position:absolute" in compact_css
+    assert ".generation-control-icon{width:20px;height:20px" in compact_css
+    assert ".generation-compact-controls{display:grid;grid-template-columns:44px44px44px44pxminmax(112px,1fr)44px" in compact_css
     assert ".generation-stage-actions{position:absolute;" in compact_css
     assert "transform:none" in compact_css
     assert ".generation-stage-actions{position:absolute;left:14px;right:14px;" in compact_css
-    final_generation_css = compact_css[compact_css.rfind("/*Regressionfixes:preventcomposercontrols") :]
+    final_generation_css = compact_css[compact_css.rfind("/*Generationcontrols,editattachments,andmobilelayoutstabilization*/") :]
     assert "justify-content:flex-end" in final_generation_css
-    assert ".generation-stage-actions.stage-action.danger{margin-right:0" in final_generation_css
-    assert ".stage-action{width:42px;padding:0" in compact_css
+    assert ".stage-action.danger{margin-right:0" in final_generation_css
+    assert ".stage-action{width:42px;flex:0042px" in compact_css
     assert ".generation-fullscreen-frame" in compact_css
     assert ".generation-fullscreen-close" in compact_css
-    assert ".generation-result-image.generation-result-fade-in{border-radius:0" in compact_css
-    assert "animation:generation-result-crisp-fade" in compact_css
+    assert ".generation-result-image.generation-result-fade-in{position:absolute;inset:0" in compact_css
+    assert "animation:generation-result-crisp-fade" not in compact_css
+    assert "transition:none" in compact_css
+    assert "image-rendering:auto" in compact_css
     assert "clip-path:inset(0)" in compact_css
     assert ".generation-composer-card{display:grid;" in compact_css and "overflow:visible" in compact_css
     assert ".generation-history-drawer" in compact_css
@@ -484,9 +517,12 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert ".save-new-metadata-panel" in compact_css
     assert ".save-new-metadata-panel.is-closing" in compact_css
     assert "generation-save-panel-close" in panel
-    assert "image-role-badge" not in detail
+    assert "image-role-badge" in detail
+    assert "image-thumb-role-badge" in detail
+    assert "onOpenItem?.(acceptedItem.id)" in detail
+    assert "onOpenItem={setDetailId}" in app
     assert "@media(max-width:760px)" in compact_css
-    assert ".generation-layout{grid-template-columns:1fr" in compact_css
+    assert ".generation-layout{display:flex;flex-direction:column" in compact_css
 
     assert "selectedImageId" in detail
     assert "image-gallery-thumb" in detail

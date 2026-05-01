@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import os
-import tempfile
+import mimetypes
 import time
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,12 +27,28 @@ DEFAULT_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 CODEX_AUTH_ISSUER = "https://auth.openai.com"
 CODEX_TOKEN_URL = f"{CODEX_AUTH_ISSUER}/oauth/token"
-CODEX_CHAT_MODEL = "gpt-5.5"
-DEFAULT_CODEX_ORCHESTRATOR_MODELS = [CODEX_CHAT_MODEL, "gpt-5.4", "gpt-5.3-codex"]
+CODEX_CHAT_MODEL = "gpt-5.4"
+DEFAULT_CODEX_ORCHESTRATOR_MODELS = [CODEX_CHAT_MODEL, "gpt-5.5", "gpt-5.3-codex"]
 UNSUPPORTED_IMAGE_ORCHESTRATOR_MODELS = {"gpt-5.3", "gpt-5.3-codex-spark"}
 IMAGE_MODEL = "gpt-image-2"
 DEFAULT_QUALITY = "high"
 QUALITY_ALIASES = {"standard": "medium", "medium": "medium", "high": "high", "low": "low", "auto": "auto"}
+MAX_INPUT_IMAGES = 4
+
+
+def _data_url_from_bytes(data: bytes, *, mime_type: str = "image/png") -> str:
+    return f"data:{mime_type};base64,{base64.b64encode(data).decode('ascii')}"
+
+
+def _decode_data_url(data_url: str) -> tuple[bytes, str]:
+    header, _, encoded = data_url.partition(",")
+    if not header.startswith("data:image/") or not encoded:
+        raise CodexNativeAuthError("Generation edit input image must be a data URL image")
+    mime_type = header.removeprefix("data:").split(";", 1)[0] or "image/png"
+    try:
+        return base64.b64decode(encoded, validate=True), mime_type
+    except (binascii.Error, ValueError) as exc:
+        raise CodexNativeAuthError("Generation edit input image contains invalid image data") from exc
 
 
 def _comma_list(value: str) -> list[str]:
@@ -382,8 +400,8 @@ class CodexNativeAuthStore:
             "reason": reason,
             "features": {
                 "text_to_image": available,
-                "text_reference_to_image": False,
-                "image_edit": False,
+                "text_reference_to_image": available,
+                "image_edit": available,
             },
             "orchestrator_models": codex_orchestrator_models(),
             "default_orchestrator_model": codex_orchestrator_models()[0],
@@ -553,12 +571,14 @@ class OpenAICodexNativeProvider:
             quality = normalize_codex_quality(parameters.get("quality"))
             image_model = normalize_codex_image_model(job.model or parameters.get("image_model"))
             orchestrator_model = normalize_codex_orchestrator_model(parameters.get("orchestrator_model"))
+            input_images = self._input_image_data_urls(job, Path(library_path))
             image_b64 = self._collect_image_b64(
                 effective_prompt,
                 size=size,
                 quality=quality,
                 image_model=image_model,
                 orchestrator_model=orchestrator_model,
+                input_images=input_images,
             )
             try:
                 image_bytes = base64.b64decode(image_b64, validate=True)
@@ -577,6 +597,8 @@ class OpenAICodexNativeProvider:
                 "effective_prompt": effective_prompt,
                 "native_size_parameter": size,
                 "source_job_id": job_id,
+                "mode": "image_edit" if input_images else "text_to_image",
+                "input_image_count": len(input_images),
             }
             return repo.stage_result(job_id, image_bytes, "openai-codex-native.png", metadata)
         except GenerationJobConflict:
@@ -587,7 +609,32 @@ class OpenAICodexNativeProvider:
                 raise
             raise CodexNativeAuthError("Codex native generation failed") from exc
 
-    def _collect_image_b64(self, prompt: str, *, size: str | None, quality: str, image_model: str, orchestrator_model: str) -> str:
+    def _input_image_data_urls(self, job, library_path: Path) -> list[dict[str, Any]]:
+        raw_images = job.parameters.get("input_images") if isinstance(job.parameters, dict) else None
+        if not isinstance(raw_images, list):
+            return []
+        if len(raw_images) > MAX_INPUT_IMAGES:
+            raise CodexNativeAuthError(f"Generation edit supports up to {MAX_INPUT_IMAGES} input images")
+        input_images: list[dict[str, Any]] = []
+        for index, raw in enumerate(raw_images):
+            if not isinstance(raw, dict):
+                continue
+            name = str(raw.get("name") or f"input-{index + 1}.png")
+            source = str(raw.get("source") or "uploaded")
+            data_url = raw.get("data_url")
+            if isinstance(data_url, str) and data_url.startswith("data:image/"):
+                input_images.append({"type": "input_image", "image_url": data_url, "name": name, "source": source})
+                continue
+            result_path = raw.get("result_path")
+            if isinstance(result_path, str) and result_path:
+                image_path = library_path / result_path
+                if not image_path.is_file():
+                    raise CodexNativeAuthError("Generation edit input image is missing")
+                mime_type = mimetypes.guess_type(image_path.name)[0] or "image/png"
+                input_images.append({"type": "input_image", "image_url": _data_url_from_bytes(image_path.read_bytes(), mime_type=mime_type), "name": name, "source": source, "result_path": result_path})
+        return input_images
+
+    def _collect_image_b64(self, prompt: str, *, size: str | None, quality: str, image_model: str, orchestrator_model: str, input_images: list[dict[str, Any]] | None = None) -> str:
         tokens = self.auth_store.read_tokens()
         access_token = tokens["access_token"]
         image_tool = {
@@ -600,14 +647,17 @@ class OpenAICodexNativeProvider:
         }
         if size:
             image_tool["size"] = size
+        content = [{"type": "input_text", "text": prompt}]
+        for image in input_images or []:
+            content.append({"type": "input_image", "image_url": image["image_url"]})
         payload = {
             "model": orchestrator_model,
             "store": False,
-            "instructions": "Create exactly one image using the image_generation tool when provided.",
+            "instructions": "Create exactly one image using the image_generation tool. If input images are provided, edit or transform them according to the prompt.",
             "input": [{
                 "type": "message",
                 "role": "user",
-                "content": [{"type": "input_text", "text": prompt}],
+                "content": content,
             }],
             "tools": [image_tool],
             "tool_choice": {

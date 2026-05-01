@@ -298,6 +298,14 @@ Current local generation behavior:
 - Active, completed, and failed generation jobs appear in the compact global generation queue drawer.
 - Policy, rate-limit, auth, and provider failures are shown as friendly reviewable states instead of raw error dumps.
 
+### Image 2.0 model/quality benchmark
+
+While building Image Prompt Library's Image 2.0 generation workflow, I also benchmarked which Codex/ChatGPT backend tool-calling model and quality setting worked best for this app. The test covered GPT-5.5, GPT-5.4, and GPT-5.3-Codex across Low, Medium, and High quality.
+
+The surprising result was that Low quality was not consistently faster. With the same prompt, GPT-5.5 + Low took 181.4s, while GPT-5.5 + Medium took only 44.6s. Most other combinations were roughly in the 50-60s range, except GPT-5.4 + Low, which was comparatively faster. Subjectively, GPT-5.4 produced the strongest images, followed by GPT-5.5 and then GPT-5.3-Codex.
+
+For the next version, the default is therefore **GPT-5.4 + High**: acceptable speed with the best visual quality in these tests. Users can still change both the tool-calling model and quality setting manually. See the benchmark notes and images in [`docs/generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md`](docs/generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md).
+
 ## Developer setup from source
 
 Use this path if you want to develop the app, inspect unreleased `main`, or run from a checkout:

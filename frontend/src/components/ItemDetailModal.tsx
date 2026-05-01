@@ -28,6 +28,10 @@ function dedupeImages(images: ImageRecord[]) {
   });
 }
 
+function isReferenceImage(image?: ImageRecord) {
+  return image?.role === 'reference_image';
+}
+
 function resolvePromptRecord<T extends { language: string; text: string }>(
   prompts: T[],
   selectedLanguage: string,
@@ -162,6 +166,7 @@ export default function ItemDetailModal({
   onCopyPrompt,
   onEdit,
   onChanged,
+  onOpenItem,
   showMutations = true,
   canGenerate = false,
   initialGenerationJobId,
@@ -175,6 +180,7 @@ export default function ItemDetailModal({
   onCopyPrompt: (success: boolean) => void;
   onEdit: (item: ItemDetail) => void;
   onChanged: () => void;
+  onOpenItem?: (id: string) => void;
   showMutations?: boolean;
   canGenerate?: boolean;
   initialGenerationJobId?: string;
@@ -344,6 +350,7 @@ export default function ItemDetailModal({
                       <button className="modal-icon-button detail-fullscreen-close" type="button" onClick={() => document.exitFullscreen?.()} aria-label="Close fullscreen">×</button>
                     </div>
                     {uniqueImages.length > 1 && <span className="image-counter">{selectedImageIndex + 1} / {uniqueImages.length}</span>}
+                    {isReferenceImage(selectedImage) && <span className="image-role-badge">Reference</span>}
                     <button className="modal-icon-button detail-fullscreen-overlay" type="button" onClick={toggleHeroFullscreen} aria-label="View fullscreen" title="View fullscreen">
                       <Maximize2 size={16} />
                     </button>
@@ -382,6 +389,7 @@ export default function ItemDetailModal({
                         aria-pressed={selectedImage?.id === img.id}
                       >
                         <img src={mediaUrl(imageDisplayPath(img))} alt="" />
+                        {isReferenceImage(img) && <span className="image-thumb-role-badge">Ref</span>}
                       </button>
                     ))}
                   </div>
@@ -529,6 +537,7 @@ export default function ItemDetailModal({
               if (acceptedItem?.id && acceptedItem.id !== item.id) {
                 setToast({ message: message || 'New variant item created', actionLabel: 'View item', item: acceptedItem });
                 onChanged();
+                onOpenItem?.(acceptedItem.id);
                 return;
               }
               api.item(item.id).then(updated => {

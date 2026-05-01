@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Clipboard, Clock3, FilePlus2, Maximize2, Paperclip, RotateCcw, Trash2 } from 'lucide-react';
+import { ArrowLeft, Clipboard, Clock3, FilePlus2, Maximize2, Paperclip, Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import aspectRatioIcon from '../assets/generation-controls/aspect-ratio.png';
+import brainAiIcon from '../assets/generation-controls/model.png';
+import qualityIcon from '../assets/generation-controls/quality.png';
 import { api, mediaUrl } from '../api/client';
 import type { GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ItemDetail } from '../types';
 import type { Translator } from '../utils/i18n';
@@ -39,6 +42,17 @@ const QUALITY_OPTIONS = [
   { value: 'medium', label: 'Medium' },
   { value: 'high', label: 'High' },
 ];
+
+const MAX_EDIT_ATTACHMENTS = 4;
+
+type EditAttachment = {
+  id: string;
+  name: string;
+  source: 'uploaded' | 'generated_result';
+  previewUrl: string;
+  dataUrl?: string;
+  resultPath?: string;
+};
 
 function friendlyFailure(job: GenerationJobRecord) {
   const rawKind = typeof job.metadata?.error_kind === 'string' ? job.metadata.error_kind : '';
@@ -110,11 +124,12 @@ export default function GenerationPanel({
   const [providers, setProviders] = useState<GenerationProviderStatus[]>([]);
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
   const [provider, setProvider] = useState('manual_upload');
-  const [orchestratorModel, setOrchestratorModel] = useState('gpt-5.5');
+  const [orchestratorModel, setOrchestratorModel] = useState('gpt-5.4');
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [quality, setQuality] = useState('high');
   const [openControl, setOpenControl] = useState<'aspect' | 'quality' | 'model' | null>(null);
   const [promptText, setPromptText] = useState(defaultPrompt);
+  const [editAttachments, setEditAttachments] = useState<EditAttachment[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [activeJobId, setActiveJobId] = useState<string | undefined>(initialJobId);
@@ -125,11 +140,13 @@ export default function GenerationPanel({
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [historyReviewJobId, setHistoryReviewJobId] = useState<string | undefined>(initialJobId);
   const [isClosing, setIsClosing] = useState(false);
+  const [isStageFullscreen, setIsStageFullscreen] = useState(false);
   const metadataPanelRef = useRef<HTMLElement | null>(null);
   const focusedJobRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLElement | null>(null);
   const resultImageRef = useRef<HTMLImageElement | null>(null);
   const fullscreenFrameRef = useRef<HTMLDivElement | null>(null);
+  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const initialFocusAppliedRef = useRef(false);
 
   const activeJob = useMemo(() => jobs.find(job => job.id === activeJobId), [jobs, activeJobId]);
@@ -137,7 +154,9 @@ export default function GenerationPanel({
   const selectedStageJob = historyReviewJob || activeJob;
   const visibleJobs = useMemo(() => jobs.filter(job => job.status !== 'discarded'), [jobs]);
   const selectedProvider = useMemo(() => providers.find(candidate => candidate.provider === provider), [providers, provider]);
-  const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.5'];
+  const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.4'];
+  const promptChangedFromSource = promptText.trim() !== defaultPrompt.trim();
+  const canAttachToSourceItem = (job?: GenerationJobRecord) => Boolean(item && job?.source_item_id === item.id && !promptChangedFromSource);
   const isHistoryReview = Boolean(historyReviewJob);
   const canUseResultActions = (job?: GenerationJobRecord) => Boolean(job && job.status === 'succeeded' && !job.accepted_image_id);
 
@@ -166,7 +185,7 @@ export default function GenerationPanel({
         const firstReady = nextProviders.find(nextProvider => nextProvider.provider !== 'manual_upload' && providerReady(nextProvider)) || nextProviders.find(providerReady) || nextProviders[0];
         if (firstReady) {
           setProvider(firstReady.provider);
-          setOrchestratorModel(firstReady.default_orchestrator_model || firstReady.orchestrator_models?.[0] || 'gpt-5.5');
+          setOrchestratorModel(firstReady.default_orchestrator_model || firstReady.orchestrator_models?.[0] || 'gpt-5.4');
         }
       })
       .catch(() => setProviders([{ provider: 'manual_upload', display_name: 'Manual upload', optional: false, configured: true, authenticated: true, available: true, state: 'available', reason: null, features: { manual_result_upload: true } }]));
@@ -203,6 +222,24 @@ export default function GenerationPanel({
     });
   }, [reviewJob?.id]);
 
+  useEffect(() => {
+    const syncFullscreenState = () => setIsStageFullscreen(document.fullscreenElement === fullscreenFrameRef.current);
+    document.addEventListener('fullscreenchange', syncFullscreenState);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreenState);
+  }, []);
+
+  useEffect(() => {
+    if (selectedStageJob?.status !== 'succeeded') return;
+    window.requestAnimationFrame(() => stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+  }, [selectedStageJob?.id, selectedStageJob?.status]);
+
+  const closeStageFullscreen = async () => {
+    if (document.fullscreenElement === fullscreenFrameRef.current) {
+      await document.exitFullscreen?.();
+    }
+    setIsStageFullscreen(false);
+  };
+
   const createJob = async () => {
     const prompt = promptText.trim();
     if (!prompt) return;
@@ -210,9 +247,10 @@ export default function GenerationPanel({
     setMessage('');
     setHistoryReviewJobId(undefined);
     try {
+      const attachments = imageAttachmentPayload();
       const created = await api.createGenerationJob({
         source_item_id: item?.id,
-        mode: 'text_to_image',
+        mode: attachments.length > 0 ? 'image_edit' : 'text_to_image',
         provider,
         model: provider === 'openai_codex_oauth_native' ? 'gpt-image-2' : null,
         prompt_language: defaultPromptLanguage,
@@ -224,11 +262,12 @@ export default function GenerationPanel({
           aspect_ratio_prompt_injection: true,
           quality,
           orchestrator_model: orchestratorModel,
+          input_images: attachments,
         },
       });
       setJobs(current => [created, ...current.filter(job => job.id !== created.id)]);
       setActiveJobId(created.id);
-      setMessage(provider === 'manual_upload' ? 'Job created. Upload a generated result when ready.' : 'Generation queued. It will start automatically.');
+      setMessage(provider === 'manual_upload' ? 'Job created. Upload a generated result when ready.' : attachments.length > 0 ? 'Edit queued. It will start automatically.' : 'Generation queued. It will start automatically.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not create generation job.');
     } finally {
@@ -263,6 +302,7 @@ export default function GenerationPanel({
       setJobs(current => current.map(candidate => candidate.id === result.job.id ? result.job : candidate));
       setMessage('Image added to item');
       onAccepted(result.item, 'Image added to item');
+      onClose();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not accept result.');
     } finally {
@@ -291,11 +331,65 @@ export default function GenerationPanel({
   };
 
   const toggleStageFullscreen = async () => {
-    if (document.fullscreenElement) {
-      await document.exitFullscreen?.();
+    if (document.fullscreenElement === fullscreenFrameRef.current || isStageFullscreen) {
+      await closeStageFullscreen();
       return;
     }
-    await fullscreenFrameRef.current?.requestFullscreen?.();
+    if (!fullscreenFrameRef.current) return;
+    try {
+      if (fullscreenFrameRef.current.requestFullscreen) {
+        await fullscreenFrameRef.current.requestFullscreen();
+      } else {
+        setIsStageFullscreen(true);
+      }
+    } catch {
+      setIsStageFullscreen(true);
+    }
+  };
+
+  const imageAttachmentPayload = () => editAttachments.map(attachment => ({
+    id: attachment.id,
+    name: attachment.name,
+    source: attachment.source,
+    data_url: attachment.dataUrl,
+    result_path: attachment.resultPath,
+  }));
+
+  const addUploadedAttachments = async (files: FileList | null) => {
+    const nextFiles = Array.from(files || []).filter(file => file.type.startsWith('image/'));
+    if (nextFiles.length === 0) return;
+    const slots = MAX_EDIT_ATTACHMENTS - editAttachments.length;
+    const limitedFiles = nextFiles.slice(0, Math.max(0, slots));
+    const loaded = await Promise.all(limitedFiles.map(file => new Promise<EditAttachment>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({ id: `upload-${Date.now()}-${file.name}-${Math.random().toString(36).slice(2)}`, name: file.name, source: 'uploaded', previewUrl: String(reader.result), dataUrl: String(reader.result) });
+      reader.onerror = () => reject(reader.error || new Error('Could not read image attachment.'));
+      reader.readAsDataURL(file);
+    })));
+    setEditAttachments(current => [...current, ...loaded].slice(0, MAX_EDIT_ATTACHMENTS));
+    setMessage(loaded.length < nextFiles.length ? `Attached ${loaded.length} image(s). Limit is ${MAX_EDIT_ATTACHMENTS}.` : 'Image attached for editing.');
+    if (attachmentInputRef.current) attachmentInputRef.current.value = '';
+  };
+
+  const removeAttachment = (id: string) => {
+    setEditAttachments(current => current.filter(attachment => attachment.id !== id));
+  };
+
+  const addResultAsAttachment = (job: GenerationJobRecord) => {
+    if (!job.result_path || editAttachments.length >= MAX_EDIT_ATTACHMENTS) return;
+    setEditAttachments(current => {
+      if (current.some(attachment => attachment.resultPath === job.result_path)) return current;
+      const resultAttachment: EditAttachment = {
+        id: `result-${job.id}`,
+        name: `${job.id}.png`,
+        source: 'generated_result',
+        previewUrl: jobResultUrl(job),
+        resultPath: job.result_path || undefined,
+      };
+      return [...current, resultAttachment].slice(0, MAX_EDIT_ATTACHMENTS);
+    });
+    setHistoryReviewJobId(undefined);
+    setMessage('Result attached as edit input.');
   };
 
   const updateMetadataDraft = (patch: Partial<GenerationJobAcceptAsNewItemPayload>) => {
@@ -418,11 +512,16 @@ export default function GenerationPanel({
 
   const renderStageActions = (job: GenerationJobRecord) => (
     <div className="generation-stage-actions" aria-label="Result actions">
-      <button className="stage-action" onClick={() => acceptAttach(job)} disabled={busy || !item} aria-label="Attach to current item" title={item ? 'Attach to current item' : 'Open from an item to attach'}>
-        <Paperclip size={16} aria-hidden="true" />
-      </button>
+      {canAttachToSourceItem(job) && (
+        <button className="stage-action" onClick={() => acceptAttach(job)} disabled={busy} aria-label="Attach to current item" title="Attach to current item">
+          <Paperclip size={16} aria-hidden="true" />
+        </button>
+      )}
       <button className="stage-action" onClick={() => openSaveAsNewReview(job)} disabled={busy} aria-label="Save as new item" title="Save as new item">
         <FilePlus2 size={16} aria-hidden="true" />
+      </button>
+      <button className="stage-action" onClick={() => addResultAsAttachment(job)} disabled={busy || editAttachments.length >= MAX_EDIT_ATTACHMENTS || !job.result_path} aria-label="Use result as edit input" title="Use result as edit input">
+        <Plus size={16} aria-hidden="true" />
       </button>
       <button className="stage-action" onClick={() => discardAndRetryJob(job)} disabled={busy} aria-label="Retry" title="Retry">
         <RotateCcw size={16} aria-hidden="true" />
@@ -455,10 +554,10 @@ export default function GenerationPanel({
     }
     if (resultUrl) {
       return (
-        <div className="generation-stage generation-stage-result">
+        <div className={`generation-stage generation-stage-result${isStageFullscreen ? ' is-mobile-fullscreen' : ''}`}>
           <div ref={fullscreenFrameRef} className="generation-fullscreen-frame">
             <img ref={resultImageRef} className="generation-result-image generation-result-fade-in" src={resultUrl} alt="Generation result" />
-            <button className="modal-icon-button generation-fullscreen-close" type="button" onClick={() => document.exitFullscreen?.()} aria-label="Close fullscreen">×</button>
+            <button className="modal-icon-button generation-fullscreen-close" type="button" onClick={closeStageFullscreen} aria-label="Close fullscreen">×</button>
           </div>
           {canUseResultActions(selectedStageJob) && renderStageActions(selectedStageJob)}
         </div>
@@ -485,11 +584,23 @@ export default function GenerationPanel({
                 <label className="generation-prompt-area">
                   <span className="sr-only">Prompt</span>
                   <textarea value={promptText} onChange={event => setPromptText(event.currentTarget.value)} placeholder="Prompt" />
+                  {editAttachments.length > 0 && (
+                    <div className="generation-attachment-strip" aria-label="Edit input images">
+                      {editAttachments.map(attachment => (
+                        <span className="generation-attachment-thumb" key={attachment.id} title={attachment.name}>
+                          <img src={attachment.previewUrl} alt="Edit input" />
+                          <em>{attachment.source === 'generated_result' ? 'Ref' : 'Upload'}</em>
+                          <button type="button" onClick={event => { event.preventDefault(); removeAttachment(attachment.id); }} aria-label={`Remove ${attachment.name}`} title="Remove image"><X size={11} /></button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </label>
                 <div className="generation-compact-controls">
                   <div className="generation-control-wrap">
-                    <button className="generation-control-trigger generation-aspect-trigger" type="button" onClick={() => setOpenControl(openControl === 'aspect' ? null : 'aspect')}>
-                      {optionLabel(ASPECT_RATIO_OPTIONS, aspectRatio)} ▾
+                    <button className="generation-control-trigger generation-aspect-trigger" type="button" onClick={() => setOpenControl(openControl === 'aspect' ? null : 'aspect')} aria-label={`Aspect ratio: ${optionLabel(ASPECT_RATIO_OPTIONS, aspectRatio)}`} title={`Aspect ratio: ${optionLabel(ASPECT_RATIO_OPTIONS, aspectRatio)}`}>
+                      <img className="generation-control-icon" src={aspectRatioIcon} alt="" aria-hidden="true" />
+                      <span className="generation-control-value">{optionLabel(ASPECT_RATIO_OPTIONS, aspectRatio)}</span>
                     </button>
                     {openControl === 'aspect' && (
                       <div className="generation-control-popover" role="menu">
@@ -500,8 +611,9 @@ export default function GenerationPanel({
                     )}
                   </div>
                   <div className="generation-control-wrap">
-                    <button className="generation-control-trigger generation-quality-trigger" type="button" onClick={() => setOpenControl(openControl === 'quality' ? null : 'quality')}>
-                      {optionLabel(QUALITY_OPTIONS, quality)} ▾
+                    <button className="generation-control-trigger generation-quality-trigger" type="button" onClick={() => setOpenControl(openControl === 'quality' ? null : 'quality')} aria-label={`Quality: ${optionLabel(QUALITY_OPTIONS, quality)}`} title={`Quality: ${optionLabel(QUALITY_OPTIONS, quality)}`}>
+                      <img className="generation-control-icon" src={qualityIcon} alt="" aria-hidden="true" />
+                      <span className="generation-control-value">{optionLabel(QUALITY_OPTIONS, quality)}</span>
                     </button>
                     {openControl === 'quality' && (
                       <div className="generation-control-popover" role="menu">
@@ -512,8 +624,9 @@ export default function GenerationPanel({
                     )}
                   </div>
                   <div className="generation-control-wrap generation-model-control">
-                    <button className="generation-control-trigger generation-model-trigger" type="button" onClick={() => setOpenControl(openControl === 'model' ? null : 'model')} disabled={provider !== 'openai_codex_oauth_native'}>
-                      {orchestratorModel} ▾
+                    <button className="generation-control-trigger generation-model-trigger generation-has-long-value" type="button" onClick={() => setOpenControl(openControl === 'model' ? null : 'model')} disabled={provider !== 'openai_codex_oauth_native'} aria-label={`Model: ${orchestratorModel}`} title={orchestratorModel}>
+                      <img className="generation-control-icon" src={brainAiIcon} alt="" aria-hidden="true" />
+                      <span className="generation-control-value">{orchestratorModel}</span>
                     </button>
                     {openControl === 'model' && (
                       <div className="generation-control-popover" role="menu">
@@ -523,6 +636,10 @@ export default function GenerationPanel({
                       </div>
                     )}
                   </div>
+                  <input ref={attachmentInputRef} className="generation-attachment-input" type="file" accept="image/*" multiple onChange={event => addUploadedAttachments(event.currentTarget.files)} />
+                  <button className="generation-control-trigger generation-attach-trigger" type="button" onClick={() => attachmentInputRef.current?.click()} disabled={editAttachments.length >= MAX_EDIT_ATTACHMENTS} aria-label="Attach image" title={editAttachments.length >= MAX_EDIT_ATTACHMENTS ? 'Maximum 4 images' : 'Attach image'}>
+                    <Plus size={18} aria-hidden="true" />
+                  </button>
                   <button className="primary generation-primary-action" onClick={createJob} disabled={busy || !promptText.trim()}>Generate</button>
                   <button className="generation-history-control" onClick={() => setShowHistoryDrawer(true)} aria-label="History" title="History" type="button"><Clock3 size={17} /></button>
                 </div>

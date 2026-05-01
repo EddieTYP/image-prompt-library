@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import base64
+import binascii
 import json
 from pathlib import Path
 
@@ -23,6 +25,9 @@ from backend.services.image_store import store_image
 
 class GenerationJobConflict(ValueError):
     pass
+
+
+MAX_GENERATION_INPUT_IMAGES = 4
 
 
 def _to_json(value) -> str:
@@ -70,6 +75,9 @@ class GenerationJobRepository:
     def create_job(self, payload: GenerationJobCreate) -> GenerationJobRecord:
         if payload.source_item_id:
             self.items.get_item(payload.source_item_id)
+        input_images = payload.parameters.get("input_images") if isinstance(payload.parameters, dict) else None
+        if isinstance(input_images, list) and len(input_images) > MAX_GENERATION_INPUT_IMAGES:
+            raise GenerationJobConflict(f"Generation edit supports up to {MAX_GENERATION_INPUT_IMAGES} input images")
         job_id = new_id("gen")
         timestamp = now()
         with connect(self.library_path) as conn:
@@ -198,6 +206,45 @@ class GenerationJobRepository:
             raise GenerationJobConflict("Generation result file is missing")
         return store_image(self.library_path, result_abs.read_bytes(), Path(job.result_path or "generated.png").name)
 
+    def _input_image_specs(self, job: GenerationJobRecord) -> list[dict]:
+        raw_images = job.parameters.get("input_images") if isinstance(job.parameters, dict) else None
+        if not isinstance(raw_images, list):
+            return []
+        return [raw for raw in raw_images[:MAX_GENERATION_INPUT_IMAGES] if isinstance(raw, dict)]
+
+    def _store_input_reference_images(self, job: GenerationJobRecord, item_id: str) -> None:
+        for index, spec in enumerate(self._input_image_specs(job)):
+            name = str(spec.get("name") or f"generation-reference-{index + 1}.png")
+            data: bytes | None = None
+            result_path = spec.get("result_path")
+            if isinstance(result_path, str) and result_path:
+                source_path = self.library_path / result_path
+                if source_path.is_file():
+                    data = source_path.read_bytes()
+                    name = Path(result_path).name
+            data_url = spec.get("data_url")
+            if data is None and isinstance(data_url, str) and data_url.startswith("data:image/"):
+                _, _, encoded = data_url.partition(",")
+                try:
+                    data = base64.b64decode(encoded, validate=True)
+                except (binascii.Error, ValueError):
+                    data = None
+            if not data:
+                continue
+            stored = store_image(self.library_path, data, name)
+            self.items.add_image(
+                item_id,
+                StoredImageInput(
+                    original_path=stored.original_path,
+                    thumb_path=stored.thumb_path,
+                    preview_path=stored.preview_path,
+                    width=stored.width,
+                    height=stored.height,
+                    file_sha256=stored.file_sha256,
+                    role="reference_image",
+                ),
+            )
+
     def _mark_accepted(self, job_id: str, image_id: str) -> GenerationJobRecord:
         timestamp = now()
         with connect(self.library_path) as conn:
@@ -227,6 +274,7 @@ class GenerationJobRepository:
                 role="result_image",
             ),
         )
+        self._store_input_reference_images(job, job.source_item_id)
         return GenerationJobAcceptResult(job=self._mark_accepted(job_id, image.id), item=self.items.get_item(job.source_item_id))
 
     def accept_result_as_new_item(self, job_id: str, overrides: GenerationJobAcceptAsNewItemRequest | None = None) -> GenerationJobAcceptResult:
@@ -295,6 +343,7 @@ class GenerationJobRepository:
                 role="result_image",
             ),
         )
+        self._store_input_reference_images(job, new_item.id)
         return GenerationJobAcceptResult(job=self._mark_accepted(job_id, image.id), item=self.items.get_item(new_item.id))
 
     def discard_job(self, job_id: str) -> GenerationJobRecord:
