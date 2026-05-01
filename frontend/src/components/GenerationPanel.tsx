@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Clipboard, Clock3, FilePlus2, Maximize2, Paperclip, Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import { ArrowLeft, Clipboard, Clock3, Download, FilePlus2, Maximize2, Paperclip, Plus, RotateCcw, Trash2, X } from 'lucide-react';
 import aspectRatioIcon from '../assets/generation-controls/aspect-ratio.png';
 import brainAiIcon from '../assets/generation-controls/model.png';
 import qualityIcon from '../assets/generation-controls/quality.png';
 import { api, mediaUrl } from '../api/client';
-import type { GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ItemDetail } from '../types';
+import type { GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ItemDetail, TagRecord } from '../types';
 import type { Translator } from '../utils/i18n';
+import { downloadFileName } from '../utils/images';
 import { resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage } from '../utils/prompts';
 
 function providerReady(provider: GenerationProviderStatus) {
@@ -28,6 +29,10 @@ function jobResultUrl(job: GenerationJobRecord) {
   return job.result_path ? mediaUrl(job.result_path) : '';
 }
 
+function promptProvenance(language: string) {
+  return { kind: 'manual', source_language: language, derived_from: null, method: null };
+}
+
 const ASPECT_RATIO_OPTIONS = [
   { value: 'auto', label: 'Auto' },
   { value: '1:1', label: '1:1' },
@@ -44,6 +49,11 @@ const QUALITY_OPTIONS = [
 ];
 
 const MAX_EDIT_ATTACHMENTS = 4;
+const SAVE_NEW_LANGUAGE_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'zh_hant', label: '繁體中文' },
+  { value: 'zh_hans', label: '简体中文' },
+];
 
 type EditAttachment = {
   id: string;
@@ -80,7 +90,7 @@ function buildInitialMetadata(job: GenerationJobRecord, item?: ItemDetail): Gene
     source_url: item?.source_url || '',
     author: 'User',
     notes: item ? `Variant generated from ${item.title}.` : 'Generated from a standalone prompt.',
-    prompts: [{ language: job.prompt_language || 'en', text: prompt, is_primary: true, is_original: true }],
+    prompts: [{ language: job.prompt_language || 'en', text: prompt, is_primary: true, is_original: true, provenance: promptProvenance(job.prompt_language || 'en') }],
   };
 }
 
@@ -118,6 +128,7 @@ export default function GenerationPanel({
   onAccepted,
   t,
   initialJobId,
+  tags = [],
 }: {
   item?: ItemDetail;
   preferredLanguage: PromptCopyLanguage;
@@ -125,6 +136,7 @@ export default function GenerationPanel({
   onAccepted: (item?: ItemDetail, message?: string) => void;
   t: Translator;
   initialJobId?: string;
+  tags?: TagRecord[];
 }) {
   const originalPrompt = resolveOriginalPrompt(item?.prompts);
   const defaultPromptLanguage = preferredLanguage === 'origin' ? (originalPrompt?.language || 'en') : preferredLanguage;
@@ -144,6 +156,8 @@ export default function GenerationPanel({
   const [focusedJobHighlightId, setFocusedJobHighlightId] = useState<string | undefined>(initialJobId);
   const [reviewJob, setReviewJob] = useState<GenerationJobRecord>();
   const [metadataDraft, setMetadataDraft] = useState<GenerationJobAcceptAsNewItemPayload>();
+  const [metadataTagsText, setMetadataTagsText] = useState('');
+  const [metadataTagQuery, setMetadataTagQuery] = useState('');
   const [isSavePanelClosing, setIsSavePanelClosing] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
   const [historyReviewJobId, setHistoryReviewJobId] = useState<string | undefined>(initialJobId);
@@ -167,6 +181,13 @@ export default function GenerationPanel({
   const canAttachToSourceItem = (job?: GenerationJobRecord) => Boolean(item && job?.source_item_id === item.id && !promptChangedFromSource);
   const isHistoryReview = Boolean(historyReviewJob);
   const canUseResultActions = (job?: GenerationJobRecord) => Boolean(job && job.status === 'succeeded' && !job.accepted_image_id);
+  const filteredMetadataTags = useMemo(() => {
+    const selected = new Set(metadataTagsText.split(',').map(tag => tag.trim()).filter(Boolean));
+    const query = metadataTagQuery.trim().toLowerCase();
+    return tags
+      .filter(tag => !selected.has(tag.name) && (!query || tag.name.toLowerCase().includes(query)))
+      .slice(0, 10);
+  }, [metadataTagsText, metadataTagQuery, tags]);
 
   const refreshJobs = async (options: { preserveActive?: boolean } = {}) => {
     const result = await api.generationJobs({ limit: 100 });
@@ -321,9 +342,12 @@ export default function GenerationPanel({
   };
 
   const openSaveAsNewReview = (job: GenerationJobRecord) => {
+    const initialMetadata = buildInitialMetadata(job, item);
     setIsSavePanelClosing(false);
     setReviewJob(job);
-    setMetadataDraft(buildInitialMetadata(job, item));
+    setMetadataDraft(initialMetadata);
+    setMetadataTagsText((initialMetadata.tags || []).join(', '));
+    setMetadataTagQuery('');
   };
 
   const closeSaveAsNewReview = () => {
@@ -331,6 +355,8 @@ export default function GenerationPanel({
     window.setTimeout(() => {
       setReviewJob(undefined);
       setMetadataDraft(undefined);
+      setMetadataTagsText('');
+      setMetadataTagQuery('');
       setIsSavePanelClosing(false);
     }, 180);
   };
@@ -411,11 +437,24 @@ export default function GenerationPanel({
     updateMetadataDraft({ prompts: [{ ...currentPrompt, text }] });
   };
 
+  const updateMetadataPromptLanguage = (language: string) => {
+    const currentPrompt = metadataDraft?.prompts?.[0] || { language, text: '', is_primary: true, is_original: true };
+    updateMetadataDraft({ prompts: [{ ...currentPrompt, language, is_primary: true, is_original: true, provenance: { kind: 'manual', source_language: language, derived_from: null, method: null } }] });
+  };
+
+  const addSuggestedMetadataTag = (tagName: string) => {
+    const currentTags = metadataTagsText.split(',').map(tag => tag.trim()).filter(Boolean);
+    const selected = new Set(currentTags);
+    selected.add(tagName);
+    setMetadataTagsText(Array.from(selected).join(', '));
+    setMetadataTagQuery('');
+  };
+
   const acceptAsNew = async () => {
     if (!reviewJob || !metadataDraft) return;
     const metadataPayload = {
       ...metadataDraft,
-      tags: typeof metadataDraft.tags === 'string' ? String(metadataDraft.tags).split(',').map(tag => tag.trim()).filter(Boolean) : metadataDraft.tags,
+      tags: metadataTagsText.split(',').map(tag => tag.trim()).filter(Boolean),
     } as GenerationJobAcceptAsNewItemPayload;
     setBusy(true);
     setMessage('');
@@ -667,6 +706,7 @@ export default function GenerationPanel({
           </section>
 
           <section ref={stageRef} className="generation-stage-card">
+            {selectedStageJob?.result_path && <a className="modal-icon-button generation-download-overlay" href={jobResultUrl(selectedStageJob)} download={downloadFileName('generation-result', selectedStageJob.result_path)} aria-label="Download" title="Download"><Download size={16} /></a>}
             <button className="modal-icon-button generation-fullscreen-overlay" onClick={toggleStageFullscreen} aria-label="View fullscreen" title="View fullscreen"><Maximize2 size={16} /></button>
             <button className="modal-icon-button close generation-close-overlay" onClick={handleClose} aria-label={t('close')}><X size={20} strokeWidth={2.25} /></button>
             {renderStage()}
@@ -714,7 +754,16 @@ export default function GenerationPanel({
                 <label><span>Title</span><input value={metadataDraft.title || ''} onChange={event => updateMetadataDraft({ title: event.currentTarget.value })} /></label>
                 <label><span>Collection</span><input value={metadataDraft.cluster_name || ''} onChange={event => updateMetadataDraft({ cluster_name: event.currentTarget.value })} /></label>
                 <label><span>Model</span><input value={metadataDraft.model || ''} onChange={event => updateMetadataDraft({ model: event.currentTarget.value })} /></label>
-                <label><span>Tags</span><input value={(metadataDraft.tags || []).join(', ')} onChange={event => updateMetadataDraft({ tags: event.currentTarget.value.split(',').map(tag => tag.trim()).filter(Boolean) })} /></label>
+                <label><span>Tags</span><input list="save-new-tag-suggestions" placeholder={t('tagsPlaceholder')} value={metadataTagsText} onChange={event => { setMetadataTagsText(event.currentTarget.value); setMetadataTagQuery(event.currentTarget.value.split(',').pop()?.trim() || ''); }} /></label>
+                <datalist id="save-new-tag-suggestions">
+                  {filteredMetadataTags.map(tag => <option key={tag.id} value={tag.name} />)}
+                </datalist>
+                {filteredMetadataTags.length > 0 && <div className="tag-suggestions" aria-label={t('existingTagSuggestions')}>
+                  {filteredMetadataTags.map(tag => <button type="button" key={tag.id} onClick={() => addSuggestedMetadataTag(tag.name)}>#{tag.name}</button>)}
+                </div>}
+                <label><span>Source language</span><select value={metadataDraft.prompts?.[0]?.language || reviewJob.prompt_language || 'en'} onChange={event => updateMetadataPromptLanguage(event.currentTarget.value)}>
+                  {SAVE_NEW_LANGUAGE_OPTIONS.map(language => <option key={language.value} value={language.value}>{language.label}</option>)}
+                </select></label>
                 <label><span>Prompt</span><textarea value={metadataDraft.prompts?.[0]?.text || ''} onChange={event => updatePromptDraft(event.currentTarget.value)} /></label>
                 <label><span>Notes</span><textarea value={metadataDraft.notes || ''} onChange={event => updateMetadataDraft({ notes: event.currentTarget.value })} /></label>
                 <div className="readonly-provenance">

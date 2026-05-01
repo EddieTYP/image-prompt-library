@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Check, Copy, ExternalLink, Heart, Maximize2, Pencil, Plus, X } from 'lucide-react';
+import { Check, Copy, Download, ExternalLink, Heart, Maximize2, Pencil, Plus, X } from 'lucide-react';
 import GenerationPanel from './GenerationPanel';
 import { api, mediaUrl } from '../api/client';
 import type { ClusterRecord, ImageRecord, ItemDetail, PromptRecord, TagRecord } from '../types';
 import { copyTextToClipboard } from '../utils/clipboard';
-import { imageDisplayPath, imageHeroPath, selectPrimaryImage } from '../utils/images';
+import { downloadFileName, imageDisplayPath, imageHeroPath, imageOriginalPath, selectPrimaryImage } from '../utils/images';
 import type { Translator } from '../utils/i18n';
 import { PROMPT_LANGUAGE_LABELS, resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage, type PromptLanguage } from '../utils/prompts';
 
@@ -367,7 +367,7 @@ export default function ItemDetailModal({
                       <img
                         ref={heroImageRef}
                         className="hero-image"
-                        src={mediaUrl(imageHeroPath(selectedImage))}
+                        src={mediaUrl(isHeroFullscreen ? imageOriginalPath(selectedImage) : imageHeroPath(selectedImage))}
                         alt={item.title}
                       />
                       <button className="modal-icon-button detail-fullscreen-close" type="button" onClick={closeHeroFullscreen} aria-label="Close fullscreen"><X size={20} strokeWidth={2.25} /></button>
@@ -423,6 +423,7 @@ export default function ItemDetailModal({
                 <div className="detail-side-actions">
                   <span className="detail-side-primary-actions">
                     {showMutations && canGenerate && <button className="secondary generate-variant-button" onClick={() => setGenerationOpen(true)}>Generate variant</button>}
+                    {selectedImage && <a className="modal-icon-button download-button" href={mediaUrl(selectedImage.original_path || imageHeroPath(selectedImage))} download={downloadFileName(item.title, selectedImage?.original_path || imageHeroPath(selectedImage))} aria-label="Download" title="Download"><Download size={18} /></a>}
                     {showMutations && <button className="modal-icon-button favorite-button" onClick={toggleFavorite} aria-label={item.favorite ? t('saved') : t('favorite')}>
                       <Heart size={18} fill={item.favorite ? 'currentColor' : 'none'} />
                     </button>}
@@ -555,6 +556,7 @@ export default function ItemDetailModal({
             preferredLanguage={preferredLanguage}
             t={t}
             initialJobId={initialGenerationJobId}
+            tags={tags}
             onClose={() => setGenerationOpen(false)}
             onAccepted={(acceptedItem, message) => {
               if (acceptedItem?.id && acceptedItem.id !== item.id) {

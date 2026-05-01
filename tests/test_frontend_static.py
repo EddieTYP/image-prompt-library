@@ -475,6 +475,19 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Retry" in panel
     assert "Discard" in panel
     assert "Upload external result" not in panel
+    assert "Download" in panel
+    assert "TagRecord" in panel
+    assert "metadataTagsText" in panel
+    assert "save-new-tag-suggestions" in panel
+    assert "filteredMetadataTags" in panel
+    assert "addSuggestedMetadataTag" in panel
+    assert "placeholder={t('tagsPlaceholder')}" in panel
+    assert "event.currentTarget.value.split(',').map(tag => tag.trim()).filter(Boolean)" not in panel
+    assert "Source language" in panel
+    assert "updateMetadataPromptLanguage" in panel
+    assert "provenance: { kind: 'manual', source_language: language, derived_from: null, method: null }" in panel
+    assert "generation-download-overlay" in panel
+    assert "download={downloadFileName('generation-result', selectedStageJob.result_path)}" in panel
     assert "generation-settings-chips" not in panel
     assert "generation-provider-pill" not in panel
     assert "generation-provider-field" not in panel
@@ -1047,6 +1060,8 @@ def test_detail_modal_supports_inline_editing_contract():
     assert "detail-side-primary-actions" in detail
     assert "modal-icon-button favorite-button" in detail
     assert "modal-icon-button edit-button" in detail
+    assert "modal-icon-button download-button" in detail
+    assert "download={downloadFileName(item.title, selectedImage?.original_path || imageHeroPath(selectedImage))}" in detail
     assert "modal-icon-button close" in detail
     assert detail.index("detail-side-actions") < detail.index("collection-inline-edit")
     assert "aria-label={item.favorite ? t('saved') : t('favorite')}" in detail
@@ -1194,6 +1209,10 @@ def test_frontend_prefers_result_image_for_card_and_detail_hero():
     assert "selectPrimaryImage" in detail
     assert "selectPrimaryImage" in explore
     assert "image?.role === 'result_image'" in image_utils
+    assert "imageOriginalPath" in image_utils
+    assert "isHeroFullscreen ? imageOriginalPath(selectedImage) : imageHeroPath(selectedImage)" in detail
+    assert "Download" in card
+    assert "download={downloadFileName(item.title, primaryImage?.original_path || imagePath)}" in card
     assert "item.first_image?.thumb_path" not in card
     assert "const primaryImage = uniqueImages[0]" not in detail
 
