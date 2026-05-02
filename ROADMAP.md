@@ -93,10 +93,15 @@ Current MVP status:
 
 Next release work:
 
-- Push the current installer work, tag the next alpha, let `.github/workflows/release-assets.yml` publish `tar.gz`, `.sha256`, and `.manifest.json` release assets, then verify a real GitHub Release install/update/rollback path.
-- Optional polish later: release list command, interactive version chooser, status/stop helpers, Docker or native Windows scripts.
+- Harden the local service/update path so launchd restarts reliably with the installed service label after app updates.
+- Add management-mode image-record deletion for fast cleanup of generated/reference images.
+- Add search/sort polish before larger batch workflows: a visible sort control plus lightweight query syntax where supported `key:value` filters (for example `created:today`) can be mixed with normal keywords (for example `created:today apple`).
+- Optional installer polish later: release list command, interactive version chooser, status/stop helpers, Docker or native Windows scripts.
 
-Planning doc: [`docs/plans/versioned-installer-updater.md`](docs/plans/versioned-installer-updater.md).
+Planning docs:
+
+- [`docs/plans/versioned-installer-updater.md`](docs/plans/versioned-installer-updater.md)
+- [`docs/plans/2026-05-02-search-sort-query-syntax.md`](docs/plans/2026-05-02-search-sort-query-syntax.md)
 
 ## Import and agent-ingestion roadmap
 

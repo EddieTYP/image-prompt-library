@@ -32,12 +32,26 @@ Think of the app as two folders:
 
 Prerequisite: install **Python 3.10 or newer**. You do **not** need Node.js for the normal release install.
 
-Install, load sample data, and start in three steps:
+Install, load starter sample data, and start in three steps:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash
 image-prompt-library sample-data en
 image-prompt-library start
+```
+
+The starter sample library is available in English, Simplified Chinese, and Traditional Chinese. All three use the same images and prompt references; the difference is the default prompt language and localized collection names.
+
+```bash
+image-prompt-library sample-data en       # English
+image-prompt-library sample-data zh_hans  # Simplified Chinese
+image-prompt-library sample-data zh_hant  # Traditional Chinese
+```
+
+Want a larger Traditional Chinese demo library instead? Replace the sample-data step with:
+
+```bash
+image-prompt-library sample-data zh_hant awesome-gpt-image-2
 ```
 
 Then open <http://127.0.0.1:8000/> in your browser.
@@ -88,7 +102,7 @@ image-prompt-library uninstall --delete-library --yes
 - Organize references into collections and tags so good prompts are easy to find again.
 - Browse visually in **Explore view**, a thumbnail constellation that spreads images by collection in a style inspired by graph tools like Obsidian.
 - Browse densely in **Cards view**, an image-first masonry gallery for scanning many prompt references quickly on desktop and mobile.
-- Search across titles, prompts, tags, collections, sources, and notes.
+- Search across titles, prompts, tags, collections, sources, and notes; see [Searching the library](#searching-the-library) for examples.
 - Filter by collection, open a detail view, and copy the prompt with one click.
 - Generate New Image from a prompt, or generate a Variant of an existing one with ChatGPT Image 2.0 once you have completed OAuth.
 - Keep everything local for privacy and long-term ownership.
@@ -151,7 +165,7 @@ The detail view keeps the large image preview, prompt, language tabs, attributio
 - Image storage with originals, previews, and thumbnails.
 - Explore mode: thumbnail constellation view for visual browsing.
 - Cards mode: image-first masonry/Pinterest-style prompt gallery.
-- Search across titles, prompts, tags, collections, sources, and notes.
+- Search across titles, prompts, tags, collections, sources, and notes; see [Searching the library](#searching-the-library) for examples.
 - Collections and tags for organizing references.
 - Detail modal with lightweight inline editing, prompt language tabs, source/origin prompt styling, multi-image browsing, generated-image badges, and copy feedback.
 - Add/edit modal with English, Traditional Chinese, and Simplified Chinese prompt fields plus metadata and a single source/origin marker.
@@ -162,6 +176,35 @@ The detail view keeps the large image preview, prompt, language tabs, attributio
 - Global generation queue drawer for active/succeeded/failed jobs, plus friendlier policy/rate-limit/auth/provider failure messages.
 - Phone-friendly Cards behavior: two-column masonry, compact header, touch-visible actions, and bottom selected-collection dock.
 - Adaptive card/detail image display for mixed portrait, landscape, and tall reference images.
+
+## Searching the library
+
+Use the search box at the top of the app to narrow the visible prompt references. In the current release, search is plain keyword search across item titles, prompt text, tags, collection names, source metadata, and notes.
+
+Useful examples:
+
+```text
+apple
+poster design
+product photo
+awesome-gpt-image-2
+電商
+```
+
+Search works together with the collection filter: choose a collection from **Filters**, then type a keyword to search inside that collection. The active search and collection filter appear as chips below the toolbar so you can see what is currently limiting the results.
+
+Planned search improvements include an explicit sort control and lightweight query filters that can be mixed with normal keywords, for example:
+
+```text
+created:today apple
+created:7d model:gpt-image-2 poster
+updated:today tag:ecommerce
+source:awesome-gpt-image-2 glasses
+fav:true cat
+has:image packaging
+```
+
+Those `key:value` filters are roadmap items and should be documented as available only after the search/sort upgrade ships.
 
 ## Requirements
 
