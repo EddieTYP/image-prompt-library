@@ -14,6 +14,7 @@ import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
 import type { AppUpdateStatus, ClusterRecord, GenerationJobRecord, GenerationProviderStatus, ItemDetail, ItemSummary, TagRecord, ViewMode } from './types';
 import { copyTextToClipboard } from './utils/clipboard';
+import { localizedDemoTitle } from './utils/demoTitles';
 import { DEFAULT_UI_LANGUAGE, UI_LANGUAGE_LABELS, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
 import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptCopyLanguage } from './utils/prompts';
 
@@ -66,8 +67,9 @@ function localizeCluster(cluster: ClusterRecord, language: UiLanguage): ClusterR
   return { ...cluster, name: localizedClusterName(cluster, language) };
 }
 
-function localizeItemCluster(item: ItemSummary, language: UiLanguage): ItemSummary {
-  return item.cluster ? { ...item, cluster: localizeCluster(item.cluster, language) } : item;
+function localizeItemForDisplay(item: ItemSummary, language: UiLanguage): ItemSummary {
+  const clustered = item.cluster ? { ...item, cluster: localizeCluster(item.cluster, language) } : item;
+  return { ...clustered, title: localizedDemoTitle(clustered, language) };
 }
 
 function generationProviderConnected(provider: GenerationProviderStatus) {
@@ -110,7 +112,7 @@ export default function App() {
   const selectedCluster = useMemo(() => clusters.find(c => c.id === clusterId), [clusters, clusterId]);
   const t = useMemo(() => makeTranslator(uiLanguage), [uiLanguage]);
   const localizedClusters = useMemo(() => clusters.map(cluster => localizeCluster(cluster, uiLanguage)), [clusters, uiLanguage]);
-  const localizedData = useMemo(() => ({ ...data, items: data.items.map(item => localizeItemCluster(item, uiLanguage)) }), [data, uiLanguage]);
+  const localizedData = useMemo(() => ({ ...data, items: data.items.map(item => localizeItemForDisplay(item, uiLanguage)) }), [data, uiLanguage]);
   const localizedSelectedCluster = selectedCluster ? localizeCluster(selectedCluster, uiLanguage) : undefined;
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
   const refreshTags = () => api.tags().then(setTags).catch(() => setTags([]));
@@ -262,7 +264,7 @@ export default function App() {
       </div>
     )}
     {!isDemoMode && <GenerationQueueDrawer t={t} open={generationQueueOpen} onOpen={() => setGenerationQueueOpen(true)} onClose={() => setGenerationQueueOpen(false)} onOpenJob={openGenerationJob} />}
-    <ItemDetailModal t={t} id={detailId} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onOpenItem={setDetailId} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} canGenerate={generationAvailable} initialGenerationJobId={focusedItemGenerationJobId} />
+    <ItemDetailModal t={t} id={detailId} uiLanguage={uiLanguage} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onOpenItem={setDetailId} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} canGenerate={generationAvailable} initialGenerationJobId={focusedItemGenerationJobId} />
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
     {editorOpen && <ItemEditorModal t={t} item={editing} clusters={localizedClusters} tags={tags} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} />}
     {standaloneGenerationOpen && <GenerationPanel t={t} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} initialJobId={focusedGenerationJobId} onClose={() => setStandaloneGenerationOpen(false)} onAccepted={(item, message) => { saved(); setToast({ title: message || 'New variant item created', tone: 'success' }); if (item?.id) setDetailId(item.id); }} />}

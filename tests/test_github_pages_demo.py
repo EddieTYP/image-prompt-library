@@ -116,6 +116,23 @@ def test_demo_export_script_outputs_compact_static_assets():
     assert "items.json" in text
     assert "clusters.json" in text
     assert "tags.json" in text
+    assert "demo_titles" in text
+    assert "build_demo_titles" in text
+    assert "PUBLIC_DEMO_SOURCES" in text
+
+
+def test_demo_frontend_localizes_titles_only_in_demo_mode():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+    types = (ROOT / "frontend" / "src" / "types.ts").read_text()
+    demo_titles = (ROOT / "frontend" / "src" / "utils" / "demoTitles.ts").read_text()
+
+    assert "demo_titles" in types
+    assert "localizedDemoTitle" in demo_titles
+    assert "isDemoMode" in demo_titles
+    assert "localizeItemForDisplay" in app
+    assert "uiLanguage={uiLanguage}" in app
+    assert "displayTitle" in detail
 
 
 def test_demo_data_bundle_is_present_and_uses_compressed_media_paths():
@@ -127,9 +144,10 @@ def test_demo_data_bundle_is_present_and_uses_compressed_media_paths():
     clusters = json.loads((demo_root / "clusters.json").read_text(encoding="utf-8"))
     items = json.loads(items_text)
     sources = {item.get("source_name") for item in items}
-    assert len(items) == 510
+    assert len(items) == 533
     assert {"wuyoscar/gpt_image_2_skill", "freestylefly/awesome-gpt-image-2"} <= sources
-    assert all({prompt.get("language") for prompt in item.get("prompts", [])} >= {"en", "zh_hant", "zh_hans"} for item in items)
+    assert all({prompt.get("language") for prompt in item.get("prompts", [])} >= {"zh_hant", "zh_hans"} for item in items)
+    assert any({prompt.get("language") for prompt in item.get("prompts", [])} >= {"en", "zh_hant", "zh_hans"} for item in items)
     assert not any("http" in str(item.get("author", "")) for item in items)
     assert not any("[" in str(item.get("author", "")) and "](" in str(item.get("author", "")) for item in items)
     assert "demo-data/media/" in items_text
@@ -138,3 +156,4 @@ def test_demo_data_bundle_is_present_and_uses_compressed_media_paths():
     assert "library/db.sqlite" not in items_text
     assert clusters and all(cluster.get("names", {}).get("zh_hant") for cluster in clusters)
     assert items and all(item.get("cluster", {}).get("names", {}).get("zh_hant") for item in items if item.get("cluster"))
+    assert items and any(item.get("demo_titles", {}).get("en") for item in items)

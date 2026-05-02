@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Check, Copy, Download, ExternalLink, Heart, Maximize2, Pencil, Plus, X } from 'lucide-react';
 import GenerationPanel from './GenerationPanel';
 import { api, mediaUrl } from '../api/client';
-import type { ClusterRecord, ImageRecord, ItemDetail, PromptRecord, TagRecord } from '../types';
+import type { ClusterRecord, ImageRecord, ItemDetail, PromptRecord, TagRecord, UiLanguage } from '../types';
 import { copyTextToClipboard } from '../utils/clipboard';
+import { localizedDemoTitle } from '../utils/demoTitles';
 import { downloadFileName, imageDisplayPath, imageHeroPath, imageOriginalPath, selectPrimaryImage } from '../utils/images';
 import type { Translator } from '../utils/i18n';
 import { PROMPT_LANGUAGE_LABELS, resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage, type PromptLanguage } from '../utils/prompts';
@@ -159,6 +160,7 @@ function InlineEditableTextArea({
 export default function ItemDetailModal({
   id,
   t,
+  uiLanguage,
   preferredLanguage,
   clusters,
   tags,
@@ -173,6 +175,7 @@ export default function ItemDetailModal({
 }: {
   id?: string;
   t: Translator;
+  uiLanguage: UiLanguage;
   preferredLanguage: PromptCopyLanguage;
   clusters: ClusterRecord[];
   tags: TagRecord[];
@@ -295,10 +298,11 @@ export default function ItemDetailModal({
   if (!id) return null;
 
   const prompt = item?.prompts.find(promptRecord => promptRecord.language === lang);
+  const displayTitle = item ? localizedDemoTitle(item, uiLanguage) : '';
   const originalPrompt = resolveOriginalPrompt(item?.prompts);
   const fallbackLanguage = preferredLanguage === 'origin' ? resolveInitialPromptLanguage(item?.prompts || [], preferredLanguage) : preferredLanguage;
   const resolvedPrompt = resolvePromptRecord(availablePromptRecords, lang, fallbackLanguage);
-  const copyText = prompt?.text || resolvedPrompt?.text || resolvePromptText(item?.prompts, preferredLanguage, item?.title || '');
+  const copyText = prompt?.text || resolvedPrompt?.text || resolvePromptText(item?.prompts, preferredLanguage, displayTitle || item?.title || '');
   const toggleFavorite = () => {
     if (!item) return;
     api.favorite(item.id).then(updated => { setItem(updated); onChanged(); });
@@ -368,7 +372,7 @@ export default function ItemDetailModal({
                         ref={heroImageRef}
                         className="hero-image"
                         src={mediaUrl(isHeroFullscreen ? imageOriginalPath(selectedImage) : imageHeroPath(selectedImage))}
-                        alt={item.title}
+                        alt={displayTitle || item.title}
                       />
                       <button className="modal-icon-button detail-fullscreen-close" type="button" onClick={closeHeroFullscreen} aria-label="Close fullscreen"><X size={20} strokeWidth={2.25} /></button>
                     </div>
@@ -423,7 +427,7 @@ export default function ItemDetailModal({
                 <div className="detail-side-actions">
                   <span className="detail-side-primary-actions">
                     {showMutations && canGenerate && <button className="secondary generate-variant-button" onClick={() => setGenerationOpen(true)}>Generate variant</button>}
-                    {selectedImage && <a className="modal-icon-button download-button" href={mediaUrl(selectedImage.original_path || imageHeroPath(selectedImage))} download={downloadFileName(item.title, selectedImage?.original_path || imageHeroPath(selectedImage))} aria-label="Download" title="Download"><Download size={18} /></a>}
+                    {selectedImage && <a className="modal-icon-button download-button" href={mediaUrl(selectedImage.original_path || imageHeroPath(selectedImage))} download={downloadFileName(displayTitle || item.title, selectedImage?.original_path || imageHeroPath(selectedImage))} aria-label="Download" title="Download"><Download size={18} /></a>}
                     {showMutations && <button className="modal-icon-button favorite-button" onClick={toggleFavorite} aria-label={item.favorite ? t('saved') : t('favorite')}>
                       <Heart size={18} fill={item.favorite ? 'currentColor' : 'none'} />
                     </button>}
@@ -441,7 +445,7 @@ export default function ItemDetailModal({
                   </datalist>
                 </InlineEditableField>
                 <h2>
-                  <InlineEditableField className="title-inline-edit" value={item.title} placeholder={t('titlePlaceholder')} onCommit={value => commitInlineUpdate({ title: value.trim() || item.title })} editable={showMutations} />
+                  <InlineEditableField className="title-inline-edit" value={showMutations ? item.title : (displayTitle || item.title)} placeholder={t('titlePlaceholder')} onCommit={value => commitInlineUpdate({ title: value.trim() || item.title })} editable={showMutations} />
                 </h2>
                 <p className="muted metadata-row">
                   <InlineEditableField className="metadata-inline-edit" value={item.model || t('defaultModel')} placeholder={t('imageGeneratedFrom')} onCommit={value => commitInlineUpdate({ model: value.trim() || item.model })} editable={showMutations} />

@@ -3,7 +3,7 @@
   "mode": "read-only",
   "image_note": "Images are compressed for the web demo.",
   "source": "freestylefly/awesome-gpt-image-2; wuyoscar/gpt_image_2_skill",
-  "item_count": 510,
+  "item_count": 533,
   "image_max_width": 900,
   "image_quality": 62
 }

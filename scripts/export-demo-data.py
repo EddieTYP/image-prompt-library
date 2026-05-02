@@ -18,7 +18,17 @@ from PIL import Image, ImageOps
 
 from backend.repositories import ItemRepository
 
+
+def _to_simplified(value: str) -> str:
+    try:
+        from opencc import OpenCC  # type: ignore
+
+        return OpenCC("t2s").convert(value)
+    except Exception:
+        return value
+
 DEFAULT_OUTPUT = ROOT / "frontend" / "public" / "demo-data"  # frontend/public/demo-data
+PUBLIC_DEMO_SOURCES = {"wuyoscar/gpt_image_2_skill", "freestylefly/awesome-gpt-image-2"}
 DEMO_IMAGE_MAX_WIDTH = int(os.environ.get("DEMO_IMAGE_MAX_WIDTH", "900"))
 DEMO_IMAGE_QUALITY = int(os.environ.get("DEMO_IMAGE_QUALITY", "62"))
 
@@ -81,27 +91,55 @@ def _rewrite_image_record(library_path: Path, media_dir: Path, image: dict) -> d
     return rewritten
 
 
+def build_demo_titles(detail: dict) -> dict[str, str]:
+    """Build demo-only localized display titles without changing app DB/API schema."""
+    title = str(detail.get("title") or "").strip()
+    titles = {
+        "zh_hant": title,
+        "zh_hans": _to_simplified(title),
+    }
+    english_prompt = next(
+        (
+            str(prompt.get("text") or "").strip()
+            for prompt in detail.get("prompts", [])
+            if prompt.get("language") == "en" and str(prompt.get("text") or "").strip()
+        ),
+        "",
+    )
+    if english_prompt and "\n" not in english_prompt and len(english_prompt) <= 96:
+        titles["en"] = english_prompt
+    return {key: value for key, value in titles.items() if value}
+
+
 def _rewrite_item(library_path: Path, media_dir: Path, detail: dict) -> dict:
     images = [_rewrite_image_record(library_path, media_dir, image) for image in detail.get("images", [])]
     detail = dict(detail)
     detail["images"] = images
     detail["first_image"] = images[0] if images else None
+    detail["demo_titles"] = build_demo_titles(detail)
     return detail
 
 
 def _rewrite_cluster_previews(clusters: list[dict], items: list[dict]) -> list[dict]:
     preview_by_cluster: dict[str, list[str]] = {}
+    item_count_by_cluster: dict[str, int] = {}
     for item in items:
         cluster = item.get("cluster")
         first = item.get("first_image")
-        if not cluster or not first:
+        if not cluster:
+            continue
+        item_count_by_cluster[cluster["id"]] = item_count_by_cluster.get(cluster["id"], 0) + 1
+        if not first:
             continue
         preview_by_cluster.setdefault(cluster["id"], [])
         if len(preview_by_cluster[cluster["id"]]) < 4:
             preview_by_cluster[cluster["id"]].append(first["thumb_path"])
     rewritten = []
     for cluster in clusters:
+        if cluster["id"] not in item_count_by_cluster:
+            continue
         next_cluster = dict(cluster)
+        next_cluster["count"] = item_count_by_cluster[cluster["id"]]
         next_cluster["preview_images"] = preview_by_cluster.get(cluster["id"], [])
         rewritten.append(next_cluster)
     return rewritten
@@ -119,10 +157,11 @@ def export_demo(library_path: Path, output: Path = DEFAULT_OUTPUT) -> None:
     media_dir.mkdir(parents=True, exist_ok=True)
 
     item_list = repo.list_items(limit=1000, offset=0)
-    items = [_rewrite_item(library_path, media_dir, repo.get_item(item.id).model_dump(mode="json")) for item in item_list.items]
+    public_items = [item for item in item_list.items if item.source_name in PUBLIC_DEMO_SOURCES]
+    items = [_rewrite_item(library_path, media_dir, repo.get_item(item.id).model_dump(mode="json")) for item in public_items]
     clusters = _rewrite_cluster_previews([cluster.model_dump(mode="json") for cluster in repo.list_clusters()], items)
     tags = [tag.model_dump(mode="json") for tag in repo.list_tags()]
-    sources = sorted({item.source_name for item in item_list.items if item.source_name})
+    sources = sorted({item.source_name for item in public_items if item.source_name})
     source_label = "; ".join(sources) if sources else "sample data"
     metadata = {
         "title": "Image Prompt Library online sandbox",

@@ -155,11 +155,28 @@ def parse_gallery(source_root: Path) -> list[dict[str, Any]]:
     return records
 
 
+def split_bilingual_prompt_sections(prompt: str) -> dict[str, str]:
+    """Extract labeled upstream prompt sections without keeping labels in variants."""
+    sections: dict[str, str] = {}
+    matches = list(re.finditer(r"^\s*\[(中文|Chinese|English|英文)\]\s*$", prompt, re.I | re.M))
+    for index, match in enumerate(matches):
+        label = match.group(1).lower()
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(prompt)
+        text = clean_text(prompt[start:end])
+        if not text:
+            continue
+        if label in {"中文", "chinese"}:
+            sections["zh_hans"] = text
+        elif label in {"english", "英文"}:
+            sections["en"] = text
+    return sections
+
+
 def split_english_prompt(prompt: str) -> str | None:
-    match = re.search(r"\[English\]\s*(.+?)(?:\n\[[^\]]+\]|\Z)", prompt, re.S | re.I)
-    if match:
-        text = clean_text(match.group(1))
-        return text
+    sections = split_bilingual_prompt_sections(prompt)
+    if sections.get("en"):
+        return sections["en"]
     # Keep purely/mostly English prompt available in English tab too.
     latin = sum(1 for ch in prompt if "a" <= ch.lower() <= "z")
     cjk = sum(1 for ch in prompt if "\u4e00" <= ch <= "\u9fff")
@@ -193,23 +210,26 @@ def tags_for(record: dict[str, Any], collection_id: str) -> list[str]:
 
 
 def prompts_for(record: dict[str, Any]) -> list[dict[str, Any]]:
+    sections = split_bilingual_prompt_sections(record["prompt_source"])
+    zh_hans_source = sections.get("zh_hans") or record["prompt_source"]
+    zh_hant_text = _to_hant(zh_hans_source)
     prompts = [
         {
             "language": "zh_hant",
-            "text": record["prompt_zh_hant"],
+            "text": zh_hant_text,
             "is_primary": True,
             "is_original": False,
             "provenance": {"kind": "conversion", "source_language": "zh_hans", "derived_from": "zh_hans", "method": "opencc-s2twp"},
         },
         {
             "language": "zh_hans",
-            "text": _to_hans(record["prompt_source"]),
+            "text": _to_hans(zh_hans_source),
             "is_primary": False,
             "is_original": True,
             "provenance": {"kind": "source", "source_language": "zh_hans", "derived_from": None, "method": None},
         },
     ]
-    en = split_english_prompt(record["prompt_source"])
+    en = sections.get("en") or split_english_prompt(record["prompt_source"])
     if en and en.strip() != record["prompt_source"].strip():
         prompts.append({
             "language": "en",

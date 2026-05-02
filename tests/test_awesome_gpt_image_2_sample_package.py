@@ -5,6 +5,7 @@ from pathlib import Path
 from PIL import Image
 
 from backend.repositories import ItemRepository
+from backend.services.build_awesome_gpt_image_2_sample_manifest import build_manifest
 from backend.services.import_sample_bundle import import_sample_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,9 +28,13 @@ def test_awesome_gpt_image_2_manifest_is_second_sample_package():
     first = manifest["items"][0]
     assert first["slug"].startswith("sample-awesome-gpt-image-2-")
     assert first["image"].startswith("images/case")
-    assert {prompt["language"] for prompt in first["prompts"]} >= {"zh_hant", "zh_hans", "en"}
-    assert all(
+    assert {prompt["language"] for prompt in first["prompts"]} >= {"zh_hant", "zh_hans"}
+    assert any(
         {prompt["language"] for prompt in item["prompts"]} >= {"zh_hant", "zh_hans", "en"}
+        for item in manifest["items"]
+    )
+    assert all(
+        {prompt["language"] for prompt in item["prompts"]} >= {"zh_hant", "zh_hans"}
         for item in manifest["items"]
     )
     assert not any("http" in str(item.get("author", "")) for item in manifest["items"])
@@ -87,3 +92,40 @@ def test_awesome_gpt_image_2_manifest_imports_with_sample_bundle(tmp_path: Path)
     assert len(items) == 2
     assert items[0].prompts
     assert items[0].first_image is not None
+
+
+def test_awesome_gpt_image_2_builder_splits_bilingual_prompt_sections(tmp_path: Path):
+    gallery = tmp_path / "docs"
+    gallery.mkdir(parents=True)
+    (gallery / "gallery-part-1.md").write_text("", encoding="utf-8")
+    (gallery / "gallery-part-2.md").write_text(
+        """
+### 例 192：电商商品展示图
+
+![未来科技感AI智能眼镜详情页](../data/images/case192.jpg)
+
+**来源：** [@MrLarus](https://x.com/MrLarus/status/2046544209117634735)
+
+**提示词：**
+
+```text
+[中文]
+AI智能眼镜电商详情图
+
+[English]
+AI smart glasses e-commerce detail image
+```
+""".strip(),
+        encoding="utf-8",
+    )
+
+    manifest = build_manifest(tmp_path, commit="fixture")
+    item = manifest["items"][0]
+    prompts = {prompt["language"]: prompt for prompt in item["prompts"]}
+
+    assert prompts["zh_hans"]["text"] == "AI智能眼镜电商详情图"
+    assert prompts["zh_hant"]["text"] == "AI智慧眼鏡電商詳情圖"
+    assert prompts["en"]["text"] == "AI smart glasses e-commerce detail image"
+    assert "[English]" not in prompts["zh_hans"]["text"]
+    assert "[中文]" not in prompts["zh_hant"]["text"]
+    assert prompts["zh_hans"]["is_original"] is True

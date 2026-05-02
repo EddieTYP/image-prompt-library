@@ -1,246 +1,246 @@
 [
   {
-    "id": "tag_5d39eb13e4f442a9",
+    "id": "tag_929b798ae03f4078",
     "name": "architecture-interiors",
     "kind": "general",
     "count": 7
   },
   {
-    "id": "tag_cc648cdd1fec4b43",
+    "id": "tag_16a327c0a7df460c",
     "name": "architecture-space",
     "kind": "general",
-    "count": 17
+    "count": 19
   },
   {
-    "id": "tag_06d8d25c2a374645",
+    "id": "tag_68f1fb3dc3174b85",
     "name": "art-illustration",
     "kind": "general",
     "count": 16
   },
   {
-    "id": "tag_ead9dc5449554137",
+    "id": "tag_d4322db39fb74629",
     "name": "awesome_gpt_image_2",
     "kind": "general",
-    "count": 348
+    "count": 371
   },
   {
-    "id": "tag_f57c0d38f32e4d5b",
+    "id": "tag_298d78ecfd104f8e",
     "name": "bilingual_prompt",
     "kind": "general",
     "count": 161
   },
   {
-    "id": "tag_2688485f960b480c",
+    "id": "tag_b5f11eb24e814d2e",
     "name": "brand-logo",
     "kind": "general",
-    "count": 8
+    "count": 10
   },
   {
-    "id": "tag_47236bba48034e31",
+    "id": "tag_a588b916923c4dd5",
     "name": "brand_design",
     "kind": "general",
-    "count": 58
+    "count": 68
   },
   {
-    "id": "tag_871b3c362af343e8",
+    "id": "tag_7061d79d59494b94",
     "name": "character",
     "kind": "general",
-    "count": 115
+    "count": 123
   },
   {
-    "id": "tag_b3bf7bca4f454701",
+    "id": "tag_8e7a49645b0b40e8",
     "name": "characters-anime",
     "kind": "general",
     "count": 26
   },
   {
-    "id": "tag_6337d6d85cf74a14",
+    "id": "tag_4d39b9cc739f434e",
     "name": "characters-portraits",
     "kind": "general",
     "count": 20
   },
   {
-    "id": "tag_cf7494442f4748a8",
+    "id": "tag_d0b4da0207164bba",
     "name": "charts-infographics",
     "kind": "general",
-    "count": 50
+    "count": 52
   },
   {
-    "id": "tag_877468162bf84130",
+    "id": "tag_39f9584dec8444a0",
     "name": "chinese_style",
     "kind": "general",
-    "count": 16
+    "count": 18
   },
   {
-    "id": "tag_57508eb604d24f31",
+    "id": "tag_aab303aa60364b91",
     "name": "cinematic-storytelling",
     "kind": "general",
     "count": 16
   },
   {
-    "id": "tag_1814eb315eb14bae",
+    "id": "tag_0cce64c060674445",
     "name": "design-typography",
     "kind": "general",
     "count": 23
   },
   {
-    "id": "tag_2ac6c323d3f14c11",
+    "id": "tag_f176aa21f8a74a4e",
     "name": "documents-publishing",
     "kind": "general",
     "count": 1
   },
   {
-    "id": "tag_48e7c236485341c2",
+    "id": "tag_e62c6846c8d34264",
     "name": "education-infographics",
     "kind": "general",
     "count": 16
   },
   {
-    "id": "tag_5ee6ddfe2b5a4d4f",
+    "id": "tag_7e54adb0b6c74c3b",
     "name": "fashion-lifestyle",
     "kind": "general",
     "count": 9
   },
   {
-    "id": "tag_e2560ab467a44d98",
+    "id": "tag_4a409eac90be4fd4",
     "name": "full_catalog",
     "kind": "general",
-    "count": 510
+    "count": 533
   },
   {
-    "id": "tag_df588adb4bda4cfe",
+    "id": "tag_0962655427984713",
     "name": "gpt_image_2_skill",
     "kind": "general",
     "count": 162
   },
   {
-    "id": "tag_08132eb7268d4736",
+    "id": "tag_ac156f9a2387457f",
     "name": "historical-chinese",
     "kind": "general",
     "count": 5
   },
   {
-    "id": "tag_1e0b5d29255b4b61",
+    "id": "tag_9f682b9032154695",
     "name": "illustration",
     "kind": "general",
-    "count": 90
+    "count": 93
   },
   {
-    "id": "tag_fc0cc93e7a7745b8",
+    "id": "tag_c0a4ebe6443e4b1c",
     "name": "illustration-art",
     "kind": "general",
-    "count": 27
+    "count": 30
   },
   {
-    "id": "tag_9ba686f22dcb4fb0",
+    "id": "tag_a4f1136037dc443f",
     "name": "infographic",
     "kind": "general",
-    "count": 55
+    "count": 58
   },
   {
-    "id": "tag_8bbdf03a6e1f4155",
+    "id": "tag_713c69f5175f4c3d",
     "name": "photo-real-world",
     "kind": "general",
     "count": 10
   },
   {
-    "id": "tag_c71641c800de460b",
+    "id": "tag_b54624ad7f06498b",
     "name": "photography-realism",
     "kind": "general",
-    "count": 33
+    "count": 34
   },
   {
-    "id": "tag_13e3ca39aacf40c7",
+    "id": "tag_a173947a65554cad",
     "name": "photoreal",
     "kind": "general",
-    "count": 86
+    "count": 97
   },
   {
-    "id": "tag_c779407fce1a4c73",
+    "id": "tag_218b0b097f4e46b0",
     "name": "poster",
     "kind": "general",
-    "count": 74
+    "count": 81
   },
   {
-    "id": "tag_4ed60ad9d6734704",
+    "id": "tag_4dd9c70276634a7e",
     "name": "poster-typography",
     "kind": "general",
-    "count": 82
+    "count": 92
   },
   {
-    "id": "tag_65d27e20fe3d48ec",
+    "id": "tag_8e09e1bd4c984ac5",
     "name": "product-ecommerce",
     "kind": "general",
-    "count": 19
+    "count": 20
   },
   {
-    "id": "tag_16d3a8c5d1704da2",
+    "id": "tag_c3c08eeed1a04798",
     "name": "product_design",
     "kind": "general",
-    "count": 67
+    "count": 73
   },
   {
-    "id": "tag_f5a0765acb0a417d",
+    "id": "tag_d0c6fd59aa184001",
     "name": "prompt_as_code",
     "kind": "general",
     "count": 145
   },
   {
-    "id": "tag_e9f76940329247c5",
+    "id": "tag_6ae263416dff40d8",
     "name": "sample",
     "kind": "general",
-    "count": 510
+    "count": 533
   },
   {
-    "id": "tag_e8f7a686b72a4eb2",
+    "id": "tag_757b924a85da482c",
     "name": "sample_package_2",
     "kind": "general",
-    "count": 348
+    "count": 371
   },
   {
-    "id": "tag_a7280eef17aa4ca1",
+    "id": "tag_70266b281dcb4cf9",
     "name": "scenes-storytelling",
     "kind": "general",
     "count": 5
   },
   {
-    "id": "tag_eac6febbbbc84eff",
+    "id": "tag_0ea4ff69f1a04a77",
     "name": "sports",
     "kind": "general",
-    "count": 19
+    "count": 20
   },
   {
-    "id": "tag_f47449914b6641d4",
+    "id": "tag_e717b9fe615e4b1e",
     "name": "technical-research",
     "kind": "general",
     "count": 31
   },
   {
-    "id": "tag_83ef550496a2481e",
+    "id": "tag_1e0c1a5c9d2c4e4a",
     "name": "ui-brand-product",
     "kind": "general",
     "count": 8
   },
   {
-    "id": "tag_d33147bee0884959",
+    "id": "tag_c83c95e01eae4a1e",
     "name": "ui-interface",
     "kind": "general",
-    "count": 81
+    "count": 83
   },
   {
-    "id": "tag_51a8024d4b004ec9",
+    "id": "tag_d8c041185326402a",
     "name": "ui_mockup",
     "kind": "general",
-    "count": 59
+    "count": 61
   },
   {
-    "id": "tag_d6eff0cf2bef404b",
+    "id": "tag_7018e48991264e22",
     "name": "x_source",
     "kind": "general",
-    "count": 320
+    "count": 3
   },
   {
-    "id": "tag_231735ce992d4d17",
+    "id": "tag_d9af55b659e14d5b",
     "name": "xiaohongshu_source",
     "kind": "general",
     "count": 18
