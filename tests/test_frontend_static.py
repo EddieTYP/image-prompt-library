@@ -1071,7 +1071,7 @@ def test_detail_modal_supports_inline_editing_contract():
     assert "modal-icon-button favorite-button" in detail
     assert "modal-icon-button edit-button" in detail
     assert "modal-icon-button download-button" in detail
-    assert "download={downloadFileName(item.title, selectedImage?.original_path || imageHeroPath(selectedImage))}" in detail
+    assert "download={downloadFileName(displayTitle || item.title, selectedImage?.original_path || imageHeroPath(selectedImage))}" in detail
     assert "modal-icon-button close" in detail
     assert detail.index("detail-side-actions") < detail.index("collection-inline-edit")
     assert "aria-label={item.favorite ? t('saved') : t('favorite')}" in detail
