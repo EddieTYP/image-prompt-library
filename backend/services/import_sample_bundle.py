@@ -149,9 +149,10 @@ def _replace_prompts_exactly(library_path: Path, repo: ItemRepository, item_id: 
         conn.commit()
 
 
-def _already_imported(library_path: Path, slug: str) -> bool:
+def _item_id_by_slug(library_path: Path, slug: str) -> str | None:
     with connect(library_path) as conn:
-        return conn.execute("SELECT 1 FROM items WHERE slug=?", (slug,)).fetchone() is not None
+        row = conn.execute("SELECT id FROM items WHERE slug=?", (slug,)).fetchone()
+    return str(row[0]) if row else None
 
 
 def _notes(manifest: dict[str, Any], item: dict[str, Any]) -> str:
@@ -194,28 +195,56 @@ def import_sample_bundle(manifest_path: Path | str, assets_dir: Path | str, libr
             continue
         title = _clean_text(item.get("title")) or "Untitled sample prompt"
         slug = _clean_text(item.get("slug")) or _clean_text(item.get("id")) or title
-        if _already_imported(library_path, slug):
-            continue
         prompt_values = _prompts(item)
         collection = collections.get(_clean_text(item.get("collection_id")) or "")
-        created = repo.create_item(
-            ItemCreate(
-                title=title,
-                slug=slug,
-                model=_clean_text(item.get("model")) or "GPT Image 2 sample",
-                cluster_name=_collection_name(collection, language),
-                tags=list(dict.fromkeys([str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()])),
-                prompts=prompt_values,
-                source_name=_clean_text(item.get("source_name")) or _clean_text((manifest.get("source") or {}).get("name")),
-                source_url=_clean_text(item.get("source_url")),
-                author=_clean_text(item.get("author")) or _clean_text((manifest.get("source") or {}).get("name")),
-                notes=_notes(manifest, item),
-            ),
-            imported=True,
-        )
-        _replace_prompts_exactly(library_path, repo, created.id, prompt_values)
-        repo.update_cluster_names(created.cluster.id if created.cluster else None, _collection_names(collection))
-        item_count += 1
+        existing_item_id = _item_id_by_slug(library_path, slug)
+        if existing_item_id:
+            created = repo.get_item(existing_item_id)
+            if created is None:
+                continue
+            with connect(library_path) as conn:
+                conn.execute(
+                    """UPDATE items
+                       SET title=?, model=?, source_name=?, source_url=?, author=?, notes=?, updated_at=?
+                       WHERE id=?""",
+                    (
+                        title,
+                        _clean_text(item.get("model")) or "GPT Image 2 sample",
+                        _clean_text(item.get("source_name")) or _clean_text((manifest.get("source") or {}).get("name")),
+                        _clean_text(item.get("source_url")),
+                        _clean_text(item.get("author")) or _clean_text((manifest.get("source") or {}).get("name")),
+                        _notes(manifest, item),
+                        now(),
+                        existing_item_id,
+                    ),
+                )
+                conn.commit()
+            _replace_prompts_exactly(library_path, repo, existing_item_id, prompt_values)
+            repo.update_cluster_names(created.cluster.id if created.cluster else None, _collection_names(collection))
+        else:
+            created = repo.create_item(
+                ItemCreate(
+                    title=title,
+                    slug=slug,
+                    model=_clean_text(item.get("model")) or "GPT Image 2 sample",
+                    cluster_name=_collection_name(collection, language),
+                    tags=list(dict.fromkeys([str(tag).strip() for tag in item.get("tags", []) if str(tag).strip()])),
+                    prompts=prompt_values,
+                    source_name=_clean_text(item.get("source_name")) or _clean_text((manifest.get("source") or {}).get("name")),
+                    source_url=_clean_text(item.get("source_url")),
+                    author=_clean_text(item.get("author")) or _clean_text((manifest.get("source") or {}).get("name")),
+                    notes=_notes(manifest, item),
+                ),
+                imported=True,
+            )
+            _replace_prompts_exactly(library_path, repo, created.id, prompt_values)
+            repo.update_cluster_names(created.cluster.id if created.cluster else None, _collection_names(collection))
+            item_count += 1
+
+        if existing_item_id:
+            with connect(library_path) as conn:
+                if conn.execute("SELECT 1 FROM images WHERE item_id=?", (existing_item_id,)).fetchone() is not None:
+                    continue
 
         image_value = _clean_text(item.get("image"))
         if not image_value:

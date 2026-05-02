@@ -46,7 +46,7 @@ IMAGE_ZIP="${SAMPLE_DATA_IMAGE_ZIP:-}"
 if [[ "$PACKAGE" == "awesome-gpt-image-2" ]]; then
   DEFAULT_RELEASE_TAG="sample-data-awesome-gpt-image-2-v1"
   DEFAULT_RELEASE_ASSET="image-prompt-library-awesome-gpt-image-2-sample-images-v1.zip"
-  DEFAULT_SHA256="52876b5e051a9b214297b0de7aa403363295f9a478362506dad55ce32755140f"
+  DEFAULT_SHA256="6ca516a5152eaaa49950883f8e4309f064dc476601febc4ecd5f4a4bfa97c54f"
 else
   DEFAULT_RELEASE_TAG="sample-data-v1"
   DEFAULT_RELEASE_ASSET="image-prompt-library-sample-images-v1.zip"

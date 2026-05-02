@@ -115,6 +115,9 @@ def test_import_sample_bundle_loads_manifest_assets_and_is_idempotent(tmp_path: 
     }), encoding="utf-8")
 
     first = import_sample_bundle(manifest, assets, tmp_path / "library")
+    manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
+    manifest_data["items"][0]["prompts"][0]["text"] = "一個已更新的紅色方塊"
+    manifest.write_text(json.dumps(manifest_data), encoding="utf-8")
     second = import_sample_bundle(manifest, assets, tmp_path / "library")
 
     assert first.item_count == 1
@@ -126,6 +129,7 @@ def test_import_sample_bundle_loads_manifest_assets_and_is_idempotent(tmp_path: 
     assert items[0].cluster.name == "視覺設計"
     assert items[0].cluster.names == {"en": "Visual Design", "zh_hant": "視覺設計"}
     assert items[0].first_image is not None
+    assert items[0].prompts[0].text == "一個已更新的紅色方塊"
     assert items[0].prompts[0].language == "zh_hant"
     assert items[0].prompts[0].is_original is True
     assert items[0].prompts[0].provenance["kind"] == "source"

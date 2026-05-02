@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.3-beta)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.4-beta)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 ChatGPT image generation has become good enough that the prompts are worth keeping. The problem is that once you start saving great outputs, screenshots, and variations, there still is not a simple private tool for managing image prompts like a real reference library.
@@ -11,11 +11,11 @@ ChatGPT image generation has become good enough that the prompts are worth keepi
 
 Your library stays on your own machine: local SQLite, local image files, no accounts, no cloud sync, and no hosted database required.
 
-**Online Read Only Demo:** <https://eddietyp.github.io/image-prompt-library/> — browse public sample prompts and preview images on GitHub Pages. The online demo is read-only: Add, edit, generation, and private library management are local-only, so install the app locally to create, edit, or generate images for your own full library. Latest v0.6.3 beta refreshes sample metadata, fixes bilingual prompt variants, and keeps demo title localization read-only/demo-only.
+**Online Read Only Demo:** <https://eddietyp.github.io/image-prompt-library/> — browse public sample prompts and preview images on GitHub Pages. The online demo is read-only: Add, edit, generation, and private library management are local-only, so install the app locally to create, edit, or generate images for your own full library. Latest v0.6.4 beta refreshes existing sample imports, fixes bilingual prompt variants, and keeps demo title localization read-only/demo-only.
 
 **v0.6 beta highlight:** local installs can connect via **ChatGPT OAuth**, use direct image generation from saved prompts, choose aspect ratio and quality settings, review generated results before saving, then `Attach to current item` or `Save as new item` with editable metadata, smart tag/collection suggestions, source-language pills, and direct image downloads. No hosted account, cloud sync, or public API key is required by the app.
 
-**Beta release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.3-beta> — Refreshes the public demo/sample metadata from awesome-gpt-image-2, fixes bilingual prompt variants, adds demo-only localized card titles, and keeps the v0.6 generation, image action, installer/update, and rollback workflows.
+**Beta release:** <https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.4-beta> — Refreshes the public demo/sample metadata from awesome-gpt-image-2, fixes bilingual prompt variants, adds demo-only localized card titles, and keeps the v0.6 generation, image action, installer/update, and rollback workflows.
 
 **Project status:** This is a public beta. Core browsing, search, local add/edit, optional local generation, versioned installs, and the read-only online demo are available today.
 
@@ -198,7 +198,7 @@ image-prompt-library start
 Install a specific tagged release instead:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.6.3-beta
+curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.6.4-beta
 image-prompt-library start
 ```
 
@@ -246,7 +246,7 @@ image-prompt-library update
 Install or switch to a specific version with:
 
 ```bash
-image-prompt-library update --version v0.6.3-beta
+image-prompt-library update --version v0.6.4-beta
 ```
 
 Rollback to the previous installed version with:
@@ -430,7 +430,7 @@ Restore by stopping the app, extracting the archive, and replacing the correspon
 
 The public Pages deployment is versioned. Use <https://eddietyp.github.io/image-prompt-library/> for the version chooser or <https://eddietyp.github.io/image-prompt-library/v0.6/> for the current 0.6 preview.
 
-The online demo is read-only: Add, edit, generation, and private library management are local-only, so install the app locally to create, edit, or generate images for your own private prompt library. Latest v0.6.3 beta refreshes sample metadata, fixes bilingual prompt variants, and keeps demo title localization read-only/demo-only.
+The online demo is read-only: Add, edit, generation, and private library management are local-only, so install the app locally to create, edit, or generate images for your own private prompt library. Latest v0.6.4 beta refreshes existing sample imports, fixes bilingual prompt variants, and keeps demo title localization read-only/demo-only.
 
 ## License and allowed use
 
