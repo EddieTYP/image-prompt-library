@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Check, Copy, Download, ExternalLink, Heart, Maximize2, Pencil, Plus, X } from 'lucide-react';
+import { Check, Copy, Download, ExternalLink, Heart, Maximize2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import GenerationPanel from './GenerationPanel';
 import { api, mediaUrl } from '../api/client';
 import type { ClusterRecord, ImageRecord, ItemDetail, PromptRecord, TagRecord, UiLanguage } from '../types';
@@ -168,6 +168,7 @@ export default function ItemDetailModal({
   onCopyPrompt,
   onEdit,
   onChanged,
+  onDelete,
   onOpenItem,
   showMutations = true,
   canGenerate = false,
@@ -183,6 +184,7 @@ export default function ItemDetailModal({
   onCopyPrompt: (success: boolean) => void;
   onEdit: (item: ItemDetail) => void;
   onChanged: () => void;
+  onDelete?: (item: ItemDetail) => void;
   onOpenItem?: (id: string) => void;
   showMutations?: boolean;
   canGenerate?: boolean;
@@ -397,6 +399,9 @@ export default function ItemDetailModal({
                       <button className="modal-icon-button edit-button" onClick={() => onEdit(item)} aria-label={t('edit')}>
                         <Pencil size={18} />
                       </button>
+                      <button className="modal-icon-button detail-delete-button" onClick={() => onDelete?.(item)} aria-label={t('deleteReference')} title={t('deleteReference')}>
+                        <Trash2 size={18} />
+                      </button>
                       {canGenerate && <button className="modal-icon-button mobile-generate-variant-button" onClick={() => setGenerationOpen(true)} aria-label="Generate variant">
                         <Plus size={18} />
                         <span className="mobile-generate-variant-label">Generate variant</span>
@@ -433,6 +438,9 @@ export default function ItemDetailModal({
                     </button>}
                     {showMutations && <button className="modal-icon-button edit-button" onClick={() => onEdit(item)} aria-label={t('edit')}>
                       <Pencil size={18} />
+                    </button>}
+                    {showMutations && <button className="modal-icon-button detail-delete-button" onClick={() => onDelete?.(item)} aria-label={t('deleteReference')} title={t('deleteReference')}>
+                      <Trash2 size={18} />
                     </button>}
                   </span>
                   <button className="modal-icon-button close" onClick={handleClose} aria-label={t('close')}>

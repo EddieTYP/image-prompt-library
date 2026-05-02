@@ -1228,11 +1228,12 @@ def test_frontend_prefers_result_image_for_card_and_detail_hero():
     assert "const primaryImage = uniqueImages[0]" not in detail
 
 
-def test_delete_action_deletes_item_and_refreshes_visible_data():
+def test_delete_actions_live_in_detail_modal_and_cards_batch_select():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
     cards_view = (ROOT / "frontend" / "src" / "components" / "CardsView.tsx").read_text()
     card = (ROOT / "frontend" / "src" / "components" / "ItemCard.tsx").read_text()
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
     styles = (ROOT / "frontend" / "src" / "styles.css").read_text()
     editor = (ROOT / "frontend" / "src" / "components" / "ItemEditorModal.tsx").read_text()
 
@@ -1240,19 +1241,35 @@ def test_delete_action_deletes_item_and_refreshes_visible_data():
     assert "method: 'DELETE'" in api_client
     assert "onDeleted" in app
     assert "setItemsReloadKey(k => k + 1)" in app
-    assert "const deleteSummary = async (item: ItemSummary)" in app
-    assert "confirm(t('deleteReferenceConfirm'))" in app
+    assert "const deleteDetail = async (item: ItemDetail)" in app
+    assert "const deleteSelectedItems = async ()" in app
+    assert "selectedItemIds" in app
+    assert "selectionMode" in app
     assert "api.deleteItem(item.id)" in app
-    assert "onDelete={isDemoMode ? undefined : deleteSummary}" in app
-    assert "onDelete?: (item: ItemSummary) => void" in cards_view
-    assert "onDelete={onDelete}" in cards_view
-    assert "Trash2" in card
-    assert "deleteItem" in card
-    assert "onDelete?.(item)" in card
-    assert "className=\"hover-action delete-action\"" in card
-    assert ".hover-action.delete-action" in styles
-    assert "aria-label={t('deleteReference')}" in card
-    assert "showActions && onDelete" in card
+    assert "Promise.all(Array.from(selectedItemIds).map(id => api.deleteItem(id)))" in app
+    assert "onDelete={isDemoMode ? undefined : deleteDetail}" in app
+    assert "onToggleSelection={selectionMode ? toggleSelectedItem : undefined}" in app
+    assert "onClick={deleteSelectedItems}" in app
+    assert "selectReferences" in app
+    assert "deleteSelectedReferences" in app
+    assert "onDelete?: (item: ItemDetail) => void" in detail
+    assert "detail-delete-button" in detail
+    assert "Trash2" in detail
+    assert "confirm(t('deleteReferenceConfirm'))" in app
+    assert "confirm(t('deleteSelectedReferencesConfirm'))" in app
+    assert "onDelete?: (item: ItemSummary) => void" not in cards_view
+    assert "onDelete?: (item: ItemSummary) => void" not in card
+    assert "delete-action" not in card
+    assert "onToggleSelection?: (id: string) => void" in cards_view
+    assert "selectedIds?: Set<string>" in cards_view
+    assert "onToggleSelection={onToggleSelection}" in cards_view
+    assert "isSelecting" in card
+    assert "isSelected" in card
+    assert "selection-check" in card
+    assert "card-select-action" in card
+    assert ".selection-toolbar" in styles
+    assert ".item-card.is-selecting" in styles
+    assert ".selection-check" in styles
     assert "t('deleteReference')" in editor
     assert "confirm(t('deleteReferenceConfirm'))" in editor
     assert "api.deleteItem(item.id)" in editor
