@@ -5,6 +5,8 @@
 [![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.5-beta)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
+Languages: **English** | [繁體中文](README_zh-TW.md)
+
 **Image Prompt Library** is a local-first visual library for generated images and the prompts behind them. Save useful image results, preserve the prompt and source metadata, organize references into collections and tags, and find them again as an image-first catalogue.
 
 Your private library stays on your machine: local SQLite, local image files, no hosted database, no built-in cloud sync, and no account required.
@@ -26,7 +28,7 @@ Use the online demo as a visual prompt catalogue: search for ideas, inspect prom
 
 If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate new images through ChatGPT OAuth while keeping your SQLite database and image files on your own computer.
 
-Current public beta: [`v0.6.5-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.5-beta). This release refreshes the public sample metadata from `awesome-gpt-image-2`, fixes bilingual prompt variants, adds demo-only localized card titles, and keeps the local generation / installer / update / rollback workflows from the v0.6 beta line.
+Current public beta: [`v0.6.5-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.5-beta). This release refreshes the public sample metadata from `gpt_image_2_skill` and `awesome-gpt-image-2`, fixes bilingual prompt variants, adds demo-only localized card titles, and keeps the local generation / installer / update / rollback workflows from the v0.6 beta line.
 
 ## Quick start
 
@@ -34,19 +36,20 @@ Normal release installs require **Python 3.10+** and `curl`. They do **not** req
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash
-image-prompt-library sample-data en
 image-prompt-library start
 ```
 
-Then open <http://127.0.0.1:8000/>.
+`image-prompt-library start` runs the local server in the current terminal. Keep it open, then visit <http://127.0.0.1:8000/> in your browser. Press `Ctrl-C` in that terminal to stop the server.
 
-The starter sample pack can be installed with localized collection names in English, Simplified Chinese, or Traditional Chinese. The underlying sample references keep their source titles/prompts and available prompt variants; this choice mainly affects the imported collection labels and default sample-pack language metadata.
+Optional: import a starter sample pack if you want demo references in a fresh local library.
 
 ```bash
 image-prompt-library sample-data en       # English collection names
 image-prompt-library sample-data zh_hans  # Simplified Chinese collection names
 image-prompt-library sample-data zh_hant  # Traditional Chinese collection names
 ```
+
+The starter sample pack can be installed with localized collection names in English, Simplified Chinese, or Traditional Chinese. The underlying sample references keep their source titles/prompts and available prompt variants; this choice mainly affects the imported collection labels and default sample-pack language metadata.
 
 For the larger Traditional Chinese `awesome-gpt-image-2` sample pack:
 
@@ -135,8 +138,6 @@ Privacy model:
 - The app is local-first and stores data on your device.
 - There are no hosted user accounts or built-in cloud sync.
 - Binding to `127.0.0.1` keeps the app local to your machine. Only change the host if you understand LAN exposure.
-- The `/media` route is intended to serve image media directories only, not the SQLite database or internal files.
-- Your own local prompt library data remains yours and should not be committed to this repository.
 
 ## Project status
 

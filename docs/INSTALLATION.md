@@ -38,7 +38,7 @@ curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/
 image-prompt-library start
 ```
 
-Open <http://127.0.0.1:8000/>.
+`image-prompt-library start` runs the local server in the current terminal. Keep it open, then visit <http://127.0.0.1:8000/> in your browser. Press `Ctrl-C` in that terminal to stop the server.
 
 ## Install a specific release
 
@@ -73,7 +73,7 @@ That data directory is separate from app code, so updates or rollbacks should no
 
 ## Sample data
 
-Install the starter sample library:
+Sample data is optional. Install a starter sample library only if you want demo references in a fresh local library:
 
 ```bash
 image-prompt-library sample-data en
