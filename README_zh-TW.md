@@ -5,7 +5,12 @@
 [![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.5-beta)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
-語言： [English](README.md) | **繁體中文**
+<p align="center">
+  <strong>語言：</strong>
+  <a href="README.md">English</a> |
+  <strong>繁體中文</strong> |
+  <a href="README_zh-CN.md">簡體中文</a>
+</p>
 
 **Image Prompt Library** 是一個本地優先的圖片與提示詞收藏庫。它幫你把好用的生成圖片、背後的 prompt、來源和備註一起保存起來，再用 collection、tag 和搜尋慢慢整理成自己的視覺資料庫。
 

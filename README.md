@@ -5,7 +5,12 @@
 [![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.5-beta)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
-Languages: **English** | [繁體中文](README_zh-TW.md)
+<p align="center">
+  <strong>Language:</strong>
+  <strong>English</strong> |
+  <a href="README_zh-TW.md">繁體中文</a> |
+  <a href="README_zh-CN.md">简体中文</a>
+</p>
 
 **Image Prompt Library** is a local-first visual library for generated images and the prompts behind them. Save useful image results, preserve the prompt and source metadata, organize references into collections and tags, and find them again as an image-first catalogue.
 
