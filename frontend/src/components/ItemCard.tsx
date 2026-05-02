@@ -1,5 +1,5 @@
 import type { MouseEvent } from 'react';
-import { Copy, Download, Heart, Pencil } from 'lucide-react';
+import { Copy, Download, Heart, Pencil, Trash2 } from 'lucide-react';
 import { mediaUrl } from '../api/client';
 import type { ItemSummary } from '../types';
 import { downloadFileName, imageDisplayPath, selectPrimaryImage } from '../utils/images';
@@ -11,6 +11,7 @@ export default function ItemCard({
   onOpen,
   onFavorite,
   onEdit,
+  onDelete,
   onCopyPrompt,
   showActions = true,
 }: {
@@ -19,6 +20,7 @@ export default function ItemCard({
   onOpen: (id: string) => void;
   onFavorite?: (id: string) => void;
   onEdit?: (item: ItemSummary) => void;
+  onDelete?: (item: ItemSummary) => void;
   onCopyPrompt: (item: ItemSummary) => void;
   showActions?: boolean;
 }) {
@@ -38,6 +40,10 @@ export default function ItemCard({
   const edit = (event: MouseEvent) => {
     event.stopPropagation();
     onEdit?.(item);
+  };
+  const deleteItem = (event: MouseEvent) => {
+    event.stopPropagation();
+    onDelete?.(item);
   };
 
   return (
@@ -62,6 +68,7 @@ export default function ItemCard({
         {primaryImage && imagePath && <a className="hover-action" href={mediaUrl(primaryImage.original_path || imagePath)} download={downloadFileName(item.title, primaryImage?.original_path || imagePath)} onClick={event => event.stopPropagation()} aria-label="Download" title="Download"><Download size={15} /></a>}
         {showActions && onFavorite && <button className="hover-action" onClick={favorite} aria-label={item.favorite ? t('saved') : t('favorite')} title={item.favorite ? t('saved') : t('favorite')}><Heart size={15} fill={item.favorite ? 'currentColor' : 'none'} /></button>}
         {showActions && onEdit && <button className="hover-action" onClick={edit} aria-label={t('edit')} title={t('edit')}><Pencil size={15} /></button>}
+        {showActions && onDelete && <button className="hover-action delete-action" onClick={deleteItem} aria-label={t('deleteReference')} title={t('deleteReference')}><Trash2 size={15} /></button>}
       </div>
     </article>
   );

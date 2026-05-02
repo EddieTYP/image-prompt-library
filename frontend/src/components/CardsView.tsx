@@ -8,6 +8,7 @@ export default function CardsView({
   onOpen,
   onFavorite,
   onEdit,
+  onDelete,
   onCopyPrompt,
   onAdd,
 }: {
@@ -16,6 +17,7 @@ export default function CardsView({
   onOpen: (id: string) => void;
   onFavorite?: (id: string) => void;
   onEdit?: (item: ItemSummary) => void;
+  onDelete?: (item: ItemSummary) => void;
   onCopyPrompt: (item: ItemSummary) => void;
   onAdd?: () => void;
 }) {
@@ -35,7 +37,7 @@ export default function CardsView({
   const leftColumnItems = items.filter((_, index) => index % 2 === 0);
   const rightColumnItems = items.filter((_, index) => index % 2 === 1);
   const renderCard = (item: ItemSummary) => (
-    <ItemCard key={item.id} t={t} item={item} onOpen={onOpen} onFavorite={onFavorite} onEdit={onEdit} onCopyPrompt={onCopyPrompt} showActions={showActions} />
+    <ItemCard key={item.id} t={t} item={item} onOpen={onOpen} onFavorite={onFavorite} onEdit={onEdit} onDelete={onDelete} onCopyPrompt={onCopyPrompt} showActions={showActions} />
   );
 
   return (

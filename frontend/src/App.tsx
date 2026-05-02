@@ -208,6 +208,15 @@ export default function App() {
     setStandaloneGenerationOpen(true);
   };
   const favorite = (id: string) => { api.favorite(id).then(saved).catch(() => undefined); };
+  const deleteSummary = async (item: ItemSummary) => {
+    if (!confirm(t('deleteReferenceConfirm'))) return;
+    try {
+      await api.deleteItem(item.id);
+      deleted();
+    } catch {
+      setToast({ title: t('saveFailed'), tone: 'error' });
+    }
+  };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   const focusedItemGenerationJobId = pendingGenerationSourceItemId ? focusedGenerationJobId : undefined;
   const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
@@ -246,7 +255,7 @@ export default function App() {
       {error && <div className="error">{error}</div>}
       {view === 'explore'
         ? <ExploreView t={t} clusters={localizedClusters} items={localizedData.items} focusedClusterId={exploreFocusedClusterId} fitRequestKey={exploreFitRequestKey} unfilterTransitionPhase={exploreUnfilterFadePhase} globalThumbnailBudget={globalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusCluster={focusCluster} onOpen={setDetailId} onAdd={isDemoMode ? undefined : openNewItemEditor} />
-        : <CardsView t={t} items={localizedData.items} onOpen={setDetailId} onFavorite={isDemoMode ? undefined : favorite} onEdit={isDemoMode ? undefined : editSummary} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} />}
+        : <CardsView t={t} items={localizedData.items} onOpen={setDetailId} onFavorite={isDemoMode ? undefined : favorite} onEdit={isDemoMode ? undefined : editSummary} onDelete={isDemoMode ? undefined : deleteSummary} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} />}
     </main>
     {showSelectedCollectionDock && localizedSelectedCluster && (
       <button className="selected-collection-dock" onClick={clearCluster} aria-label={`${t('collectionChip')}: ${localizedSelectedCluster.name}. ${t('close')}`}>

@@ -1231,12 +1231,28 @@ def test_frontend_prefers_result_image_for_card_and_detail_hero():
 def test_delete_action_archives_item_and_refreshes_visible_data():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+    cards_view = (ROOT / "frontend" / "src" / "components" / "CardsView.tsx").read_text()
+    card = (ROOT / "frontend" / "src" / "components" / "ItemCard.tsx").read_text()
+    styles = (ROOT / "frontend" / "src" / "styles.css").read_text()
     editor = (ROOT / "frontend" / "src" / "components" / "ItemEditorModal.tsx").read_text()
 
     assert "deleteItem" in api_client
     assert "method: 'DELETE'" in api_client
     assert "onDeleted" in app
     assert "setItemsReloadKey(k => k + 1)" in app
+    assert "const deleteSummary = async (item: ItemSummary)" in app
+    assert "confirm(t('deleteReferenceConfirm'))" in app
+    assert "api.deleteItem(item.id)" in app
+    assert "onDelete={isDemoMode ? undefined : deleteSummary}" in app
+    assert "onDelete?: (item: ItemSummary) => void" in cards_view
+    assert "onDelete={onDelete}" in cards_view
+    assert "Trash2" in card
+    assert "deleteItem" in card
+    assert "onDelete?.(item)" in card
+    assert "className=\"hover-action delete-action\"" in card
+    assert ".hover-action.delete-action" in styles
+    assert "aria-label={t('deleteReference')}" in card
+    assert "showActions && onDelete" in card
     assert "t('deleteReference')" in editor
     assert "confirm(t('deleteReferenceConfirm'))" in editor
     assert "api.deleteItem(item.id)" in editor
