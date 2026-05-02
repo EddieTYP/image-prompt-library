@@ -73,7 +73,7 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Cards view" in readme
     assert "one-click prompt copy" in readme
     assert "Generate New Image from a prompt, or generate a Variant of an existing one with ChatGPT Image 2.0 once you have completed OAuth." in readme
-    assert "v0.6.2-beta" in readme
+    assert "v0.6.3-beta" in readme
     assert "multilingual provenance-aware prompt vault" in readme
     assert "mobile browsing preview" not in readme
     assert "next-release mobile browsing and management plan" not in readme
@@ -88,7 +88,7 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Online Read Only Demo" in readme
     assert "ChatGPT OAuth" in readme
     assert "direct image generation" in readme
-    assert "Latest v0.6.1 beta refines Save-as-new metadata controls and image download/fullscreen actions" in readme
+    assert "Latest v0.6.3 beta refreshes sample metadata, fixes bilingual prompt variants, and keeps demo title localization read-only/demo-only" in readme
     assert "Online sandbox" not in readme
     assert "只读 sample library" not in readme
     assert "唯讀 sample library" not in readme
