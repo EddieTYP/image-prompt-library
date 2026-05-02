@@ -85,28 +85,64 @@ def test_items_list_limit_allows_gallery_overview_scale(tmp_path):
     assert len(listed["items"]) == 230
 
 
-def test_patch_favorite_and_archive_item(tmp_path):
+def test_patch_favorite_and_delete_item(tmp_path):
     c = client(tmp_path)
+    library = tmp_path / "library"
     created = c.post("/api/items", json=create_payload()).json()
-    c.post(
+    uploaded = c.post(
         f"/api/items/{created['id']}/images",
         data={"role": "result_image"},
         files={"file": ("result.png", png_bytes(), "image/png")},
-    )
+    ).json()
+    stored_paths = [library / uploaded[key] for key in ("original_path", "thumb_path", "preview_path")]
+    assert all(path.exists() for path in stored_paths)
+
     patched = c.patch(f"/api/items/{created['id']}", json={"title": "Updated", "favorite": True, "rating": 4}).json()
     assert patched["title"] == "Updated"
     assert patched["favorite"] is True
     assert patched["rating"] == 4
     toggled = c.post(f"/api/items/{created['id']}/favorite").json()
     assert toggled["favorite"] is False
+
     deleted = c.delete(f"/api/items/{created['id']}").json()
-    assert deleted["archived"] is True
+    assert deleted["id"] == created["id"]
+    assert c.get(f"/api/items/{created['id']}").status_code == 404
     assert c.get("/api/items").json()["total"] == 0
-    assert c.get("/api/items", params={"archived": True}).json()["total"] == 1
+    assert c.get("/api/items", params={"archived": True}).json()["total"] == 0
     assert c.get("/api/clusters").json() == []
-    with connect(tmp_path / "library") as conn:
+    assert all(not path.exists() for path in stored_paths)
+    with connect(library) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM items WHERE id=?", (created["id"],)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM images WHERE item_id=?", (created["id"],)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM prompts WHERE item_id=?", (created["id"],)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM item_tags WHERE item_id=?", (created["id"],)).fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM item_search WHERE item_id=?", (created["id"],)).fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM clusters").fetchone()[0] == 0
     assert {tag["name"]: tag["count"] for tag in c.get("/api/tags").json()} == {"glass": 0, "vista": 0}
+
+
+def test_deleting_item_keeps_media_files_still_used_by_another_item(tmp_path):
+    c = client(tmp_path)
+    library = tmp_path / "library"
+    first = c.post("/api/items", json=create_payload(title="Shared Media A")).json()
+    second = c.post("/api/items", json=create_payload(title="Shared Media B")).json()
+    first_image = c.post(
+        f"/api/items/{first['id']}/images",
+        data={"role": "result_image"},
+        files={"file": ("shared.png", png_bytes(), "image/png")},
+    ).json()
+    second_image = c.post(
+        f"/api/items/{second['id']}/images",
+        data={"role": "result_image"},
+        files={"file": ("shared.png", png_bytes(), "image/png")},
+    ).json()
+    assert first_image["original_path"] == second_image["original_path"]
+    stored_paths = [library / first_image[key] for key in ("original_path", "thumb_path", "preview_path")]
+
+    assert c.delete(f"/api/items/{first['id']}").status_code == 200
+
+    assert all(path.exists() for path in stored_paths)
+    assert c.get(f"/api/items/{second['id']}").status_code == 200
 
 
 def test_clusters_tags_and_config(tmp_path):
@@ -226,22 +262,24 @@ def test_editing_last_item_out_of_collection_removes_empty_collection(tmp_path):
         assert conn.execute("SELECT name FROM clusters").fetchall()[0]["name"] == "New Collection"
 
 
-def test_listing_clusters_removes_existing_archived_only_collections(tmp_path):
+def test_listing_clusters_removes_existing_empty_collections(tmp_path):
     c = client(tmp_path)
-    created = c.post("/api/items", json=create_payload(cluster_name="Legacy Empty Collection")).json()
-    c.delete(f"/api/items/{created['id']}")
-    with connect(tmp_path / "library") as conn:
-        archived_cluster_id = conn.execute("SELECT cluster_id FROM items WHERE id=?", (created["id"],)).fetchone()["cluster_id"]
-        old_name = "Legacy Empty Collection"
-        conn.execute("INSERT INTO clusters(id, name, created_at, updated_at) VALUES(?, ?, datetime('now'), datetime('now'))", (archived_cluster_id or "clu_legacy_empty", old_name))
-        conn.execute("UPDATE items SET cluster_id=? WHERE id=?", (archived_cluster_id or "clu_legacy_empty", created["id"]))
+    library = tmp_path / "library"
+    c.post("/api/items", json=create_payload(cluster_name="Keep Collection"))
+    old_name = "Legacy Empty Collection"
+    with connect(library) as conn:
+        conn.execute(
+            "INSERT INTO clusters(id, name, created_at, updated_at) VALUES(?, ?, datetime('now'), datetime('now'))",
+            ("clu_legacy_empty", old_name),
+        )
         conn.commit()
         assert conn.execute("SELECT COUNT(*) FROM clusters WHERE name=?", (old_name,)).fetchone()[0] == 1
 
-    assert c.get("/api/clusters").json() == []
-    with connect(tmp_path / "library") as conn:
+    clusters = c.get("/api/clusters").json()
+
+    assert [cluster["name"] for cluster in clusters] == ["Keep Collection"]
+    with connect(library) as conn:
         assert conn.execute("SELECT COUNT(*) FROM clusters WHERE name=?", (old_name,)).fetchone()[0] == 0
-        assert conn.execute("SELECT cluster_id FROM items WHERE id=?", (created["id"],)).fetchone()["cluster_id"] is None
 
 
 def test_create_simplified_prompt_adds_traditional_prompt(tmp_path):

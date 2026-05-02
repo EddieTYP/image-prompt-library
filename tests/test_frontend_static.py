@@ -1228,7 +1228,7 @@ def test_frontend_prefers_result_image_for_card_and_detail_hero():
     assert "const primaryImage = uniqueImages[0]" not in detail
 
 
-def test_delete_action_archives_item_and_refreshes_visible_data():
+def test_delete_action_deletes_item_and_refreshes_visible_data():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
     cards_view = (ROOT / "frontend" / "src" / "components" / "CardsView.tsx").read_text()

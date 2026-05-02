@@ -30,7 +30,7 @@ def update_item(request: Request, item_id: str, payload: ItemUpdate):
 
 @router.delete("/items/{item_id}", response_model=ItemDetail)
 def delete_item(request: Request, item_id: str):
-    try: return repo(request).set_archived(item_id, True)
+    try: return repo(request).delete_item(item_id)
     except KeyError as exc: not_found(exc)
 
 @router.post("/items/{item_id}/favorite", response_model=ItemDetail)

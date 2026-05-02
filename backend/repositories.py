@@ -3,6 +3,7 @@ import json, re, uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from contextlib import suppress
 from .db import connect, init_db
 from .schemas import ClusterRecord, ImageRecord, ItemCreate, ItemDetail, ItemList, ItemSummary, ItemUpdate, PromptIn, PromptRecord, TagRecord
 from .services.text_normalize import to_traditional
@@ -237,6 +238,55 @@ class ItemRepository:
 
     def set_archived(self, item_id: str, archived: bool=True) -> ItemDetail:
         return self.update_item(item_id, ItemUpdate(archived=archived))
+
+    def _safe_library_file(self, rel_path: str | None) -> Path | None:
+        if not rel_path:
+            return None
+        candidate = (self.library_path / rel_path).resolve()
+        library = self.library_path.resolve()
+        try:
+            if not candidate.is_relative_to(library):
+                return None
+        except AttributeError:
+            if library not in candidate.parents and candidate != library:
+                return None
+        return candidate
+
+    def _remove_unreferenced_media_files(self, paths: set[str]) -> None:
+        for rel_path in sorted(path for path in paths if path):
+            file_path = self._safe_library_file(rel_path)
+            if not file_path or not file_path.is_file():
+                continue
+            with suppress(OSError):
+                file_path.unlink()
+
+    def delete_item(self, item_id: str) -> ItemDetail:
+        detail = self.get_item(item_id)
+        candidate_paths = {
+            path
+            for image in detail.images
+            for path in (image.original_path, image.thumb_path, image.preview_path)
+            if path
+        }
+        with connect(self.library_path) as conn:
+            if conn.execute("SELECT 1 FROM items WHERE id=?", (item_id,)).fetchone() is None:
+                raise KeyError(item_id)
+            conn.execute("DELETE FROM item_search WHERE item_id=?", (item_id,))
+            conn.execute("DELETE FROM items WHERE id=?", (item_id,))
+            self.delete_empty_clusters(conn)
+            still_used = set()
+            for rel_path in candidate_paths:
+                row = conn.execute(
+                    """SELECT 1 FROM images
+                       WHERE original_path=? OR thumb_path=? OR preview_path=?
+                       LIMIT 1""",
+                    (rel_path, rel_path, rel_path),
+                ).fetchone()
+                if row is not None:
+                    still_used.add(rel_path)
+            conn.commit()
+        self._remove_unreferenced_media_files(candidate_paths - still_used)
+        return detail
 
     def toggle_favorite(self, item_id: str) -> ItemDetail:
         with connect(self.library_path) as conn:
