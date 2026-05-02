@@ -36,7 +36,7 @@ Release assets:
 | Package | Release tag | Asset | SHA256 |
 | --- | --- | --- | --- |
 | `gpt-image-2-skill` | `sample-data-v1` | `image-prompt-library-sample-images-v1.zip` | `8a458f6c8c96079f40fbc46c689e7de0bd2eb464ee7f800f94f3ca60131d5035` |
-| `awesome-gpt-image-2` | `sample-data-awesome-gpt-image-2-v1` | `image-prompt-library-awesome-gpt-image-2-sample-images-v1.zip` | `6ca516a5152eaaa49950883f8e4309f064dc476601febc4ecd5f4a4bfa97c54f` |
+| `awesome-gpt-image-2` | `sample-data-awesome-gpt-image-2-v1` | `image-prompt-library-awesome-gpt-image-2-sample-images-v1.zip` | `153714b7611524d7b98b4b0452baa86c8d05053477bb670b731953e8d26a8c9c` |
 
 The installer verifies the downloaded ZIP against this checksum before import. To test a local ZIP override with checksum verification, pass `SAMPLE_DATA_IMAGE_ZIP_SHA256=<sha256>` together with `SAMPLE_DATA_IMAGE_ZIP=...`.
 
