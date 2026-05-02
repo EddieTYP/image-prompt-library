@@ -295,7 +295,7 @@ export default function App() {
       </button>
     )}
     {/* Static-test compatibility marker: !isDemoMode && <button className="fab" */}
-    {!isDemoMode && (
+    {!isDemoMode && !selectionMode && (
       <div className="floating-action-rail">
         {view === 'cards' && localizedData.items.length > 0 && <button className="fab select-fab" onClick={() => { setSelectionMode(true); clearSelection(); }}>{t('selectReferences')}</button>}
         <button className="fab add-fab" onClick={openNewItemEditor}><Plus/> {t('add')}</button>
