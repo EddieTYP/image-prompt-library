@@ -306,7 +306,50 @@ USAGE
 }
 
 service_label_default() {
-  printf '%s\n' "${IMAGE_PROMPT_LIBRARY_SERVICE_LABEL:-com.eddietyp.image-prompt-library}"
+  if [ -n "${IMAGE_PROMPT_LIBRARY_SERVICE_LABEL:-}" ]; then
+    printf '%s\n' "$IMAGE_PROMPT_LIBRARY_SERVICE_LABEL"
+    return
+  fi
+
+  /usr/bin/env python3 - "$APP_PREFIX" "com.eddietyp.image-prompt-library" <<'PY'
+import os
+import plistlib
+import sys
+from pathlib import Path
+
+app_prefix = str(Path(sys.argv[1]).expanduser())
+default_label = sys.argv[2]
+home = Path(os.environ.get("HOME", str(Path.home()))).expanduser()
+launch_agents = home / "Library" / "LaunchAgents"
+needle = f"{app_prefix}/app/current/scripts/appctl.sh"
+candidates = []
+fallback_candidates = []
+if launch_agents.is_dir():
+    for plist_path in launch_agents.glob("*image-prompt-library*.plist"):
+        try:
+            payload = plistlib.loads(plist_path.read_bytes())
+        except Exception:
+            continue
+        label = str(payload.get("Label") or "")
+        if not label:
+            continue
+        env = payload.get("EnvironmentVariables") or {}
+        args = "\n".join(str(arg) for arg in (payload.get("ProgramArguments") or []))
+        mtime = plist_path.stat().st_mtime
+        matches_prefix = str(env.get("IMAGE_PROMPT_LIBRARY_PREFIX") or "") == app_prefix
+        matches_program = needle in args
+        if matches_prefix or matches_program:
+            candidates.append((mtime, label))
+        else:
+            fallback_candidates.append((mtime, label))
+if candidates:
+    candidates.sort(reverse=True)
+    print(candidates[0][1])
+elif len(fallback_candidates) == 1:
+    print(fallback_candidates[0][1])
+else:
+    print(default_label)
+PY
 }
 
 service_domain() {
@@ -344,6 +387,40 @@ parse_label_option() {
 service_plist_path() {
   LABEL="$1"
   printf '%s\n' "${IMAGE_PROMPT_LIBRARY_SERVICE_PLIST:-$HOME/Library/LaunchAgents/$LABEL.plist}"
+}
+
+service_wait_unloaded() {
+  DOMAIN="$1"
+  LABEL="$2"
+  ATTEMPT=0
+  while [ "$ATTEMPT" -lt 20 ]; do
+    if ! launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
+      return 0
+    fi
+    ATTEMPT=$((ATTEMPT + 1))
+    sleep 0.25
+  done
+}
+
+service_bootstrap() {
+  DOMAIN="$1"
+  LABEL="$2"
+  PLIST="$3"
+  if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
+    return 0
+  fi
+  ATTEMPT=0
+  while [ "$ATTEMPT" -lt 20 ]; do
+    if launchctl bootstrap "$DOMAIN" "$PLIST" >/dev/null 2>&1; then
+      return 0
+    fi
+    if launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1; then
+      return 0
+    fi
+    ATTEMPT=$((ATTEMPT + 1))
+    sleep 0.5
+  done
+  launchctl bootstrap "$DOMAIN" "$PLIST"
 }
 
 service_install() {
@@ -414,6 +491,7 @@ payload = {
     "EnvironmentVariables": {
         "HOME": home,
         "IMAGE_PROMPT_LIBRARY_PREFIX": prefix,
+        "IMAGE_PROMPT_LIBRARY_SERVICE_LABEL": label,
     },
     "WorkingDirectory": home,
     "RunAtLoad": True,
@@ -429,8 +507,9 @@ PY
   DOMAIN="$(service_domain)"
   if [ "$SERVICE_REPLACE" -eq 1 ]; then
     launchctl bootout "$DOMAIN/$SERVICE_LABEL" >/dev/null 2>&1 || true
+    service_wait_unloaded "$DOMAIN" "$SERVICE_LABEL"
   fi
-  launchctl bootstrap "$DOMAIN" "$SERVICE_PLIST"
+  service_bootstrap "$DOMAIN" "$SERVICE_LABEL" "$SERVICE_PLIST"
   launchctl enable "$DOMAIN/$SERVICE_LABEL"
   launchctl kickstart -k "$DOMAIN/$SERVICE_LABEL"
   echo "Installed service: $SERVICE_LABEL"
@@ -454,7 +533,7 @@ service_start() {
     exit 1
   fi
   DOMAIN="$(service_domain)"
-  launchctl bootstrap "$DOMAIN" "$SERVICE_PLIST" >/dev/null 2>&1 || true
+  service_bootstrap "$DOMAIN" "$SERVICE_LABEL" "$SERVICE_PLIST"
   launchctl enable "$DOMAIN/$SERVICE_LABEL"
   launchctl kickstart -k "$DOMAIN/$SERVICE_LABEL"
 }
@@ -476,7 +555,8 @@ service_restart() {
   fi
   DOMAIN="$(service_domain)"
   launchctl bootout "$DOMAIN/$SERVICE_LABEL" >/dev/null 2>&1 || true
-  launchctl bootstrap "$DOMAIN" "$SERVICE_PLIST"
+  service_wait_unloaded "$DOMAIN" "$SERVICE_LABEL"
+  service_bootstrap "$DOMAIN" "$SERVICE_LABEL" "$SERVICE_PLIST"
   launchctl enable "$DOMAIN/$SERVICE_LABEL"
   launchctl kickstart -k "$DOMAIN/$SERVICE_LABEL"
 }

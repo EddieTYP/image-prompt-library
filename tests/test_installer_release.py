@@ -480,11 +480,17 @@ def test_installed_service_commands_manage_macos_launchagent_with_fake_launchctl
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     calls = tmp_path / "launchctl-calls.log"
+    retry_marker = tmp_path / "fail-next-bootstrap"
+    service_state = tmp_path / "service-loaded"
     (fake_bin / "launchctl").write_text(
         "#!/usr/bin/env sh\n"
         f"printf '%s ' \"$@\" >> {calls}\n"
         f"printf '\\n' >> {calls}\n"
-        "if [ \"$1\" = \"print\" ]; then echo 'state = running'; fi\n",
+        f"if [ \"$1\" = \"print\" ]; then [ -f {service_state} ] && echo 'state = running' && exit 0; exit 113; fi\n"
+        f"if [ \"$1\" = \"bootout\" ]; then rm -f {service_state}; touch {retry_marker}; exit 0; fi\n"
+        f"if [ \"$1\" = \"bootstrap\" ] && [ -f {retry_marker} ]; then rm -f {retry_marker}; echo 'Bootstrap failed: 5: Input/output error' >&2; exit 5; fi\n"
+        f"if [ \"$1\" = \"bootstrap\" ]; then touch {service_state}; exit 0; fi\n"
+        f"if [ \"$1\" = \"kickstart\" ]; then touch {service_state}; exit 0; fi\n",
         encoding="utf-8",
     )
     (fake_bin / "launchctl").chmod(0o755)
@@ -546,8 +552,22 @@ def test_installed_service_commands_manage_macos_launchagent_with_fake_launchctl
     assert "0.0.0.0" in plist_text
     assert "7500" in plist_text
     assert str(prefix) in plist_text
+    assert "IMAGE_PROMPT_LIBRARY_SERVICE_LABEL" in plist_text
+    assert "com.example.ipl-test" in plist_text
     assert "bootstrap gui/" in calls.read_text(encoding="utf-8")
     assert "kickstart -k gui/" in calls.read_text(encoding="utf-8")
+
+    status_default_label = subprocess.run(
+        ["bash", str(appctl), "service", "status"],
+        cwd=tmp_path,
+        env=service_env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert status_default_label.returncode == 0, status_default_label.stdout + status_default_label.stderr
+    assert "print gui/" in calls.read_text(encoding="utf-8")
+    assert "com.example.ipl-test" in calls.read_text(encoding="utf-8")
 
     status = subprocess.run(
         ["bash", str(appctl), "service", "status", "--label", "com.example.ipl-test"],
