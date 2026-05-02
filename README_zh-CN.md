@@ -70,7 +70,7 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 - **保存来源脉络：** 原始 prompt、来源资料、翻译或转换后的 variant 可以放在同一张卡片。
 - **管理私人 library：** 新增 / 编辑自己的 prompt card、结果图、reference image、tag、note、source URL 和 collection。
 - **一键复制 prompt：** 打开 item，选择语言或来源 variant，直接复制。
-- **本地生成：** 本地安装版可选择连接 ChatGPT OAuth。只要你的 ChatGPT account/subscription 有图片生成权限，就可以由新 prompt 或已保存 reference 生成图片，review 后 attach 到现有 item 或另存新 item。
+- **本地生成：** 本地安装版可选择连接 ChatGPT / Codex OAuth。只要你的 ChatGPT account/subscription 有图片生成权限，就可以由新 prompt 或已保存 reference 生成图片，review 后 attach 到现有 item 或另存新 item。
 - **保持 local-first：** database 和图片文件都留在本地 library directory。
 
 ## 搜索 library
@@ -91,18 +91,18 @@ awesome-gpt-image-2
 
 ## 本地生成
 
-本地安装版可以选择连接 ChatGPT OAuth，不需要在 app 里放 OpenAI API key。你需要一个有图片生成权限的 ChatGPT account/subscription。
+本地安装版可以选择连接 ChatGPT / Codex OAuth，不需要在 app 里放 OpenAI API key。你需要一个有图片生成权限的 ChatGPT account/subscription。
 
 基本流程：
 
 1. 启动本地 app，打开 **Config**。
-2. 连接 **ChatGPT OAuth**，在浏览器完成 device-login approval。
+2. 连接 **ChatGPT / Codex OAuth**，在浏览器完成 device-login approval。
 3. 回到 Image Prompt Library，由新 prompt 或已保存 reference 开始生成。
 4. 在本地 inbox review 生成结果。
 5. 把结果 attach 到当前 item，或另存成可再编辑 metadata 的新 item。
 
 <p align="center">
-  <img src="docs/assets/screenshots/generation-provider-connected.jpeg" alt="Config drawer showing ChatGPT OAuth connected for local image generation" width="80%" />
+  <img src="docs/assets/screenshots/generation-provider-connected.png" alt="Config drawer showing ChatGPT / Codex OAuth connected for local image generation" width="360" />
 </p>
 
 公开 GitHub Pages demo 不会执行 live generation，也不会开放新增 / 编辑等修改操作。
@@ -125,7 +125,7 @@ Sample package details 和 checksums 请看 [`sample-data/README.md`](sample-dat
 ## 文件
 
 - [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — install、update、rollback、service mode、uninstall、platform notes。
-- [`docs/GENERATION.md`](docs/GENERATION.md) — ChatGPT OAuth generation workflow、result inbox、目前限制、benchmark link。
+- [`docs/GENERATION.md`](docs/GENERATION.md) — ChatGPT / Codex OAuth generation workflow、result review、当前限制、benchmark link。
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — source setup、dev mode、configuration、data layout、backup。
 - [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — 常见 runtime 和 setup 问题。
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contributor setup、tests 和 project structure。

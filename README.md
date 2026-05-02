@@ -31,7 +31,7 @@ The public demo is a browsable catalogue of **533 prompt/image references** gath
 
 Use the online demo as a visual prompt catalogue: search for ideas, inspect prompt structure, copy public sample prompts, and compare how different prompt styles map to different image outputs. The GitHub Pages demo is intentionally static and read-only: Add/Edit, private library management, and image generation are local-install features.
 
-If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate new images through ChatGPT OAuth while keeping your SQLite database and image files on your own computer.
+If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate new images through ChatGPT / Codex OAuth while keeping your SQLite database and image files on your own computer.
 
 Current public beta: [`v0.6.5-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.5-beta). This release refreshes the public sample metadata from `gpt_image_2_skill` and `awesome-gpt-image-2`, fixes bilingual prompt variants, adds demo-only localized card titles, and keeps the local generation / installer / update / rollback workflows from the v0.6 beta line.
 
@@ -71,7 +71,7 @@ For update, rollback, service mode, uninstall, WSL, and source-development setup
 - **Preserve prompt provenance:** keep original/source prompt variants and translated or converted variants side by side.
 - **Manage a private library:** add/edit your own prompt cards, result images, optional reference images, tags, notes, source URLs, and collections.
 - **Copy reusable prompts:** open an item, choose the prompt language/source variant, and copy it with one click.
-- **Generate locally:** connect optional ChatGPT OAuth in a local install with a ChatGPT subscription that has image-generation access, generate from new or saved prompts, review results, then attach to the current item or save as a new item.
+- **Generate locally:** connect optional ChatGPT / Codex OAuth in a local install with a ChatGPT subscription that has image-generation access, generate from new or saved prompts, review results, then attach to the current item or save as a new item.
 - **Stay local-first:** your database and image files remain in your local library directory.
 
 ## Searching the library
@@ -92,18 +92,18 @@ Search also works with collection filters: choose a collection from **Filters**,
 
 ## Local generation
 
-Local installs can optionally connect ChatGPT OAuth and generate images without adding an OpenAI API key to the app. You will need a ChatGPT account/subscription with access to image generation.
+Local installs can optionally connect ChatGPT / Codex OAuth and generate images without adding an OpenAI API key to the app. You will need a ChatGPT account/subscription with access to image generation.
 
 Basic flow:
 
 1. Start the local app and open **Config**.
-2. Connect **ChatGPT OAuth** and approve the device-login flow in your browser.
+2. Connect **ChatGPT / Codex OAuth** and approve the device-login flow in your browser.
 3. Return to Image Prompt Library and generate from a new prompt or from an existing saved reference.
 4. Review generated results in the local inbox.
 5. Attach the result to the current item, or save it as a new item with editable metadata.
 
 <p align="center">
-  <img src="docs/assets/screenshots/generation-provider-connected.jpeg" alt="Config drawer showing ChatGPT OAuth connected for local image generation" width="80%" />
+  <img src="docs/assets/screenshots/generation-provider-connected.png" alt="Config drawer showing ChatGPT / Codex OAuth connected for local image generation" width="360" />
 </p>
 
 The public GitHub Pages demo never performs live generation and does not expose mutation controls.
@@ -126,7 +126,7 @@ For sample package details and checksums, see [`sample-data/README.md`](sample-d
 ## Documentation
 
 - [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — install, update, rollback, service mode, uninstall, platform notes.
-- [`docs/GENERATION.md`](docs/GENERATION.md) — ChatGPT OAuth generation workflow, result inbox, current limitations, benchmark link.
+- [`docs/GENERATION.md`](docs/GENERATION.md) — ChatGPT / Codex OAuth generation workflow, result review, current limitations, benchmark link.
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — source setup, dev mode, configuration, data layout, backups.
 - [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — common runtime and setup issues.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contributor setup, tests, and project structure.

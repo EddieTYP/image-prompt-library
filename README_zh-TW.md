@@ -70,7 +70,7 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 - **保存來源脈絡：** 原始 prompt、來源資料、翻譯或轉換後的 variant 可以放在同一張卡片。
 - **管理私人 library：** 新增 / 編輯自己的 prompt card、結果圖、reference image、tag、note、source URL 和 collection。
 - **一鍵複製 prompt：** 打開 item，選擇語言或來源 variant，直接複製。
-- **本地生成：** 本地安裝版可選擇連接 ChatGPT OAuth。只要你的 ChatGPT account/subscription 有圖片生成權限，就可以由新 prompt 或已保存 reference 生成圖片，review 後 attach 到現有 item 或另存新 item。
+- **本地生成：** 本地安裝版可選擇連接 ChatGPT / Codex OAuth。只要你的 ChatGPT account/subscription 有圖片生成權限，就可以由新 prompt 或已保存 reference 生成圖片，review 後 attach 到現有 item 或另存新 item。
 - **保持 local-first：** database 和圖片檔案都留在本地 library directory。
 
 ## 搜尋 library
@@ -91,18 +91,18 @@ awesome-gpt-image-2
 
 ## 本地生成
 
-本地安裝版可以選擇連接 ChatGPT OAuth，不需要在 app 裡放 OpenAI API key。你需要一個有圖片生成權限的 ChatGPT account/subscription。
+本地安裝版可以選擇連接 ChatGPT / Codex OAuth，不需要在 app 裡放 OpenAI API key。你需要一個有圖片生成權限的 ChatGPT account/subscription。
 
 基本流程：
 
 1. 啟動本地 app，打開 **Config**。
-2. 連接 **ChatGPT OAuth**，在瀏覽器完成 device-login approval。
+2. 連接 **ChatGPT / Codex OAuth**，在瀏覽器完成 device-login approval。
 3. 回到 Image Prompt Library，由新 prompt 或已保存 reference 開始生成。
 4. 在本地 inbox review 生成結果。
 5. 把結果 attach 到目前 item，或另存成可再編輯 metadata 的新 item。
 
 <p align="center">
-  <img src="docs/assets/screenshots/generation-provider-connected.jpeg" alt="Config drawer showing ChatGPT OAuth connected for local image generation" width="80%" />
+  <img src="docs/assets/screenshots/generation-provider-connected.png" alt="Config drawer showing ChatGPT / Codex OAuth connected for local image generation" width="360" />
 </p>
 
 公開 GitHub Pages demo 不會做 live generation，也不會開放新增 / 編輯等 mutation controls。
@@ -125,7 +125,7 @@ Sample package details 和 checksums 請看 [`sample-data/README.md`](sample-dat
 ## 文件
 
 - [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — install、update、rollback、service mode、uninstall、platform notes。
-- [`docs/GENERATION.md`](docs/GENERATION.md) — ChatGPT OAuth generation workflow、result inbox、目前限制、benchmark link。
+- [`docs/GENERATION.md`](docs/GENERATION.md) — ChatGPT / Codex OAuth generation workflow、result review、目前限制、benchmark link。
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — source setup、dev mode、configuration、data layout、backup。
 - [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — 常見 runtime 和 setup 問題。
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contributor setup、tests 和 project structure。
