@@ -75,13 +75,13 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Cards view" in readme
     assert "copy public sample prompts" in readme
     assert "Generate locally" in readme
-    assert "v0.6.8-beta" in readme
-    assert "multi-select batch delete" in readme
+    assert "v0.7.0-beta" in readme
+    assert "prompt variables" in readme
     assert "mobile browsing preview" not in readme
     assert "next-release mobile browsing and management plan" not in readme
-    assert "mobile selection polish" in readme
-    assert "mobile selection polish" in readme
-    assert "local media files" in readme
+    assert "Template indicators" in readme
+    assert "generated-result cleanup" in readme
+    assert "local media files" not in readme
     assert "review generated results in the local inbox" in readme.lower()
     assert "Local Generation Studio" not in readme
     assert "archived 0.3 preview" not in readme
@@ -91,7 +91,7 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "ChatGPT / Codex OAuth" in readme
     assert "generate images" in readme.lower()
     assert "Current public beta:" in readme
-    assert "v0.6.8-beta" in readme
+    assert "v0.7.0-beta" in readme
     assert "Online sandbox" not in readme
     assert "只读 sample library" not in readme
     assert "唯讀 sample library" not in readme
@@ -100,6 +100,8 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Add/Edit, private library management, and image generation are local-install features" in readme
     assert "Local installs can optionally connect ChatGPT / Codex OAuth" in readme
     assert "generate from a new prompt or from an existing saved reference" in readme
+    assert "`{{variables}}`" in readme
+    assert "`{{subject}}`" in readme
     assert "Manage a private library" in readme
     assert "## Add your own prompts\n" not in readme
     assert "save as a new item" in readme.lower()

@@ -29,33 +29,33 @@ def run_ts_expression(expression: str) -> str:
     return result.stdout.strip()
 
 
-def test_camelot_percival_feature_flag_defaults_off(monkeypatch, tmp_path):
+def test_camelot_percival_feature_flag_defaults_on(monkeypatch, tmp_path):
     monkeypatch.delenv("IMAGE_PROMPT_LIBRARY_CAMELOT_PERCIVAL", raising=False)
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CONFIG_PATH", str(tmp_path / "missing-config.json"))
 
-    assert resolve_hidden_features()["camelot"]["percival"] is False
+    assert resolve_hidden_features()["camelot"]["percival"] is True
 
     client = TestClient(create_app(tmp_path / "library"))
     config = client.get("/api/config").json()
-    assert config["features"]["camelot"]["percival"] is False
+    assert config["features"]["camelot"]["percival"] is True
 
 
-def test_camelot_percival_feature_flag_can_be_enabled_from_local_config(monkeypatch, tmp_path):
+def test_camelot_percival_feature_flag_can_be_disabled_from_local_config(monkeypatch, tmp_path):
     config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"camelot": {"percival": True}}), encoding="utf-8")
+    config_path.write_text(json.dumps({"camelot": {"percival": False}}), encoding="utf-8")
     monkeypatch.delenv("IMAGE_PROMPT_LIBRARY_CAMELOT_PERCIVAL", raising=False)
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CONFIG_PATH", str(config_path))
 
-    assert resolve_hidden_features()["camelot"]["percival"] is True
+    assert resolve_hidden_features()["camelot"]["percival"] is False
 
 
-def test_camelot_percival_feature_flag_can_be_enabled_from_environment(monkeypatch, tmp_path):
+def test_camelot_percival_feature_flag_can_be_disabled_from_environment(monkeypatch, tmp_path):
     config_path = tmp_path / "config.json"
-    config_path.write_text(json.dumps({"camelot": {"percival": False}}), encoding="utf-8")
+    config_path.write_text(json.dumps({"camelot": {"percival": True}}), encoding="utf-8")
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CAMELOT_PERCIVAL", "true")
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CAMELOT_PERCIVAL", "false")
 
-    assert resolve_hidden_features()["camelot"]["percival"] is True
+    assert resolve_hidden_features()["camelot"]["percival"] is False
 
 
 def test_extract_prompt_template_variables_supports_braces_dedupe_chinese_and_whitespace():

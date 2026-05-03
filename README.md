@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.8-beta)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.0-beta)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 <p align="center">
@@ -33,7 +33,7 @@ Use the online demo as a visual prompt catalogue: search for ideas, inspect prom
 
 If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate new images through ChatGPT / Codex OAuth while keeping your SQLite database and image files on your own computer.
 
-Current public beta: [`v0.6.8-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.8-beta). This release adds detail-page delete, multi-select batch delete, cleanup for unused local media files, clearer delete confirmations, mobile selection polish, and more reliable macOS service label handling.
+Current public beta: [`v0.7.0-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.0-beta). This release opens prompt variables for local generation, adds Template indicators for reusable prompts, and tightens generated-result cleanup and queue behavior.
 
 ## Quick start
 
@@ -71,7 +71,7 @@ For update, rollback, service mode, uninstall, WSL, and source-development setup
 - **Preserve prompt provenance:** keep original/source prompt variants and translated or converted variants side by side.
 - **Manage a private library:** add/edit your own prompt cards, result images, optional reference images, tags, notes, source URLs, and collections.
 - **Copy reusable prompts:** open an item, choose the prompt language/source variant, and copy it with one click.
-- **Generate locally:** connect optional ChatGPT / Codex OAuth in a local install with a ChatGPT subscription that has image-generation access, generate from new or saved prompts, review results, then attach to the current item or save as a new item.
+- **Generate locally:** connect optional ChatGPT / Codex OAuth in a local install with a ChatGPT subscription that has image-generation access, generate from new or saved prompts, fill `{{variables}}` before sending template prompts, review results, then attach to the current item or save as a new item.
 - **Stay local-first:** your database and image files remain in your local library directory.
 
 ## Searching the library
@@ -98,7 +98,7 @@ Basic flow:
 
 1. Start the local app and open **Config**.
 2. Connect **ChatGPT / Codex OAuth** and approve the device-login flow in your browser.
-3. Return to Image Prompt Library and generate from a new prompt or from an existing saved reference.
+3. Return to Image Prompt Library and generate from a new prompt or from an existing saved reference. Prompts can include variables such as `{{subject}}` or `{{style}}`; the composer asks for values before sending the final prompt.
 4. Review generated results in the local inbox.
 5. Attach the result to the current item, or save it as a new item with editable metadata.
 

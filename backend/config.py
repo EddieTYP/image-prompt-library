@@ -76,7 +76,7 @@ def _bool_from_env(value: str | None) -> bool | None:
 def resolve_hidden_features() -> dict[str, dict[str, bool]]:
     payload = _read_local_config()
     camelot = payload.get("camelot") if isinstance(payload, dict) else None
-    percival = False
+    percival = True
     if isinstance(camelot, dict) and isinstance(camelot.get("percival"), bool):
         percival = camelot["percival"]
     env_percival = _bool_from_env(os.environ.get("IMAGE_PROMPT_LIBRARY_CAMELOT_PERCIVAL"))

@@ -12,6 +12,7 @@ Once connected, you can:
 - Attach a result to the current item.
 - Save a result as a new item with editable metadata.
 - Keep generated-output provenance such as provider, model, source item, generation job, and timestamps.
+- Use prompt variables such as `{{subject}}`, `{{style}}`, or `{{主體}}` in reusable template prompts and fill them before each generation.
 
 No OpenAI API key is required by the app for the ChatGPT / Codex OAuth path. Advanced provider configuration is available for users who need it, but the normal flow is handled from the Config drawer.
 
@@ -49,7 +50,7 @@ After approval, the provider card should show **Connected** and list the availab
 
 ## Generate and review results
 
-Open the local generation composer, type a prompt, choose the desired controls, and run **Generate**. While a job is running, the result stage shows a generating state.
+Open the local generation composer, type a prompt, choose the desired controls, and run **Generate**. Use double braces for reusable fields, for example `A portrait of {{subject}} in {{style}}`; the composer shows fields for each variable and previews the resolved prompt before sending.
 
 <p align="center">
   <img src="assets/screenshots/generation-composer-running.png" alt="Local generation composer showing an image job in progress" width="100%" />

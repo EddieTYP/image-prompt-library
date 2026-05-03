@@ -2,9 +2,9 @@
 
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
-**Goal:** Add an optional, default-off generation-composer feature that treats bracket placeholders such as `[Subject]`, `[Style]`, and `[主體]` as per-generation variables, opens a variables sheet for values, sends a resolved prompt to the provider, and preserves the original template plus variable values for history/retry/provenance.
+**Goal:** Add a public generation-composer feature that treats double-brace placeholders such as `{{Subject}}`, `{{Style}}`, and `{{主體}}` as per-generation variables, opens fields for values, sends a resolved prompt to the provider, and preserves the original template plus variable values for history/retry/provenance.
 
-**Architecture:** Public code may include the feature, but the UI must remain hidden unless the easter-egg config switch `camelot.percival` is enabled. Keep the config codename obscure; use normal internal helper names after reading the config. Resolve variables on the frontend before creating/running generation jobs, and persist template metadata inside `GenerationJob.parameters` so existing database schema can be reused for the first slice.
+**Architecture:** Prompt variables are public and enabled by default as of `v0.7.0-beta — Percival`. Keep the existing `camelot.percival` compatibility switch so local config or env can disable it if needed. Resolve variables on the frontend before creating/running generation jobs, and persist template metadata inside `GenerationJob.parameters` so existing database schema can be reused for the first slice.
 
 **Tech Stack:** React + TypeScript frontend (`GenerationPanel.tsx`), FastAPI generation-job API, SQLite-backed GenerationJob records with JSON `parameters`, existing generation history/retry/save-as-new flows.
 
@@ -12,7 +12,7 @@
 
 ## Product decision
 
-This is a public-code, default-off feature. It should not be advertised in README/docs/release notes until Edward decides to publicize it.
+This feature is public and enabled by default in `v0.7.0-beta — Percival`. Public copy should call it prompt variables or template variables; `Percival` is the release codename.
 
 Config switch:
 
@@ -26,10 +26,9 @@ Config switch:
 
 Meaning:
 
-- `camelot` is the hidden/easter-egg config namespace.
-- `percival` enables prompt template variables / inline slots.
-- Do **not** call the public config key `features`, `promptVariables`, or anything obvious.
-- UI copy may still use normal wording like `Variables` once enabled.
+- `camelot.percival` remains a compatibility switch for prompt template variables / inline slots.
+- The default is on; set it to `false` only to disable the public feature locally.
+- UI copy should use normal wording like `Variables`, `prompt variables`, or `template variables`.
 
 ---
 
@@ -38,7 +37,7 @@ Meaning:
 Given a generation prompt/template:
 
 ```text
-A [Subject] in [Style] style
+A {{Subject}} in {{Style}} style
 ```
 
 The composer detects two variables:
@@ -65,7 +64,7 @@ The job metadata preserves:
 
 ```json
 {
-  "prompt_template": "A [Subject] in [Style] style",
+  "prompt_template": "A {{Subject}} in {{Style}} style",
   "prompt_variables": {
     "Subject": "cat astronaut",
     "Style": "watercolor"
@@ -76,13 +75,13 @@ The job metadata preserves:
 
 Supported requirements:
 
-- English placeholders: `[Subject]`, `[Style]`, `[Camera Angle]`.
-- Chinese placeholders: `[主體]`, `[風格]`, `[背景設定]`, `[鏡頭角度]`.
+- English placeholders: `{{Subject}}`, `{{Style}}`, `{{Camera Angle}}`.
+- Chinese placeholders: `{{主體}}`, `{{風格}}`, `{{背景設定}}`, `{{鏡頭角度}}`.
 - Same placeholder appearing more than once is shown once in the sheet and replaced everywhere.
-- Escaped literal brackets are supported from the first slice:
-  - Input: `Show the text \[SALE\] beside [Subject]`
+- Escaped literal variables are supported from the first slice:
+  - Input: `Show the text \{{SALE}} beside {{Subject}}`
   - Variables: `Subject` only
-  - Resolved: `Show the text [SALE] beside cat`
+  - Resolved: `Show the text {{SALE}} beside cat`
 - Empty variable values block generation: clicking Generate should open the variables sheet and highlight missing fields.
 - History / retry / `Use as draft` should preserve template + variable values, not collapse permanently to the resolved prompt only.
 - Save as new item should default the saved prompt to the resolved prompt while keeping the generation job provenance and template metadata available.
@@ -91,8 +90,7 @@ Supported requirements:
 
 ## Non-goals for first slice
 
-- No public README/docs announcement.
-- No GitHub Pages demo exposure unless `camelot.percival` is deliberately enabled in that build/config.
+- No advanced public tutorial beyond concise README/release-note coverage for this first public beta.
 - No schema migration unless needed; prefer `GenerationJob.parameters` JSON first.
 - No advanced variable types, dropdowns, defaults, conditionals, or nested templates.
 - No batch variable matrix generation yet.
@@ -101,7 +99,7 @@ Supported requirements:
 
 ## Proposed implementation tasks
 
-### Task 1: Locate config delivery path and add hidden boolean helper
+### Task 1: Locate config delivery path and add feature boolean helper
 
 **Objective:** Find how frontend runtime config is loaded and expose a single helper boolean for `camelot.percival`.
 
@@ -127,8 +125,8 @@ function isInlineSlotsEnabled(config: AppConfig | undefined): boolean {
 
 **Verification:**
 
-- With no config key, generation composer behaves exactly as before.
-- With `camelot.percival=true`, variable UI becomes eligible to appear when placeholders exist.
+- With no config key, prompt variables are enabled by default.
+- With `camelot.percival=false`, variable UI is disabled locally.
 
 ---
 
@@ -168,19 +166,19 @@ export function unescapeLiteralBrackets(text: string): string;
 **Test cases:**
 
 ```ts
-extractPromptSlots('A [Subject] in [Style] style')
+extractPromptSlots('A {{Subject}} in {{Style}} style')
 // => Subject, Style
 
-extractPromptSlots('一張[主體]的海報，風格是[風格]')
+extractPromptSlots('一張{{主體}}的海報，風格是[風格]')
 // => 主體, 風格
 
-extractPromptSlots('[Subject] and [Subject] again')
+extractPromptSlots('{{Subject}} and {{Subject}} again')
 // => Subject once
 
-extractPromptSlots('Show \[SALE\] beside [Subject]')
+extractPromptSlots('Show \[SALE\] beside {{Subject}}')
 // => Subject only
 
-resolvePromptSlots('Show \[SALE\] beside [Subject]', { Subject: 'cat' })
+resolvePromptSlots('Show \[SALE\] beside {{Subject}}', { Subject: 'cat' })
 // => 'Show [SALE] beside cat'
 ```
 
@@ -219,7 +217,7 @@ const [missingSlotNames, setMissingSlotNames] = useState<string[]>([]);
 **Verification:**
 
 - Existing composer still renders normally with flag off.
-- With flag on and prompt `A [Subject] in [Style] style`, Variables button appears.
+- With flag on and prompt `A {{Subject}} in {{Style}} style`, Variables button appears.
 
 ---
 
@@ -250,7 +248,7 @@ Before current `createJob` submits:
 
 ```json
 {
-  "prompt_template": "A [Subject] in [Style] style",
+  "prompt_template": "A {{Subject}} in {{Style}} style",
   "prompt_variables": {
     "Subject": "cat astronaut",
     "Style": "watercolor"
@@ -295,7 +293,7 @@ Before current `createJob` submits:
 - Create a template job.
 - Open history.
 - Use as draft.
-- Confirm composer prompt returns to template form, e.g. `A [Subject] in [Style] style`.
+- Confirm composer prompt returns to template form, e.g. `A {{Subject}} in {{Style}} style`.
 - Confirm variables sheet is prefilled.
 
 ---
@@ -312,7 +310,7 @@ Before current `createJob` submits:
 **Behavior:**
 
 - `buildInitialMetadata()` should continue defaulting item prompt to the resolved prompt (`job.edited_prompt_text || job.prompt_text`).
-- Do not write unresolved `[Subject]` placeholders as the default saved prompt unless the user manually changes it.
+- Do not write unresolved `{{Subject}}` placeholders as the default saved prompt unless the user manually changes it.
 - Keep `source_generation_job_id` / existing job provenance unchanged.
 - Confirm job parameters retain template metadata for audit/debug.
 
@@ -346,17 +344,17 @@ unless Edward explicitly decides to publicize the feature later.
 
 ## Suggested test/QA checklist
 
-Manual QA with `camelot.percival=false` or omitted:
+Manual QA with `camelot.percival=false`:
 
 - [ ] Composer looks and behaves exactly like current production.
-- [ ] Prompt containing `[Subject]` is sent literally as before, because feature is off.
+- [ ] Prompt containing `{{Subject}}` is sent literally as before, because feature is off.
 
-Manual QA with `camelot.percival=true`:
+Manual QA with default config / `camelot.percival=true`:
 
-- [ ] Prompt `A [Subject] in [Style] style` shows Variables button with count 2.
+- [ ] Prompt `A {{Subject}} in {{Style}} style` shows Variables button with count 2.
 - [ ] Generate with empty values opens variables sheet and blocks job creation.
 - [ ] Filling values and generating creates a job with resolved prompt.
-- [ ] Chinese placeholders like `[主體]` and `[風格]` work.
+- [ ] Chinese placeholders like `{{主體}}` and `[風格]` work.
 - [ ] Escaped brackets like `\[SALE\]` remain literal and are not shown as variables.
 - [ ] History `Use as draft` restores template + values.
 - [ ] Retry preserves template metadata.
