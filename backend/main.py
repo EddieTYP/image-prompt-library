@@ -2,7 +2,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from .config import APP_VERSION, resolve_library_path
+from .config import APP_VERSION, resolve_hidden_features, resolve_library_path
 from .db import get_db_path, init_db
 from .routers import app_updates, clusters, generation_jobs, generation_providers, images, import_drafts, items, tags
 
@@ -40,7 +40,7 @@ def create_app(library_path: Path | str | None = None, frontend_dist_path: Path 
     @app.get("/api/health")
     def health(): return {"ok": True, "version": APP_VERSION}
     @app.get("/api/config")
-    def config(): return {"version": APP_VERSION, "library_path": str(library), "database_path": str(get_db_path(library)), "preferred_prompt_language": "zh_hant"}
+    def config(): return {"version": APP_VERSION, "library_path": str(library), "database_path": str(get_db_path(library)), "preferred_prompt_language": "zh_hant", "features": resolve_hidden_features()}
     @app.api_route("/api/{api_path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
     def unknown_api(api_path: str):
         raise HTTPException(status_code=404)

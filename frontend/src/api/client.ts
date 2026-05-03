@@ -70,7 +70,7 @@ export const mediaUrl = (path?: string) => {
 
 export const api = isDemoMode ? {
   health: () => Promise.resolve({ ok: true, version: 'demo' }),
-  config: () => Promise.resolve<AppConfig>({ version: 'demo', library_path: 'GitHub Pages read-only sandbox', database_path: 'Static JSON bundle', preferred_prompt_language: 'en' }),
+  config: () => Promise.resolve<AppConfig>({ version: 'demo', library_path: 'GitHub Pages read-only sandbox', database_path: 'Static JSON bundle', preferred_prompt_language: 'en', features: { camelot: { percival: false } } }),
   updateStatus: () => Promise.resolve<AppUpdateStatus>({ current_version: 'demo', latest_version: null, update_available: false, checked_at: new Date().toISOString(), service_mode: 'not_applicable', active_generation_jobs: { running: 0, queued: 0 }, can_restart: false, requires_manual_restart: true }),
   startAppUpdate: (_payload: AppUpdateRequest) => demoReadOnly(),
   items: demoItemList,
