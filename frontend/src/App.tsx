@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Plus, XCircle } from 'lucide-react';
+import { Check, Plus, Trash2, XCircle } from 'lucide-react';
 import { api, isDemoMode } from './api/client';
 import TopBar from './components/TopBar';
 import FiltersPanel from './components/FiltersPanel';
@@ -103,6 +103,8 @@ export default function App() {
   const [focusedGenerationJobId, setFocusedGenerationJobId] = useState<string>();
   const [pendingGenerationSourceItemId, setPendingGenerationSourceItemId] = useState<string>();
   const [generationAvailable, setGenerationAvailable] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(() => new Set());
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>();
   const [restartRequiredVersion, setRestartRequiredVersion] = useState<string>();
   const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
@@ -158,7 +160,9 @@ export default function App() {
     setClusterId(undefined);
   };
   const saved = () => { refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
-  const deleted = () => { setDetailId(undefined); setEditing(undefined); refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
+  const clearSelection = () => setSelectedItemIds(new Set());
+  const exitSelectionMode = () => { setSelectionMode(false); clearSelection(); };
+  const deleted = () => { setDetailId(undefined); setEditing(undefined); exitSelectionMode(); refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
   const updatePreferredLanguage = (language: PromptCopyLanguage) => {
     setPreferredLanguage(language);
     window.localStorage.setItem(PROMPT_LANGUAGE_STORAGE_KEY, language);
@@ -208,6 +212,33 @@ export default function App() {
     setStandaloneGenerationOpen(true);
   };
   const favorite = (id: string) => { api.favorite(id).then(saved).catch(() => undefined); };
+  const toggleSelectedItem = (id: string) => {
+    setSelectedItemIds(current => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  const deleteDetail = async (item: ItemDetail) => {
+    if (!confirm(t('deleteReferenceConfirm'))) return;
+    try {
+      await api.deleteItem(item.id);
+      deleted();
+    } catch {
+      setToast({ title: t('saveFailed'), tone: 'error' });
+    }
+  };
+  const deleteSelectedItems = async () => {
+    if (!selectedItemIds.size) return;
+    if (!confirm(t('deleteSelectedReferencesConfirm').replace('${selectedItemIds.size}', String(selectedItemIds.size)))) return;
+    try {
+      await Promise.all(Array.from(selectedItemIds).map(id => api.deleteItem(id)));
+      deleted();
+    } catch {
+      setToast({ title: t('saveFailed'), tone: 'error' });
+    }
+  };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   const focusedItemGenerationJobId = pendingGenerationSourceItemId ? focusedGenerationJobId : undefined;
   const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
@@ -246,8 +277,15 @@ export default function App() {
       {error && <div className="error">{error}</div>}
       {view === 'explore'
         ? <ExploreView t={t} clusters={localizedClusters} items={localizedData.items} focusedClusterId={exploreFocusedClusterId} fitRequestKey={exploreFitRequestKey} unfilterTransitionPhase={exploreUnfilterFadePhase} globalThumbnailBudget={globalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusCluster={focusCluster} onOpen={setDetailId} onAdd={isDemoMode ? undefined : openNewItemEditor} />
-        : <CardsView t={t} items={localizedData.items} onOpen={setDetailId} onFavorite={isDemoMode ? undefined : favorite} onEdit={isDemoMode ? undefined : editSummary} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} />}
+        : <CardsView t={t} items={localizedData.items} onOpen={setDetailId} onFavorite={isDemoMode ? undefined : favorite} onEdit={isDemoMode ? undefined : editSummary} onToggleSelection={selectionMode ? toggleSelectedItem : undefined} selectedIds={selectedItemIds} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} />}
     </main>
+    {selectionMode && !isDemoMode && (
+      <div className="selection-toolbar" role="toolbar" aria-label={t('selectReferences')}>
+        <button type="button" className="selection-toolbar-button" onClick={exitSelectionMode}>{t('cancel')}</button>
+        <span className="selection-toolbar-count">{selectedItemIds.size} {t('selectedReferences')}</span>
+        <button type="button" className="selection-toolbar-delete" onClick={deleteSelectedItems} disabled={!selectedItemIds.size}><Trash2 size={16} /> {t('deleteSelectedReferences')}</button>
+      </div>
+    )}
     {showSelectedCollectionDock && localizedSelectedCluster && (
       <button className="selected-collection-dock" onClick={clearCluster} aria-label={`${t('collectionChip')}: ${localizedSelectedCluster.name}. ${t('close')}`}>
         <span className="selected-collection-dot" aria-hidden="true" />
@@ -257,14 +295,15 @@ export default function App() {
       </button>
     )}
     {/* Static-test compatibility marker: !isDemoMode && <button className="fab" */}
-    {!isDemoMode && (
+    {!isDemoMode && !selectionMode && (
       <div className="floating-action-rail">
+        {view === 'cards' && localizedData.items.length > 0 && <button className="fab select-fab" onClick={() => { setSelectionMode(true); clearSelection(); }}>{t('selectReferences')}</button>}
         <button className="fab add-fab" onClick={openNewItemEditor}><Plus/> {t('add')}</button>
         {generationAvailable && <button className="fab generate-fab" onClick={openStandaloneGeneration}>Generate</button>}
       </div>
     )}
     {!isDemoMode && <GenerationQueueDrawer t={t} open={generationQueueOpen} onOpen={() => setGenerationQueueOpen(true)} onClose={() => setGenerationQueueOpen(false)} onOpenJob={openGenerationJob} />}
-    <ItemDetailModal t={t} id={detailId} uiLanguage={uiLanguage} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onOpenItem={setDetailId} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} canGenerate={generationAvailable} initialGenerationJobId={focusedItemGenerationJobId} />
+    <ItemDetailModal t={t} id={detailId} uiLanguage={uiLanguage} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onDelete={isDemoMode ? undefined : deleteDetail} onOpenItem={setDetailId} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} canGenerate={generationAvailable} initialGenerationJobId={focusedItemGenerationJobId} />
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
     {editorOpen && <ItemEditorModal t={t} item={editing} clusters={localizedClusters} tags={tags} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} />}
     {standaloneGenerationOpen && <GenerationPanel t={t} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} initialJobId={focusedGenerationJobId} onClose={() => setStandaloneGenerationOpen(false)} onAccepted={(item, message) => { saved(); setToast({ title: message || 'New variant item created', tone: 'success' }); if (item?.id) setDetailId(item.id); }} />}

@@ -8,6 +8,8 @@ export default function CardsView({
   onOpen,
   onFavorite,
   onEdit,
+  onToggleSelection,
+  selectedIds,
   onCopyPrompt,
   onAdd,
 }: {
@@ -16,10 +18,12 @@ export default function CardsView({
   onOpen: (id: string) => void;
   onFavorite?: (id: string) => void;
   onEdit?: (item: ItemSummary) => void;
+  onToggleSelection?: (id: string) => void;
+  selectedIds?: Set<string>;
   onCopyPrompt: (item: ItemSummary) => void;
   onAdd?: () => void;
 }) {
-  const showActions = Boolean(onFavorite && onEdit);
+  const showActions = Boolean(onFavorite && onEdit) && !onToggleSelection;
   if (!items.length) {
     return (
       <div className="empty">
@@ -35,15 +39,15 @@ export default function CardsView({
   const leftColumnItems = items.filter((_, index) => index % 2 === 0);
   const rightColumnItems = items.filter((_, index) => index % 2 === 1);
   const renderCard = (item: ItemSummary) => (
-    <ItemCard key={item.id} t={t} item={item} onOpen={onOpen} onFavorite={onFavorite} onEdit={onEdit} onCopyPrompt={onCopyPrompt} showActions={showActions} />
+    <ItemCard key={item.id} t={t} item={item} onOpen={onOpen} onFavorite={onFavorite} onEdit={onEdit} onToggleSelection={onToggleSelection} isSelecting={Boolean(onToggleSelection)} isSelected={Boolean(selectedIds?.has(item.id))} onCopyPrompt={onCopyPrompt} showActions={showActions} />
   );
 
   return (
     <>
-      <section className="cards-grid masonry-like desktop-cards-grid">
+      <section className={`cards-grid masonry-like desktop-cards-grid${onToggleSelection ? ' is-selecting' : ''}`}>
         {items.map(renderCard)}
       </section>
-      <section className="mobile-masonry-columns">
+      <section className={`mobile-masonry-columns${onToggleSelection ? ' is-selecting' : ''}`}>
         <div className="mobile-masonry-column">
           {leftColumnItems.map(renderCard)}
         </div>

@@ -1228,15 +1228,56 @@ def test_frontend_prefers_result_image_for_card_and_detail_hero():
     assert "const primaryImage = uniqueImages[0]" not in detail
 
 
-def test_delete_action_archives_item_and_refreshes_visible_data():
+def test_delete_actions_live_in_detail_modal_and_cards_batch_select():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+    cards_view = (ROOT / "frontend" / "src" / "components" / "CardsView.tsx").read_text()
+    card = (ROOT / "frontend" / "src" / "components" / "ItemCard.tsx").read_text()
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+    styles = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
     editor = (ROOT / "frontend" / "src" / "components" / "ItemEditorModal.tsx").read_text()
 
     assert "deleteItem" in api_client
     assert "method: 'DELETE'" in api_client
     assert "onDeleted" in app
     assert "setItemsReloadKey(k => k + 1)" in app
+    assert "const deleteDetail = async (item: ItemDetail)" in app
+    assert "const deleteSelectedItems = async ()" in app
+    assert "selectedItemIds" in app
+    assert "selectionMode" in app
+    assert "api.deleteItem(item.id)" in app
+    assert "Promise.all(Array.from(selectedItemIds).map(id => api.deleteItem(id)))" in app
+    assert "onDelete={isDemoMode ? undefined : deleteDetail}" in app
+    assert "onToggleSelection={selectionMode ? toggleSelectedItem : undefined}" in app
+    assert "onClick={deleteSelectedItems}" in app
+    assert "selectReferences" in app
+    assert "deleteSelectedReferences" in app
+    assert "onDelete?: (item: ItemDetail) => void" in detail
+    assert "detail-delete-button" in detail
+    assert "Trash2" in detail
+    assert "confirm(t('deleteReferenceConfirm'))" in app
+    assert "confirm(t('deleteSelectedReferencesConfirm').replace('${selectedItemIds.size}', String(selectedItemIds.size)))" in app
+    assert "這會刪除 library 記錄；如果本機圖片檔案沒有被其他參考使用，也會一併刪除。" in i18n
+    assert "刪除已選取的 ${selectedItemIds.size} 個參考？" in i18n
+    assert "未被其他參考使用的本機圖片檔案也會一併刪除。" in i18n
+    assert "This deletes the library record. Local image files are also deleted if no other reference uses them." in i18n
+    assert "onDelete?: (item: ItemSummary) => void" not in cards_view
+    assert "onDelete?: (item: ItemSummary) => void" not in card
+    assert "delete-action" not in card
+    assert "onToggleSelection?: (id: string) => void" in cards_view
+    assert "selectedIds?: Set<string>" in cards_view
+    assert "onToggleSelection={onToggleSelection}" in cards_view
+    assert "isSelecting" in card
+    assert "className={`cards-grid masonry-like desktop-cards-grid${onToggleSelection ? ' is-selecting' : ''}`}" in cards_view
+    assert "className={`mobile-masonry-columns${onToggleSelection ? ' is-selecting' : ''}`}" in cards_view
+    assert "isSelected" in card
+    assert "selection-check" in card
+    assert "card-select-action" in card
+    assert ".selection-toolbar" in styles
+    assert ".item-card.is-selecting" in styles
+    assert ".selection-check" in styles
+    assert ".mobile-masonry-columns.is-selecting" in styles
     assert "t('deleteReference')" in editor
     assert "confirm(t('deleteReferenceConfirm'))" in editor
     assert "api.deleteItem(item.id)" in editor
