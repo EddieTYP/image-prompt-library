@@ -291,10 +291,17 @@ def test_built_frontend_can_be_served_by_fastapi(tmp_path):
     app = create_app(tmp_path / "library", frontend_dist_path=dist)
     client = TestClient(app)
 
-    assert client.get("/").status_code == 200
+    root_response = client.get("/")
+    assert root_response.status_code == 200
+    assert root_response.headers["cache-control"] == "no-store, no-cache, must-revalidate, max-age=0"
+    assert root_response.headers["pragma"] == "no-cache"
+    assert root_response.headers["expires"] == "0"
     asset_response = client.get("/assets/app.js")
     assert asset_response.status_code == 200
     assert "console.log" in asset_response.text
-    assert client.get("/some/spa/route").status_code == 200
+    assert asset_response.headers["cache-control"] == "public, max-age=31536000, immutable"
+    spa_response = client.get("/some/spa/route")
+    assert spa_response.status_code == 200
+    assert spa_response.headers["cache-control"] == "no-store, no-cache, must-revalidate, max-age=0"
     assert client.get("/api/not-a-real-route").status_code == 404
     assert client.get("/media/db.sqlite").status_code == 404

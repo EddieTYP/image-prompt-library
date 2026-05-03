@@ -8,6 +8,18 @@ from .routers import app_updates, clusters, generation_jobs, generation_provider
 
 DEFAULT_FRONTEND_DIST_PATH = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 
+FRONTEND_INDEX_CACHE_HEADERS = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+FRONTEND_ASSET_CACHE_HEADERS = {"Cache-Control": "public, max-age=31536000, immutable"}
+
+
+def frontend_file_response(path: Path, *, is_index: bool) -> FileResponse:
+    headers = FRONTEND_INDEX_CACHE_HEADERS if is_index else FRONTEND_ASSET_CACHE_HEADERS
+    return FileResponse(path, headers=headers)
+
 
 def create_app(library_path: Path | str | None = None, frontend_dist_path: Path | str | None = None) -> FastAPI:
     library = resolve_library_path(library_path)
@@ -60,8 +72,8 @@ def create_app(library_path: Path | str | None = None, frontend_dist_path: Path 
         except ValueError as exc:
             raise HTTPException(status_code=404) from exc
         if candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(index)
+            return frontend_file_response(candidate, is_index=candidate == index.resolve())
+        return frontend_file_response(index, is_index=True)
 
     @app.get("/")
     def frontend_root():
