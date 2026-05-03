@@ -53,7 +53,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     collectionFilters: 'Collection 篩選', itemActions: '項目操作', promptLanguage: 'Prompt 語言', promptText: 'Prompt 文字', source: '來源', defaultModel: 'ChatGPT Image', localReference: '本機參考',
     imageGeneratedFrom: 'Image generated from', author: '作者', sourceUrl: '來源 URL', notes: '備註', addNote: '新增備註', origin: '原文', markAsOriginal: '標記為原文', originalPromptHelp: '原文 prompt 通常最接近 sample image 的生成結果。',
     constellationGraph: 'Prompt clusters 縮圖星座圖', constellationControls: '星座圖控制', zoomOut: '縮小', zoomIn: '放大', resetView: '重設', focusThumbnailsVisible: '張焦點縮圖', thumbnailsVisible: '張縮圖顯示中', visible: '顯示中', references: '個參考', more: '更多',
-    onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: '新增／編輯／生成需要本機安裝，請在本機運行以建立你的私人 prompt library。', localV06SupportsMobileGeneration: '最新 v0.6 beta 改善生成流程並支援附件改圖', viewOnGitHub: '在 GitHub 查看',
+    onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: '新增／編輯／生成需要本機安裝，請在本機運行以建立你的私人 prompt library。', localV06SupportsMobileGeneration: '最新 v0.7 beta 加入 prompt variables 和 Template 標示', viewOnGitHub: '在 GitHub 查看',
     chooseLanguage: '選擇介面語言', chooseLanguageHelp: '請選擇你想使用的介面語言。', changeLanguageLater: '之後可在設定中更改。',
   },
   zh_hans: {

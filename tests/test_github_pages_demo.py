@@ -39,7 +39,7 @@ def test_github_pages_demo_is_read_only_and_discloses_local_generation_boundary(
     assert "Online Read Only Demo" in i18n
     assert "Demo 圖片已壓縮。" not in app
     assert "新增／編輯／生成需要本機安裝，請在本機運行以建立你的私人 prompt library。" in i18n
-    assert "最新 v0.6 beta 改善生成流程並支援附件改圖" in i18n
+    assert "最新 v0.7 beta 加入 prompt variables 和 Template 標示" in i18n
     assert "showActions" in cards
     assert "showMutations" in detail
     assert "!isDemoMode && <button className=\"fab\"" in app
@@ -57,7 +57,7 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert "actions/deploy-pages" in text
     assert "fetch-depth: 0" in text
     assert "LEGACY_DEMO_REF: v0.1.0-alpha" in text
-    assert "CURRENT_PREVIEW_PATH: v0.6" in text
+    assert "CURRENT_PREVIEW_PATH: v0.7" in text
     assert "ARCHIVED_03_DEMO_REF: v0.3.0-alpha" in text
     assert "ARCHIVED_03_DEMO_PATH: v0.3" in text
     assert "ARCHIVED_02_DEMO_REF: v0.2.0-alpha" in text
@@ -75,12 +75,14 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert "Online Read Only Demo" in text
     assert "Demo images are compressed." not in text
     assert "Add/edit/generation require local install; run locally to create your private prompt library." in text
-    assert "Latest v0.6 beta improves generation workflow and supports image edits with attachments" in text
+    assert "Latest v0.7 beta adds prompt variables and Template indicators" in text
     assert "local-generation-studio-banner.webp" in text
     assert "hero-banner" in text
-    assert "View the v0.6 beta Generation Workflow & Mobile Polish release" in text
+    assert "View the v0.7 beta Percival release" in text
     assert "cp docs/assets/screenshots/local-generation-studio-banner.webp" in text
     assert "View on GitHub" in text
+    assert "./v0.7/" in text
+    assert "Current demo · v0.7" in text
     assert "Inject v0.4 upgrade notice into archived v0.3 preview" in text
     assert "This v0.3 preview is archived." in text
     assert "Go to the latest v0.4 demo" in text
@@ -98,11 +100,13 @@ def test_package_exposes_versioned_demo_build_scripts():
     assert '"build:demo:v0.3"' in package_json
     assert '"build:demo:v0.4"' in package_json
     assert '"build:demo:v0.6"' in package_json
+    assert '"build:demo:v0.7"' in package_json
     assert "VITE_BASE_PATH=/image-prompt-library/v0.1/" in package_json
     assert "VITE_BASE_PATH=/image-prompt-library/v0.2/" in package_json
     assert "VITE_BASE_PATH=/image-prompt-library/v0.3/" in package_json
     assert "VITE_BASE_PATH=/image-prompt-library/v0.4/" in package_json
     assert "VITE_BASE_PATH=/image-prompt-library/v0.6/" in package_json
+    assert "VITE_BASE_PATH=/image-prompt-library/v0.7/" in package_json
 
 
 def test_demo_export_script_outputs_compact_static_assets():
