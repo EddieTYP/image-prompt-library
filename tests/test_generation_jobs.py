@@ -272,6 +272,49 @@ def test_generation_job_discard_does_not_attach_result(tmp_path):
     assert c.post(f"/api/generation-jobs/{job['id']}/accept").status_code == 409
 
 
+def test_generation_job_discard_deletes_transient_result_file_and_hides_path(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "prompt_text": "A cinematic moonlit robot",
+    }).json()
+    result = c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("blue"), "image/png")},
+    ).json()
+    result_file = tmp_path / "library" / result["result_path"]
+    assert result_file.is_file()
+
+    discarded = c.post(f"/api/generation-jobs/{job['id']}/discard")
+
+    assert discarded.status_code == 200
+    payload = discarded.json()
+    assert payload["status"] == "discarded"
+    assert payload["result_path"] is None
+    assert not result_file.exists()
+
+
+def test_generation_job_discard_rejects_accepted_or_unsafe_result_paths(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    saved = c.post("/api/generation-jobs", json={"source_item_id": source_item["id"], "prompt_text": "saved"}).json()
+    c.post(f"/api/generation-jobs/{saved['id']}/result", files={"file": ("generated.png", png_bytes("red"), "image/png")})
+    c.post(f"/api/generation-jobs/{saved['id']}/accept")
+    assert c.post(f"/api/generation-jobs/{saved['id']}/discard").status_code == 409
+
+    unsafe = c.post("/api/generation-jobs", json={"source_item_id": source_item["id"], "prompt_text": "unsafe"}).json()
+    c.post(f"/api/generation-jobs/{unsafe['id']}/result", files={"file": ("generated.png", png_bytes("yellow"), "image/png")})
+    with connect(tmp_path / "library") as conn:
+        conn.execute("UPDATE generation_jobs SET result_path=? WHERE id=?", ("originals/not-transient.png", unsafe["id"]))
+        conn.commit()
+
+    response = c.post(f"/api/generation-jobs/{unsafe['id']}/discard")
+
+    assert response.status_code == 409
+    assert "transient" in response.json()["detail"].lower() or "safe" in response.json()["detail"].lower()
+
+
 def test_generation_job_can_discard_unsaved_result_and_retry_same_settings(tmp_path, monkeypatch):
     c = client(tmp_path)
     source_item = create_source_item(c)

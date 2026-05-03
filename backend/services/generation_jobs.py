@@ -5,6 +5,7 @@ import base64
 import binascii
 import json
 from pathlib import Path
+from contextlib import suppress
 
 from PIL import Image
 
@@ -346,17 +347,68 @@ class GenerationJobRepository:
         self._store_input_reference_images(job, new_item.id)
         return GenerationJobAcceptResult(job=self._mark_accepted(job_id, image.id), item=self.items.get_item(new_item.id))
 
+    def _result_path_is_discardable(self, job: GenerationJobRecord) -> bool:
+        if job.status != "succeeded" or not job.result_path or job.accepted_image_id:
+            return False
+        result_rel = Path(job.result_path)
+        return (
+            not result_rel.is_absolute()
+            and ".." not in result_rel.parts
+            and len(result_rel.parts) >= 3
+            and result_rel.parts[0] == "generation-results"
+            and result_rel.parts[1] == job.id
+        )
+
+    def _result_path_has_library_references(self, job: GenerationJobRecord) -> bool:
+        if not job.result_path:
+            return False
+        with connect(self.library_path) as conn:
+            image_ref = conn.execute(
+                """SELECT 1 FROM images
+                   WHERE original_path=? OR thumb_path=? OR preview_path=?
+                   LIMIT 1""",
+                (job.result_path, job.result_path, job.result_path),
+            ).fetchone()
+            if image_ref is not None:
+                return True
+            input_ref = conn.execute(
+                """SELECT 1 FROM generation_jobs
+                   WHERE id<>? AND parameters LIKE ?
+                   LIMIT 1""",
+                (job.id, f"%{job.result_path}%"),
+            ).fetchone()
+            return input_ref is not None
+
     def discard_job(self, job_id: str) -> GenerationJobRecord:
         job = self.get_job(job_id)
-        if job.status == "accepted":
+        if job.status == "accepted" or job.accepted_image_id:
             raise GenerationJobConflict("Accepted generation jobs cannot be discarded")
+        if not self._result_path_is_discardable(job):
+            raise GenerationJobConflict("Only transient generation results in a safe path can be discarded")
+        if self._result_path_has_library_references(job):
+            raise GenerationJobConflict("Generation result is referenced by library data and cannot be discarded")
+        result_abs = (self.library_path / (job.result_path or "")).resolve()
         timestamp = now()
+        metadata = dict(job.metadata or {})
+        metadata["discarded_result_path"] = job.result_path
         with connect(self.library_path) as conn:
-            conn.execute(
-                "UPDATE generation_jobs SET status='discarded', discarded_at=?, updated_at=? WHERE id=?",
-                (timestamp, timestamp, job_id),
+            cursor = conn.execute(
+                """
+                UPDATE generation_jobs
+                SET status='discarded', result_path=NULL, result_width=NULL, result_height=NULL, result_sha256=NULL,
+                    metadata=?, discarded_at=?, updated_at=?
+                WHERE id=? AND status='succeeded' AND accepted_image_id IS NULL
+                """,
+                (_to_json(metadata), timestamp, timestamp, job_id),
             )
             conn.commit()
+        if cursor.rowcount != 1:
+            current = self.get_job(job_id)
+            raise GenerationJobConflict(f"Only transient succeeded generation results can be discarded; current status is {current.status}")
+        with suppress(OSError):
+            result_abs.unlink()
+        with suppress(OSError):
+            result_abs.parent.rmdir()
         return self.get_job(job_id)
 
     def discard_and_retry_job(self, job_id: str) -> GenerationJobRetryResult:

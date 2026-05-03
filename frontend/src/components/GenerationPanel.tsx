@@ -178,7 +178,7 @@ export default function GenerationPanel({
 
   const activeJob = useMemo(() => jobs.find(job => job.id === activeJobId), [jobs, activeJobId]);
   const historyReviewJob = useMemo(() => jobs.find(job => job.id === historyReviewJobId), [jobs, historyReviewJobId]);
-  const selectedStageJob = historyReviewJob || activeJob;
+  const selectedStageJob = (historyReviewJob || activeJob)?.status !== 'discarded' ? (historyReviewJob || activeJob) : undefined;
   const visibleJobs = useMemo(() => jobs.filter(job => job.status !== 'discarded'), [jobs]);
   const selectedProvider = useMemo(() => providers.find(candidate => candidate.provider === provider), [providers, provider]);
   const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.4'];
@@ -192,7 +192,8 @@ export default function GenerationPanel({
   const templateVariableKeySignature = useMemo(() => templateVariables.map(variable => variable.key).join('\u0000'), [templateVariables]);
   const canAttachToSourceItem = (job?: GenerationJobRecord) => Boolean(item && job?.source_item_id === item.id && !promptChangedFromSource);
   const isHistoryReview = Boolean(historyReviewJob);
-  const canUseResultActions = (job?: GenerationJobRecord) => Boolean(job && job.status === 'succeeded' && !job.accepted_image_id);
+  const canUseResultActions = (job?: GenerationJobRecord) => Boolean(job && job.status === 'succeeded' && !job.accepted_image_id && job.result_path);
+  const canDiscardTransientResult = (job?: GenerationJobRecord) => canUseResultActions(job) && Boolean(job?.result_path?.startsWith(`generation-results/${job.id}/`));
   const filteredMetadataTags = useMemo(() => {
     const selected = new Set(metadataTagsText.split(',').map(tag => tag.trim()).filter(Boolean));
     const query = metadataTagQuery.trim().toLowerCase();
@@ -216,8 +217,6 @@ export default function GenerationPanel({
       setActiveJobId(focusedJob.id);
       setFocusedJobHighlightId(focusedJob.id);
       if (!historyReviewJobId) setHistoryReviewJobId(focusedJob.id);
-    } else if (!options.preserveActive && !activeJobId && nextJobs[0]) {
-      setActiveJobId(nextJobs[0].id);
     }
     return nextJobs;
   };
@@ -609,9 +608,11 @@ export default function GenerationPanel({
       <button className="stage-action" onClick={() => discardAndRetryJob(job)} disabled={busy} aria-label="Retry" title="Retry">
         <RotateCcw size={16} aria-hidden="true" />
       </button>
-      <button className="stage-action danger" onClick={() => discardJob(job)} disabled={busy} aria-label="Discard" title="Discard">
-        <Trash2 size={16} aria-hidden="true" />
-      </button>
+      {canDiscardTransientResult(job) && (
+        <button className="stage-action danger" onClick={() => discardJob(job)} disabled={busy} aria-label="Discard" title="Discard">
+          <Trash2 size={16} aria-hidden="true" />
+        </button>
+      )}
     </div>
   );
 

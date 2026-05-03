@@ -33,6 +33,7 @@ export default function ItemCard({
   const imageAspectRatio = primaryImage?.width && primaryImage?.height
     ? `${primaryImage.width} / ${primaryImage.height}`
     : undefined;
+  const hasTemplateTag = item.tags.some(tag => tag.name === 'template');
   const copyPrompt = (event: MouseEvent) => {
     event.stopPropagation();
     onCopyPrompt(item);
@@ -67,6 +68,7 @@ export default function ItemCard({
       <div className="card-body">
         <h3>{item.title}</h3>
       </div>
+      {hasTemplateTag && <span className="card-template-badge" aria-label="Template prompt">Template</span>}
       {isSelecting && (
         <button className="card-select-action" type="button" onClick={toggleSelection} aria-label={isSelected ? 'Deselect reference' : 'Select reference'} aria-pressed={isSelected}>
           <span className="selection-check">{isSelected && <Check size={15} />}</span>

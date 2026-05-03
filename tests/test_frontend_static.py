@@ -416,6 +416,8 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "setFocusedJobHighlightId" in panel
     assert "window.setInterval(() => refreshJobs({ preserveActive: true }).catch(() => undefined), 2500)" in panel
     assert "['queued', 'running'].includes(job.status)" in panel
+    assert "else if (!options.preserveActive && !activeJobId && nextJobs[0])" not in panel
+    assert "setActiveJobId(nextJobs[0].id)" not in panel
     assert "stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })" in panel
     assert "Save generated image as new item" in panel
     assert "Review metadata" in panel
@@ -607,6 +609,10 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "aspect-ratio:16/10" not in compact_css[compact_css.find(".generation-history-media"):compact_css.find(".generation-history-status-grid")]
     assert ".generation-history-mediaimg{display:block;width:100%;height:auto;object-fit:contain" in compact_css
     assert ".generation-history-status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));" in compact_css
+    assert "canDiscardTransientResult" in panel
+    assert "(historyReviewJob || activeJob)?.status !== 'discarded'" in panel
+    assert "{canDiscardTransientResult(job) && (" in panel
+
     assert ".generation-history-cell{display:grid;gap:3px;min-width:0;background:transparent" in compact_css
     assert "-webkit-line-clamp:2" not in final_generation_css
     assert ".save-new-metadata-panel" in compact_css
@@ -662,6 +668,20 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert ".orbit-node.lod-dot" not in css
 
 
+def test_template_cards_have_noninteractive_overlay_badge():
+    card = (ROOT / "frontend" / "src" / "components" / "ItemCard.tsx").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    compact_css = css.replace(" ", "")
+
+    assert "item.tags.some(tag => tag.name === 'template')" in card
+    assert "card-template-badge" in card
+    assert ">Template<" in card
+    badge_start = compact_css.find(".card-template-badge")
+    badge_css = compact_css[badge_start:badge_start + 320]
+    assert "pointer-events:none" in badge_css
+    assert ".item-card.is-selecting.card-template-badge" in compact_css or ".item-card.is-selecting.card-template-badge" in compact_css
+
+
 def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     queue_path = ROOT / "frontend" / "src" / "components" / "GenerationQueueDrawer.tsx"
@@ -692,7 +712,10 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "setStandaloneGenerationOpen(true)" in app
     assert "setDetailId(job.source_item_id)" in app
     assert "onOpenJob" in queue
-    assert "onClick={() => onOpenJob(job)}" in queue
+    assert "canOpenJob(job)" in queue
+    assert "onClick={() => canOpenJob(job) && onOpenJob(job)}" in queue
+    assert "disabled={!canOpenJob(job)}" in queue
+    assert "job.status !== 'discarded'" in queue
     assert "disabled={!job.source_item_id}" not in queue
     assert "Generation work queue" in queue
     assert "generation-queue-trigger" in queue

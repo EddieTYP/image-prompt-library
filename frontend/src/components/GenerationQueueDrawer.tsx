@@ -26,6 +26,10 @@ function statusLabel(job: GenerationJobRecord) {
   return job.status;
 }
 
+function canOpenJob(job: GenerationJobRecord) {
+  return job.status !== 'discarded';
+}
+
 export default function GenerationQueueDrawer({
   t,
   open,
@@ -101,7 +105,8 @@ export default function GenerationQueueDrawer({
                   type="button"
                   key={job.id}
                   className={`generation-queue-row status-${job.status}`}
-                  onClick={() => onOpenJob(job)}
+                  onClick={() => canOpenJob(job) && onOpenJob(job)}
+                  disabled={!canOpenJob(job)}
                 >
                   {statusIcon(job)}
                   <span>{job.edited_prompt_text || job.prompt_text}</span>
