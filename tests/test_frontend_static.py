@@ -1235,6 +1235,7 @@ def test_delete_actions_live_in_detail_modal_and_cards_batch_select():
     card = (ROOT / "frontend" / "src" / "components" / "ItemCard.tsx").read_text()
     detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
     styles = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
     editor = (ROOT / "frontend" / "src" / "components" / "ItemEditorModal.tsx").read_text()
 
     assert "deleteItem" in api_client
@@ -1256,7 +1257,11 @@ def test_delete_actions_live_in_detail_modal_and_cards_batch_select():
     assert "detail-delete-button" in detail
     assert "Trash2" in detail
     assert "confirm(t('deleteReferenceConfirm'))" in app
-    assert "confirm(t('deleteSelectedReferencesConfirm'))" in app
+    assert "confirm(t('deleteSelectedReferencesConfirm').replace('${selectedItemIds.size}', String(selectedItemIds.size)))" in app
+    assert "這會刪除 library 記錄；如果本機圖片檔案沒有被其他參考使用，也會一併刪除。" in i18n
+    assert "刪除已選取的 ${selectedItemIds.size} 個參考？" in i18n
+    assert "未被其他參考使用的本機圖片檔案也會一併刪除。" in i18n
+    assert "This deletes the library record. Local image files are also deleted if no other reference uses them." in i18n
     assert "onDelete?: (item: ItemSummary) => void" not in cards_view
     assert "onDelete?: (item: ItemSummary) => void" not in card
     assert "delete-action" not in card
@@ -1264,12 +1269,15 @@ def test_delete_actions_live_in_detail_modal_and_cards_batch_select():
     assert "selectedIds?: Set<string>" in cards_view
     assert "onToggleSelection={onToggleSelection}" in cards_view
     assert "isSelecting" in card
+    assert "className={`cards-grid masonry-like desktop-cards-grid${onToggleSelection ? ' is-selecting' : ''}`}" in cards_view
+    assert "className={`mobile-masonry-columns${onToggleSelection ? ' is-selecting' : ''}`}" in cards_view
     assert "isSelected" in card
     assert "selection-check" in card
     assert "card-select-action" in card
     assert ".selection-toolbar" in styles
     assert ".item-card.is-selecting" in styles
     assert ".selection-check" in styles
+    assert ".mobile-masonry-columns.is-selecting" in styles
     assert "t('deleteReference')" in editor
     assert "confirm(t('deleteReferenceConfirm'))" in editor
     assert "api.deleteItem(item.id)" in editor

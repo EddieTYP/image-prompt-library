@@ -44,10 +44,10 @@ export default function CardsView({
 
   return (
     <>
-      <section className="cards-grid masonry-like desktop-cards-grid">
+      <section className={`cards-grid masonry-like desktop-cards-grid${onToggleSelection ? ' is-selecting' : ''}`}>
         {items.map(renderCard)}
       </section>
-      <section className="mobile-masonry-columns">
+      <section className={`mobile-masonry-columns${onToggleSelection ? ' is-selecting' : ''}`}>
         <div className="mobile-masonry-column">
           {leftColumnItems.map(renderCard)}
         </div>

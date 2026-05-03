@@ -231,7 +231,7 @@ export default function App() {
   };
   const deleteSelectedItems = async () => {
     if (!selectedItemIds.size) return;
-    if (!confirm(t('deleteSelectedReferencesConfirm'))) return;
+    if (!confirm(t('deleteSelectedReferencesConfirm').replace('${selectedItemIds.size}', String(selectedItemIds.size)))) return;
     try {
       await Promise.all(Array.from(selectedItemIds).map(id => api.deleteItem(id)));
       deleted();
