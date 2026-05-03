@@ -8,6 +8,30 @@ from .db import connect, init_db
 from .schemas import ClusterRecord, ImageRecord, ItemCreate, ItemDetail, ItemList, ItemSummary, ItemUpdate, PromptIn, PromptRecord, TagRecord
 from .services.text_normalize import to_traditional
 
+TEMPLATE_TAG_NAME = "template"
+_PROMPT_TEMPLATE_RE = re.compile(r"{{([^{}]*)}}")
+
+
+def prompt_has_template_variables(text: str) -> bool:
+    for match in _PROMPT_TEMPLATE_RE.finditer(text or ""):
+        if match.start() > 0 and text[match.start() - 1] == "\\":
+            continue
+        previous_open = text.rfind("{{", 0, match.start())
+        previous_close = text.rfind("}}", 0, match.start())
+        if previous_open > previous_close:
+            continue
+        if match.group(1).strip():
+            return True
+    return False
+
+
+def _sync_template_tag_names(tags: list[str], prompts: list[PromptIn]) -> list[str]:
+    clean_tags = [tag.strip() for tag in tags if tag and tag.strip() and tag.strip() != TEMPLATE_TAG_NAME]
+    if any(prompt_has_template_variables(prompt.text) for prompt in prompts):
+        clean_tags.append(TEMPLATE_TAG_NAME)
+    return list(dict.fromkeys(clean_tags))
+
+
 def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -193,9 +217,10 @@ class ItemRepository:
             conn.execute("""INSERT INTO items(id,title,slug,model,media_type,source_name,source_url,author,cluster_id,rating,favorite,archived,notes,created_at,updated_at,imported_at)
                 VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (iid, payload.title, slug, payload.model, payload.media_type, payload.source_name, payload.source_url, payload.author, cluster_id, payload.rating, int(payload.favorite), int(payload.archived), payload.notes, ts, ts, ts if imported else None))
-            for idx, prompt in enumerate(self._normalized_prompts(payload.prompts, strict_original=not imported)):
+            normalized_prompts = self._normalized_prompts(payload.prompts, strict_original=not imported)
+            for idx, prompt in enumerate(normalized_prompts):
                 self._insert_prompt(conn, iid, prompt, prompt.is_primary or idx == 0, ts)
-            for tag in payload.tags:
+            for tag in _sync_template_tag_names(payload.tags, normalized_prompts):
                 if tag.strip():
                     tid = self.ensure_tag(conn, tag)
                     conn.execute("INSERT OR IGNORE INTO item_tags(item_id,tag_id) VALUES(?,?)", (iid, tid))
@@ -219,16 +244,26 @@ class ItemRepository:
                 scalar["updated_at"] = now()
                 sets = ", ".join(f"{k}=?" for k in scalar)
                 conn.execute(f"UPDATE items SET {sets} WHERE id=?", (*scalar.values(), item_id))
+            prompts_for_template_tag = None
+            if "prompts" in data and data["prompts"] is not None:
+                raw_prompts = [PromptIn.model_validate(prompt) if isinstance(prompt, dict) else prompt for prompt in (payload.prompts or [])]
+                prompts_for_template_tag = self._normalized_prompts(raw_prompts, strict_original=True)
+            if prompts_for_template_tag is None:
+                prompts_for_template_tag = self._prompts(conn, item_id)
             if "tags" in data and data["tags"] is not None:
                 conn.execute("DELETE FROM item_tags WHERE item_id=?", (item_id,))
-                for tag in data["tags"]:
+                for tag in _sync_template_tag_names(data["tags"], prompts_for_template_tag):
                     if tag.strip():
                         conn.execute("INSERT OR IGNORE INTO item_tags(item_id,tag_id) VALUES(?,?)", (item_id, self.ensure_tag(conn, tag)))
+            elif "prompts" in data and data["prompts"] is not None:
+                existing_tags = [row["name"] for row in conn.execute("SELECT t.name FROM tags t JOIN item_tags it ON it.tag_id=t.id WHERE it.item_id=?", (item_id,)).fetchall()]
+                conn.execute("DELETE FROM item_tags WHERE item_id=?", (item_id,))
+                for tag in _sync_template_tag_names(existing_tags, prompts_for_template_tag):
+                    conn.execute("INSERT OR IGNORE INTO item_tags(item_id,tag_id) VALUES(?,?)", (item_id, self.ensure_tag(conn, tag)))
             if "prompts" in data and data["prompts"] is not None:
                 conn.execute("DELETE FROM prompts WHERE item_id=?", (item_id,))
                 ts = now()
-                prompts = [PromptIn.model_validate(prompt) if isinstance(prompt, dict) else prompt for prompt in (payload.prompts or [])]
-                for idx, prompt in enumerate(self._normalized_prompts(prompts, strict_original=True)):
+                for idx, prompt in enumerate(prompts_for_template_tag):
                     self._insert_prompt(conn, item_id, prompt, prompt.is_primary or idx == 0, ts)
             self.rebuild_search(conn, item_id)
             if ("cluster_id" in scalar and scalar["cluster_id"] != previous_cluster_id) or scalar.get("archived") == 1:

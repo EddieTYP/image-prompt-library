@@ -53,6 +53,38 @@ def test_api_rejects_explicit_prompt_provenance_without_exactly_one_original(tmp
     assert sum(1 for prompt in created["prompts"] if prompt["is_original"]) == 1
 
 
+def test_template_tag_is_derived_from_prompt_variables_on_create_and_update(tmp_path):
+    c = client(tmp_path)
+    created = c.post("/api/items", json=create_payload(
+        tags=["glass", "template"],
+        prompts=[{"language": "en", "text": "Portrait of {{主體}} in {{ style }}", "is_primary": True}],
+    )).json()
+    assert {tag["name"] for tag in created["tags"]} == {"glass", "template"}
+    assert c.get("/api/items", params={"tag": "template"}).json()["total"] == 1
+
+    removed = c.patch(f"/api/items/{created['id']}", json={
+        "tags": ["glass", "template"],
+        "prompts": [{"language": "en", "text": "Portrait without variables", "is_primary": True, "is_original": True}],
+    }).json()
+    assert {tag["name"] for tag in removed["tags"]} == {"glass"}
+    assert c.get("/api/items", params={"tag": "template"}).json()["total"] == 0
+
+    added = c.patch(f"/api/items/{created['id']}", json={
+        "tags": ["glass"],
+        "prompts": [{"language": "en", "text": r"Literal \{{ignored}} but real {{subject}}", "is_primary": True, "is_original": True}],
+    }).json()
+    assert {tag["name"] for tag in added["tags"]} == {"glass", "template"}
+
+
+def test_template_tag_ignores_escaped_empty_and_nested_placeholders(tmp_path):
+    c = client(tmp_path)
+    created = c.post("/api/items", json=create_payload(
+        tags=["template"],
+        prompts=[{"language": "en", "text": r"Literal \{{ignored}} empty {{   }} nested {{a{{b}}}", "is_primary": True}],
+    )).json()
+    assert {tag["name"] for tag in created["tags"]} == set()
+
+
 def test_create_get_search_and_filter_item(tmp_path):
     c = client(tmp_path)
     created = c.post("/api/items", json=create_payload()).json()
