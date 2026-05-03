@@ -43,7 +43,7 @@ image-prompt-library start
 ## Install a specific release
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.6.5-beta
+curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.6.6-beta
 image-prompt-library start
 ```
 
@@ -109,7 +109,7 @@ image-prompt-library update
 Install or switch to a specific version:
 
 ```bash
-image-prompt-library update --version v0.6.5-beta
+image-prompt-library update --version v0.6.6-beta
 ```
 
 Rollback to the previous installed version:

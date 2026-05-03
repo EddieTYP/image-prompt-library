@@ -119,30 +119,30 @@ def test_release_assets_workflow_builds_and_uploads_tagged_artifacts():
 
 def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developers():
     readme = read("README.md")
+    installation = read("docs/INSTALLATION.md")
 
-    assert "Quick start for normal users" in readme
-    assert "scripts/install.sh" in readme
+    assert "## Quick start" in readme
+    assert "scripts/install.sh" in installation
     assert "image-prompt-library start" in readme
-    assert "image-prompt-library update" in readme
-    assert "image-prompt-library update --version v0.6.5-beta" in readme
-    assert "curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.6.5-beta" in readme
-    assert "image-prompt-library rollback" in readme
+    assert "image-prompt-library update" in installation
+    assert "image-prompt-library update --version v0.6.6-beta" in installation
+    assert "curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version v0.6.6-beta" in installation
+    assert "image-prompt-library rollback" in installation
     assert "image-prompt-library sample-data en" in readme
-    assert "image-prompt-library uninstall" in readme
-    assert "TL;DR" in readme
-    assert "Keep your private library" in readme
-    assert "GitHub Release assets" in readme
-    assert "Developer setup from source" in readme
-    assert "git clone https://github.com/EddieTYP/image-prompt-library.git" in readme
-    assert "Node.js" in readme
-    assert "normal release installs do not require Node.js" in readme
-    assert "~/ImagePromptLibrary" in readme
-    assert "~/.image-prompt-library/app/versions" in readme
-    assert "Add, edit, generation, and private library management are local-only" in readme
-    assert "image-prompt-library start --host 0.0.0.0" in readme
-    assert "Binding to `0.0.0.0` can expose the app" in readme
-    assert "image-prompt-library doctor" in readme
-    assert "image-prompt-library service install --host 127.0.0.1 --port 8000" in readme
+    assert "image-prompt-library uninstall" in installation
+    assert "Normal release installs require" in readme
+    assert "GitHub Release assets" in installation
+    assert "source/development installs" in installation
+    assert "git clone https://github.com/EddieTYP/image-prompt-library.git" in (ROOT / "docs" / "DEVELOPMENT.md").read_text()
+    assert "Node.js" in installation
+    assert "Normal release installs do not require Node.js" in installation
+    assert "~/ImagePromptLibrary" in installation
+    assert "~/.image-prompt-library/app/versions" in installation
+    assert "Add/Edit, private library management, and image generation are local-install features" in readme
+    assert "image-prompt-library start --host 0.0.0.0" in installation
+    assert "Binding to `0.0.0.0` can expose the app" in installation
+    assert "image-prompt-library doctor" in installation
+    assert "image-prompt-library service install --host 127.0.0.1 --port 8000" in installation
     assert "image-prompt-library service install --host 0.0.0.0 --port 7500" not in readme
     assert "Use the next release tag" not in readme
 

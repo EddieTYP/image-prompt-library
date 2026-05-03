@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.5-beta)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.6-beta)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 <p align="center">
@@ -33,7 +33,7 @@ Use the online demo as a visual prompt catalogue: search for ideas, inspect prom
 
 If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate new images through ChatGPT / Codex OAuth while keeping your SQLite database and image files on your own computer.
 
-Current public beta: [`v0.6.5-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.5-beta). This release refreshes the public sample metadata from `gpt_image_2_skill` and `awesome-gpt-image-2`, fixes bilingual prompt variants, adds demo-only localized card titles, and keeps the local generation / installer / update / rollback workflows from the v0.6 beta line.
+Current public beta: [`v0.6.6-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.6.6-beta). This release adds detail-page delete, multi-select batch delete, cleanup for unused local media files, clearer delete confirmations, mobile selection polish, and more reliable macOS service label handling.
 
 ## Quick start
 

@@ -17,17 +17,18 @@ def test_public_docs_do_not_use_edward_specific_setup_paths():
     assert "edward" + "tsoi" not in public_docs.lower()
     assert "Her" + "mes" not in project_status
     assert "tele" + "gram" not in project_status.lower()
-    assert "git clone" in readme
+    assert "scripts/install.sh" in (ROOT / "docs" / "INSTALLATION.md").read_text()
     assert "Quick start" in readme
     assert "Privacy" in readme
-    assert "Backup" in readme
-    assert "Troubleshooting" in readme
-    assert "Windows" in readme
-    assert "WSL" in readme
-    assert "IMAGE_PROMPT_LIBRARY_PATH" in readme
+    assert "Documentation" in readme
+    assert "Troubleshooting" in (ROOT / "docs" / "TROUBLESHOOTING.md").read_text()
+    installation = (ROOT / "docs" / "INSTALLATION.md").read_text()
+    assert "Windows" in installation
+    assert "WSL" in installation
+    assert "IMAGE_PROMPT_LIBRARY_PATH" in (ROOT / "docs" / "DEVELOPMENT.md").read_text()
     assert "AGPL-3.0-or-later" in readme
     assert "Commercial licenses" in readme
-    assert "Sample data and third-party assets are licensed separately" in readme
+    assert "Sample data and third-party assets are licensed separately" in (ROOT / "NOTICE").read_text()
     assert "source-available" not in readme.lower()
     assert "not open-source" not in readme.lower()
     assert "not licensed for redistribution" not in readme.lower()
@@ -47,18 +48,19 @@ def test_public_readme_badges_use_public_status_urls():
 def test_public_import_and_example_data_section_prefers_attributed_demo_source():
     readme = (ROOT / "README.md").read_text()
 
-    assert "Try the sample library" in readme
+    assert "Sample data and attribution" in readme
     assert "wuyoscar/gpt_image_2_skill" in readme
-    assert "optional sample library" in readme
-    assert "scripts/install-sample-data.sh en" in readme
+    assert "optional sample bundles" in readme
+    assert "image-prompt-library sample-data en" in readme
     assert "CC BY 4.0" in readme
-    assert "demo/sample content" in readme
-    assert "your own prompt library data remains private" in readme
+    assert "demo references" in readme
+    assert "your own private prompt/image library" in readme
     removed_source_name = "Open" + "Nana"
     assert "Sample screenshot/demo dataset" not in readme
     assert removed_source_name not in readme
     assert f"{removed_source_name} scrape" not in readme
-    sample_section = readme.split("## Import and example data", 1)[1].split("## Backup", 1)[0]
+    assert "## Sample data and attribution" in readme
+    sample_section = readme.split("## Sample data and attribution", 1)[1].split("## Documentation", 1)[0]
     assert "GitHub Release asset" not in sample_section
     assert "bootstrapping a library" not in sample_section
     assert "local/exported source" not in sample_section
@@ -67,40 +69,40 @@ def test_public_import_and_example_data_section_prefers_attributed_demo_source()
 def test_public_readme_includes_product_story_and_screenshots():
     readme = (ROOT / "README.md").read_text()
 
-    assert "ChatGPT image generation has become good enough" in readme
-    assert "local SQLite, local image files, no accounts, no cloud sync" in readme
+    assert "Image Prompt Library is built for the moment when image-generation prompts become reusable knowledge" in readme
+    assert "local SQLite, local image files" in readme
     assert "Explore view" in readme
     assert "Cards view" in readme
-    assert "one-click prompt copy" in readme
-    assert "Generate New Image from a prompt, or generate a Variant of an existing one with ChatGPT Image 2.0 once you have completed OAuth." in readme
-    assert "v0.6.5-beta" in readme
-    assert "multilingual provenance-aware prompt vault" in readme
+    assert "copy public sample prompts" in readme
+    assert "Generate locally" in readme
+    assert "v0.6.6-beta" in readme
+    assert "multi-select batch delete" in readme
     assert "mobile browsing preview" not in readme
     assert "next-release mobile browsing and management plan" not in readme
-    assert "Mobile-first browsing behavior" in readme
-    assert "stable two-column masonry layout" in readme
-    assert "bottom dock instead of crowding the header" in readme
-    assert "review generated results before saving" in readme
+    assert "mobile selection polish" in readme
+    assert "mobile selection polish" in readme
+    assert "local media files" in readme
+    assert "review generated results in the local inbox" in readme.lower()
     assert "Local Generation Studio" not in readme
     assert "archived 0.3 preview" not in readme
     assert "archived 0.2 preview" not in readme
     assert "archived 0.1 alpha demo" not in readme
-    assert "Online Read Only Demo" in readme
-    assert "ChatGPT OAuth" in readme
-    assert "direct image generation" in readme
-    assert "Latest v0.6.5 beta refreshes existing sample imports, fixes bilingual prompt variants, and keeps demo title localization read-only/demo-only" in readme
+    assert "read-only online demo" in readme.lower()
+    assert "ChatGPT / Codex OAuth" in readme
+    assert "generate images" in readme.lower()
+    assert "Current public beta:" in readme
+    assert "v0.6.6-beta" in readme
     assert "Online sandbox" not in readme
     assert "只读 sample library" not in readme
     assert "唯讀 sample library" not in readme
-    assert "The online demo is read-only" in readme
+    assert "Privacy model" in readme
     assert "install the app locally" in readme
-    assert "Add, edit, generation, and private library management are local-only" in readme
-    assert "Generate images directly in local installs" in readme
-    assert "Generate with ChatGPT OAuth" in readme
-    assert "generate a new image from a fresh prompt or create a variant from an existing reference" in readme
-    assert "Add your own prompts & images" in readme
+    assert "Add/Edit, private library management, and image generation are local-install features" in readme
+    assert "Local installs can optionally connect ChatGPT / Codex OAuth" in readme
+    assert "generate from a new prompt or from an existing saved reference" in readme
+    assert "Manage a private library" in readme
     assert "## Add your own prompts\n" not in readme
-    assert "Save as new item" in readme
+    assert "save as a new item" in readme.lower()
     assert "openai_codex_oauth_native" not in readme
     assert "GenerationJob" not in readme
     assert "IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID" not in readme
@@ -110,22 +112,11 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "## Verification" not in readme
     assert "## Repository layout" not in readme
     assert "For the next version, the default is therefore" not in readme
-    assert "recommended default for this beta line" in readme
+    assert "current public beta" in readme.lower()
 
     screenshots = [
-        "generation-provider-connected.jpeg",
-        "generation-standalone-panel.jpeg",
-        "generation-variant-detail.jpeg",
-        "generation-result-inbox-save-new.jpeg",
-        "card-view-all.png",
-        "mobile-cards-view.jpg",
-        "mobile-filter-drawer.jpg",
-        "mobile-detail-image.jpg",
-        "mobile-detail-prompt.jpg",
-        "explore-view-home.png",
-        "explore-view-filtered.png",
-        "reference-item-detail.png",
-        "add-prompt-modal.png",
+        "public-demo-v0.6-533-references.png",
+        "generation-provider-connected.png",
     ]
     for filename in screenshots:
         relative_path = f"docs/assets/screenshots/{filename}"
@@ -227,8 +218,9 @@ def test_public_python_version_requirement_matches_runtime_syntax():
 
     assert 'requires-python = ">=3.10"' in pyproject
     assert "Python 3.10" in readme
-    assert "python3.12" in readme
-    assert "PYTHON=/path/to/python3.12 ./scripts/setup.sh" in readme
+    assert "Python 3.10" in (ROOT / "docs" / "INSTALLATION.md").read_text()
+    assert "python3.12" in setup_script
+    assert "PYTHON=/path/to/python3.12 ./scripts/setup.sh" in (ROOT / "docs" / "DEVELOPMENT.md").read_text()
     assert "sys.version_info < (3, 10)" in setup_script
     assert "requires Python 3.10" in setup_script
 
