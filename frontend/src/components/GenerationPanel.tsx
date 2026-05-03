@@ -691,7 +691,10 @@ export default function GenerationPanel({
                           <span>{variable.key}</span>
                           <input
                             value={templateValues[variable.key] || ''}
-                            onChange={event => setTemplateValues(current => ({ ...current, [variable.key]: event.currentTarget.value }))}
+                            onChange={event => {
+                              const value = event.currentTarget.value;
+                              setTemplateValues(current => ({ ...current, [variable.key]: value }));
+                            }}
                             placeholder={`Value for ${variable.key}`}
                           />
                         </label>

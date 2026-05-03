@@ -42,6 +42,9 @@ def test_prompt_template_variables_ui_is_feature_flagged_and_submits_resolved_pr
     assert "prompt_template_resolved_text" in panel
     assert "const jobEditedPromptText = resolvedPrompt === sourcePrompt.trim() ? null : resolvedPrompt" in panel
     assert "edited_prompt_text: jobEditedPromptText" in panel
+    assert "const value = event.currentTarget.value" in panel
+    assert "setTemplateValues(current => ({ ...current, [variable.key]: value }))" in panel
+    assert "event.currentTarget.value }))" not in panel
     assert "disabled={busy || !promptText.trim() || hasMissingTemplateValues}" in panel
     assert "promptVariablesEnabled={Boolean(appConfig?.features?.camelot?.percival)}" in app
     assert "promptVariablesEnabled={promptVariablesEnabled}" in detail
