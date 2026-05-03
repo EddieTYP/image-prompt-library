@@ -193,7 +193,7 @@ jobs:
       - name: Write version chooser landing page
         run: |
           mkdir -p .pages-artifact/assets
-          cp docs/assets/screenshots/local-generation-studio-banner-v0.7.webp .pages-artifact/assets/local-generation-studio-banner-v0.7.webp
+          cp docs/assets/screenshots/local-generation-studio-banner-v0.7.png .pages-artifact/assets/local-generation-studio-banner-v0.7.png
           cat > .pages-artifact/index.html <<'HTML'
           <!doctype html>
           <html lang="en">
@@ -346,7 +346,7 @@ jobs:
                   <a href="https://github.com/EddieTYP/image-prompt-library">View on GitHub</a>
                 </p>
                 <a class="hero-banner-link" href="https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.0-beta" aria-label="View the v0.7 beta Percival release">
-                  <img class="hero-banner" src="./assets/local-generation-studio-banner-v0.7.webp" width="1800" height="600" alt="Image Prompt Library v0.7.0-beta Percival banner showing the app Cards view and prompt variable workflow highlights" />
+                  <img class="hero-banner" src="./assets/local-generation-studio-banner-v0.7.png" width="2172" height="724" alt="Image Prompt Library v0.7.0-beta Percival banner showing the app Cards view and prompt variable workflow highlights" />
                 </a>
                 <section class="versions" aria-label="Demo versions">
                   <a class="version-card" href="./v0.7/">
