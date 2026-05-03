@@ -75,7 +75,7 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert "Online Read Only Demo" in text
     assert "Demo images are compressed." not in text
     assert "Add/edit/generation require local install; run locally to create your private prompt library." in text
-    assert "Latest v0.7 beta adds prompt variables and Template indicators" in text
+    assert "Latest v0.7 beta adds prompt variables and bulk delete" in text
     assert "local-generation-studio-banner.webp" in text
     assert "hero-banner" in text
     assert "View the v0.7 beta Percival release" in text

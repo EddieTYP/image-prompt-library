@@ -342,7 +342,7 @@ jobs:
                   Add/edit/generation require local install; run locally to create your private prompt library.
                 </p>
                 <p class="local-banner">
-                  <span>Latest v0.7 beta adds prompt variables and Template indicators. Online demo remains read-only.</span>
+                  <span>Latest v0.7 beta adds prompt variables and bulk delete. Online demo remains read-only.</span>
                   <a href="https://github.com/EddieTYP/image-prompt-library">View on GitHub</a>
                 </p>
                 <a class="hero-banner-link" href="https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.0-beta" aria-label="View the v0.7 beta Percival release">

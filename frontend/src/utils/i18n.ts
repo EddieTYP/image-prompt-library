@@ -95,7 +95,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     collectionFilters: 'Collection filters', itemActions: 'Item actions', promptLanguage: 'Prompt language', promptText: 'Prompt text', source: 'Source', defaultModel: 'ChatGPT Image', localReference: 'Local reference',
     imageGeneratedFrom: 'Image generated from', author: 'Author', sourceUrl: 'Source URL', notes: 'Notes', addNote: 'Add note', origin: 'Origin', markAsOriginal: 'Mark as origin', originalPromptHelp: 'The source/original prompt is usually closest to the sample image result.',
     constellationGraph: 'Prompt clusters thumbnail constellation graph', constellationControls: 'Constellation controls', zoomOut: 'Zoom out', zoomIn: 'Zoom in', resetView: 'Reset', focusThumbnailsVisible: 'focus thumbnails', thumbnailsVisible: 'thumbnails visible', visible: 'visible', references: 'references', more: 'more',
-    onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: 'Add/edit/generation require local install; run locally to create your private prompt library.', localV06SupportsMobileGeneration: 'Latest v0.6 beta improves generation workflow and supports image edits with attachments', viewOnGitHub: 'View on GitHub',
+    onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: 'Add/edit/generation require local install; run locally to create your private prompt library.', localV06SupportsMobileGeneration: 'Latest v0.7 beta adds prompt variables and bulk delete', viewOnGitHub: 'View on GitHub',
     chooseLanguage: 'Choose your language', chooseLanguageHelp: 'Choose the interface language you want to use.', changeLanguageLater: 'You can change this later in Config.',
   },
 };
