@@ -172,6 +172,7 @@ export default function ItemDetailModal({
   onOpenItem,
   showMutations = true,
   canGenerate = false,
+  promptVariablesEnabled = false,
   initialGenerationJobId,
 }: {
   id?: string;
@@ -188,6 +189,7 @@ export default function ItemDetailModal({
   onOpenItem?: (id: string) => void;
   showMutations?: boolean;
   canGenerate?: boolean;
+  promptVariablesEnabled?: boolean;
   initialGenerationJobId?: string;
 }) {
   const [item, setItem] = useState<ItemDetail>();
@@ -570,6 +572,7 @@ export default function ItemDetailModal({
             initialJobId={initialGenerationJobId}
             clusters={clusters}
             tags={tags}
+            promptVariablesEnabled={promptVariablesEnabled}
             onClose={() => setGenerationOpen(false)}
             onAccepted={(acceptedItem, message) => {
               if (acceptedItem?.id && acceptedItem.id !== item.id) {

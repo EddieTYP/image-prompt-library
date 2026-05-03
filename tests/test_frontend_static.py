@@ -26,6 +26,28 @@ def test_topbar_is_toolbar_search_not_hero_or_keyboard_shortcut():
     assert "metaKey" not in app and "ctrlKey" not in app
 
 
+def test_prompt_template_variables_ui_is_feature_flagged_and_submits_resolved_prompt():
+    panel = (ROOT / "frontend" / "src" / "components" / "GenerationPanel.tsx").read_text()
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+    styles = (ROOT / "frontend" / "src" / "styles.css").read_text()
+
+    assert "promptVariablesEnabled" in panel
+    assert "extractPromptTemplateVariableRecords" in panel
+    assert "resolvePromptTemplate" in panel
+    assert "generation-template-variable-fields" in panel
+    assert "generation-template-preview" in panel
+    assert "prompt_template" in panel
+    assert "prompt_template_values" in panel
+    assert "prompt_template_resolved_text" in panel
+    assert "const jobEditedPromptText = resolvedPrompt === sourcePrompt.trim() ? null : resolvedPrompt" in panel
+    assert "edited_prompt_text: jobEditedPromptText" in panel
+    assert "disabled={busy || !promptText.trim() || hasMissingTemplateValues}" in panel
+    assert "promptVariablesEnabled={Boolean(appConfig?.features?.camelot?.percival)}" in app
+    assert "promptVariablesEnabled={promptVariablesEnabled}" in detail
+    assert ".generation-template-variable-fields" in styles
+
+
 def test_mobile_has_real_viewport_meta_for_iphone_breakpoints():
     index = (ROOT / "frontend" / "index.html").read_text()
     assert 'name="viewport"' in index

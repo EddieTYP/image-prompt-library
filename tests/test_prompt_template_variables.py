@@ -72,3 +72,22 @@ def test_extract_prompt_template_variables_ignores_escaped_empty_and_malformed_p
     )
 
     assert json.loads(output) == ["style_name"]
+
+
+def test_resolve_prompt_template_variables_substitutes_values_and_preserves_escaped_literals():
+    script = textwrap.dedent(
+        r"""
+        import { resolvePromptTemplate } from './frontend/src/utils/promptTemplateVariables.ts';
+        const result = resolvePromptTemplate(String.raw`A \{{literal}} of {{ subject }} in {{風格}} and {{missing}}`, { subject: 'red panda', '風格': 'ink wash' });
+        console.log(JSON.stringify(result));
+        """
+    )
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", script],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    assert json.loads(result.stdout) == "A {{literal}} of red panda in ink wash and "

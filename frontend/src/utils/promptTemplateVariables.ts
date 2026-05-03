@@ -37,3 +37,13 @@ export function extractPromptTemplateVariableRecords(prompt: string): PromptTemp
 export function extractPromptTemplateVariables(prompt: string): string[] {
   return extractPromptTemplateVariableRecords(prompt).map(variable => variable.key);
 }
+
+export function resolvePromptTemplate(input: string, values: Record<string, string>): string {
+  return input.replace(/\\?{{([\s\S]*?)}}/g, token => {
+    if (token.startsWith('\\')) return token.slice(1);
+    const body = token.slice(2, -2);
+    const key = body.trim();
+    if (!key || isMalformedPlaceholderBody(body)) return token;
+    return values[key] ?? '';
+  });
+}
