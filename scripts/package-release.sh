@@ -18,13 +18,13 @@ done
 cd "$(dirname "$0")/.."
 
 if [ "$SKIP_BUILD" -eq 0 ]; then
-  npm run build
+  VITE_APP_VERSION="$VERSION" npm run build
 elif [ ! -f frontend/dist/index.html ]; then
   mkdir -p frontend/dist/assets
   printf '<!doctype html><html><body><div id="root"></div><script type="module" src="/assets/test.js"></script></body></html>\n' > frontend/dist/index.html
 elif grep -q '/image-prompt-library/assets/' frontend/dist/index.html; then
   echo "Existing frontend/dist is a GitHub Pages demo build; rebuilding local app assets for release." >&2
-  npm run build
+  VITE_APP_VERSION="$VERSION" npm run build
 fi
 
 RELEASE_DIR="dist-release"

@@ -33,6 +33,23 @@ def test_mobile_has_real_viewport_meta_for_iphone_breakpoints():
     assert "initial-scale=1" in index
 
 
+def test_frontend_version_guard_refreshes_stale_standalone_shortcuts_once():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    package_script = (ROOT / "scripts" / "package-release.sh").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "release-assets.yml").read_text()
+
+    assert "const FRONTEND_BUILD_VERSION = import.meta.env.VITE_APP_VERSION" in app
+    assert "FRONTEND_VERSION_RELOAD_STORAGE_KEY" in app
+    assert "api.health().then(({ version: serverVersion })" in app
+    assert "serverVersion !== FRONTEND_BUILD_VERSION" in app
+    assert "window.sessionStorage.getItem(FRONTEND_VERSION_RELOAD_STORAGE_KEY)" in app
+    assert "window.sessionStorage.setItem(FRONTEND_VERSION_RELOAD_STORAGE_KEY, serverVersion)" in app
+    assert "currentUrl.searchParams.set('_ipl_refresh', serverVersion)" in app
+    assert "window.location.replace(currentUrl.toString())" in app
+    assert "VITE_APP_VERSION=\"$VERSION\" npm run build" in package_script
+    assert "VITE_APP_VERSION=\"${{ github.event.inputs.version || github.ref_name }}\" npm run build" in workflow
+
+
 def test_default_view_is_cards_without_overriding_saved_preference():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     assert "VIEW_STORAGE_KEY = 'image-prompt-library.view_mode.v2'" in app

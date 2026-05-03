@@ -38,7 +38,7 @@ jobs:
       - name: Run tests
         run: python -m pytest -q
       - name: Build local app
-        run: npm run build
+        run: VITE_APP_VERSION="${{ github.event.inputs.version || github.ref_name }}" npm run build
       - name: Package release asset
         run: |
           VERSION="${{ github.event.inputs.version || github.ref_name }}"

@@ -23,6 +23,8 @@ const PROMPT_LANGUAGE_STORAGE_KEY = 'image-prompt-library.preferred_prompt_langu
 const VIEW_STORAGE_KEY = 'image-prompt-library.view_mode.v2';
 const GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY = 'image-prompt-library.global_thumbnail_budget';
 const FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY = 'image-prompt-library.focus_thumbnail_budget';
+const FRONTEND_BUILD_VERSION = import.meta.env.VITE_APP_VERSION || '';
+const FRONTEND_VERSION_RELOAD_STORAGE_KEY = 'image-prompt-library.frontend_version_reload_target.v1';
 
 function loadPreferredLanguage(): PromptCopyLanguage {
   if (typeof window === 'undefined') return DEFAULT_PROMPT_LANGUAGE;
@@ -130,6 +132,21 @@ export default function App() {
     return undefined;
   }), []);
   useEffect(() => { refreshClusters(); refreshTags(); refreshGenerationAvailability(); refreshUpdateStatus(); }, [refreshUpdateStatus]);
+  useEffect(() => {
+    if (isDemoMode || !FRONTEND_BUILD_VERSION || FRONTEND_BUILD_VERSION === 'demo') return;
+    api.health().then(({ version: serverVersion }) => {
+      if (!serverVersion || serverVersion === 'demo' || serverVersion === FRONTEND_BUILD_VERSION) {
+        window.sessionStorage.removeItem(FRONTEND_VERSION_RELOAD_STORAGE_KEY);
+        return;
+      }
+      if (serverVersion !== FRONTEND_BUILD_VERSION && window.sessionStorage.getItem(FRONTEND_VERSION_RELOAD_STORAGE_KEY) === serverVersion) return;
+      window.sessionStorage.setItem(FRONTEND_VERSION_RELOAD_STORAGE_KEY, serverVersion);
+      const currentUrl = new URL(window.location.href);
+      currentUrl.searchParams.set('_ipl_refresh', serverVersion);
+      currentUrl.searchParams.set('_ipl_ts', Date.now().toString());
+      window.location.replace(currentUrl.toString());
+    }).catch(() => undefined);
+  }, []);
   useEffect(() => {
     const timer = window.setInterval(refreshGenerationAvailability, 3000);
     return () => window.clearInterval(timer);
