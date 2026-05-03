@@ -8,6 +8,7 @@ import type { ClusterRecord, GenerationJobAcceptAsNewItemPayload, GenerationJobR
 import type { Translator } from '../utils/i18n';
 import { downloadFileName } from '../utils/images';
 import { resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage } from '../utils/prompts';
+import { extractPromptTemplateVariableRecords, resolvePromptTemplate } from '../utils/promptTemplateVariables';
 
 function providerReady(provider: GenerationProviderStatus) {
   if (provider.provider === 'manual_upload') return true;
@@ -130,6 +131,7 @@ export default function GenerationPanel({
   initialJobId,
   clusters = [],
   tags = [],
+  promptVariablesEnabled = false,
 }: {
   item?: ItemDetail;
   preferredLanguage: PromptCopyLanguage;
@@ -139,6 +141,7 @@ export default function GenerationPanel({
   initialJobId?: string;
   clusters?: ClusterRecord[];
   tags?: TagRecord[];
+  promptVariablesEnabled?: boolean;
 }) {
   const originalPrompt = resolveOriginalPrompt(item?.prompts);
   const defaultPromptLanguage = preferredLanguage === 'origin' ? (originalPrompt?.language || 'en') : preferredLanguage;
@@ -179,7 +182,14 @@ export default function GenerationPanel({
   const visibleJobs = useMemo(() => jobs.filter(job => job.status !== 'discarded'), [jobs]);
   const selectedProvider = useMemo(() => providers.find(candidate => candidate.provider === provider), [providers, provider]);
   const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.4'];
-  const promptChangedFromSource = promptText.trim() !== defaultPrompt.trim();
+  const templateVariables = useMemo(() => promptVariablesEnabled ? extractPromptTemplateVariableRecords(promptText) : [], [promptVariablesEnabled, promptText]);
+  const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
+  const hasTemplateVariables = templateVariables.length > 0;
+  const hasMissingTemplateValues = hasTemplateVariables && templateVariables.some(variable => !templateValues[variable.key]?.trim());
+  const resolvedPrompt = hasTemplateVariables ? resolvePromptTemplate(promptText, templateValues).trim() : promptText.trim();
+  const promptChangedFromSource = hasTemplateVariables ? resolvedPrompt !== defaultPrompt.trim() : promptText.trim() !== defaultPrompt.trim();
+  const promptTemplateValues = useMemo(() => Object.fromEntries(templateVariables.map(variable => [variable.key, templateValues[variable.key] || ''])), [templateVariables, templateValues]);
+  const templateVariableKeySignature = useMemo(() => templateVariables.map(variable => variable.key).join('\u0000'), [templateVariables]);
   const canAttachToSourceItem = (job?: GenerationJobRecord) => Boolean(item && job?.source_item_id === item.id && !promptChangedFromSource);
   const isHistoryReview = Boolean(historyReviewJob);
   const canUseResultActions = (job?: GenerationJobRecord) => Boolean(job && job.status === 'succeeded' && !job.accepted_image_id);
@@ -230,6 +240,15 @@ export default function GenerationPanel({
   }, [item?.id, initialJobId]);
 
   useEffect(() => {
+    setTemplateValues(current => {
+      const keys = templateVariables.map(variable => variable.key);
+      const next = Object.fromEntries(keys.map(key => [key, current[key] || '']));
+      if (Object.keys(current).length === keys.length && keys.every(key => current[key] === next[key])) return current;
+      return next;
+    });
+  }, [templateVariableKeySignature]);
+
+  useEffect(() => {
     if (!initialJobId) return;
     initialFocusAppliedRef.current = false;
     setActiveJobId(initialJobId);
@@ -278,21 +297,28 @@ export default function GenerationPanel({
 
   const createJob = async () => {
     const prompt = promptText.trim();
-    if (!prompt) return;
+    if (!prompt || hasMissingTemplateValues || !resolvedPrompt) return;
     setBusy(true);
     setMessage('');
     setHistoryReviewJobId(undefined);
     window.requestAnimationFrame(() => stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     try {
       const attachments = imageAttachmentPayload();
+      const sourcePrompt = defaultPrompt || prompt;
+      const jobEditedPromptText = resolvedPrompt === sourcePrompt.trim() ? null : resolvedPrompt;
+      const templateParameters = hasTemplateVariables ? {
+        prompt_template: prompt,
+        prompt_template_values: promptTemplateValues,
+        prompt_template_resolved_text: resolvedPrompt,
+      } : {};
       const created = await api.createGenerationJob({
         source_item_id: item?.id,
         mode: attachments.length > 0 ? 'image_edit' : 'text_to_image',
         provider,
         model: provider === 'openai_codex_oauth_native' ? 'gpt-image-2' : null,
         prompt_language: defaultPromptLanguage,
-        prompt_text: defaultPrompt || prompt,
-        edited_prompt_text: prompt === defaultPrompt.trim() ? null : prompt,
+        prompt_text: sourcePrompt,
+        edited_prompt_text: jobEditedPromptText,
         reference_image_ids: [],
         parameters: {
           requested_aspect_ratio: aspectRatio,
@@ -300,6 +326,7 @@ export default function GenerationPanel({
           quality,
           orchestrator_model: orchestratorModel,
           input_images: attachments,
+          ...templateParameters,
         },
       });
       setJobs(current => [created, ...current.filter(job => job.id !== created.id)]);
@@ -652,6 +679,30 @@ export default function GenerationPanel({
                     </div>
                   )}
                 </label>
+                {hasTemplateVariables && (
+                  <div className="generation-template-variable-fields" aria-label="Prompt variables">
+                    <div className="generation-template-head">
+                      <span>Prompt variables</span>
+                      <em>Fill these before generating.</em>
+                    </div>
+                    <div className="generation-template-grid">
+                      {templateVariables.map(variable => (
+                        <label key={variable.key} className="generation-template-variable-field">
+                          <span>{variable.key}</span>
+                          <input
+                            value={templateValues[variable.key] || ''}
+                            onChange={event => setTemplateValues(current => ({ ...current, [variable.key]: event.currentTarget.value }))}
+                            placeholder={`Value for ${variable.key}`}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    <div className="generation-template-preview">
+                      <span>Final prompt</span>
+                      <p>{resolvedPrompt || 'Complete all variables to preview the final prompt.'}</p>
+                    </div>
+                  </div>
+                )}
                 <div className="generation-compact-controls">
                   <div className="generation-control-wrap">
                     <button className="generation-control-trigger generation-aspect-trigger" type="button" onClick={() => setOpenControl(openControl === 'aspect' ? null : 'aspect')} aria-label={`Aspect ratio: ${optionLabel(ASPECT_RATIO_OPTIONS, aspectRatio)}`} title={`Aspect ratio: ${optionLabel(ASPECT_RATIO_OPTIONS, aspectRatio)}`}>
@@ -696,7 +747,7 @@ export default function GenerationPanel({
                   <button className="generation-control-trigger generation-attach-trigger" type="button" onClick={() => attachmentInputRef.current?.click()} disabled={editAttachments.length >= MAX_EDIT_ATTACHMENTS} aria-label="Attach image" title={editAttachments.length >= MAX_EDIT_ATTACHMENTS ? 'Maximum 4 images' : 'Attach image'}>
                     <Plus size={18} aria-hidden="true" />
                   </button>
-                  <button className="primary generation-primary-action" onClick={createJob} disabled={busy || !promptText.trim()}>Generate</button>
+                  <button className="primary generation-primary-action" onClick={createJob} disabled={busy || !promptText.trim() || hasMissingTemplateValues}>Generate</button>
                   <button className="generation-history-control" onClick={() => setShowHistoryDrawer(true)} aria-label="History" title="History" type="button"><Clock3 size={17} /></button>
                 </div>
               </>
