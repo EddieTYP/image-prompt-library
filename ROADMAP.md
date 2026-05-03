@@ -96,7 +96,7 @@ Next release work:
 - Harden the local service/update path so launchd restarts reliably with the installed service label after app updates.
 - Add management-mode image-record deletion for fast cleanup of generated/reference images.
 - Add search/sort polish before larger batch workflows: a visible sort control plus lightweight query syntax where supported `key:value` filters (for example `created:today`) can be mixed with normal keywords (for example `created:today apple`).
-- Add optional prompt template variables for local generation behind the default-off easter-egg config `camelot.percival`: placeholders such as `[Subject]`, `[Style]`, or `[主體]` open a per-generation variables sheet, resolve before provider submission, and preserve template/value provenance for history, retry, and save-as-new.
+- Add optional prompt template variables for local generation behind the default-off easter-egg config `camelot.percival`: placeholders such as `{{Subject}}`, `{{Style}}`, or `{{主體}}` open a per-generation variables sheet, resolve before provider submission, and preserve template/value provenance for history, retry, and save-as-new.
 - Optional installer polish later: release list command, interactive version chooser, status/stop helpers, Docker or native Windows scripts.
 
 Planning docs:

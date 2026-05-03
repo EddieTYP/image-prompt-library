@@ -5,7 +5,7 @@ export interface PromptRecord { id: string; item_id: string; language: string; t
 export interface ImageRecord { id: string; item_id: string; original_path: string; thumb_path?: string; preview_path?: string; width?: number; height?: number; role?: UploadImageRole }
 export interface ClusterRecord { id: string; name: string; names?: Partial<Record<UiLanguage, string>>; description?: string; count: number; preview_images: string[] }
 export interface TagRecord { id: string; name: string; kind: string; count: number }
-export interface AppConfig { version: string; library_path: string; database_path: string; preferred_prompt_language?: string }
+export interface AppConfig { version: string; library_path: string; database_path: string; preferred_prompt_language?: string; features?: { camelot?: { percival?: boolean } } }
 export interface AppUpdateStatus { current_version: string; latest_version?: string | null; update_available: boolean; release_url?: string | null; update_command?: string | null; checked_at: string; error?: string | null; service_mode: string; active_generation_jobs: { running: number; queued: number }; can_restart: boolean; requires_manual_restart: boolean }
 export interface AppUpdateRequest { target_version?: string | null; cancel_active_generation_jobs: boolean }
 export interface AppUpdateResult { status: string; target_version: string; cancelled_generation_jobs: number; restart_mode: string; requires_manual_restart: boolean; message: string; stdout?: string; stderr?: string }
