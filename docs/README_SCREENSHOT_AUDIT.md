@@ -30,7 +30,7 @@ The refreshed generation flow is documented in `docs/GENERATION.md` with these c
 
 ## Replace before final polish if possible
 
-### `docs/assets/screenshots/local-generation-studio-banner.webp`
+### `docs/assets/screenshots/local-generation-studio-banner-v0.7.webp`
 
 - Status: updated for `v0.7.0-beta` root demo/release banner usage.
 - Notes: image text now highlights prompt variables and bulk delete.
