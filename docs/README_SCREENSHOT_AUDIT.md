@@ -32,9 +32,8 @@ The refreshed generation flow is documented in `docs/GENERATION.md` with these c
 
 ### `docs/assets/screenshots/local-generation-studio-banner.webp`
 
-- Status: visually strong but currently not used in the compact README draft.
-- Why replace: image text says `v0.6.0-beta`, while current public release is `v0.6.5-beta`.
-- Recommendation: regenerate without a hard-coded version, or update to current release before using as the README hero.
+- Status: updated for `v0.7.0-beta` root demo/release banner usage.
+- Notes: image text now highlights prompt variables and bulk delete.
 
 ### `docs/assets/screenshots/card-view-all.png`
 
