@@ -7,10 +7,10 @@ def test_item_save_refreshes_visible_item_query():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     hook = (ROOT / "frontend" / "src" / "hooks" / "useItemsQuery.ts").read_text()
     assert "const [itemsReloadKey, setItemsReloadKey]" in app
-    assert "useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey)" in app
+    assert "useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, parsedSearchQuery.sort)" in app
     assert "setItemsReloadKey(k => k + 1)" in app
     assert "reloadKey" in hook
-    assert "[q, clusterId, tag, viewLimit, reloadKey]" in hook
+    assert "[q, clusterId, tag, viewLimit, reloadKey, sort]" in hook
 
 
 def test_topbar_is_toolbar_search_not_hero_or_keyboard_shortcut():
@@ -24,6 +24,33 @@ def test_topbar_is_toolbar_search_not_hero_or_keyboard_shortcut():
     assert "Keyboard shortcut" not in topbar
     assert "⌘K" not in topbar and "Ctrl+K" not in topbar
     assert "metaKey" not in app and "ctrlKey" not in app
+
+
+def test_search_bar_supports_sort_operators_without_extra_dropdown_ui():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    hook = (ROOT / "frontend" / "src" / "hooks" / "useItemsQuery.ts").read_text()
+    topbar = (ROOT / "frontend" / "src" / "components" / "TopBar.tsx").read_text()
+    client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+    search_sort = (ROOT / "frontend" / "src" / "utils" / "searchSort.ts").read_text()
+    i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
+
+    assert "parseSearchSortQuery(debouncedQ)" in app
+    assert "useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, parsedSearchQuery.sort)" in app
+    assert "removeSearchSortOperator(current)" in app
+    assert "onClearSort={clearSearchSort}" in app
+    assert "sort: ItemSortMode = DEFAULT_ITEM_SORT" in hook
+    assert "sort" in hook and "api.items({ q, cluster: clusterId, tag, limit: viewLimit, sort })" in hook
+    assert "sortLabel" in topbar and "onClearSort" in topbar
+    assert "className=\"chip active-filter sort-chip\"" in topbar
+    assert "sort:title" in search_sort and "title_asc" in search_sort
+    assert "sort:created" in search_sort and "created_desc" in search_sort
+    assert "sort:updated" in search_sort and "updated_desc" in search_sort
+    assert "sort:rating" not in search_sort
+    assert "sortLabelForMode" in search_sort
+    assert "sortByTitle" in i18n and "標題 A–Z" in i18n
+    assert "sortByRating" not in i18n
+    assert "demoItemSort" in client
+    assert "filtered.sort" in client
 
 
 def test_prompt_template_variables_ui_is_feature_flagged_and_submits_resolved_prompt():
@@ -725,6 +752,11 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "{counts.running} running · {counts.queued} queued · {counts.ready} ready" in queue
     assert "Cancelled" in queue
     assert "api.generationJobs({ limit: 50 })" in queue
+    assert "api.cancelGenerationJob(job.id)" in queue
+    assert "isActive(job) &&" in queue
+    assert "className=\"generation-queue-cancel\"" in queue
+    assert "event.stopPropagation()" in queue
+    assert "generation-queue-cancel" in css
     assert "generation-queue-drawer" in css
     assert ".generation-queue-trigger" in css
     assert ".floating-action-rail.fab{position:static;right:auto;bottom:auto;height:46px;min-width:112px;padding:016px;justify-content:center;box-sizing:border-box}" in compact_css

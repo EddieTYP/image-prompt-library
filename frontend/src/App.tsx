@@ -17,6 +17,7 @@ import { copyTextToClipboard } from './utils/clipboard';
 import { localizedDemoTitle } from './utils/demoTitles';
 import { DEFAULT_UI_LANGUAGE, UI_LANGUAGE_LABELS, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
 import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptCopyLanguage } from './utils/prompts';
+import { parseSearchSortQuery, removeSearchSortOperator, sortLabelForMode } from './utils/searchSort';
 
 const UI_LANGUAGE_STORAGE_KEY = 'image-prompt-library.ui_language';
 const PROMPT_LANGUAGE_STORAGE_KEY = 'image-prompt-library.preferred_prompt_language';
@@ -81,6 +82,7 @@ function generationProviderConnected(provider: GenerationProviderStatus) {
 export default function App() {
   const [q, setQ] = useState('');
   const debouncedQ = useDebouncedValue(q);
+  const parsedSearchQuery = useMemo(() => parseSearchSortQuery(debouncedQ), [debouncedQ]);
   const [clusterId, setClusterId] = useState<string>();
   const [view, setView] = useState<ViewMode>(loadPreferredView);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -110,7 +112,7 @@ export default function App() {
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(() => new Set());
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>();
   const [restartRequiredVersion, setRestartRequiredVersion] = useState<string>();
-  const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(debouncedQ, clusterId, undefined, 1000, itemsReloadKey);
+  const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, parsedSearchQuery.sort);
   const exploreFocusedClusterId = view === 'explore'
     ? (clusterId || (dataScope.clusterId === pendingExploreUnfilterClusterId ? pendingExploreUnfilterClusterId : undefined))
     : clusterId;
@@ -206,6 +208,8 @@ export default function App() {
     setFocusThumbnailBudget(budget);
     window.localStorage.setItem(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, String(budget));
   };
+  const clearSearchSort = () => setQ(current => removeSearchSortOperator(current));
+  const searchSortLabel = parsedSearchQuery.explicitSort ? sortLabelForMode(parsedSearchQuery.sort, t) : undefined;
   const showCopyToast = (success: boolean) => {
     setToast({ title: success ? t('copySuccess') : t('copyFailed'), tone: success ? 'success' : 'error' });
     window.setTimeout(() => setToast(undefined), 1800);
@@ -278,7 +282,7 @@ export default function App() {
         </section>
       </div>
     )}
-    <TopBar t={t} q={q} updateBadgeLabel={updateBadgeLabel} onQ={setQ} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
+    <TopBar t={t} q={q} searchQuery={parsedSearchQuery.q} sortLabel={searchSortLabel} updateBadgeLabel={updateBadgeLabel} onQ={setQ} onClearSort={clearSearchSort} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
     {isDemoMode && (
       <div className="demo-banner" role="status">
         <strong>{t('onlineReadOnlyDemo')}</strong>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { Bell, CheckCircle2, Clock3, ImagePlus, X, XCircle } from 'lucide-react';
 import { api } from '../api/client';
 import type { GenerationJobRecord } from '../types';
@@ -45,6 +45,7 @@ export default function GenerationQueueDrawer({
 }) {
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
   const [loadError, setLoadError] = useState('');
+  const [cancelBusyIds, setCancelBusyIds] = useState<Set<string>>(() => new Set());
 
   const refresh = async () => {
     try {
@@ -61,6 +62,32 @@ export default function GenerationQueueDrawer({
     const timer = window.setInterval(() => refresh().catch(() => undefined), 6000);
     return () => window.clearInterval(timer);
   }, []);
+
+  const cancelJob = async (job: GenerationJobRecord) => {
+    if (!isActive(job) || cancelBusyIds.has(job.id)) return;
+    setCancelBusyIds(current => new Set(current).add(job.id));
+    try {
+      const updated = await api.cancelGenerationJob(job.id);
+      setJobs(current => current.map(candidate => candidate.id === updated.id ? updated : candidate));
+      setLoadError('');
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Could not cancel generation job.');
+    } finally {
+      setCancelBusyIds(current => {
+        const next = new Set(current);
+        next.delete(job.id);
+        return next;
+      });
+    }
+  };
+
+  const openJobFromKeyboard = (event: KeyboardEvent<HTMLDivElement>, job: GenerationJobRecord) => {
+    if (!canOpenJob(job)) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onOpenJob(job);
+    }
+  };
 
   const counts = useMemo(() => ({
     running: jobs.filter(job => job.status === 'running').length,
@@ -101,17 +128,32 @@ export default function GenerationQueueDrawer({
             <section className="generation-queue-section" key={section.key}>
               <h3>{section.title}</h3>
               {section.jobs.length === 0 ? <p className="muted">—</p> : section.jobs.map(job => (
-                <button
-                  type="button"
+                <div
                   key={job.id}
                   className={`generation-queue-row status-${job.status}`}
                   onClick={() => canOpenJob(job) && onOpenJob(job)}
-                  disabled={!canOpenJob(job)}
+                  onKeyDown={event => openJobFromKeyboard(event, job)}
+                  role={canOpenJob(job) ? 'button' : undefined}
+                  tabIndex={canOpenJob(job) ? 0 : undefined}
+                  aria-disabled={!canOpenJob(job)}
                 >
                   {statusIcon(job)}
                   <span>{job.edited_prompt_text || job.prompt_text}</span>
-                  <b>{statusLabel(job)}</b>
-                </button>
+                  <span className="generation-queue-row-actions">
+                    <b>{statusLabel(job)}</b>
+                    {isActive(job) && (
+                      <button
+                        type="button"
+                        className="generation-queue-cancel"
+                        onClick={event => {
+                          event.stopPropagation();
+                          cancelJob(job).catch(() => undefined);
+                        }}
+                        disabled={cancelBusyIds.has(job.id)}
+                      >Cancel</button>
+                    )}
+                  </span>
+                </div>
               ))}
             </section>
           ))}

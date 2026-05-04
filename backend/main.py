@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -5,6 +6,7 @@ from fastapi.responses import FileResponse
 from .config import APP_VERSION, resolve_hidden_features, resolve_library_path
 from .db import get_db_path, init_db
 from .routers import app_updates, clusters, generation_jobs, generation_providers, images, import_drafts, items, tags
+from .services.generation_queue import PROVIDER_ID as NATIVE_GENERATION_PROVIDER_ID, enqueue_generation_jobs, recover_interrupted_generation_jobs
 
 DEFAULT_FRONTEND_DIST_PATH = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 
@@ -25,7 +27,14 @@ def create_app(library_path: Path | str | None = None, frontend_dist_path: Path 
     library = resolve_library_path(library_path)
     frontend_dist = Path(frontend_dist_path).resolve() if frontend_dist_path is not None else DEFAULT_FRONTEND_DIST_PATH.resolve()
     init_db(library)
-    app = FastAPI(title="Image Prompt Library", version=APP_VERSION)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        recover_interrupted_generation_jobs(library)
+        enqueue_generation_jobs(library, provider=NATIVE_GENERATION_PROVIDER_ID)
+        yield
+
+    app = FastAPI(title="Image Prompt Library", version=APP_VERSION, lifespan=lifespan)
     app.state.library_path = library
     app.state.frontend_dist_path = frontend_dist
     app.add_middleware(CORSMiddleware, allow_origins=["http://127.0.0.1:5177", "http://localhost:5177"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
