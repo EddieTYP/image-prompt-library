@@ -225,6 +225,29 @@ def test_v061_release_notes_describe_save_as_new_metadata_and_image_actions_beta
     assert "token" not in notes.lower()
     assert "secret" not in notes.lower()
 
+def test_v071_release_notes_describe_queue_recovery_and_search_sort_beta():
+    notes_path = ROOT / "docs" / "releases" / "v0.7.1-beta.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text()
+
+    assert "# Image Prompt Library v0.7.1-beta" in notes
+    assert "Queue Recovery" in notes
+    assert "sort:updated" in notes
+    assert "sort:created" in notes
+    assert "sort:title" in notes
+    assert "Cancel" in notes
+    assert "interrupted by backend restart" in notes
+    assert "No database schema change" in notes
+    assert "image-prompt-library update --version v0.7.1-beta" in notes
+    assert "image-prompt-library rollback" in notes
+
+    assert "/Users/" not in notes
+    assert ".local-work" not in notes
+    assert "OpenNana" not in notes
+    assert "token" not in notes.lower()
+    assert "secret" not in notes.lower()
+
+
 def test_v062_release_notes_describe_update_reliability_fixes_beta():
     notes_path = ROOT / "docs" / "releases" / "v0.6.2-beta.md"
     assert notes_path.exists()
