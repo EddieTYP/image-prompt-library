@@ -52,9 +52,12 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     workflow = ROOT / ".github" / "workflows" / "pages.yml"
     assert workflow.exists()
     text = workflow.read_text()
-    assert "actions/configure-pages" in text
-    assert "actions/upload-pages-artifact" in text
-    assert "actions/deploy-pages" in text
+    assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true" in text
+    assert "actions/configure-pages@v6" in text
+    assert "actions/upload-pages-artifact@v5" in text
+    assert "actions/deploy-pages@v5" in text
+    assert "actions/configure-pages@v5" not in text
+    assert "actions/upload-pages-artifact@v4" not in text
     assert "fetch-depth: 0" in text
     assert "LEGACY_DEMO_REF: v0.1.0-alpha" in text
     assert "CURRENT_PREVIEW_PATH: v0.7" in text

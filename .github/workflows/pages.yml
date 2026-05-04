@@ -15,6 +15,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   LEGACY_DEMO_REF: v0.1.0-alpha
   LEGACY_DEMO_PATH: v0.1
   ARCHIVED_02_DEMO_REF: v0.2.0-alpha
@@ -399,11 +400,11 @@ jobs:
           HTML
           touch .pages-artifact/.nojekyll
       - name: Configure Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
         with:
           enablement: true
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: .pages-artifact
 
