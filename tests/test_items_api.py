@@ -107,6 +107,22 @@ def test_create_get_search_and_filter_item(tmp_path):
     assert c.get("/api/items", params={"cluster": created["cluster"]["id"]}).json()["total"] == 1
 
 
+def test_item_list_sorts_by_created_and_title_without_rating_ui(tmp_path):
+    c = client(tmp_path)
+    alpha = c.post("/api/items", json=create_payload(title="Alpha Sort", source_url="https://example.test/alpha")).json()
+    zebra = c.post("/api/items", json=create_payload(title="Zebra Sort", source_url="https://example.test/zebra")).json()
+    beta = c.post("/api/items", json=create_payload(title="Beta Sort", source_url="https://example.test/beta")).json()
+    with connect(tmp_path / "library") as conn:
+        conn.execute("UPDATE items SET created_at=?, updated_at=? WHERE id=?", ("2026-01-01T00:00:00+00:00", "2026-01-04T00:00:00+00:00", alpha["id"]))
+        conn.execute("UPDATE items SET created_at=?, updated_at=? WHERE id=?", ("2026-01-03T00:00:00+00:00", "2026-01-02T00:00:00+00:00", zebra["id"]))
+        conn.execute("UPDATE items SET created_at=?, updated_at=? WHERE id=?", ("2026-01-02T00:00:00+00:00", "2026-01-03T00:00:00+00:00", beta["id"]))
+        conn.commit()
+
+    assert [item["title"] for item in c.get("/api/items", params={"sort": "updated_desc"}).json()["items"]] == ["Alpha Sort", "Beta Sort", "Zebra Sort"]
+    assert [item["title"] for item in c.get("/api/items", params={"sort": "created_desc"}).json()["items"]] == ["Zebra Sort", "Beta Sort", "Alpha Sort"]
+    assert [item["title"] for item in c.get("/api/items", params={"sort": "title_asc"}).json()["items"]] == ["Alpha Sort", "Beta Sort", "Zebra Sort"]
+
+
 def test_items_list_limit_allows_gallery_overview_scale(tmp_path):
     c = client(tmp_path)
     for idx in range(230):

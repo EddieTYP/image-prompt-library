@@ -1,4 +1,5 @@
-import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationProviderStatus, ItemCreate, ItemDetail, ItemList, ItemSummary, TagRecord, UploadImageRole } from '../types';
+import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationProviderStatus, ItemCreate, ItemDetail, ItemList, ItemSortMode, ItemSummary, TagRecord, UploadImageRole } from '../types';
+import { DEFAULT_ITEM_SORT } from '../utils/searchSort';
 
 const API = '';
 const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
@@ -35,11 +36,18 @@ function normalizeSearchText(item: ItemSummary) {
   ].filter(Boolean).join('\n').toLowerCase();
 }
 
+function demoItemSort(sort: ItemSortMode) {
+  if (sort === 'created_desc') return (a: ItemSummary, b: ItemSummary) => b.created_at.localeCompare(a.created_at);
+  if (sort === 'title_asc') return (a: ItemSummary, b: ItemSummary) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+  return (a: ItemSummary, b: ItemSummary) => b.updated_at.localeCompare(a.updated_at);
+}
+
 async function demoItemList(params: Record<string, string | number | boolean | undefined>): Promise<ItemList> {
   const allItems = await demoItems();
   const q = String(params.q || '').trim().toLowerCase();
   const cluster = String(params.cluster || '').trim();
   const tag = String(params.tag || '').trim();
+  const sort = (params.sort === 'created_desc' || params.sort === 'title_asc' || params.sort === 'updated_desc') ? params.sort : DEFAULT_ITEM_SORT;
   const limit = Math.max(0, Number(params.limit || 100));
   const offset = Math.max(0, Number(params.offset || 0));
   const filtered = allItems.filter(item => {
@@ -48,7 +56,7 @@ async function demoItemList(params: Record<string, string | number | boolean | u
     if (q && !normalizeSearchText(item).includes(q)) return false;
     return true;
   });
-  return { items: filtered.slice(offset, offset + limit), total: filtered.length, limit, offset };
+  return { items: filtered.sort(demoItemSort(sort)).slice(offset, offset + limit), total: filtered.length, limit, offset };
 }
 
 async function demoItem(id: string): Promise<ItemDetail> {

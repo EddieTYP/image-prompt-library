@@ -163,6 +163,18 @@ class GenerationJobRepository:
             conn.commit()
         return self.get_job(job_id)
 
+    def mark_running_provider_jobs_failed(self, provider: str, error: str) -> list[GenerationJobRecord]:
+        with connect(self.library_path) as conn:
+            rows = conn.execute(
+                """
+                SELECT id FROM generation_jobs
+                WHERE provider=? AND status='running'
+                ORDER BY created_at ASC
+                """,
+                (provider,),
+            ).fetchall()
+        return [self.mark_failed(row["id"], error) for row in rows]
+
     def stage_result(self, job_id: str, data: bytes, filename: str, metadata: dict | None = None) -> GenerationJobRecord:
         job = self.get_job(job_id)
         if job.status in {"accepted", "discarded", "cancelled"}:

@@ -440,6 +440,44 @@ def test_native_generation_job_create_enqueues_background_runner(tmp_path, monke
     assert calls == [(tmp_path / "library", "openai_codex_oauth_native")]
 
 
+def test_app_startup_marks_interrupted_running_jobs_failed_and_drains_queued(tmp_path, monkeypatch):
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    running = repo.create_job(GenerationJobCreate(
+        provider="openai_codex_oauth_native",
+        prompt_text="in-flight before restart",
+    ))
+    queued = repo.create_job(GenerationJobCreate(
+        provider="openai_codex_oauth_native",
+        prompt_text="queued before restart",
+    ))
+    manual_queued = repo.create_job(GenerationJobCreate(
+        provider="manual_upload",
+        prompt_text="manual upload should remain untouched",
+    ))
+    repo.mark_running(running.id)
+    enqueue_calls = []
+
+    def fake_enqueue(library_path, *, provider):
+        enqueue_calls.append((Path(library_path), provider))
+
+    monkeypatch.setattr("backend.main.enqueue_generation_jobs", fake_enqueue)
+
+    with TestClient(create_app(library_path=library)) as c:
+        assert c.get("/api/health").status_code == 200
+
+    recovered_running = repo.get_job(running.id)
+    recovered_queued = repo.get_job(queued.id)
+    untouched_manual = repo.get_job(manual_queued.id)
+    assert recovered_running.status == "failed"
+    assert recovered_running.completed_at
+    assert "interrupted by backend restart" in recovered_running.error
+    assert "Retry" in recovered_running.error
+    assert recovered_queued.status == "queued"
+    assert untouched_manual.status == "queued"
+    assert enqueue_calls == [(library, "openai_codex_oauth_native")]
+
+
 def test_generation_queue_runs_at_most_two_native_jobs(tmp_path, monkeypatch):
     from backend.services import generation_queue
 
