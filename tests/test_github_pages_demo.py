@@ -62,13 +62,20 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert "ARCHIVED_03_DEMO_PATH: v0.3" in text
     assert "ARCHIVED_02_DEMO_REF: v0.2.0-alpha" in text
     assert "ARCHIVED_02_DEMO_PATH: v0.2" in text
+    assert "ARCHIVED_04_DEMO_REF: v0.4.0-alpha" in text
+    assert "ARCHIVED_04_DEMO_PATH: v0.4" in text
+    assert "ARCHIVED_06_DEMO_REF: v0.6.8-beta" in text
+    assert "ARCHIVED_06_DEMO_PATH: v0.6" in text
     assert "VITE_BASE_PATH=/image-prompt-library/${CURRENT_PREVIEW_PATH}/ npm run build" in text
+    assert "VITE_BASE_PATH=/image-prompt-library/${ARCHIVED_06_DEMO_PATH}/ npm run build" in text
+    assert "git worktree add .page-build/${ARCHIVED_06_DEMO_PATH} ${ARCHIVED_06_DEMO_REF}" in text
     assert "VITE_BASE_PATH=/image-prompt-library/${ARCHIVED_03_DEMO_PATH}/ npm run build" in text
     assert "git worktree add .page-build/${ARCHIVED_03_DEMO_PATH} ${ARCHIVED_03_DEMO_REF}" in text
     assert "VITE_BASE_PATH=/image-prompt-library/${ARCHIVED_02_DEMO_PATH}/ npm run build" in text
     assert "git worktree add .page-build/${LEGACY_DEMO_PATH} ${LEGACY_DEMO_REF}" in text
     assert "VITE_BASE_PATH=/image-prompt-library/${LEGACY_DEMO_PATH}/ npm run build" in text
     assert ".pages-artifact/${CURRENT_PREVIEW_PATH}" in text
+    assert ".pages-artifact/${ARCHIVED_06_DEMO_PATH}" in text
     assert ".pages-artifact/${ARCHIVED_03_DEMO_PATH}" in text
     assert ".pages-artifact/${ARCHIVED_02_DEMO_PATH}" in text
     assert ".pages-artifact/${LEGACY_DEMO_PATH}" in text
@@ -83,6 +90,9 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert "View on GitHub" in text
     assert "./v0.7/" in text
     assert "Current demo · v0.7" in text
+    assert "./v0.6/" in text
+    assert "Archive · v0.6" in text
+    assert "The archived v0.6 read-only preview is preserved for old public links and release notes." in text
     assert "Inject v0.4 upgrade notice into archived v0.3 preview" in text
     assert "This v0.3 preview is archived." in text
     assert "Go to the latest v0.4 demo" in text
