@@ -167,13 +167,30 @@ export default function GenerationQueueDrawer({
 
   const discardJob = async (job: GenerationJobRecord) => {
     if (!canDiscardTransientResult(job) || discardBusyIds.has(job.id)) return;
+    const timestamp = new Date().toISOString();
+    const optimisticDiscardedJob: GenerationJobRecord = {
+      ...job,
+      status: 'discarded',
+      result_path: null,
+      result_width: null,
+      result_height: null,
+      result_sha256: null,
+      discarded_at: timestamp,
+      updated_at: timestamp,
+      metadata: {
+        ...(job.metadata || {}),
+        discarded_result_path: job.result_path,
+      },
+    };
     setDiscardBusyIds(current => new Set(current).add(job.id));
+    setJobs(current => current.map(candidate => candidate.id === job.id ? optimisticDiscardedJob : candidate));
     try {
       const updated = await api.discardGenerationJob(job.id);
       setJobs(current => current.map(candidate => candidate.id === updated.id ? updated : candidate));
       setLoadError('');
-      await refresh();
+      void refresh();
     } catch (error) {
+      setJobs(current => current.map(candidate => candidate.id === job.id ? job : candidate));
       setLoadError(error instanceof Error ? error.message : 'Could not discard generation result.');
     } finally {
       setDiscardBusyIds(current => {

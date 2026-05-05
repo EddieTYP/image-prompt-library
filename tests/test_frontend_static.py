@@ -766,6 +766,11 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "api.retryGenerationJob(job.id)" in queue
     assert "api.markGenerationJobFailed(job.id)" in queue
     assert "api.discardGenerationJob(job.id)" in queue
+    assert "const optimisticDiscardedJob: GenerationJobRecord" in queue
+    assert "discarded_result_path: job.result_path" in queue
+    assert "setJobs(current => current.map(candidate => candidate.id === job.id ? optimisticDiscardedJob : candidate));" in queue
+    assert "void refresh();" in queue
+    assert "setJobs(current => current.map(candidate => candidate.id === job.id ? job : candidate));" in queue
     assert "section.key === 'ready'" in queue
     assert "className=\"generation-queue-result generation-history-item status-succeeded\"" in queue
     assert "generation-history-media" in queue
