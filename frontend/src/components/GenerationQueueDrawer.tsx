@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
-import { Bell, CheckCircle2, Clock3, ImagePlus, Trash2, X, XCircle } from 'lucide-react';
+import { Bell, CheckCircle2, Clock3, ImagePlus, Maximize2, Trash2, X, XCircle } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import type { GenerationJobRecord } from '../types';
 import type { Translator } from '../utils/i18n';
@@ -243,21 +243,35 @@ export default function GenerationQueueDrawer({
                   >
                     <span className="generation-history-media">
                       {jobResultUrl(job) ? <img src={jobResultUrl(job)} alt="" /> : <span className="generation-history-placeholder">{statusLabel(job)}</span>}
-                      {canDiscardTransientResult(job) && (
+                      <span className="generation-queue-preview-actions">
                         <button
                           type="button"
-                          className="generation-queue-quick-discard"
+                          className="generation-queue-quick-expand"
                           onClick={event => {
                             event.stopPropagation();
-                            discardJob(job).catch(() => undefined);
+                            if (canOpenJob(job)) onOpenJob(job);
                           }}
-                          disabled={discardBusyIds.has(job.id)}
-                          aria-label="Discard generation result"
-                          title="Discard"
+                          aria-label="Expand generation result"
+                          title="Expand"
                         >
-                          <Trash2 size={15} aria-hidden="true" />
+                          <Maximize2 size={15} aria-hidden="true" />
                         </button>
-                      )}
+                        {canDiscardTransientResult(job) && (
+                          <button
+                            type="button"
+                            className="generation-queue-quick-discard"
+                            onClick={event => {
+                              event.stopPropagation();
+                              discardJob(job).catch(() => undefined);
+                            }}
+                            disabled={discardBusyIds.has(job.id)}
+                            aria-label="Discard generation result"
+                            title="Discard"
+                          >
+                            <Trash2 size={15} aria-hidden="true" />
+                          </button>
+                        )}
+                      </span>
                     </span>
                     <span className="generation-history-status-grid" aria-hidden="true">
                       <span className="generation-history-cell"><b>Aspect ratio</b><em>{jobAspectRatio(job)}</em></span>
