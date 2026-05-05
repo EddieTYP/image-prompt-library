@@ -359,8 +359,8 @@ jobs:
                   <span>Latest v0.7 beta adds safer queue recovery and failed-job retry. Online demo remains read-only.</span>
                   <a href="https://github.com/EddieTYP/image-prompt-library">View on GitHub</a>
                 </p>
-                <a class="hero-banner-link" href="https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.2-beta" aria-label="View the v0.7.2 beta Failed Job Retry release">
-                  <img class="hero-banner" src="./assets/local-generation-studio-banner-v0.7.png" width="2172" height="724" alt="Image Prompt Library v0.7.2-beta Failed Job Retry banner showing the app Cards view and local generation workflow highlights" />
+                <a class="hero-banner-link" href="https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.3-beta" aria-label="View the v0.7.3 beta Safer Queue Recovery release">
+                  <img class="hero-banner" src="./assets/local-generation-studio-banner-v0.7.png" width="2172" height="724" alt="Image Prompt Library v0.7.3-beta Safer Queue Recovery banner showing the app Cards view and local generation workflow highlights" />
                 </a>
                 <section class="versions" aria-label="Demo versions">
                   <a class="version-card" href="./v0.7/">

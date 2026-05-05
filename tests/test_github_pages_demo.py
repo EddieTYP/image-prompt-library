@@ -88,7 +88,7 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert "Latest v0.7 beta adds safer queue recovery and failed-job retry" in text
     assert "local-generation-studio-banner-v0.7.png" in text
     assert "hero-banner" in text
-    assert "View the v0.7.2 beta Failed Job Retry release" in text
+    assert "View the v0.7.3 beta Safer Queue Recovery release" in text
     assert "cp docs/assets/screenshots/local-generation-studio-banner-v0.7.png" in text
     assert "View on GitHub" in text
     assert "./v0.7/" in text
