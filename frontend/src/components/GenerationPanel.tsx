@@ -110,6 +110,23 @@ function jobQuality(job?: GenerationJobRecord) {
   return typeof value === 'string' && ['low', 'medium', 'high'].includes(value) ? value : 'high';
 }
 
+const STALE_RUNNING_JOB_MS = 30 * 60 * 1000;
+
+function retriedByJobId(job?: GenerationJobRecord) {
+  const value = job?.metadata?.retried_by_generation_job_id;
+  return typeof value === 'string' && value ? value : '';
+}
+
+function canRetryFailedJob(job?: GenerationJobRecord) {
+  return job?.status === 'failed' && !retriedByJobId(job);
+}
+
+function isStaleRunningJob(job?: GenerationJobRecord) {
+  if (job?.status !== 'running') return false;
+  const started = Date.parse(job.started_at || job.updated_at || job.created_at);
+  return Number.isFinite(started) && Date.now() - started > STALE_RUNNING_JOB_MS;
+}
+
 function jobModel(job?: GenerationJobRecord) {
   const parameterModel = job?.parameters?.orchestrator_model;
   const metadataModel = job?.metadata?.orchestrator_model;
@@ -568,6 +585,15 @@ export default function GenerationPanel({
   };
 
   const retryFailedJob = async (job: GenerationJobRecord) => {
+    if (!canRetryFailedJob(job)) {
+      const retryId = retriedByJobId(job);
+      if (retryId) {
+        setActiveJobId(retryId);
+        setHistoryReviewJobId(undefined);
+        setFocusedJobHighlightId(retryId);
+      }
+      return;
+    }
     setBusy(true);
     setActiveJobId(job.id);
     setMessage('');
@@ -584,6 +610,24 @@ export default function GenerationPanel({
       setMessage('Generation job retried.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not retry failed job.');
+      await refreshJobs().catch(() => undefined);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const markStaleRunningJobFailed = async (job: GenerationJobRecord) => {
+    if (!isStaleRunningJob(job)) return;
+    setBusy(true);
+    setActiveJobId(job.id);
+    setMessage('');
+    try {
+      const updated = await api.markGenerationJobFailed(job.id);
+      setJobs(current => current.map(candidate => candidate.id === updated.id ? updated : candidate));
+      setHistoryReviewJobId(undefined);
+      setMessage('Generation job marked failed.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not mark stale job failed.');
       await refreshJobs().catch(() => undefined);
     } finally {
       setBusy(false);
@@ -649,17 +693,31 @@ export default function GenerationPanel({
         <div className="generation-stage generation-stage-generating">
           <div className="generation-generating-block generation-shimmer stage-shimmer" />
           <strong>Generating…</strong>
+          {isStaleRunningJob(selectedStageJob) && (
+            <div className="generation-stage-actions" aria-label="Stale generation actions">
+              <button className="stage-action" onClick={() => markStaleRunningJobFailed(selectedStageJob)} disabled={busy} aria-label="Mark stale job failed" title="Mark stale job failed">
+                Mark failed
+              </button>
+            </div>
+          )}
         </div>
       );
     }
     if (selectedStageJob.status === 'failed') {
+      const retryId = retriedByJobId(selectedStageJob);
       return (
         <div className="generation-stage generation-stage-error">
-          <strong>Failed</strong>
+          <strong>{retryId ? 'Retried' : 'Failed'}</strong>
           <div className="generation-stage-actions" aria-label="Failed generation actions">
-            <button className="stage-action" onClick={() => retryFailedJob(selectedStageJob)} disabled={busy} aria-label="Retry failed job" title="Retry failed job">
-              <RotateCcw size={16} aria-hidden="true" />
-            </button>
+            {canRetryFailedJob(selectedStageJob) ? (
+              <button className="stage-action" onClick={() => retryFailedJob(selectedStageJob)} disabled={busy} aria-label="Retry failed job" title="Retry failed job">
+                <RotateCcw size={16} aria-hidden="true" />
+              </button>
+            ) : retryId ? (
+              <button className="stage-action" onClick={() => retryFailedJob(selectedStageJob)} disabled={busy} aria-label="Open retry job" title="Open retry job">
+                Retried
+              </button>
+            ) : null}
           </div>
         </div>
       );

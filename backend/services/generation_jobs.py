@@ -4,6 +4,7 @@ import hashlib
 import base64
 import binascii
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from contextlib import suppress
 
@@ -29,6 +30,8 @@ class GenerationJobConflict(ValueError):
 
 
 MAX_GENERATION_INPUT_IMAGES = 4
+STALE_RUNNING_JOB_AFTER = timedelta(minutes=30)
+STALE_RUNNING_JOB_ERROR = "Generation job was marked failed after running too long. Retry to run it again."
 
 
 def _to_json(value) -> str:
@@ -64,6 +67,18 @@ def _redact_error(error: str) -> str:
         if marker in message:
             return "Generation failed; provider returned a credential-related error"
     return message[:1000]
+
+
+def _parse_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
 
 
 class GenerationJobRepository:
@@ -174,6 +189,38 @@ class GenerationJobRepository:
                 (provider,),
             ).fetchall()
         return [self.mark_failed(row["id"], error) for row in rows]
+
+    def mark_stale_running_failed(self, job_id: str) -> GenerationJobRecord:
+        job = self.get_job(job_id)
+        if job.status != "running":
+            raise GenerationJobConflict(f"Only running generation jobs can be marked failed; current status is {job.status}")
+        started_at = _parse_timestamp(job.started_at or job.updated_at)
+        if started_at is None:
+            raise GenerationJobConflict("Running generation job has no start timestamp yet")
+        age = datetime.now(timezone.utc) - started_at
+        if age < STALE_RUNNING_JOB_AFTER:
+            remaining = int((STALE_RUNNING_JOB_AFTER - age).total_seconds() // 60) + 1
+            raise GenerationJobConflict(f"Generation job is not stale yet; wait about {remaining} more minute(s)")
+        timestamp = now()
+        redacted_error = _redact_error(STALE_RUNNING_JOB_ERROR)
+        metadata = dict(job.metadata or {})
+        metadata["error_kind"] = _classify_error(redacted_error)
+        metadata["stale_running_marked_failed"] = True
+        metadata["stale_running_threshold_minutes"] = int(STALE_RUNNING_JOB_AFTER.total_seconds() // 60)
+        with connect(self.library_path) as conn:
+            cursor = conn.execute(
+                """
+                UPDATE generation_jobs
+                SET status='failed', error=?, metadata=?, updated_at=?, completed_at=?
+                WHERE id=? AND status='running'
+                """,
+                (redacted_error, _to_json(metadata), timestamp, timestamp, job_id),
+            )
+            conn.commit()
+        if cursor.rowcount != 1:
+            current = self.get_job(job_id)
+            raise GenerationJobConflict(f"Only running generation jobs can be marked failed; current status is {current.status}")
+        return self.get_job(job_id)
 
     def stage_result(self, job_id: str, data: bytes, filename: str, metadata: dict | None = None) -> GenerationJobRecord:
         job = self.get_job(job_id)
@@ -427,6 +474,8 @@ class GenerationJobRepository:
         job = self.get_job(job_id)
         if job.status != "failed":
             raise GenerationJobConflict(f"Only failed generation jobs can be retried; current status is {job.status}")
+        if job.metadata.get("retried_by_generation_job_id"):
+            raise GenerationJobConflict("Failed generation job has already been retried")
         retry_id = new_id("gen")
         timestamp = now()
         retry_metadata = {
