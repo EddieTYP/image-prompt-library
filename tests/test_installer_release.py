@@ -185,8 +185,29 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     assert '/assets/' in index_html
     assert "frontend/dist/assets/" in listing
     assert "scripts/appctl.sh" in listing
+    assert "scripts/install.sh" in listing
     assert "scripts/setup-runtime.sh" in listing
     assert "scripts/install-sample-data.sh" in listing
+    for dev_script in (
+        "scripts/dev.sh",
+        "scripts/setup.sh",
+        "scripts/start.sh",
+        "scripts/smoke-test.sh",
+        "scripts/backup.sh",
+        "scripts/package-release.sh",
+        "scripts/export-demo-data.py",
+        "scripts/benchmark_generation_models.py",
+        "scripts/check-codex-oauth-upstream.py",
+        "scripts/codex_native_oauth_smoke.py",
+    ):
+        assert dev_script not in listing
+    for maintenance_module in (
+        "backend/services/build_awesome_gpt_image_2_sample_manifest.py",
+        "backend/services/build_gpt_image_sample_manifests.py",
+        "backend/services/fill_sample_manifest_translations.py",
+        "backend/services/import_gpt_image_2_skill.py",
+    ):
+        assert maintenance_module not in listing
     assert "sample-data/manifests/en.json" in listing
     assert "sample-data/manifests/zh_hant.json" in listing
     assert "sample-data/manifests/zh_hans.json" in listing

@@ -83,6 +83,15 @@ find "$STAGING" \( \
 \) -prune -exec rm -rf {} +
 find "$STAGING" -name '*.pyc' -type f -delete
 
+# Keep release artifacts focused on normal user runtime only. These helper modules are
+# source/developer maintenance tools for building sample manifests or importing upstream
+# authoring repos; the installed app and sample-data wrapper do not need them.
+rm -f \
+  "$STAGING/backend/services/build_awesome_gpt_image_2_sample_manifest.py" \
+  "$STAGING/backend/services/build_gpt_image_sample_manifests.py" \
+  "$STAGING/backend/services/fill_sample_manifest_translations.py" \
+  "$STAGING/backend/services/import_gpt_image_2_skill.py"
+
 (
   cd "$STAGING"
   find . -type f -exec chmod 0644 {} +
