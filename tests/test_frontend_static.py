@@ -787,6 +787,11 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "generation-queue-cancel" in css
     assert "generation-queue-drawer" in css
     assert ".generation-queue-trigger" in css
+    assert ".generation-queue-result.generation-history-item{position:relative;display:grid;grid-template-columns:1fr;" in compact_css
+    assert ".generation-queue-result.generation-history-media{position:relative;display:block;width:100%;aspect-ratio:4/3;min-height:190px;" in compact_css
+    assert ".generation-queue-result.generation-history-mediaimg{width:100%;height:100%;min-height:190px;" in compact_css
+    assert ".generation-queue-quick-discard{position:absolute;right:10px;top:10px;" in compact_css
+    assert "grid-template-columns:112pxminmax(0,1fr)" not in compact_css
     assert ".floating-action-rail.fab{position:static;right:auto;bottom:auto;height:46px;min-width:112px;padding:016px;justify-content:center;box-sizing:border-box}" in compact_css
     assert ".floating-action-rail.fabsvg{width:18px;height:18px;flex:00auto}" in compact_css
     assert ".queue-dot.active" in compact_css
