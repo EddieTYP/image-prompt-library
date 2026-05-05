@@ -765,6 +765,15 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "api.cancelGenerationJob(job.id)" in queue
     assert "api.retryGenerationJob(job.id)" in queue
     assert "api.markGenerationJobFailed(job.id)" in queue
+    assert "api.discardGenerationJob(job.id)" in queue
+    assert "section.key === 'ready'" in queue
+    assert "className=\"generation-queue-result generation-history-item status-succeeded\"" in queue
+    assert "generation-history-media" in queue
+    assert "generation-history-status-grid" in queue
+    assert "generation-queue-quick-discard" in queue
+    assert "aria-label=\"Discard generation result\"" in queue
+    assert "job.status === 'succeeded' && !job.accepted_image_id && job.result_path" in queue
+    assert "job.result_path?.startsWith(`generation-results/${job.id}/`)" in queue
     assert "status-${job.status}" in queue
     assert "job.status === 'failed'" in queue
     assert "canRetryFailedJob(job)" in queue

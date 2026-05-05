@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
-import { Bell, CheckCircle2, Clock3, ImagePlus, X, XCircle } from 'lucide-react';
-import { api } from '../api/client';
+import { Bell, CheckCircle2, Clock3, ImagePlus, Trash2, X, XCircle } from 'lucide-react';
+import { api, mediaUrl } from '../api/client';
 import type { GenerationJobRecord } from '../types';
 import type { Translator } from '../utils/i18n';
 
@@ -41,6 +41,32 @@ function canRetryFailedJob(job: GenerationJobRecord) {
   return job.status === 'failed' && !retriedByJobId(job);
 }
 
+function canDiscardTransientResult(job: GenerationJobRecord) {
+  return Boolean(job.status === 'succeeded' && !job.accepted_image_id && job.result_path && job.result_path?.startsWith(`generation-results/${job.id}/`));
+}
+
+function jobResultUrl(job: GenerationJobRecord) {
+  return job.result_path ? mediaUrl(job.result_path) : '';
+}
+
+function jobParameter(job: GenerationJobRecord, key: string, fallback: string) {
+  const value = job.parameters?.[key];
+  return typeof value === 'string' && value ? value : fallback;
+}
+
+function jobAspectRatio(job: GenerationJobRecord) {
+  return jobParameter(job, 'requested_aspect_ratio', 'auto');
+}
+
+function jobQuality(job: GenerationJobRecord) {
+  const value = jobParameter(job, 'quality', 'default');
+  return value === 'standard' ? 'medium' : value;
+}
+
+function jobModel(job: GenerationJobRecord) {
+  return job.model || jobParameter(job, 'orchestrator_model', 'default');
+}
+
 function isStaleRunningJob(job: GenerationJobRecord) {
   if (job.status !== 'running') return false;
   const started = Date.parse(job.started_at || job.updated_at || job.created_at);
@@ -65,6 +91,7 @@ export default function GenerationQueueDrawer({
   const [cancelBusyIds, setCancelBusyIds] = useState<Set<string>>(() => new Set());
   const [retryBusyIds, setRetryBusyIds] = useState<Set<string>>(() => new Set());
   const [markFailedBusyIds, setMarkFailedBusyIds] = useState<Set<string>>(() => new Set());
+  const [discardBusyIds, setDiscardBusyIds] = useState<Set<string>>(() => new Set());
 
   const refresh = async () => {
     try {
@@ -138,6 +165,25 @@ export default function GenerationQueueDrawer({
     }
   };
 
+  const discardJob = async (job: GenerationJobRecord) => {
+    if (!canDiscardTransientResult(job) || discardBusyIds.has(job.id)) return;
+    setDiscardBusyIds(current => new Set(current).add(job.id));
+    try {
+      const updated = await api.discardGenerationJob(job.id);
+      setJobs(current => current.map(candidate => candidate.id === updated.id ? updated : candidate));
+      setLoadError('');
+      await refresh();
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Could not discard generation result.');
+    } finally {
+      setDiscardBusyIds(current => {
+        const next = new Set(current);
+        next.delete(job.id);
+        return next;
+      });
+    }
+  };
+
   const openJobFromKeyboard = (event: KeyboardEvent<HTMLDivElement>, job: GenerationJobRecord) => {
     if (!canOpenJob(job)) return;
     if (event.key === 'Enter' || event.key === ' ') {
@@ -185,55 +231,92 @@ export default function GenerationQueueDrawer({
             <section className="generation-queue-section" key={section.key}>
               <h3>{section.title}</h3>
               {section.jobs.length === 0 ? <p className="muted">—</p> : section.jobs.map(job => (
-                <div
-                  key={job.id}
-                  className={`generation-queue-row status-${job.status}`}
-                  onClick={() => canOpenJob(job) && onOpenJob(job)}
-                  onKeyDown={event => openJobFromKeyboard(event, job)}
-                  role={canOpenJob(job) ? 'button' : undefined}
-                  tabIndex={canOpenJob(job) ? 0 : undefined}
-                  aria-disabled={!canOpenJob(job)}
-                >
-                  {statusIcon(job)}
-                  <span>{job.edited_prompt_text || job.prompt_text}</span>
-                  <span className="generation-queue-row-actions">
-                    <b>{statusLabel(job)}</b>
-                    {isActive(job) && (
-                      <button
-                        type="button"
-                        className="generation-queue-cancel"
-                        onClick={event => {
-                          event.stopPropagation();
-                          cancelJob(job).catch(() => undefined);
-                        }}
-                        disabled={cancelBusyIds.has(job.id)}
-                      >Cancel</button>
-                    )}
-                    {isStaleRunningJob(job) && (
-                      <button
-                        type="button"
-                        className="generation-queue-cancel"
-                        onClick={event => {
-                          event.stopPropagation();
-                          markFailedJob(job).catch(() => undefined);
-                        }}
-                        disabled={markFailedBusyIds.has(job.id)}
-                      >Mark failed</button>
-                    )}
-                    {canRetryFailedJob(job) && (
-                      <button
-                        type="button"
-                        className="generation-queue-cancel"
-                        onClick={event => {
-                          event.stopPropagation();
-                          retryJob(job).catch(() => undefined);
-                        }}
-                        disabled={retryBusyIds.has(job.id)}
-                      >Retry</button>
-                    )}
-                    {job.status === 'failed' && retriedByJobId(job) && <em>Retried</em>}
-                  </span>
-                </div>
+                section.key === 'ready' && job.status === 'succeeded' ? (
+                  <div
+                    key={job.id}
+                    className="generation-queue-result generation-history-item status-succeeded"
+                    onClick={() => canOpenJob(job) && onOpenJob(job)}
+                    onKeyDown={event => openJobFromKeyboard(event, job)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`${statusLabel(job)} generation result, ${jobAspectRatio(job)}, ${jobQuality(job)}, ${jobModel(job)}`}
+                  >
+                    <span className="generation-history-media">
+                      {jobResultUrl(job) ? <img src={jobResultUrl(job)} alt="" /> : <span className="generation-history-placeholder">{statusLabel(job)}</span>}
+                      {canDiscardTransientResult(job) && (
+                        <button
+                          type="button"
+                          className="generation-queue-quick-discard"
+                          onClick={event => {
+                            event.stopPropagation();
+                            discardJob(job).catch(() => undefined);
+                          }}
+                          disabled={discardBusyIds.has(job.id)}
+                          aria-label="Discard generation result"
+                          title="Discard"
+                        >
+                          <Trash2 size={15} aria-hidden="true" />
+                        </button>
+                      )}
+                    </span>
+                    <span className="generation-history-status-grid" aria-hidden="true">
+                      <span className="generation-history-cell"><b>Aspect ratio</b><em>{jobAspectRatio(job)}</em></span>
+                      <span className="generation-history-cell"><b>Quality</b><em>{jobQuality(job)}</em></span>
+                      <span className="generation-history-cell"><b>Model</b><em>{jobModel(job)}</em></span>
+                      <span className="generation-history-cell"><b>Status</b><em>{statusLabel(job)}</em></span>
+                    </span>
+                  </div>
+                ) : (
+                  <div
+                    key={job.id}
+                    className={`generation-queue-row status-${job.status}`}
+                    onClick={() => canOpenJob(job) && onOpenJob(job)}
+                    onKeyDown={event => openJobFromKeyboard(event, job)}
+                    role={canOpenJob(job) ? 'button' : undefined}
+                    tabIndex={canOpenJob(job) ? 0 : undefined}
+                    aria-disabled={!canOpenJob(job)}
+                  >
+                    {statusIcon(job)}
+                    <span>{job.edited_prompt_text || job.prompt_text}</span>
+                    <span className="generation-queue-row-actions">
+                      <b>{statusLabel(job)}</b>
+                      {isActive(job) && (
+                        <button
+                          type="button"
+                          className="generation-queue-cancel"
+                          onClick={event => {
+                            event.stopPropagation();
+                            cancelJob(job).catch(() => undefined);
+                          }}
+                          disabled={cancelBusyIds.has(job.id)}
+                        >Cancel</button>
+                      )}
+                      {isStaleRunningJob(job) && (
+                        <button
+                          type="button"
+                          className="generation-queue-cancel"
+                          onClick={event => {
+                            event.stopPropagation();
+                            markFailedJob(job).catch(() => undefined);
+                          }}
+                          disabled={markFailedBusyIds.has(job.id)}
+                        >Mark failed</button>
+                      )}
+                      {canRetryFailedJob(job) && (
+                        <button
+                          type="button"
+                          className="generation-queue-cancel"
+                          onClick={event => {
+                            event.stopPropagation();
+                            retryJob(job).catch(() => undefined);
+                          }}
+                          disabled={retryBusyIds.has(job.id)}
+                        >Retry</button>
+                      )}
+                      {job.status === 'failed' && retriedByJobId(job) && <em>Retried</em>}
+                    </span>
+                  </div>
+                )
               ))}
             </section>
           ))}
