@@ -396,6 +396,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "uploadGenerationResult:" in api
     assert "acceptGenerationJob:" in api
     assert "discardGenerationJob:" in api
+    assert "retryGenerationJob:" in api
     assert "GenerationPanel" in app or "GenerationPanel" in detail
     assert "Generate variant" in detail
     assert "Result inbox" not in panel
@@ -405,6 +406,9 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "api.acceptGenerationJobAsNewItem" in panel
     assert "api.discardGenerationJob" in panel
     assert "api.discardAndRetryGenerationJob" in panel
+    assert "api.retryGenerationJob" in panel
+    assert "retryFailedJob" in panel
+    assert "Generation job retried." in panel
     assert "api.cancelGenerationJob" in panel
     assert "manual_upload" in panel
     assert "openai_codex_oauth_native" in panel
@@ -416,6 +420,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Save as new item" in panel
     assert "Save as new" in panel
     assert "aria-label=\"Retry\"" in panel
+    assert "aria-label=\"Retry failed job\"" in panel
     assert "title=\"Retry\"" in panel
     assert "generation-stage-actions" in panel
     assert "generation-shimmer" in panel
@@ -753,6 +758,10 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "Cancelled" in queue
     assert "api.generationJobs({ limit: 50 })" in queue
     assert "api.cancelGenerationJob(job.id)" in queue
+    assert "api.retryGenerationJob(job.id)" in queue
+    assert "status-${job.status}" in queue
+    assert "job.status === 'failed'" in queue
+    assert "Retry" in queue
     assert "isActive(job) &&" in queue
     assert "className=\"generation-queue-cancel\"" in queue
     assert "event.stopPropagation()" in queue

@@ -364,6 +364,51 @@ def test_generation_job_can_discard_unsaved_result_and_retry_same_settings(tmp_p
     assert enqueue_calls == [(tmp_path / "library", "openai_codex_oauth_native")]
 
 
+def test_failed_generation_job_can_be_retried_without_rerunning_original(tmp_path, monkeypatch):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    enqueue_calls = []
+
+    def fake_enqueue(library_path, *, provider):
+        enqueue_calls.append((Path(library_path), provider))
+
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", fake_enqueue)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "text_to_image",
+        "provider": "openai_codex_oauth_native",
+        "model": "gpt-image-2",
+        "prompt_language": "en",
+        "prompt_text": "A failed robot portrait",
+        "edited_prompt_text": "A failed robot portrait in rain",
+        "reference_image_ids": ["img_reference"],
+        "parameters": {"requested_aspect_ratio": "1:1", "quality": "high"},
+    }).json()
+    repo = GenerationJobRepository(tmp_path / "library")
+    repo.mark_failed(job["id"], "Generation job was interrupted by backend restart. Retry to run it again.")
+    enqueue_calls.clear()
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/retry")
+
+    assert response.status_code == 200
+    retry = response.json()
+    original = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert original["status"] == "failed"
+    assert original["metadata"]["retried_by_generation_job_id"] == retry["id"]
+    assert retry["id"] != job["id"]
+    assert retry["status"] == "queued"
+    assert retry["source_item_id"] == source_item["id"]
+    assert retry["provider"] == "openai_codex_oauth_native"
+    assert retry["model"] == "gpt-image-2"
+    assert retry["prompt_text"] == "A failed robot portrait"
+    assert retry["edited_prompt_text"] == "A failed robot portrait in rain"
+    assert retry["reference_image_ids"] == ["img_reference"]
+    assert retry["parameters"] == {"requested_aspect_ratio": "1:1", "quality": "high"}
+    assert retry["metadata"]["retry_of_generation_job_id"] == job["id"]
+    assert retry["metadata"]["retry_reason"] == "failed_retry"
+    assert enqueue_calls == [(tmp_path / "library", "openai_codex_oauth_native")]
+
+
 def test_generation_job_retry_rejects_saved_or_unfinished_jobs(tmp_path):
     c = client(tmp_path)
     source_item = create_source_item(c)

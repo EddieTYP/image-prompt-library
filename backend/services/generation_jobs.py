@@ -423,6 +423,55 @@ class GenerationJobRepository:
             result_abs.parent.rmdir()
         return self.get_job(job_id)
 
+    def retry_failed_job(self, job_id: str) -> GenerationJobRecord:
+        job = self.get_job(job_id)
+        if job.status != "failed":
+            raise GenerationJobConflict(f"Only failed generation jobs can be retried; current status is {job.status}")
+        retry_id = new_id("gen")
+        timestamp = now()
+        retry_metadata = {
+            "retry_of_generation_job_id": job.id,
+            "retry_reason": "failed_retry",
+        }
+        original_metadata = dict(job.metadata or {})
+        original_metadata["retried_by_generation_job_id"] = retry_id
+        with connect(self.library_path) as conn:
+            conn.execute(
+                """
+                UPDATE generation_jobs
+                SET metadata=?, updated_at=?
+                WHERE id=? AND status='failed'
+                """,
+                (_to_json(original_metadata), timestamp, job.id),
+            )
+            conn.execute(
+                """
+                INSERT INTO generation_jobs(
+                    id, source_item_id, mode, provider, model, status, prompt_language,
+                    prompt_text, edited_prompt_text, reference_image_ids, parameters,
+                    metadata, created_at, updated_at
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    retry_id,
+                    job.source_item_id,
+                    job.mode,
+                    job.provider,
+                    job.model,
+                    "queued",
+                    job.prompt_language,
+                    job.prompt_text,
+                    job.edited_prompt_text,
+                    _to_json(job.reference_image_ids),
+                    _to_json(job.parameters),
+                    _to_json(retry_metadata),
+                    timestamp,
+                    timestamp,
+                ),
+            )
+            conn.commit()
+        return self.get_job(retry_id)
+
     def discard_and_retry_job(self, job_id: str) -> GenerationJobRetryResult:
         job = self.get_job(job_id)
         if job.status == "accepted" or job.accepted_image_id:

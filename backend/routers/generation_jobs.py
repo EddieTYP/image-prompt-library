@@ -125,6 +125,19 @@ def discard_generation_job(job_id: str, request: Request):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post("/{job_id}/retry", response_model=GenerationJobRecord)
+def retry_generation_job(job_id: str, request: Request):
+    try:
+        retry = repo(request).retry_failed_job(job_id)
+        if retry.provider == CODEX_NATIVE_PROVIDER_ID:
+            enqueue_generation_jobs(request.app.state.library_path, provider=retry.provider)
+        return retry
+    except KeyError as exc:
+        raise HTTPException(status_code=404) from exc
+    except GenerationJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.post("/{job_id}/discard-and-retry", response_model=GenerationJobRetryResult)
 def discard_and_retry_generation_job(job_id: str, request: Request):
     try:
