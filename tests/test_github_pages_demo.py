@@ -85,10 +85,10 @@ def test_github_pages_workflow_deploys_versioned_demo_builds():
     assert "Online Read Only Demo" in text
     assert "Demo images are compressed." not in text
     assert "Add/edit/generation require local install; run locally to create your private prompt library." in text
-    assert "Latest v0.7 beta adds prompt variables and bulk delete" in text
+    assert "Latest v0.7 beta adds safer queue recovery and failed-job retry" in text
     assert "local-generation-studio-banner-v0.7.png" in text
     assert "hero-banner" in text
-    assert "View the v0.7.1 beta Queue Recovery release" in text
+    assert "View the v0.7.2 beta Failed Job Retry release" in text
     assert "cp docs/assets/screenshots/local-generation-studio-banner-v0.7.png" in text
     assert "View on GitHub" in text
     assert "./v0.7/" in text

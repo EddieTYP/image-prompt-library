@@ -248,6 +248,29 @@ def test_v071_release_notes_describe_queue_recovery_and_search_sort_beta():
     assert "secret" not in notes.lower()
 
 
+def test_v072_release_notes_describe_failed_job_retry_beta():
+    notes_path = ROOT / "docs" / "releases" / "v0.7.2-beta.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text()
+
+    assert "# Image Prompt Library v0.7.2-beta" in notes
+    assert "Failed Job Retry" in notes
+    assert "Retry" in notes
+    assert "failed generation jobs" in notes
+    assert "retried_by_generation_job_id" in notes
+    assert "retry_of_generation_job_id" in notes
+    assert "failed_retry" in notes
+    assert "No database schema change" in notes
+    assert "image-prompt-library update --version v0.7.2-beta" in notes
+    assert "image-prompt-library rollback" in notes
+
+    assert "/Users/" not in notes
+    assert ".local-work" not in notes
+    assert "OpenNana" not in notes
+    assert "token" not in notes.lower()
+    assert "secret" not in notes.lower()
+
+
 def test_v062_release_notes_describe_update_reliability_fixes_beta():
     notes_path = ROOT / "docs" / "releases" / "v0.6.2-beta.md"
     assert notes_path.exists()
