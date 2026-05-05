@@ -567,6 +567,29 @@ export default function GenerationPanel({
     }
   };
 
+  const retryFailedJob = async (job: GenerationJobRecord) => {
+    setBusy(true);
+    setActiveJobId(job.id);
+    setMessage('');
+    try {
+      const retry = await api.retryGenerationJob(job.id);
+      setJobs(current => [retry, ...current.filter(candidate => candidate.id !== retry.id)]);
+      setActiveJobId(retry.id);
+      setHistoryReviewJobId(undefined);
+      setPromptText(jobPrompt(retry));
+      setAspectRatio(jobAspectRatio(retry));
+      setQuality(jobQuality(retry));
+      setProvider(retry.provider || provider);
+      setFocusedJobHighlightId(retry.id);
+      setMessage('Generation job retried.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not retry failed job.');
+      await refreshJobs().catch(() => undefined);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const previewHistoryJob = (job: GenerationJobRecord) => {
     setHistoryReviewJobId(job.id);
     setActiveJobId(job.id);
@@ -633,6 +656,11 @@ export default function GenerationPanel({
       return (
         <div className="generation-stage generation-stage-error">
           <strong>Failed</strong>
+          <div className="generation-stage-actions" aria-label="Failed generation actions">
+            <button className="stage-action" onClick={() => retryFailedJob(selectedStageJob)} disabled={busy} aria-label="Retry failed job" title="Retry failed job">
+              <RotateCcw size={16} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       );
     }

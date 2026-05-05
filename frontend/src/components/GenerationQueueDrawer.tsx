@@ -46,6 +46,7 @@ export default function GenerationQueueDrawer({
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
   const [loadError, setLoadError] = useState('');
   const [cancelBusyIds, setCancelBusyIds] = useState<Set<string>>(() => new Set());
+  const [retryBusyIds, setRetryBusyIds] = useState<Set<string>>(() => new Set());
 
   const refresh = async () => {
     try {
@@ -74,6 +75,25 @@ export default function GenerationQueueDrawer({
       setLoadError(error instanceof Error ? error.message : 'Could not cancel generation job.');
     } finally {
       setCancelBusyIds(current => {
+        const next = new Set(current);
+        next.delete(job.id);
+        return next;
+      });
+    }
+  };
+
+  const retryJob = async (job: GenerationJobRecord) => {
+    if (job.status !== 'failed' || retryBusyIds.has(job.id)) return;
+    setRetryBusyIds(current => new Set(current).add(job.id));
+    try {
+      const retry = await api.retryGenerationJob(job.id);
+      setJobs(current => [retry, ...current.filter(candidate => candidate.id !== retry.id)]);
+      setLoadError('');
+      await refresh();
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Could not retry generation job.');
+    } finally {
+      setRetryBusyIds(current => {
         const next = new Set(current);
         next.delete(job.id);
         return next;
@@ -151,6 +171,17 @@ export default function GenerationQueueDrawer({
                         }}
                         disabled={cancelBusyIds.has(job.id)}
                       >Cancel</button>
+                    )}
+                    {job.status === 'failed' && (
+                      <button
+                        type="button"
+                        className="generation-queue-cancel"
+                        onClick={event => {
+                          event.stopPropagation();
+                          retryJob(job).catch(() => undefined);
+                        }}
+                        disabled={retryBusyIds.has(job.id)}
+                      >Retry</button>
                     )}
                   </span>
                 </div>
