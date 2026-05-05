@@ -397,6 +397,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "acceptGenerationJob:" in api
     assert "discardGenerationJob:" in api
     assert "retryGenerationJob:" in api
+    assert "markGenerationJobFailed:" in api
     assert "GenerationPanel" in app or "GenerationPanel" in detail
     assert "Generate variant" in detail
     assert "Result inbox" not in panel
@@ -407,7 +408,9 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "api.discardGenerationJob" in panel
     assert "api.discardAndRetryGenerationJob" in panel
     assert "api.retryGenerationJob" in panel
+    assert "api.markGenerationJobFailed" in panel
     assert "retryFailedJob" in panel
+    assert "markStaleRunningJobFailed" in panel
     assert "Generation job retried." in panel
     assert "api.cancelGenerationJob" in panel
     assert "manual_upload" in panel
@@ -421,6 +424,8 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Save as new" in panel
     assert "aria-label=\"Retry\"" in panel
     assert "aria-label=\"Retry failed job\"" in panel
+    assert "aria-label=\"Mark stale job failed\"" in panel
+    assert "Retried" in panel
     assert "title=\"Retry\"" in panel
     assert "generation-stage-actions" in panel
     assert "generation-shimmer" in panel
@@ -759,8 +764,13 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "api.generationJobs({ limit: 50 })" in queue
     assert "api.cancelGenerationJob(job.id)" in queue
     assert "api.retryGenerationJob(job.id)" in queue
+    assert "api.markGenerationJobFailed(job.id)" in queue
     assert "status-${job.status}" in queue
     assert "job.status === 'failed'" in queue
+    assert "canRetryFailedJob(job)" in queue
+    assert "isStaleRunningJob(job)" in queue
+    assert "Retried" in queue
+    assert "Mark failed" in queue
     assert "Retry" in queue
     assert "isActive(job) &&" in queue
     assert "className=\"generation-queue-cancel\"" in queue

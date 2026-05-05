@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from pathlib import Path
 import threading
@@ -407,6 +408,55 @@ def test_failed_generation_job_can_be_retried_without_rerunning_original(tmp_pat
     assert retry["metadata"]["retry_of_generation_job_id"] == job["id"]
     assert retry["metadata"]["retry_reason"] == "failed_retry"
     assert enqueue_calls == [(tmp_path / "library", "openai_codex_oauth_native")]
+
+    second_retry = c.post(f"/api/generation-jobs/{job['id']}/retry")
+    assert second_retry.status_code == 409
+    assert "already been retried" in second_retry.json()["detail"]
+    jobs = c.get("/api/generation-jobs", params={"limit": 10}).json()["jobs"]
+    assert [candidate["metadata"].get("retry_of_generation_job_id") for candidate in jobs].count(job["id"]) == 1
+
+
+def test_stale_running_generation_job_can_be_marked_failed_for_manual_retry(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "A stale running robot",
+    }).json()
+    repo = GenerationJobRepository(tmp_path / "library")
+    repo.mark_running(job["id"])
+    stale_started = (datetime.now(timezone.utc) - timedelta(minutes=45)).isoformat()
+    with connect(tmp_path / "library") as conn:
+        conn.execute("UPDATE generation_jobs SET started_at=?, updated_at=? WHERE id=?", (stale_started, stale_started, job["id"]))
+        conn.commit()
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/mark-failed")
+
+    assert response.status_code == 200
+    failed = response.json()
+    assert failed["status"] == "failed"
+    assert failed["completed_at"] is not None
+    assert failed["error"] == "Generation job was marked failed after running too long. Retry to run it again."
+    assert failed["metadata"]["stale_running_marked_failed"] is True
+
+
+def test_fresh_running_generation_job_cannot_be_marked_failed_as_stale(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "A fresh running robot",
+    }).json()
+    repo = GenerationJobRepository(tmp_path / "library")
+    repo.mark_running(job["id"])
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/mark-failed")
+
+    assert response.status_code == 409
+    assert "not stale yet" in response.json()["detail"]
+    assert c.get(f"/api/generation-jobs/{job['id']}").json()["status"] == "running"
 
 
 def test_generation_job_retry_rejects_saved_or_unfinished_jobs(tmp_path):

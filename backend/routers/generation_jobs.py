@@ -115,6 +115,16 @@ def cancel_generation_job(job_id: str, request: Request):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post("/{job_id}/mark-failed", response_model=GenerationJobRecord)
+def mark_generation_job_failed(job_id: str, request: Request):
+    try:
+        return repo(request).mark_stale_running_failed(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404) from exc
+    except GenerationJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.post("/{job_id}/discard", response_model=GenerationJobRecord)
 def discard_generation_job(job_id: str, request: Request):
     try:
