@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.3-beta)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.4-beta)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 <p align="center">
@@ -32,7 +32,7 @@ Image Prompt Library 就是为这件事而做：把分散在聊天记录、文�
 
 你可以用 demo 快速找灵感、看 prompt 结构、复制公开 sample prompt，或者比较不同 prompt 写法对出图效果的影响。GitHub Pages demo 是静态只读版本；新增、编辑、私人 library 管理和图片生成，都在本地安装版使用。
 
-当前公开 beta：[`v0.7.3-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.3-beta)。这个版本延续 v0.7 的 prompt variables、搜索排序 operators、工作 queue Cancel 与 backend restart recovery，并进一步加强 generation queue 安全性：failed job 只能从原 job retry 一次、stale running job 可手动 mark failed 后再安全 retry，release artifact 也剔除了 developer/maintenance tooling。
+当前公开 beta：[`v0.7.4-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.4-beta)。这个版本延续 v0.7 的 prompt variables、搜索排序 operators、工作 queue Cancel 与 backend restart recovery，同时让 queue review 状态更清楚：被其他 generation job 重用作 reference 的生成结果，现在会标记为 `Used as ref`；clone 过的 generation-result reference 也会正确识别，queue 也会加载足够 recent history 以一致显示这些关系。
 
 ## 快速开始
 

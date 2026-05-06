@@ -248,6 +248,29 @@ def test_v071_release_notes_describe_queue_recovery_and_search_sort_beta():
     assert "secret" not in notes.lower()
 
 
+def test_v074_release_notes_describe_reference_aware_queue_review_beta():
+    notes_path = ROOT / "docs" / "releases" / "v0.7.4-beta.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text()
+
+    assert "# Image Prompt Library v0.7.4-beta" in notes
+    assert "Reference-Aware Queue Review" in notes
+    assert "Used as ref" in notes
+    assert "source_result_path" in notes
+    assert "standalone generation panel" in notes
+    assert "more than the most recent 50 jobs" in notes
+    assert "Quick discard" in notes
+    assert "No database schema change" in notes
+    assert "image-prompt-library update --version v0.7.4-beta" in notes
+    assert "image-prompt-library rollback" in notes
+
+    assert "/Users/" not in notes
+    assert ".local-work" not in notes
+    assert "OpenNana" not in notes
+    assert "token" not in notes.lower()
+    assert "secret" not in notes.lower()
+
+
 def test_v073_release_notes_describe_safer_queue_recovery_beta():
     notes_path = ROOT / "docs" / "releases" / "v0.7.3-beta.md"
     assert notes_path.exists()

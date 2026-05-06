@@ -15,15 +15,29 @@ function statusIcon(job: GenerationJobRecord) {
   return <CheckCircle2 size={16} />;
 }
 
-function statusLabel(job: GenerationJobRecord) {
+function statusLabel(job: GenerationJobRecord, isUsedAsGenerationReference = false) {
   if (job.status === 'queued') return 'Queued';
   if (job.status === 'running') return 'Running';
-  if (job.status === 'succeeded') return 'Ready';
+  if (job.status === 'succeeded') return isUsedAsGenerationReference ? 'Used as ref' : 'Ready';
   if (job.status === 'failed') return 'Failed';
   if (job.status === 'accepted') return 'Saved';
   if (job.status === 'discarded') return 'Discarded';
   if (job.status === 'cancelled') return 'Cancelled';
   return job.status;
+}
+
+function isUsedAsGenerationReference(job: GenerationJobRecord, jobs: GenerationJobRecord[]) {
+  if (!job.result_path) return false;
+  return jobs.some(candidate => {
+    if (candidate.id === job.id) return false;
+    const inputs = candidate.parameters?.input_images;
+    if (!Array.isArray(inputs)) return false;
+    return inputs.some(input => {
+      if (!input || typeof input !== 'object') return false;
+      const reference = input as { result_path?: unknown; source_result_path?: unknown };
+      return [reference.result_path, reference.source_result_path].some(resultPath => typeof resultPath === 'string' && resultPath === job.result_path);
+    });
+  });
 }
 
 function canOpenJob(job: GenerationJobRecord) {
@@ -95,7 +109,7 @@ export default function GenerationQueueDrawer({
 
   const refresh = async () => {
     try {
-      const result = await api.generationJobs({ limit: 50 });
+      const result = await api.generationJobs({ limit: 100 });
       setJobs(result.jobs);
       setLoadError('');
     } catch (error) {
@@ -256,10 +270,10 @@ export default function GenerationQueueDrawer({
                     onKeyDown={event => openJobFromKeyboard(event, job)}
                     role="button"
                     tabIndex={0}
-                    aria-label={`${statusLabel(job)} generation result, ${jobAspectRatio(job)}, ${jobQuality(job)}, ${jobModel(job)}`}
+                    aria-label={`${statusLabel(job, isUsedAsGenerationReference(job, jobs))} generation result, ${jobAspectRatio(job)}, ${jobQuality(job)}, ${jobModel(job)}`}
                   >
                     <span className="generation-history-media">
-                      {jobResultUrl(job) ? <img src={jobResultUrl(job)} alt="" /> : <span className="generation-history-placeholder">{statusLabel(job)}</span>}
+                      {jobResultUrl(job) ? <img src={jobResultUrl(job)} alt="" /> : <span className="generation-history-placeholder">{statusLabel(job, isUsedAsGenerationReference(job, jobs))}</span>}
                       <span className="generation-queue-preview-actions">
                         <button
                           type="button"
@@ -294,7 +308,7 @@ export default function GenerationQueueDrawer({
                       <span className="generation-history-cell"><b>Aspect ratio</b><em>{jobAspectRatio(job)}</em></span>
                       <span className="generation-history-cell"><b>Quality</b><em>{jobQuality(job)}</em></span>
                       <span className="generation-history-cell"><b>Model</b><em>{jobModel(job)}</em></span>
-                      <span className="generation-history-cell"><b>Status</b><em>{statusLabel(job)}</em></span>
+                      <span className="generation-history-cell"><b>Status</b><em>{statusLabel(job, isUsedAsGenerationReference(job, jobs))}</em></span>
                     </span>
                   </div>
                 ) : (
@@ -310,7 +324,7 @@ export default function GenerationQueueDrawer({
                     {statusIcon(job)}
                     <span>{job.edited_prompt_text || job.prompt_text}</span>
                     <span className="generation-queue-row-actions">
-                      <b>{statusLabel(job)}</b>
+                      <b>{statusLabel(job, isUsedAsGenerationReference(job, jobs))}</b>
                       {isActive(job) && (
                         <button
                           type="button"

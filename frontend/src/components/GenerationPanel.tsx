@@ -15,10 +15,10 @@ function providerReady(provider: GenerationProviderStatus) {
   return Boolean(provider.available && provider.authenticated && provider.configured);
 }
 
-function statusLabel(status: string) {
+function statusLabel(status: string, isUsedAsGenerationReference = false) {
   if (status === 'queued') return 'Queued';
   if (status === 'running') return 'Running';
-  if (status === 'succeeded') return 'Ready';
+  if (status === 'succeeded') return isUsedAsGenerationReference ? 'Used as ref' : 'Ready';
   if (status === 'accepted') return 'Saved';
   if (status === 'discarded') return 'Discarded';
   if (status === 'cancelled') return 'Cancelled';
@@ -211,6 +211,19 @@ export default function GenerationPanel({
   const isHistoryReview = Boolean(historyReviewJob);
   const canUseResultActions = (job?: GenerationJobRecord) => Boolean(job && job.status === 'succeeded' && !job.accepted_image_id && job.result_path);
   const canDiscardTransientResult = (job?: GenerationJobRecord) => canUseResultActions(job) && Boolean(job?.result_path?.startsWith(`generation-results/${job.id}/`));
+  const isUsedAsGenerationReference = (job?: GenerationJobRecord) => {
+    if (!job?.result_path) return false;
+    return jobs.some(candidate => {
+      if (candidate.id === job.id) return false;
+      const inputs = candidate.parameters?.input_images;
+      if (!Array.isArray(inputs)) return false;
+      return inputs.some(input => {
+        if (!input || typeof input !== 'object') return false;
+        const reference = input as { result_path?: unknown; source_result_path?: unknown };
+        return [reference.result_path, reference.source_result_path].some(resultPath => typeof resultPath === 'string' && resultPath === job.result_path);
+      });
+    });
+  };
   const filteredMetadataTags = useMemo(() => {
     const selected = new Set(metadataTagsText.split(',').map(tag => tag.trim()).filter(Boolean));
     const query = metadataTagQuery.trim().toLowerCase();
@@ -738,7 +751,7 @@ export default function GenerationPanel({
     }
     return (
       <div className="generation-stage generation-stage-ready">
-        <strong>{statusLabel(selectedStageJob.status)}</strong>
+        <strong>{statusLabel(selectedStageJob.status, isUsedAsGenerationReference(selectedStageJob))}</strong>
         {renderStageActions(selectedStageJob)}
       </div>
     );
@@ -872,15 +885,15 @@ export default function GenerationPanel({
             </div>
             {visibleJobs.length === 0 && <p className="muted">No generation jobs yet.</p>}
             {visibleJobs.map(job => (
-              <button key={job.id} className={`generation-history-item status-${job.status}`} onClick={() => previewHistoryJob(job)} aria-label={`${statusLabel(job.status)} generation, ${jobAspectRatio(job)}, ${jobQuality(job)}, ${jobModel(job)}`}>
+              <button key={job.id} className={`generation-history-item status-${job.status}`} onClick={() => previewHistoryJob(job)} aria-label={`${statusLabel(job.status, isUsedAsGenerationReference(job))} generation, ${jobAspectRatio(job)}, ${jobQuality(job)}, ${jobModel(job)}`}>
                 <span className="generation-history-media">
-                  {jobResultUrl(job) ? <img src={jobResultUrl(job)} alt="" /> : <span className="generation-history-placeholder">{statusLabel(job.status)}</span>}
+                  {jobResultUrl(job) ? <img src={jobResultUrl(job)} alt="" /> : <span className="generation-history-placeholder">{statusLabel(job.status, isUsedAsGenerationReference(job))}</span>}
                 </span>
                 <span className="generation-history-status-grid" aria-hidden="true">
                   <span className="generation-history-cell"><b>Aspect ratio</b><em>{optionLabel(ASPECT_RATIO_OPTIONS, jobAspectRatio(job))}</em></span>
                   <span className="generation-history-cell"><b>Quality</b><em>{optionLabel(QUALITY_OPTIONS, jobQuality(job))}</em></span>
                   <span className="generation-history-cell"><b>Model</b><em>{jobModel(job)}</em></span>
-                  <span className="generation-history-cell"><b>Status</b><em>{statusLabel(job.status)}</em></span>
+                  <span className="generation-history-cell"><b>Status</b><em>{statusLabel(job.status, isUsedAsGenerationReference(job))}</em></span>
                 </span>
               </button>
             ))}

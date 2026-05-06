@@ -751,7 +751,7 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "onOpenJob" in queue
     assert "canOpenJob(job)" in queue
     assert "onClick={() => canOpenJob(job) && onOpenJob(job)}" in queue
-    assert "disabled={!canOpenJob(job)}" in queue
+    assert "aria-disabled={!canOpenJob(job)}" in queue
     assert "job.status !== 'discarded'" in queue
     assert "disabled={!job.source_item_id}" not in queue
     assert "Generation work queue" in queue
@@ -761,7 +761,7 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "queue-dot failed" in queue
     assert "{counts.running} running · {counts.queued} queued · {counts.ready} ready" in queue
     assert "Cancelled" in queue
-    assert "api.generationJobs({ limit: 50 })" in queue
+    assert "api.generationJobs({ limit: 100 })" in queue
     assert "api.cancelGenerationJob(job.id)" in queue
     assert "api.retryGenerationJob(job.id)" in queue
     assert "api.markGenerationJobFailed(job.id)" in queue
@@ -811,6 +811,32 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert ".queue-dot.active" in compact_css
     assert ".mobile-generate-variant-button{display:inline-flex" in compact_css
 
+    # Ready 狀態若被其他 job 當作參考，會改成 Used as ref（前端標示邏輯）
+    assert "function isUsedAsGenerationReference(job: GenerationJobRecord, jobs: GenerationJobRecord[])" in queue
+    assert "const inputs = candidate.parameters?.input_images;" in queue
+    assert "const reference = input as { result_path?: unknown; source_result_path?: unknown }" in queue
+    assert "[reference.result_path, reference.source_result_path].some(resultPath => typeof resultPath === 'string' && resultPath === job.result_path)" in queue
+    assert "statusLabel(job, isUsedAsGenerationReference(job, jobs))" in queue
+    assert "aria-label={`${statusLabel(job, isUsedAsGenerationReference(job, jobs))} generation result, ${jobAspectRatio(job)}, ${jobQuality(job)}, ${jobModel(job)}`}" in queue
+    assert "<em>{statusLabel(job, isUsedAsGenerationReference(job, jobs))}</em>" in queue
+    assert "<b>{statusLabel(job, isUsedAsGenerationReference(job, jobs))}</b>" in queue
+
+
+def test_generation_panel_shows_used_as_ref_in_status_label():
+    panel_path = ROOT / "frontend" / "src" / "components" / "GenerationPanel.tsx"
+    assert panel_path.exists()
+    panel = panel_path.read_text()
+
+    assert "function statusLabel(status: string, isUsedAsGenerationReference = false)" in panel
+    assert "if (status === 'succeeded') return isUsedAsGenerationReference ? 'Used as ref' : 'Ready';" in panel
+    assert "const isUsedAsGenerationReference = (job?: GenerationJobRecord) => {" in panel
+    assert "const inputs = candidate.parameters?.input_images;" in panel
+    assert "const reference = input as { result_path?: unknown; source_result_path?: unknown };" in panel
+    assert "[reference.result_path, reference.source_result_path].some(resultPath => typeof resultPath === 'string' && resultPath === job.result_path);" in panel
+    assert "statusLabel(selectedStageJob.status, isUsedAsGenerationReference(selectedStageJob))" in panel
+    assert "aria-label={`${statusLabel(job.status, isUsedAsGenerationReference(job))} generation, ${jobAspectRatio(job)}, ${jobQuality(job)}, ${jobModel(job)}`}" in panel
+    assert "{jobResultUrl(job) ? <img src={jobResultUrl(job)} alt=\"\" /> : <span className=\"generation-history-placeholder\">{statusLabel(job.status, isUsedAsGenerationReference(job))}</span>}" in panel
+    assert "<em>{statusLabel(job.status, isUsedAsGenerationReference(job))}</em>" in panel
 
 def test_global_explore_fits_viewport_and_cards_remain_scrollable():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
