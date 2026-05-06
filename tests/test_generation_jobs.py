@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+import json
 from pathlib import Path
 import threading
 import time
@@ -314,6 +315,77 @@ def test_generation_job_discard_rejects_accepted_or_unsafe_result_paths(tmp_path
 
     assert response.status_code == 409
     assert "transient" in response.json()["detail"].lower() or "safe" in response.json()["detail"].lower()
+
+
+def test_generation_job_clones_generation_result_inputs_so_source_stays_discardable(tmp_path, monkeypatch):
+    c = client(tmp_path)
+
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda library_path, *, provider: None)
+
+    source = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "first draft",
+    }).json()
+    c.post(
+        f"/api/generation-jobs/{source['id']}/result",
+        files={"file": ("source.png", png_bytes("blue"), "image/png")},
+    )
+    source = c.get(f"/api/generation-jobs/{source['id']}").json()
+    source_path = source["result_path"]
+
+    downstream = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "refine first draft",
+        "parameters": {
+            "input_images": [{"result_path": source_path, "name": "source.png"}],
+        },
+    }).json()
+
+    cloned_input = downstream["parameters"]["input_images"][0]
+    assert cloned_input["result_path"] != source_path
+    assert cloned_input["result_path"].startswith(f"generation-references/{downstream['id']}/")
+    assert (tmp_path / "library" / cloned_input["result_path"]).is_file()
+    assert (tmp_path / "library" / cloned_input["result_path"]).read_bytes() == (tmp_path / "library" / source_path).read_bytes()
+    assert downstream["metadata"]["reference_image_copies"][0]["source_generation_job_id"] == source["id"]
+    assert downstream["metadata"]["reference_image_copies"][0]["source_result_path"] == source_path
+    assert downstream["metadata"]["reference_image_copies"][0]["copied_path"] == cloned_input["result_path"]
+
+    discard = c.post(f"/api/generation-jobs/{source['id']}/discard")
+    assert discard.status_code == 200
+    assert discard.json()["status"] == "discarded"
+    assert not (tmp_path / "library" / source_path).exists()
+    assert (tmp_path / "library" / cloned_input["result_path"]).is_file()
+
+
+def test_discard_lazily_repairs_legacy_generation_job_references(tmp_path, monkeypatch):
+    c = client(tmp_path)
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda library_path, *, provider: None)
+
+    source = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "legacy source"}).json()
+    c.post(f"/api/generation-jobs/{source['id']}/result", files={"file": ("source.png", png_bytes("blue"), "image/png")})
+    source = c.get(f"/api/generation-jobs/{source['id']}").json()
+    source_path = source["result_path"]
+
+    downstream = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "legacy downstream"}).json()
+    legacy_parameters = {"input_images": [{"result_path": source_path, "name": "legacy-source.png"}]}
+    with connect(tmp_path / "library") as conn:
+        conn.execute("UPDATE generation_jobs SET parameters=? WHERE id=?", (json.dumps(legacy_parameters), downstream["id"]))
+        conn.commit()
+
+    response = c.post(f"/api/generation-jobs/{source['id']}/discard")
+
+    assert response.status_code == 200
+    discarded = response.json()
+    assert discarded["status"] == "discarded"
+    assert not (tmp_path / "library" / source_path).exists()
+
+    repaired = c.get(f"/api/generation-jobs/{downstream['id']}").json()
+    repaired_spec = repaired["parameters"]["input_images"][0]
+    assert repaired_spec["result_path"] != source_path
+    assert repaired_spec["result_path"].startswith(f"generation-references/{downstream['id']}/")
+    assert (tmp_path / "library" / repaired_spec["result_path"]).is_file()
+    assert repaired["metadata"]["reference_image_copies"][0]["source_result_path"] == source_path
+    assert repaired["metadata"]["reference_image_repair"]["repaired_from_discard_job_id"] == source["id"]
 
 
 def test_generation_job_can_discard_unsaved_result_and_retry_same_settings(tmp_path, monkeypatch):

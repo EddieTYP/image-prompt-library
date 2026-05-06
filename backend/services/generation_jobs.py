@@ -91,10 +91,13 @@ class GenerationJobRepository:
     def create_job(self, payload: GenerationJobCreate) -> GenerationJobRecord:
         if payload.source_item_id:
             self.items.get_item(payload.source_item_id)
-        input_images = payload.parameters.get("input_images") if isinstance(payload.parameters, dict) else None
+        parameters = dict(payload.parameters or {})
+        input_images = parameters.get("input_images")
         if isinstance(input_images, list) and len(input_images) > MAX_GENERATION_INPUT_IMAGES:
             raise GenerationJobConflict(f"Generation edit supports up to {MAX_GENERATION_INPUT_IMAGES} input images")
         job_id = new_id("gen")
+        prepared_parameters, reference_image_copies = self._prepare_reference_input_clones(job_id, parameters)
+        metadata = {"reference_image_copies": reference_image_copies} if reference_image_copies else {}
         timestamp = now()
         with connect(self.library_path) as conn:
             conn.execute(
@@ -116,14 +119,79 @@ class GenerationJobRepository:
                     payload.prompt_text,
                     payload.edited_prompt_text,
                     _to_json(payload.reference_image_ids),
-                    _to_json(payload.parameters),
-                    "{}",
+                    _to_json(prepared_parameters),
+                    _to_json(metadata),
                     timestamp,
                     timestamp,
                 ),
             )
             conn.commit()
         return self.get_job(job_id)
+
+    def _is_generation_result_path(self, value: str) -> bool:
+        path = Path(value)
+        return (
+            not path.is_absolute()
+            and ".." not in path.parts
+            and len(path.parts) >= 3
+            and path.parts[0] == "generation-results"
+        )
+
+    def _clone_generation_result_input(self, *, job_id: str, result_path: str, name: str | None = None) -> tuple[str, dict] | None:
+        if not self._is_generation_result_path(result_path):
+            return None
+        source_rel = Path(result_path)
+        source_abs = (self.library_path / source_rel).resolve()
+        library_abs = self.library_path.resolve()
+        if not source_abs.is_file() or library_abs not in source_abs.parents:
+            return None
+        data = source_abs.read_bytes()
+        sha = hashlib.sha256(data).hexdigest()
+        suffix = source_rel.suffix.lower() or Path(name or "reference.png").suffix.lower() or ".png"
+        if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+            suffix = ".png"
+        source_job_id = source_rel.parts[1]
+        dest_rel = Path("generation-references") / job_id / f"from-{source_job_id}-{sha[:12]}{suffix}"
+        dest_abs = self.library_path / dest_rel
+        dest_abs.parent.mkdir(parents=True, exist_ok=True)
+        if dest_abs.exists():
+            if hashlib.sha256(dest_abs.read_bytes()).hexdigest() != sha:
+                raise GenerationJobConflict("Reference clone path collision")
+        else:
+            dest_abs.write_bytes(data)
+        copy_meta = {
+            "source_generation_job_id": source_job_id,
+            "source_result_path": source_rel.as_posix(),
+            "copied_path": dest_rel.as_posix(),
+            "sha256": sha,
+        }
+        return dest_rel.as_posix(), copy_meta
+
+    def _prepare_reference_input_clones(self, job_id: str, parameters: dict) -> tuple[dict, list[dict]]:
+        prepared = dict(parameters or {})
+        raw_images = prepared.get("input_images")
+        if not isinstance(raw_images, list):
+            return prepared, []
+        cloned_specs = []
+        copy_metadata = []
+        for raw in raw_images:
+            if not isinstance(raw, dict):
+                cloned_specs.append(raw)
+                continue
+            spec = dict(raw)
+            result_path = spec.get("result_path")
+            if isinstance(result_path, str) and result_path:
+                clone = self._clone_generation_result_input(job_id=job_id, result_path=result_path, name=str(spec.get("name") or ""))
+                if clone is not None:
+                    copied_path, meta = clone
+                    spec["result_path"] = copied_path
+                    spec["source_result_path"] = result_path
+                    spec["source_generation_job_id"] = meta["source_generation_job_id"]
+                    spec["cloned_from_generation_result"] = True
+                    copy_metadata.append(meta)
+            cloned_specs.append(spec)
+        prepared["input_images"] = cloned_specs
+        return prepared, copy_metadata
 
     def get_job(self, job_id: str) -> GenerationJobRecord:
         with connect(self.library_path) as conn:
@@ -418,25 +486,89 @@ class GenerationJobRepository:
             and result_rel.parts[1] == job.id
         )
 
-    def _result_path_has_library_references(self, job: GenerationJobRecord) -> bool:
-        if not job.result_path:
-            return False
+    def _result_path_has_item_image_references(self, result_path: str) -> bool:
         with connect(self.library_path) as conn:
             image_ref = conn.execute(
                 """SELECT 1 FROM images
                    WHERE original_path=? OR thumb_path=? OR preview_path=?
                    LIMIT 1""",
-                (job.result_path, job.result_path, job.result_path),
+                (result_path, result_path, result_path),
             ).fetchone()
-            if image_ref is not None:
-                return True
-            input_ref = conn.execute(
-                """SELECT 1 FROM generation_jobs
-                   WHERE id<>? AND parameters LIKE ?
-                   LIMIT 1""",
-                (job.id, f"%{job.result_path}%"),
-            ).fetchone()
-            return input_ref is not None
+            return image_ref is not None
+
+    def _generation_jobs_referencing_result_path(self, job: GenerationJobRecord) -> list[GenerationJobRecord]:
+        if not job.result_path:
+            return []
+        matches: list[GenerationJobRecord] = []
+        with connect(self.library_path) as conn:
+            rows = conn.execute(
+                """SELECT * FROM generation_jobs
+                   WHERE id<>?
+                   ORDER BY created_at ASC""",
+                (job.id,),
+            ).fetchall()
+        for row in rows:
+            candidate = self._record_from_row(row)
+            raw_images = candidate.parameters.get("input_images") if isinstance(candidate.parameters, dict) else None
+            if not isinstance(raw_images, list):
+                continue
+            for raw in raw_images:
+                if isinstance(raw, dict) and raw.get("result_path") == job.result_path:
+                    matches.append(candidate)
+                    break
+        return matches
+
+    def _repair_generation_job_references_to_result(self, job: GenerationJobRecord) -> int:
+        if not job.result_path:
+            return 0
+        repaired_count = 0
+        for downstream in self._generation_jobs_referencing_result_path(job):
+            parameters = dict(downstream.parameters or {})
+            raw_images = parameters.get("input_images")
+            if not isinstance(raw_images, list):
+                continue
+            changed = False
+            copy_metadata = []
+            new_images = []
+            for raw in raw_images:
+                if not isinstance(raw, dict):
+                    new_images.append(raw)
+                    continue
+                spec = dict(raw)
+                if spec.get("result_path") == job.result_path:
+                    clone = self._clone_generation_result_input(job_id=downstream.id, result_path=job.result_path, name=str(spec.get("name") or ""))
+                    if clone is not None:
+                        copied_path, meta = clone
+                        spec["result_path"] = copied_path
+                        spec["source_result_path"] = job.result_path
+                        spec["source_generation_job_id"] = job.id
+                        spec["cloned_from_generation_result"] = True
+                        copy_metadata.append(meta)
+                        changed = True
+                new_images.append(spec)
+            if not changed:
+                continue
+            parameters["input_images"] = new_images
+            metadata = dict(downstream.metadata or {})
+            existing_copies = metadata.get("reference_image_copies")
+            if not isinstance(existing_copies, list):
+                existing_copies = []
+            existing_copies.extend(copy_metadata)
+            metadata["reference_image_copies"] = existing_copies
+            metadata["reference_image_repair"] = {
+                "repaired_from_discard_job_id": job.id,
+                "source_result_path": job.result_path,
+                "repaired_at": now(),
+            }
+            timestamp = now()
+            with connect(self.library_path) as conn:
+                conn.execute(
+                    "UPDATE generation_jobs SET parameters=?, metadata=?, updated_at=? WHERE id=?",
+                    (_to_json(parameters), _to_json(metadata), timestamp, downstream.id),
+                )
+                conn.commit()
+            repaired_count += 1
+        return repaired_count
 
     def discard_job(self, job_id: str) -> GenerationJobRecord:
         job = self.get_job(job_id)
@@ -444,8 +576,11 @@ class GenerationJobRepository:
             raise GenerationJobConflict("Accepted generation jobs cannot be discarded")
         if not self._result_path_is_discardable(job):
             raise GenerationJobConflict("Only transient generation results in a safe path can be discarded")
-        if self._result_path_has_library_references(job):
-            raise GenerationJobConflict("Generation result is referenced by library data and cannot be discarded")
+        if self._result_path_has_item_image_references(job.result_path or ""):
+            raise GenerationJobConflict("Generation result is saved to library data and cannot be discarded")
+        self._repair_generation_job_references_to_result(job)
+        if self._generation_jobs_referencing_result_path(job):
+            raise GenerationJobConflict("Generation result is still used as a generation reference and cannot be discarded")
         result_abs = (self.library_path / (job.result_path or "")).resolve()
         timestamp = now()
         metadata = dict(job.metadata or {})
