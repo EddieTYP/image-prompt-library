@@ -5,16 +5,18 @@ import binascii
 import hashlib
 import json
 import os
-import mimetypes
 import time
 import tempfile
 from datetime import datetime, timezone
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import httpx
+from PIL import Image, UnidentifiedImageError
 
-from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository
+from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository, resolve_generation_input_image_path
+from backend.services.image_store import MAX_IMAGE_PIXELS
 
 PROVIDER_ID = "openai_codex_oauth_native"
 AUTH_MODE = "codex_oauth_native"
@@ -46,8 +48,23 @@ def _decode_data_url(data_url: str) -> tuple[bytes, str]:
         raise CodexNativeAuthError("Generation edit input image must be a data URL image")
     mime_type = header.removeprefix("data:").split(";", 1)[0] or "image/png"
     try:
-        return base64.b64decode(encoded, validate=True), mime_type
+        data = base64.b64decode(encoded, validate=True)
     except (binascii.Error, ValueError) as exc:
+        raise CodexNativeAuthError("Generation edit input image contains invalid image data") from exc
+    _validate_input_image_bytes(data)
+    return data, mime_type
+
+
+def _validate_input_image_bytes(data: bytes) -> None:
+    try:
+        with Image.open(BytesIO(data)) as image:
+            width, height = image.size
+            if width * height > MAX_IMAGE_PIXELS:
+                raise CodexNativeAuthError(f"Generation edit input image is too large: {width}x{height}")
+            image.verify()
+    except CodexNativeAuthError:
+        raise
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
         raise CodexNativeAuthError("Generation edit input image contains invalid image data") from exc
 
 
@@ -603,7 +620,8 @@ class OpenAICodexNativeProvider:
                 "input_image_count": len(input_images),
             }
             return repo.stage_result(job_id, image_bytes, "openai-codex-native.png", metadata)
-        except GenerationJobConflict:
+        except GenerationJobConflict as exc:
+            repo.mark_failed(job_id, str(exc))
             raise
         except Exception as exc:
             repo.mark_failed(job_id, str(exc))
@@ -624,15 +642,19 @@ class OpenAICodexNativeProvider:
             name = str(raw.get("name") or f"input-{index + 1}.png")
             source = str(raw.get("source") or "uploaded")
             data_url = raw.get("data_url")
-            if isinstance(data_url, str) and data_url.startswith("data:image/"):
-                input_images.append({"type": "input_image", "image_url": data_url, "name": name, "source": source})
+            if isinstance(data_url, str) and data_url:
+                try:
+                    data, mime_type = _decode_data_url(data_url)
+                except CodexNativeAuthError:
+                    raise
+                input_images.append({"type": "input_image", "image_url": _data_url_from_bytes(data, mime_type=mime_type), "name": name, "source": source})
                 continue
             result_path = raw.get("result_path")
             if isinstance(result_path, str) and result_path:
-                image_path = library_path / result_path
-                if not image_path.is_file():
-                    raise CodexNativeAuthError("Generation edit input image is missing")
-                mime_type = mimetypes.guess_type(image_path.name)[0] or "image/png"
+                try:
+                    image_path, mime_type = resolve_generation_input_image_path(library_path, result_path)
+                except GenerationJobConflict as exc:
+                    raise CodexNativeAuthError(str(exc)) from exc
                 input_images.append({"type": "input_image", "image_url": _data_url_from_bytes(image_path.read_bytes(), mime_type=mime_type), "name": name, "source": source, "result_path": result_path})
         return input_images
 

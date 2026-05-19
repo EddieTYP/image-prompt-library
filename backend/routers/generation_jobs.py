@@ -23,6 +23,8 @@ def create_generation_job(payload: GenerationJobCreate, request: Request):
         created = repo(request).create_job(payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Source item not found") from exc
+    except GenerationJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if created.provider == CODEX_NATIVE_PROVIDER_ID:
         enqueue_generation_jobs(request.app.state.library_path, provider=created.provider)
     return created

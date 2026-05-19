@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
+import base64
 import json
 from pathlib import Path
 import threading
@@ -357,6 +358,350 @@ def test_generation_job_clones_generation_result_inputs_so_source_stays_discarda
     assert (tmp_path / "library" / cloned_input["result_path"]).is_file()
 
 
+def test_generation_job_rejects_unsafe_result_path_inputs_on_create(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+
+    unsafe_paths = [
+        "/tmp/secret.png",
+        "../secret.png",
+        "originals/not-a-generation-reference.png",
+        "generation-results/missing-job/missing.png",
+    ]
+    for result_path in unsafe_paths:
+        response = c.post("/api/generation-jobs", json={
+            "source_item_id": source_item["id"],
+            "provider": "manual_upload",
+            "prompt_text": "refine unsafe input",
+            "parameters": {"input_images": [{"result_path": result_path, "name": "unsafe.png"}]},
+        })
+
+        assert response.status_code == 409
+        assert "input image" in response.json()["detail"].lower()
+
+    bad_image = tmp_path / "library" / "generation-results" / "gen_source" / "not-image.png"
+    bad_image.parent.mkdir(parents=True, exist_ok=True)
+    bad_image.write_text("not really an image", encoding="utf-8")
+    response = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "refine invalid image input",
+        "parameters": {"input_images": [{"result_path": "generation-results/gen_source/not-image.png", "name": "not-image.png"}]},
+    })
+
+    assert response.status_code == 409
+    assert "input image" in response.json()["detail"].lower()
+
+
+def test_generation_job_rejects_symlinked_generation_root_inputs_on_create(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    outside_root = tmp_path / "outside-results"
+    outside_image = outside_root / "gen_source" / "source.png"
+    outside_image.parent.mkdir(parents=True)
+    outside_image.write_bytes(png_bytes("red"))
+    (tmp_path / "library" / "generation-results").symlink_to(outside_root, target_is_directory=True)
+
+    response = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "refine symlinked input",
+        "parameters": {"input_images": [{"result_path": "generation-results/gen_source/source.png", "name": "source.png"}]},
+    })
+
+    assert response.status_code == 409
+    assert "input image" in response.json()["detail"].lower()
+    assert outside_image.is_file()
+
+
+def test_generation_job_rejects_in_library_symlinked_generation_roots_on_create(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    library = tmp_path / "library"
+    wrong_results = library / "wrong-results"
+    wrong_results_image = wrong_results / "gen_source" / "source.png"
+    wrong_results_image.parent.mkdir(parents=True)
+    wrong_results_image.write_bytes(png_bytes("red"))
+    (library / "generation-results").symlink_to(wrong_results, target_is_directory=True)
+
+    response = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "refine symlinked in-library result root",
+        "parameters": {"input_images": [{"result_path": "generation-results/gen_source/source.png", "name": "source.png"}]},
+    })
+
+    assert response.status_code == 409
+    assert wrong_results_image.is_file()
+
+    (library / "generation-results").unlink()
+    wrong_references = library / "wrong-references"
+    wrong_reference_image = wrong_references / "gen_source" / "source.png"
+    wrong_reference_image.parent.mkdir(parents=True)
+    wrong_reference_image.write_bytes(png_bytes("green"))
+    (library / "generation-references").symlink_to(wrong_references, target_is_directory=True)
+
+    response = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "refine symlinked in-library reference root",
+        "parameters": {"input_images": [{"result_path": "generation-references/gen_source/source.png", "name": "source.png"}]},
+    })
+
+    assert response.status_code == 409
+    assert wrong_reference_image.is_file()
+
+
+def test_stage_result_rejects_symlinked_generation_result_root_before_write(tmp_path):
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "unsafe result write"}).json()
+    outside_root = tmp_path / "outside-results"
+    outside_root.mkdir()
+    (tmp_path / "library" / "generation-results").symlink_to(outside_root, target_is_directory=True)
+
+    response = c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("green"), "image/png")},
+    )
+
+    assert response.status_code == 409
+    assert list(outside_root.rglob("*")) == []
+    assert c.get(f"/api/generation-jobs/{job['id']}").json()["status"] == "queued"
+
+
+def test_stage_result_rejects_nested_generation_result_symlink_before_write(tmp_path):
+    c = client(tmp_path)
+    existing = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "existing result"}).json()
+    c.post(f"/api/generation-jobs/{existing['id']}/result", files={"file": ("existing.png", png_bytes("blue"), "image/png")})
+    existing_dir = tmp_path / "library" / "generation-results" / existing["id"]
+    before = sorted(path.relative_to(existing_dir).as_posix() for path in existing_dir.rglob("*"))
+    job = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "unsafe nested result write"}).json()
+    (tmp_path / "library" / "generation-results" / job["id"]).symlink_to(existing_dir, target_is_directory=True)
+
+    response = c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("green"), "image/png")},
+    )
+
+    assert response.status_code == 409
+    assert sorted(path.relative_to(existing_dir).as_posix() for path in existing_dir.rglob("*")) == before
+    assert c.get(f"/api/generation-jobs/{job['id']}").json()["status"] == "queued"
+
+
+def test_generation_job_rejects_symlinked_generation_reference_clone_destination(tmp_path):
+    c = client(tmp_path)
+    source = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "source result"}).json()
+    c.post(f"/api/generation-jobs/{source['id']}/result", files={"file": ("source.png", png_bytes("blue"), "image/png")})
+    source_path = c.get(f"/api/generation-jobs/{source['id']}").json()["result_path"]
+    outside_root = tmp_path / "outside-references"
+    outside_root.mkdir()
+    (tmp_path / "library" / "generation-references").symlink_to(outside_root, target_is_directory=True)
+
+    response = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "clone into unsafe reference root",
+        "parameters": {"input_images": [{"result_path": source_path, "name": "source.png"}]},
+    })
+
+    assert response.status_code == 409
+    assert list(outside_root.rglob("*")) == []
+
+
+def test_generation_job_rejects_nested_generation_reference_clone_symlink_destination(tmp_path):
+    from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository
+
+    c = client(tmp_path)
+    source = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "source result"}).json()
+    c.post(f"/api/generation-jobs/{source['id']}/result", files={"file": ("source.png", png_bytes("blue"), "image/png")})
+    source_path = c.get(f"/api/generation-jobs/{source['id']}").json()["result_path"]
+    library = tmp_path / "library"
+    wrong_reference_dir = library / "generation-references" / "other-job"
+    wrong_reference_dir.mkdir(parents=True)
+    (library / "generation-references" / "dest-job").symlink_to(wrong_reference_dir, target_is_directory=True)
+
+    try:
+        GenerationJobRepository(library)._clone_generation_result_input(job_id="dest-job", result_path=source_path)
+    except GenerationJobConflict:
+        pass
+    else:
+        raise AssertionError("expected nested reference symlink clone destination to be rejected")
+
+    assert list(wrong_reference_dir.rglob("*")) == []
+
+
+def test_discard_rejects_symlinked_generation_result_root_before_delete(tmp_path):
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "unsafe symlink result"}).json()
+    outside_root = tmp_path / "outside-results"
+    outside_file = outside_root / job["id"] / "generated.png"
+    outside_file.parent.mkdir(parents=True)
+    outside_file.write_bytes(png_bytes("purple"))
+    (tmp_path / "library" / "generation-results").symlink_to(outside_root, target_is_directory=True)
+    result_path = f"generation-results/{job['id']}/generated.png"
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            """UPDATE generation_jobs
+               SET status='succeeded', result_path=?, result_width=18, result_height=12, result_sha256='abc'
+               WHERE id=?""",
+            (result_path, job["id"]),
+        )
+        conn.commit()
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/discard")
+
+    assert response.status_code == 409
+    assert outside_file.is_file()
+    assert c.get(f"/api/generation-jobs/{job['id']}").json()["status"] == "succeeded"
+
+
+def test_discard_rejects_nested_generation_result_file_symlink_before_delete(tmp_path):
+    c = client(tmp_path)
+    target = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "target result"}).json()
+    c.post(f"/api/generation-jobs/{target['id']}/result", files={"file": ("target.png", png_bytes("purple"), "image/png")})
+    target = c.get(f"/api/generation-jobs/{target['id']}").json()
+    target_file = tmp_path / "library" / target["result_path"]
+    job = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "symlinked victim result"}).json()
+    c.post(f"/api/generation-jobs/{job['id']}/result", files={"file": ("victim.png", png_bytes("orange"), "image/png")})
+    job = c.get(f"/api/generation-jobs/{job['id']}").json()
+    victim_file = tmp_path / "library" / job["result_path"]
+    victim_file.unlink()
+    victim_file.symlink_to(target_file)
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/discard")
+
+    assert response.status_code == 409
+    assert target_file.is_file()
+    assert victim_file.is_symlink()
+    assert c.get(f"/api/generation-jobs/{job['id']}").json()["status"] == "succeeded"
+
+
+def test_accept_rejects_legacy_invalid_input_reference_without_mutating_source_item(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "accept invalid reference",
+    }).json()
+    c.post(f"/api/generation-jobs/{job['id']}/result", files={"file": ("generated.png", png_bytes("blue"), "image/png")})
+    staged = c.get(f"/api/generation-jobs/{job['id']}").json()
+    result_file = tmp_path / "library" / staged["result_path"]
+    legacy_parameters = {"input_images": [{"result_path": "generation-results/missing-job/missing.png", "name": "missing.png"}]}
+    with connect(tmp_path / "library") as conn:
+        conn.execute("UPDATE generation_jobs SET parameters=? WHERE id=?", (json.dumps(legacy_parameters), job["id"]))
+        conn.commit()
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/accept")
+
+    assert response.status_code == 409
+    assert result_file.is_file()
+    item = c.get(f"/api/items/{source_item['id']}").json()
+    assert item["images"] == []
+    after = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert after["status"] == "succeeded"
+    assert after["accepted_image_id"] is None
+
+
+def test_accept_as_new_rejects_legacy_invalid_input_reference_without_creating_item(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "accept invalid reference as new item",
+    }).json()
+    c.post(f"/api/generation-jobs/{job['id']}/result", files={"file": ("generated.png", png_bytes("blue"), "image/png")})
+    staged = c.get(f"/api/generation-jobs/{job['id']}").json()
+    result_file = tmp_path / "library" / staged["result_path"]
+    legacy_parameters = {"input_images": [{"result_path": "generation-results/missing-job/missing.png", "name": "missing.png"}]}
+    with connect(tmp_path / "library") as conn:
+        conn.execute("UPDATE generation_jobs SET parameters=? WHERE id=?", (json.dumps(legacy_parameters), job["id"]))
+        conn.commit()
+    initial_total = c.get("/api/items").json()["total"]
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/accept-as-new-item")
+
+    assert response.status_code == 409
+    assert result_file.is_file()
+    assert c.get("/api/items").json()["total"] == initial_total
+    assert c.get(f"/api/items/{source_item['id']}").json()["images"] == []
+    after = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert after["status"] == "succeeded"
+    assert after["accepted_image_id"] is None
+
+
+def test_accept_rejects_invalid_data_url_reference_without_mutating_source_item(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    bad_data_url = "data:image/png;base64," + base64.b64encode(b"not an image").decode()
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "accept invalid data url reference",
+        "parameters": {"input_images": [{"data_url": bad_data_url, "name": "bad.png"}]},
+    }).json()
+    c.post(f"/api/generation-jobs/{job['id']}/result", files={"file": ("generated.png", png_bytes("blue"), "image/png")})
+    staged = c.get(f"/api/generation-jobs/{job['id']}").json()
+    result_file = tmp_path / "library" / staged["result_path"]
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/accept")
+
+    assert response.status_code == 409
+    assert result_file.is_file()
+    assert c.get(f"/api/items/{source_item['id']}").json()["images"] == []
+    after = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert after["status"] == "succeeded"
+    assert after["accepted_image_id"] is None
+
+
+def test_accept_rejects_malformed_data_url_reference_without_mutating_source_item(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "accept malformed data url reference",
+        "parameters": {"input_images": [{"data_url": "https://example.invalid/image.png", "name": "bad.png"}]},
+    }).json()
+    c.post(f"/api/generation-jobs/{job['id']}/result", files={"file": ("generated.png", png_bytes("blue"), "image/png")})
+    staged = c.get(f"/api/generation-jobs/{job['id']}").json()
+    result_file = tmp_path / "library" / staged["result_path"]
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/accept")
+
+    assert response.status_code == 409
+    assert result_file.is_file()
+    assert c.get(f"/api/items/{source_item['id']}").json()["images"] == []
+    after = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert after["status"] == "succeeded"
+    assert after["accepted_image_id"] is None
+
+
+def test_accept_as_new_prevalidates_storeable_result_before_creating_item(tmp_path, monkeypatch):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "oversized accept as new",
+    }).json()
+    c.post(f"/api/generation-jobs/{job['id']}/result", files={"file": ("generated.png", png_bytes("blue"), "image/png")})
+    staged = c.get(f"/api/generation-jobs/{job['id']}").json()
+    result_file = tmp_path / "library" / staged["result_path"]
+    initial_total = c.get("/api/items").json()["total"]
+    monkeypatch.setattr("backend.services.generation_jobs.MAX_IMAGE_PIXELS", 1)
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/accept-as-new-item")
+
+    assert response.status_code == 409
+    assert result_file.is_file()
+    assert c.get("/api/items").json()["total"] == initial_total
+    assert c.get(f"/api/items/{source_item['id']}").json()["images"] == []
+    after = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert after["status"] == "succeeded"
+    assert after["accepted_image_id"] is None
+
+
 def test_discard_lazily_repairs_legacy_generation_job_references(tmp_path, monkeypatch):
     c = client(tmp_path)
     monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda library_path, *, provider: None)
@@ -412,6 +757,10 @@ def test_generation_job_can_discard_unsaved_result_and_retry_same_settings(tmp_p
         f"/api/generation-jobs/{job['id']}/result",
         files={"file": ("generated.png", png_bytes("blue"), "image/png")},
     )
+    staged = c.get(f"/api/generation-jobs/{job['id']}").json()
+    result_path = staged["result_path"]
+    result_file = tmp_path / "library" / result_path
+    assert result_file.is_file()
     enqueue_calls.clear()
 
     response = c.post(f"/api/generation-jobs/{job['id']}/discard-and-retry")
@@ -422,7 +771,13 @@ def test_generation_job_can_discard_unsaved_result_and_retry_same_settings(tmp_p
     retry = payload["retry_job"]
     assert discarded["id"] == job["id"]
     assert discarded["status"] == "discarded"
+    assert discarded["result_path"] is None
+    assert discarded["result_width"] is None
+    assert discarded["result_height"] is None
+    assert discarded["result_sha256"] is None
+    assert discarded["metadata"]["discarded_result_path"] == result_path
     assert discarded["metadata"]["retried_by_generation_job_id"] == retry["id"]
+    assert not result_file.exists()
     assert retry["id"] != job["id"]
     assert retry["status"] == "queued"
     assert retry["source_item_id"] == source_item["id"]

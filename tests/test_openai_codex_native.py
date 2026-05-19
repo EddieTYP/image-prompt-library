@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from backend.db import connect
 from backend.main import create_app
 
 
@@ -541,6 +542,126 @@ def test_codex_native_forwards_up_to_four_edit_input_images(tmp_path, monkeypatc
     assert len(captured["input_images"]) == 4
     assert all(image["image_url"].startswith("data:image/png;base64,") for image in captured["input_images"])
     assert response.json()["metadata"]["input_image_count"] == 4
+
+
+def test_codex_native_rejects_invalid_data_url_before_provider_call(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda *args, **kwargs: None)
+
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
+    called = False
+
+    def collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
+        nonlocal called
+        called = True
+        return base64.b64encode(png_bytes()).decode()
+
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "image_edit",
+        "provider": "openai_codex_oauth_native",
+        "model": "gpt-image-2",
+        "prompt_text": "Make this more painterly",
+        "parameters": {"input_images": [{"source": "uploaded", "name": "bad.png", "data_url": "data:image/png;base64,not-base64"}]},
+    }).json()
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+
+    assert response.status_code == 409
+    assert called is False
+    failed = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert failed["status"] == "failed"
+    assert "input image" in failed["error"].lower()
+
+
+def test_codex_native_marks_failed_when_stage_result_rejects_unsafe_result_root(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda *args, **kwargs: None)
+
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
+
+    def collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
+        return base64.b64encode(png_bytes()).decode()
+
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "text_to_image",
+        "provider": "openai_codex_oauth_native",
+        "model": "gpt-image-2",
+        "prompt_text": "A neon library in the rain",
+    }).json()
+    wrong_results = tmp_path / "library" / "wrong-results"
+    wrong_results.mkdir()
+    (tmp_path / "library" / "generation-results").symlink_to(wrong_results, target_is_directory=True)
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+
+    assert response.status_code == 409
+    assert list(wrong_results.rglob("*")) == []
+    failed = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert failed["status"] == "failed"
+    assert failed["started_at"] is not None
+    assert failed["completed_at"] is not None
+    assert "path" in failed["error"].lower()
+
+
+def test_codex_native_rejects_legacy_unsafe_result_path_before_provider_call(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda *args, **kwargs: None)
+
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
+    called = False
+
+    def collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
+        nonlocal called
+        called = True
+        return base64.b64encode(png_bytes()).decode()
+
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "image_edit",
+        "provider": "openai_codex_oauth_native",
+        "model": "gpt-image-2",
+        "prompt_text": "Make this more painterly",
+    }).json()
+    outside_image = tmp_path / "secret.png"
+    outside_image.write_bytes(png_bytes("red"))
+    legacy_parameters = {"input_images": [{"result_path": "../secret.png", "name": "secret.png"}]}
+    with connect(tmp_path / "library") as conn:
+        conn.execute("UPDATE generation_jobs SET parameters=? WHERE id=?", (json.dumps(legacy_parameters), job["id"]))
+        conn.commit()
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+
+    assert response.status_code == 409
+    assert called is False
+    failed = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert failed["status"] == "failed"
+    assert "input image" in failed["error"].lower()
 
 
 def test_codex_native_surfaces_non_200_responses_without_secrets():

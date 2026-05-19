@@ -7,8 +7,9 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from contextlib import suppress
+from io import BytesIO
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from backend.db import connect, init_db
 from backend.repositories import ItemRepository, StoredImageInput, new_id, now
@@ -22,7 +23,7 @@ from backend.schemas import (
     ItemCreate,
     PromptIn,
 )
-from backend.services.image_store import store_image
+from backend.services.image_store import MAX_IMAGE_PIXELS, store_image
 
 
 class GenerationJobConflict(ValueError):
@@ -32,6 +33,103 @@ class GenerationJobConflict(ValueError):
 MAX_GENERATION_INPUT_IMAGES = 4
 STALE_RUNNING_JOB_AFTER = timedelta(minutes=30)
 STALE_RUNNING_JOB_ERROR = "Generation job was marked failed after running too long. Retry to run it again."
+GENERATION_RESULT_ROOT = "generation-results"
+GENERATION_REFERENCE_ROOT = "generation-references"
+GENERATION_INPUT_IMAGE_ROOTS = {GENERATION_RESULT_ROOT, GENERATION_REFERENCE_ROOT}
+
+
+def _verify_image_file(path: Path) -> str:
+    try:
+        with Image.open(path) as image:
+            image_format = image.format
+            image.verify()
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise GenerationJobConflict("Generation edit input image is invalid") from exc
+    return Image.MIME.get(image_format or "", "image/png")
+
+
+def _validate_storeable_image_bytes(data: bytes) -> None:
+    try:
+        with Image.open(BytesIO(data)) as image:
+            width, height = image.size
+            if width * height > MAX_IMAGE_PIXELS:
+                raise GenerationJobConflict(f"Generation image is too large: {width}x{height}")
+            image.verify()
+    except GenerationJobConflict:
+        raise
+    except (UnidentifiedImageError, OSError, ValueError) as exc:
+        raise GenerationJobConflict("Generation image is invalid") from exc
+
+
+def _ensure_resolved_child(path: Path, parent: Path) -> None:
+    try:
+        path.relative_to(parent)
+    except ValueError as exc:
+        raise GenerationJobConflict("Generation image path is invalid") from exc
+
+
+def _reject_symlink_path_components(base: Path, relative_path: Path, *, message: str) -> None:
+    current = base
+    for part in relative_path.parts:
+        current = current / part
+        if current.is_symlink():
+            raise GenerationJobConflict(message)
+
+
+def resolve_generation_write_path(
+    library_path: Path | str,
+    relative_path: str,
+    *,
+    allowed_root: str,
+) -> Path:
+    rel = Path(relative_path)
+    if not relative_path or rel.is_absolute() or ".." in rel.parts or len(rel.parts) < 3 or rel.parts[0] != allowed_root:
+        raise GenerationJobConflict("Generation image path is invalid")
+    library_abs = Path(library_path).resolve()
+    root_path = library_abs / allowed_root
+    if root_path.is_symlink():
+        raise GenerationJobConflict("Generation image path is invalid")
+    _reject_symlink_path_components(library_abs, rel.parent, message="Generation image path is invalid")
+    root_abs = root_path.resolve()
+    _ensure_resolved_child(root_abs, library_abs)
+    parent_abs = (library_abs / rel.parent).resolve()
+    _ensure_resolved_child(parent_abs, root_abs)
+    dest_abs = parent_abs / rel.name
+    if dest_abs.is_symlink():
+        raise GenerationJobConflict("Generation image path is invalid")
+    if dest_abs.exists():
+        _ensure_resolved_child(dest_abs.resolve(), root_abs)
+    return dest_abs
+
+
+def resolve_generation_input_image_path(
+    library_path: Path | str,
+    result_path: str,
+    *,
+    allowed_roots: set[str] | None = None,
+) -> tuple[Path, str]:
+    roots = allowed_roots or GENERATION_INPUT_IMAGE_ROOTS
+    rel = Path(result_path)
+    if not result_path or rel.is_absolute() or ".." in rel.parts or len(rel.parts) < 3 or rel.parts[0] not in roots:
+        raise GenerationJobConflict("Generation edit input image path is invalid")
+    library_abs = Path(library_path).resolve()
+    allowed_root_path = library_abs / rel.parts[0]
+    if allowed_root_path.is_symlink():
+        raise GenerationJobConflict("Generation edit input image path is invalid")
+    _reject_symlink_path_components(library_abs, rel, message="Generation edit input image path is invalid")
+    allowed_root = allowed_root_path.resolve()
+    try:
+        allowed_root.relative_to(library_abs)
+    except ValueError as exc:
+        raise GenerationJobConflict("Generation edit input image path is invalid") from exc
+    candidate = (library_abs / rel).resolve()
+    try:
+        candidate.relative_to(allowed_root)
+    except ValueError as exc:
+        raise GenerationJobConflict("Generation edit input image path is invalid") from exc
+    if not candidate.is_file():
+        raise GenerationJobConflict("Generation edit input image is missing")
+    return candidate, _verify_image_file(candidate)
 
 
 def _to_json(value) -> str:
@@ -134,25 +232,30 @@ class GenerationJobRepository:
             not path.is_absolute()
             and ".." not in path.parts
             and len(path.parts) >= 3
-            and path.parts[0] == "generation-results"
+            and path.parts[0] == GENERATION_RESULT_ROOT
         )
 
     def _clone_generation_result_input(self, *, job_id: str, result_path: str, name: str | None = None) -> tuple[str, dict] | None:
         if not self._is_generation_result_path(result_path):
             return None
         source_rel = Path(result_path)
-        source_abs = (self.library_path / source_rel).resolve()
-        library_abs = self.library_path.resolve()
-        if not source_abs.is_file() or library_abs not in source_abs.parents:
-            return None
+        source_abs, _ = resolve_generation_input_image_path(
+            self.library_path,
+            result_path,
+            allowed_roots={GENERATION_RESULT_ROOT},
+        )
         data = source_abs.read_bytes()
         sha = hashlib.sha256(data).hexdigest()
         suffix = source_rel.suffix.lower() or Path(name or "reference.png").suffix.lower() or ".png"
         if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
             suffix = ".png"
         source_job_id = source_rel.parts[1]
-        dest_rel = Path("generation-references") / job_id / f"from-{source_job_id}-{sha[:12]}{suffix}"
-        dest_abs = self.library_path / dest_rel
+        dest_rel = Path(GENERATION_REFERENCE_ROOT) / job_id / f"from-{source_job_id}-{sha[:12]}{suffix}"
+        dest_abs = resolve_generation_write_path(
+            self.library_path,
+            dest_rel.as_posix(),
+            allowed_root=GENERATION_REFERENCE_ROOT,
+        )
         dest_abs.parent.mkdir(parents=True, exist_ok=True)
         if dest_abs.exists():
             if hashlib.sha256(dest_abs.read_bytes()).hexdigest() != sha:
@@ -189,6 +292,8 @@ class GenerationJobRepository:
                     spec["source_generation_job_id"] = meta["source_generation_job_id"]
                     spec["cloned_from_generation_result"] = True
                     copy_metadata.append(meta)
+                else:
+                    resolve_generation_input_image_path(self.library_path, result_path)
             cloned_specs.append(spec)
         prepared["input_images"] = cloned_specs
         return prepared, copy_metadata
@@ -298,8 +403,12 @@ class GenerationJobRepository:
         if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
             suffix = ".png"
         sha = hashlib.sha256(data).hexdigest()
-        result_rel = Path("generation-results") / job_id / f"result-{sha[:12]}{suffix}"
-        result_abs = self.library_path / result_rel
+        result_rel = Path(GENERATION_RESULT_ROOT) / job_id / f"result-{sha[:12]}{suffix}"
+        result_abs = resolve_generation_write_path(
+            self.library_path,
+            result_rel.as_posix(),
+            allowed_root=GENERATION_RESULT_ROOT,
+        )
         result_abs.parent.mkdir(parents=True, exist_ok=True)
         result_abs.write_bytes(data)
         width = None
@@ -328,11 +437,34 @@ class GenerationJobRepository:
             raise GenerationJobConflict(f"Generation job is already finalized with status {current.status}")
         return self.get_job(job_id)
 
-    def _store_result_image(self, job: GenerationJobRecord):
-        result_abs = self.library_path / (job.result_path or "")
-        if not result_abs.is_file():
+    def _resolve_job_result_image_path(self, job: GenerationJobRecord) -> Path:
+        if not job.result_path:
             raise GenerationJobConflict("Generation result file is missing")
-        return store_image(self.library_path, result_abs.read_bytes(), Path(job.result_path or "generated.png").name)
+        result_rel = Path(job.result_path)
+        if (
+            result_rel.is_absolute()
+            or ".." in result_rel.parts
+            or len(result_rel.parts) < 3
+            or result_rel.parts[0] != GENERATION_RESULT_ROOT
+            or result_rel.parts[1] != job.id
+        ):
+            raise GenerationJobConflict("Generation result file path is invalid")
+        result_abs, _ = resolve_generation_input_image_path(
+            self.library_path,
+            job.result_path,
+            allowed_roots={GENERATION_RESULT_ROOT},
+        )
+        return result_abs
+
+    def _prepare_result_image(self, job: GenerationJobRecord) -> tuple[bytes, str]:
+        result_abs = self._resolve_job_result_image_path(job)
+        data = result_abs.read_bytes()
+        _validate_storeable_image_bytes(data)
+        return data, Path(job.result_path or "generated.png").name
+
+    def _store_prepared_image(self, prepared_image: tuple[bytes, str]):
+        data, name = prepared_image
+        return store_image(self.library_path, data, name)
 
     def _input_image_specs(self, job: GenerationJobRecord) -> list[dict]:
         raw_images = job.parameters.get("input_images") if isinstance(job.parameters, dict) else None
@@ -340,25 +472,34 @@ class GenerationJobRepository:
             return []
         return [raw for raw in raw_images[:MAX_GENERATION_INPUT_IMAGES] if isinstance(raw, dict)]
 
-    def _store_input_reference_images(self, job: GenerationJobRecord, item_id: str) -> None:
+    def _prepare_input_reference_images(self, job: GenerationJobRecord) -> list[tuple[bytes, str]]:
+        prepared: list[tuple[bytes, str]] = []
         for index, spec in enumerate(self._input_image_specs(job)):
             name = str(spec.get("name") or f"generation-reference-{index + 1}.png")
             data: bytes | None = None
             result_path = spec.get("result_path")
             if isinstance(result_path, str) and result_path:
-                source_path = self.library_path / result_path
-                if source_path.is_file():
-                    data = source_path.read_bytes()
-                    name = Path(result_path).name
+                source_path, _ = resolve_generation_input_image_path(self.library_path, result_path)
+                data = source_path.read_bytes()
+                name = Path(result_path).name
             data_url = spec.get("data_url")
-            if data is None and isinstance(data_url, str) and data_url.startswith("data:image/"):
+            if data is None and isinstance(data_url, str) and data_url:
+                if not data_url.startswith("data:image/"):
+                    raise GenerationJobConflict("Generation edit input image must be a data URL image")
                 _, _, encoded = data_url.partition(",")
+                if not encoded:
+                    raise GenerationJobConflict("Generation edit input image contains invalid image data")
                 try:
                     data = base64.b64decode(encoded, validate=True)
-                except (binascii.Error, ValueError):
-                    data = None
-            if not data:
-                continue
+                except (binascii.Error, ValueError) as exc:
+                    raise GenerationJobConflict("Generation edit input image contains invalid image data") from exc
+            if data:
+                _validate_storeable_image_bytes(data)
+                prepared.append((data, name))
+        return prepared
+
+    def _store_input_reference_images(self, prepared_images: list[tuple[bytes, str]], item_id: str) -> None:
+        for data, name in prepared_images:
             stored = store_image(self.library_path, data, name)
             self.items.add_image(
                 item_id,
@@ -389,7 +530,9 @@ class GenerationJobRepository:
             raise GenerationJobConflict("Generation job has no source item to attach to")
         if job.status != "succeeded" or not job.result_path:
             raise GenerationJobConflict("Generation job must be succeeded before accept")
-        stored = self._store_result_image(job)
+        input_reference_images = self._prepare_input_reference_images(job)
+        result_image = self._prepare_result_image(job)
+        stored = self._store_prepared_image(result_image)
         image = self.items.add_image(
             job.source_item_id,
             StoredImageInput(
@@ -402,7 +545,7 @@ class GenerationJobRepository:
                 role="result_image",
             ),
         )
-        self._store_input_reference_images(job, job.source_item_id)
+        self._store_input_reference_images(input_reference_images, job.source_item_id)
         return GenerationJobAcceptResult(job=self._mark_accepted(job_id, image.id), item=self.items.get_item(job.source_item_id))
 
     def accept_result_as_new_item(self, job_id: str, overrides: GenerationJobAcceptAsNewItemRequest | None = None) -> GenerationJobAcceptResult:
@@ -446,6 +589,8 @@ class GenerationJobRepository:
             )]
         default_title = f"{source_item.title} Variant" if source_item else "Generated image"
         default_notes = f"Variant generated from item {job.source_item_id} via GenerationJob {job.id}." if source_item else f"Generated via GenerationJob {job.id}."
+        input_reference_images = self._prepare_input_reference_images(job)
+        result_image = self._prepare_result_image(job)
         new_item = self.items.create_item(ItemCreate(
             title=(overrides.title or default_title).strip() or default_title,
             model=overrides.model or job.model or (source_item.model if source_item else "ChatGPT Image2"),
@@ -458,7 +603,7 @@ class GenerationJobRepository:
             prompts=prompts,
             notes=overrides.notes if overrides.notes is not None else default_notes,
         ))
-        stored = self._store_result_image(job)
+        stored = self._store_prepared_image(result_image)
         image = self.items.add_image(
             new_item.id,
             StoredImageInput(
@@ -471,20 +616,26 @@ class GenerationJobRepository:
                 role="result_image",
             ),
         )
-        self._store_input_reference_images(job, new_item.id)
+        self._store_input_reference_images(input_reference_images, new_item.id)
         return GenerationJobAcceptResult(job=self._mark_accepted(job_id, image.id), item=self.items.get_item(new_item.id))
 
     def _result_path_is_discardable(self, job: GenerationJobRecord) -> bool:
         if job.status != "succeeded" or not job.result_path or job.accepted_image_id:
             return False
         result_rel = Path(job.result_path)
-        return (
+        if not (
             not result_rel.is_absolute()
             and ".." not in result_rel.parts
             and len(result_rel.parts) >= 3
-            and result_rel.parts[0] == "generation-results"
+            and result_rel.parts[0] == GENERATION_RESULT_ROOT
             and result_rel.parts[1] == job.id
-        )
+        ):
+            return False
+        try:
+            self._resolve_job_result_image_path(job)
+        except GenerationJobConflict:
+            return False
+        return True
 
     def _result_path_has_item_image_references(self, result_path: str) -> bool:
         with connect(self.library_path) as conn:
@@ -581,7 +732,7 @@ class GenerationJobRepository:
         self._repair_generation_job_references_to_result(job)
         if self._generation_jobs_referencing_result_path(job):
             raise GenerationJobConflict("Generation result is still used as a generation reference and cannot be discarded")
-        result_abs = (self.library_path / (job.result_path or "")).resolve()
+        result_abs = self._resolve_job_result_image_path(job)
         timestamp = now()
         metadata = dict(job.metadata or {})
         metadata["discarded_result_path"] = job.result_path
@@ -662,6 +813,14 @@ class GenerationJobRepository:
             raise GenerationJobConflict("Saved generation jobs cannot be retried. Create a variant instead.")
         if job.status != "succeeded" or not job.result_path:
             raise GenerationJobConflict("Only unsaved ready generation results can be retried")
+        if not self._result_path_is_discardable(job):
+            raise GenerationJobConflict("Only transient generation results in a safe path can be retried")
+        if self._result_path_has_item_image_references(job.result_path or ""):
+            raise GenerationJobConflict("Generation result is saved to library data and cannot be retried")
+        self._repair_generation_job_references_to_result(job)
+        if self._generation_jobs_referencing_result_path(job):
+            raise GenerationJobConflict("Generation result is still used as a generation reference and cannot be retried")
+        result_abs = self._resolve_job_result_image_path(job)
         retry_id = new_id("gen")
         timestamp = now()
         retry_metadata = {
@@ -669,16 +828,22 @@ class GenerationJobRepository:
             "retry_reason": "discard_and_retry",
         }
         discarded_metadata = dict(job.metadata or {})
+        discarded_metadata["discarded_result_path"] = job.result_path
         discarded_metadata["retried_by_generation_job_id"] = retry_id
         with connect(self.library_path) as conn:
-            conn.execute(
+            cursor = conn.execute(
                 """
                 UPDATE generation_jobs
-                SET status='discarded', metadata=?, discarded_at=?, updated_at=?
+                SET status='discarded', result_path=NULL, result_width=NULL, result_height=NULL, result_sha256=NULL,
+                    metadata=?, discarded_at=?, updated_at=?
                 WHERE id=? AND status='succeeded' AND accepted_image_id IS NULL
                 """,
                 (_to_json(discarded_metadata), timestamp, timestamp, job.id),
             )
+            if cursor.rowcount != 1:
+                conn.rollback()
+                current = self.get_job(job_id)
+                raise GenerationJobConflict(f"Only unsaved ready generation results can be retried; current status is {current.status}")
             conn.execute(
                 """
                 INSERT INTO generation_jobs(
@@ -705,6 +870,10 @@ class GenerationJobRepository:
                 ),
             )
             conn.commit()
+        with suppress(OSError):
+            result_abs.unlink()
+        with suppress(OSError):
+            result_abs.parent.rmdir()
         return GenerationJobRetryResult(discarded_job=self.get_job(job.id), retry_job=self.get_job(retry_id))
 
     def cancel_job(self, job_id: str) -> GenerationJobRecord:
