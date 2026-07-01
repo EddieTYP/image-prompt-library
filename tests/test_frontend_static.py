@@ -189,6 +189,17 @@ def test_mobile_header_keeps_brand_centered_and_status_inline():
     assert ".status-row{flex-direction:row;align-items:center;" in compact_css
 
 
+def test_mobile_generation_queue_trigger_stays_clear_of_bottom_fabs():
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+    compact_css = css.replace(" ", "")
+
+    mobile_queue_css = compact_css[compact_css.find(".generation-queue-trigger{left:16px;right:auto;") : compact_css.find(".save-new-metadata-grid{grid-template-columns:1fr}")]
+    assert "bottom:calc(76px+env(safe-area-inset-bottom))" in mobile_queue_css
+    assert "bottom:calc(18px+env(safe-area-inset-bottom))" not in mobile_queue_css
+    assert ".generation-queue-drawer{left:12px;right:12px;bottom:calc(132px+env(safe-area-inset-bottom));" in mobile_queue_css
+    assert "max-height:calc(70dvh-56px)" in mobile_queue_css
+
+
 def test_mobile_selected_collection_uses_bottom_floating_dock_and_active_filter_state():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     topbar = (ROOT / "frontend" / "src" / "components" / "TopBar.tsx").read_text()
