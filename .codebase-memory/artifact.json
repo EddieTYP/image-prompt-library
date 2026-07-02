@@ -1,0 +1,11 @@
+{
+    "schema_version": 1,
+    "commit": "b8a9961c09b980e65be3ecf30465ec9945d5054c",
+    "indexed_at": "2026-07-02T16:16:49Z",
+    "project": "Users-edwardtsoi-image-prompt-library",
+    "nodes": 2338,
+    "edges": 7471,
+    "original_size": 9306112,
+    "compressed_size": 1668778,
+    "compression_level": 3
+}
