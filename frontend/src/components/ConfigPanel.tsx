@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { X } from 'lucide-react';
 import { api, isDemoMode } from '../api/client';
 import type { AppConfig, AppUpdateStatus, CodexNativeAuthStart, GenerationProviderStatus } from '../types';
@@ -104,15 +104,18 @@ export default function ConfigPanel({
   const [updateMessage, setUpdateMessage] = useState<string>();
   const [updateInstalled, setUpdateInstalled] = useState<{ targetVersion: string; requiresManualRestart: boolean }>();
   const [showActiveUpdateConfirm, setShowActiveUpdateConfirm] = useState(false);
+  const drawerRef = useRef<HTMLElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
 
-  const loadProviders = () => api.generationProviders().then(nextProviders => {
+  const loadProviders = useCallback(() => api.generationProviders().then(nextProviders => {
     setProviders(nextProviders);
     onProvidersChanged();
   }).catch(() => {
     setProviders(providerFallback);
     setProviderMessage('Could not load provider status from the local backend. Showing safe local fallback.');
     onProvidersChanged();
-  });
+  }), [onProvidersChanged]);
 
   useEffect(() => {
     if (open) {
@@ -120,7 +123,30 @@ export default function ConfigPanel({
       onRefreshUpdateStatus().catch(() => undefined);
       loadProviders();
     }
-  }, [open, onRefreshUpdateStatus]);
+  }, [open, onRefreshUpdateStatus, loadProviders]);
+
+  useEffect(() => {
+    if (!open) return;
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && !drawerRef.current?.contains(activeElement)) {
+      openerRef.current = activeElement;
+    }
+    window.setTimeout(() => {
+      closeButtonRef.current?.focus({ preventScroll: true });
+    }, 0);
+  }, [open]);
+
+  const closePanel = () => {
+    onClose();
+    window.setTimeout(() => openerRef.current?.focus({ preventScroll: true }), 0);
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closePanel();
+    }
+  };
 
   const startCodexAuth = async () => {
     setProviderBusy(true);
@@ -204,10 +230,25 @@ export default function ConfigPanel({
     : 'The update has been installed. The macOS service restart has been scheduled; reconnect after it comes back online.';
 
   return (
-    <aside className={`config drawer ${open ? 'open' : ''}`}>
+    <aside
+      ref={drawerRef}
+      className={`config drawer ${open ? 'open' : ''}`}
+      aria-label={t('config')}
+      aria-hidden={!open}
+      inert={!open}
+      onKeyDown={handleKeyDown}
+    >
       <div className="drawer-head">
         <h2>{t('config')}</h2>
-        <button className="panel-close" onClick={onClose} aria-label={t('closeConfig')}><X size={20} strokeWidth={2.25} /></button>
+        <button
+          ref={closeButtonRef}
+          className="panel-close"
+          onClick={closePanel}
+          aria-label={t('closeConfig')}
+          tabIndex={open ? 0 : -1}
+        >
+          <X size={20} strokeWidth={2.25} />
+        </button>
       </div>
 
       <section className="setting-group">

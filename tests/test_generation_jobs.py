@@ -89,6 +89,44 @@ def test_generation_job_can_stage_result_and_accept_into_source_item(tmp_path):
     assert c.post(f"/api/generation-jobs/{job['id']}/accept").status_code == 409
 
 
+def test_generation_job_list_and_detail_redact_input_image_data_urls(tmp_path):
+    c = client(tmp_path)
+    payload_data = png_bytes("red", (4, 4))
+    created = c.post(
+        "/api/generation-jobs",
+        json={
+            "prompt_text": "Redaction regression",
+            "parameters": {
+                "input_images": [
+                    {
+                        "name": "seed.png",
+                        "data_url": f"data:image/png;base64,{base64.b64encode(payload_data).decode()}",
+                    }
+                ],
+            },
+        },
+    ).json()
+
+    created_input = created["parameters"]["input_images"][0]
+    assert "data_url" not in created_input
+    assert created_input["has_data_url"] is True
+    assert created_input["data_url_redacted"] is True
+    assert created_input["name"] == "seed.png"
+
+    detail = c.get(f"/api/generation-jobs/{created['id']}").json()
+    detail_input = detail["parameters"]["input_images"][0]
+    assert "data_url" not in detail_input
+    assert detail_input["has_data_url"] is True
+    assert detail_input["data_url_redacted"] is True
+
+    listed = c.get("/api/generation-jobs").json()
+    assert listed["total"] == 1
+    listed_input = listed["jobs"][0]["parameters"]["input_images"][0]
+    assert "data_url" not in listed_input
+    assert listed_input["has_data_url"] is True
+    assert listed_input["data_url_redacted"] is True
+
+
 def test_generation_result_media_is_servable_before_accept(tmp_path):
     c = client(tmp_path)
     source_item = create_source_item(c)

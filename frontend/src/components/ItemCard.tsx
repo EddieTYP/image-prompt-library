@@ -1,4 +1,4 @@
-import type { MouseEvent } from 'react';
+import type { KeyboardEvent, MouseEvent } from 'react';
 import { Check, Copy, Download, Heart, Pencil } from 'lucide-react';
 import { mediaUrl } from '../api/client';
 import type { ItemSummary } from '../types';
@@ -50,9 +50,31 @@ export default function ItemCard({
     event?.stopPropagation();
     onToggleSelection?.(item.id);
   };
+  const activateCard = () => {
+    if (isSelecting) {
+      onToggleSelection?.(item.id);
+      return;
+    }
+    onOpen(item.id);
+  };
+  const handleCardKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      activateCard();
+    }
+  };
 
   return (
-    <article className={`item-card ${item.favorite ? 'is-favorite' : ''} ${isSelecting ? 'is-selecting' : ''} ${isSelected ? 'is-selected' : ''}`} style={{ breakInside: 'avoid' }} onClick={() => isSelecting ? toggleSelection() : onOpen(item.id)}>
+    <article
+      className={`item-card ${item.favorite ? 'is-favorite' : ''} ${isSelecting ? 'is-selecting' : ''} ${isSelected ? 'is-selected' : ''}`}
+      style={{ breakInside: 'avoid' }}
+      onClick={activateCard}
+      onKeyDown={handleCardKeyDown}
+      role="button"
+      tabIndex={0}
+      aria-label={item.title}
+    >
       {imagePath ? (
         <div className={`card-image-frame ${imageAspectRatio ? 'has-reserved-ratio' : 'natural-ratio'}`} style={{ aspectRatio: imageAspectRatio }}>
           <img

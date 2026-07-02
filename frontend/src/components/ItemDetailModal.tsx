@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Check, Copy, Download, ExternalLink, Heart, Maximize2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import GenerationPanel from './GenerationPanel';
 import { api, mediaUrl } from '../api/client';
@@ -14,6 +14,7 @@ const LANG_LABELS: Record<string, string> = {
   en: 'ENG',
 };
 const promptDisplayOrder = ['en', 'zh_hant', 'zh_hans'];
+const FOCUSABLE_SELECTOR = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
 
 function getImageIdentity(image: ImageRecord) {
   return image.thumb_path || image.preview_path || image.original_path || image.id;
@@ -206,10 +207,18 @@ export default function ItemDetailModal({
   const lastDefaultPromptKeyRef = useRef('');
   const heroImageRef = useRef<HTMLImageElement | null>(null);
   const heroFullscreenFrameRef = useRef<HTMLDivElement | null>(null);
+  const backdropRef = useRef<HTMLDivElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
 
   const handleClose = () => {
+    if (isClosing) return;
     setIsClosing(true);
-    window.setTimeout(onClose, 180);
+    const opener = openerRef.current;
+    window.setTimeout(() => {
+      onClose();
+      window.setTimeout(() => opener?.focus({ preventScroll: true }), 0);
+    }, 180);
   };
 
   const closeHeroFullscreen = async () => {
@@ -239,6 +248,18 @@ export default function ItemDetailModal({
   useEffect(() => { setLang(preferredLanguage); }, [preferredLanguage, id]);
   useEffect(() => { if (id) setIsClosing(false); }, [id]);
   useEffect(() => { setGenerationOpen(Boolean(initialGenerationJobId)); }, [initialGenerationJobId]);
+
+  useEffect(() => {
+    if (!id) return undefined;
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement && !backdropRef.current?.contains(activeElement)) {
+      openerRef.current = activeElement;
+    }
+    const timer = window.setTimeout(() => {
+      modalRef.current?.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
@@ -360,9 +381,61 @@ export default function ItemDetailModal({
     setTagQuery('');
   };
 
+  const focusableModalElements = () => {
+    if (!backdropRef.current) return [];
+    return Array.from(backdropRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+      .filter(element => !element.hasAttribute('disabled') && (element.getClientRects().length > 0 || element === document.activeElement));
+  };
+
+  const handleModalKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') {
+      const target = event.target as HTMLElement | null;
+      if (isHeroFullscreen) {
+        event.preventDefault();
+        void closeHeroFullscreen();
+        return;
+      }
+      if (target?.closest('.inline-editable.is-editing, .prompt-edit-textarea, .tag-add-popover')) return;
+      event.preventDefault();
+      handleClose();
+      return;
+    }
+
+    if (event.key !== 'Tab') return;
+    const focusable = focusableModalElements();
+    if (focusable.length === 0) {
+      event.preventDefault();
+      modalRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const activeElement = document.activeElement as HTMLElement | null;
+    if (!activeElement || !backdropRef.current?.contains(activeElement)) {
+      event.preventDefault();
+      first.focus({ preventScroll: true });
+      return;
+    }
+    if (event.shiftKey && activeElement === first) {
+      event.preventDefault();
+      last.focus({ preventScroll: true });
+    } else if (!event.shiftKey && activeElement === last) {
+      event.preventDefault();
+      first.focus({ preventScroll: true });
+    }
+  };
+
   return (
-    <div className={`modal-backdrop${isClosing ? ' is-closing' : ''}`} onClick={handleClose}>
-      <div className="detail modal polished-modal" onClick={e => e.stopPropagation()}>
+    <div ref={backdropRef} className={`modal-backdrop${isClosing ? ' is-closing' : ''}`} onClick={handleClose} onKeyDown={handleModalKeyDown}>
+      <div
+        ref={modalRef}
+        className="detail modal polished-modal"
+        onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label={displayTitle || item?.title || t('loading')}
+        tabIndex={-1}
+      >
         {!item ? (
           <p className="modal-loading">{t('loading')}</p>
         ) : (

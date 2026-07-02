@@ -1220,6 +1220,46 @@ def test_drawer_close_buttons_use_shared_polished_panel_close_style():
     assert "aria-label={t('closeConfig')}" in config
 
 
+def test_closed_drawers_are_inert_and_escape_closeable():
+    filters = (ROOT / "frontend" / "src" / "components" / "FiltersPanel.tsx").read_text()
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+
+    for panel in (filters, config):
+        assert "aria-hidden={!open}" in panel
+        assert "inert={!open}" in panel
+        assert "onKeyDown={handleKeyDown}" in panel
+        assert "if (event.key === 'Escape')" in panel
+        assert "focus({ preventScroll: true })" in panel
+        assert "tabIndex={open ? 0 : -1}" in panel
+
+
+def test_cards_are_keyboard_activatable_for_detail_focus_return():
+    card = (ROOT / "frontend" / "src" / "components" / "ItemCard.tsx").read_text()
+
+    assert "role=\"button\"" in card
+    assert "tabIndex={0}" in card
+    assert "onKeyDown={handleCardKeyDown}" in card
+    assert "event.key === 'Enter' || event.key === ' '" in card
+    assert "aria-label={item.title}" in card
+
+
+def test_detail_modal_traps_focus_and_supports_escape_close():
+    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
+
+    assert "FOCUSABLE_SELECTOR" in detail
+    assert "backdropRef" in detail and "modalRef" in detail and "openerRef" in detail
+    assert "role=\"dialog\"" in detail
+    assert "aria-modal=\"true\"" in detail
+    assert "tabIndex={-1}" in detail
+    assert "onKeyDown={handleModalKeyDown}" in detail
+    assert "event.key === 'Escape'" in detail
+    assert "event.key !== 'Tab'" in detail
+    assert "backdropRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)" in detail
+    assert "modalRef.current?.focus({ preventScroll: true })" in detail
+    assert "opener?.focus({ preventScroll: true })" in detail
+    assert ".inline-editable.is-editing, .prompt-edit-textarea, .tag-add-popover" in detail
+
+
 def test_copy_prompt_has_insecure_lan_clipboard_fallback():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
