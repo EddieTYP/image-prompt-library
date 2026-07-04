@@ -72,12 +72,12 @@ If you save a result as a new library item, review and edit the metadata first. 
 
 The current beta line includes an experimental `openai_codex_oauth_native` provider path labelled in the UI as **ChatGPT / Codex OAuth**.
 
-Current hardening follow-ups include:
+The current local composer supports attached input images for reference/edit-style generation jobs. Current hardening follow-ups include:
 
 - Cross-process token refresh locking.
 - Fresh OAuth onboarding QA.
 - Clearer error mapping for auth expiry, Cloudflare/challenge, empty image results, and upstream API drift.
-- Text+Reference to Image and Image Edit payload support using `reference_image_ids`.
+- Richer saved-reference selection and input-image UX polish.
 - Retry controls and richer job state transitions.
 - More complete local-only Generation UX polish.
 
