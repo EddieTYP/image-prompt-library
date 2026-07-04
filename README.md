@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.4-beta)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.5-beta)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 <p align="center">
@@ -33,7 +33,7 @@ Use the online demo as a visual prompt catalogue: search for ideas, inspect prom
 
 If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate new images through ChatGPT / Codex OAuth while keeping your SQLite database and image files on your own computer.
 
-Current public beta: [`v0.7.4-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.4-beta). This release builds on v0.7 prompt variables, Template indicators, generated-result cleanup, search sort operators, queue cancellation, and restart recovery while clarifying queue review state: generated results that are being reused as references are now marked `Used as ref`, including cloned generation-result references, and the queue loads enough recent history to show those relationships consistently.
+Current public beta: [`v0.7.5-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.5-beta). This patch keeps generation history safer to inspect by redacting raw input-image data from job API responses, and improves keyboard/focus behavior in Filters, Config, gallery cards, and detail modals.
 
 ## Quick start
 

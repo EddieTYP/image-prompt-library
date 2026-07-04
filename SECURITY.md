@@ -1,10 +1,10 @@
 # Security Policy
 
-Image Prompt Library is an early local-first alpha. The app is designed to run on your own machine with a local SQLite database and local media files.
+Image Prompt Library is a local-first public beta. The app is designed to run on your own machine with a local SQLite database and local media files.
 
 ## Supported versions
 
-Security fixes target the latest `main` branch until the first tagged public alpha is released. After tagged releases exist, this file will be updated with a supported-version table.
+Security fixes target the latest tagged beta release and the latest `main` branch. Older beta releases may receive guidance to update rather than backported fixes.
 
 ## Reporting a vulnerability
 
