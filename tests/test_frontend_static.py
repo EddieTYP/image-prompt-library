@@ -204,7 +204,8 @@ def test_mobile_header_keeps_brand_centered_and_status_inline():
     assert ".nav-row{grid-template-columns:auto1frauto;" in compact_css
     assert ".toolbar-search{grid-column:1/-1;order:4}" in compact_css
     assert ".mobile-brand{justify-self:center" in compact_css
-    assert ".status-row{flex-direction:row;align-items:center;" in compact_css
+    assert ".status-row{flex-direction:row;align-items:flex-start;" in compact_css
+    assert ".status-row:has(.active-filter-strip.chip){flex-wrap:wrap;justify-content:flex-end}" in compact_css
 
 
 def test_mobile_generation_queue_trigger_stays_clear_of_bottom_fabs():
@@ -237,7 +238,12 @@ def test_mobile_selected_collection_uses_bottom_floating_dock_and_active_filter_
     assert ".filter-active-dot" not in css
     assert ".filter-active-count" not in css
     assert "@media(max-width:760px)" in css
-    assert ".active-filter-strip.active-filter{display:none}" in compact_css
+    assert ".active-filter-strip{flex:1;overflow:visible;flex-wrap:wrap}" in compact_css
+    assert ".active-filter-strip.active-filter{display:none}" not in compact_css
+    assert ".active-filter-strip.chip{max-width:100%}" in compact_css
+    assert ".active-filter-strip.soft-chip{flex:11100%;max-width:100%}" in compact_css
+    assert ".status-row:has(.active-filter-strip.chip){flex-wrap:wrap;justify-content:flex-end}" in compact_css
+    assert ".status-row:has(.active-filter-strip.chip).active-filter-strip{order:2;flex:11100%;width:100%}" in compact_css
     assert ".selected-collection-dock{display:none}" in compact_css
     assert "@media(min-width:761px){.selected-collection-dock{position:fixed;left:16px;right:16px;bottom:calc(16px+env(safe-area-inset-bottom));" in compact_css
     assert ".selected-collection-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:clamp(14px,3.7vw,16px);" in compact_css
@@ -769,7 +775,7 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "generate-fab" in app
     assert "!isDemoMode && (" in app
     assert "generationAvailable && <button className=\"fab generate-fab\"" in app
-    assert "!isDemoMode && <GenerationQueueDrawer" in app
+    assert "!isDemoMode && showFloatingActions && <GenerationQueueDrawer" in app
     assert "focusedGenerationJobId" in app
     assert "openGenerationJob" in app
     assert "onOpenJob={openGenerationJob}" in app
@@ -1556,6 +1562,7 @@ def test_selection_toolbar_uses_batch_api_for_power_user_actions():
     assert "batchItems" in api_client
     assert "api.batchItems" in app
     assert "runBatchAction" in app
+    assert "!configOpen" in app and "showFloatingActions" in app
     assert "batchArchiveSelected" in app
     assert "showingArchivedItems ? 'unarchive' : 'archive'" in app
     assert "restoreSelectedReferences" in app

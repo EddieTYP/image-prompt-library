@@ -293,6 +293,7 @@ export default function App() {
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   const focusedItemGenerationJobId = pendingGenerationSourceItemId ? focusedGenerationJobId : undefined;
   const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
+  const showFloatingActions = Boolean(!selectionMode && !filtersOpen && !configOpen && !detailId && !editorOpen && !standaloneGenerationOpen);
   const updateBadgeLabel = restartRequiredVersion ? 'Restart required' : (updateStatus?.update_available ? 'Update available' : undefined);
   return <div className={`app ${view === 'explore' ? 'explore-mode' : 'cards-mode'}`}>
     {!hasChosenUiLanguage && (
@@ -354,14 +355,14 @@ export default function App() {
       </button>
     )}
     {/* Static-test compatibility marker: !isDemoMode && <button className="fab" */}
-    {!isDemoMode && !selectionMode && (
+    {!isDemoMode && showFloatingActions && (
       <div className="floating-action-rail">
         {view === 'cards' && localizedData.items.length > 0 && <button className="fab select-fab" onClick={() => { setSelectionMode(true); clearSelection(); }}>{t('selectReferences')}</button>}
         <button className="fab add-fab" onClick={openNewItemEditor}><Plus/> {t('add')}</button>
         {generationAvailable && <button className="fab generate-fab" onClick={openStandaloneGeneration}>Generate</button>}
       </div>
     )}
-    {!isDemoMode && <GenerationQueueDrawer t={t} open={generationQueueOpen} onOpen={() => setGenerationQueueOpen(true)} onClose={() => setGenerationQueueOpen(false)} onOpenJob={openGenerationJob} />}
+    {!isDemoMode && showFloatingActions && <GenerationQueueDrawer t={t} open={generationQueueOpen} onOpen={() => setGenerationQueueOpen(true)} onClose={() => setGenerationQueueOpen(false)} onOpenJob={openGenerationJob} />}
     <ItemDetailModal t={t} id={detailId} uiLanguage={uiLanguage} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onDelete={isDemoMode ? undefined : deleteDetail} onOpenItem={setDetailId} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} canGenerate={generationAvailable} promptVariablesEnabled={Boolean(appConfig?.features?.camelot?.percival)} initialGenerationJobId={focusedItemGenerationJobId} />
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
     {editorOpen && <ItemEditorModal t={t} item={editing} clusters={localizedClusters} tags={tags} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} />}
