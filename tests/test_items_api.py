@@ -226,6 +226,7 @@ def test_batch_archive_favorite_tag_and_move_items(tmp_path):
 
     assert c.post("/api/items/batch", json={"item_ids": [first["id"]], "action": "add_tags"}).status_code == 400
     assert c.post("/api/items/batch", json={"item_ids": [first["id"]], "action": "move_collection"}).status_code == 400
+    assert c.post("/api/items/batch", json={"item_ids": [first["id"]], "action": "move_collection", "cluster_name": "   "}).status_code == 400
 
 
 def test_batch_delete_uses_server_side_delete_and_reports_missing_items(tmp_path):

@@ -19,6 +19,10 @@ def create_item(request: Request, payload: ItemCreate):
 
 @router.post("/items/batch", response_model=ItemBatchResult)
 def batch_items(request: Request, payload: ItemBatchRequest):
+    if payload.action == "move_collection":
+        payload.cluster_name = payload.cluster_name.strip() if payload.cluster_name else None
+        if not (payload.cluster_id or payload.cluster_name):
+            raise HTTPException(400, "cluster_id or cluster_name is required")
     try: return repo(request).batch_items(payload)
     except ValueError as exc: raise HTTPException(400, str(exc)) from exc
 

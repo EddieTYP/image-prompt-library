@@ -1,5 +1,5 @@
 from typing import Any, List, Literal, Optional
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field
 
 class PromptIn(BaseModel):
     language: str = "original"
