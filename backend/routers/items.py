@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request
 from backend.repositories import ItemRepository
-from backend.schemas import ItemCreate, ItemDetail, ItemList, ItemUpdate
+from backend.schemas import ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemList, ItemUpdate
 router = APIRouter()
 
 def repo(request: Request): return ItemRepository(request.app.state.library_path)
@@ -15,6 +15,11 @@ def list_items(request: Request, q: str | None=None, cluster: str | None=None, t
 @router.post("/items", response_model=ItemDetail)
 def create_item(request: Request, payload: ItemCreate):
     try: return repo(request).create_item(payload)
+    except ValueError as exc: raise HTTPException(400, str(exc)) from exc
+
+@router.post("/items/batch", response_model=ItemBatchResult)
+def batch_items(request: Request, payload: ItemBatchRequest):
+    try: return repo(request).batch_items(payload)
     except ValueError as exc: raise HTTPException(400, str(exc)) from exc
 
 @router.get("/items/{item_id}", response_model=ItemDetail)

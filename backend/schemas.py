@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 class PromptIn(BaseModel):
@@ -74,6 +74,21 @@ class ItemUpdate(BaseModel):
     notes: Optional[str] = None
     tags: Optional[List[str]] = None
     prompts: Optional[List[PromptIn]] = None
+
+class ItemBatchRequest(BaseModel):
+    item_ids: List[str] = Field(min_length=1, max_length=500)
+    action: Literal["delete", "archive", "unarchive", "favorite", "unfavorite", "add_tags", "remove_tags", "move_collection"]
+    tags: Optional[List[str]] = None
+    cluster_id: Optional[str] = None
+    cluster_name: Optional[str] = None
+
+class ItemBatchResult(BaseModel):
+    requested: int
+    changed: int
+    skipped: int
+    failed: int
+    item_ids: List[str]
+    errors: dict[str, str] = Field(default_factory=dict)
 
 class ItemSummary(BaseModel):
     id: str

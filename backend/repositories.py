@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from contextlib import suppress
 from .db import connect, init_db
-from .schemas import ClusterRecord, ImageRecord, ItemCreate, ItemDetail, ItemList, ItemSummary, ItemUpdate, PromptIn, PromptRecord, TagRecord
+from .schemas import ClusterRecord, ImageRecord, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemList, ItemSummary, ItemUpdate, PromptIn, PromptRecord, TagRecord
 from .services.search_query import parse_item_search_query
 from .services.text_normalize import to_traditional
 
@@ -271,6 +271,48 @@ class ItemRepository:
                 self.delete_empty_clusters(conn)
             conn.commit()
         return self.get_item(item_id)
+
+    def batch_items(self, payload: ItemBatchRequest) -> ItemBatchResult:
+        tags = [tag.strip() for tag in payload.tags or [] if tag and tag.strip()]
+        if payload.action in {"add_tags", "remove_tags"} and not tags:
+            raise ValueError("Tags are required for tag batch actions")
+        if payload.action == "move_collection" and not (payload.cluster_id or payload.cluster_name):
+            raise ValueError("cluster_id or cluster_name is required")
+
+        changed: list[str] = []
+        errors: dict[str, str] = {}
+        for item_id in payload.item_ids:
+            try:
+                if payload.action == "delete":
+                    self.delete_item(item_id)
+                elif payload.action == "archive":
+                    self.update_item(item_id, ItemUpdate(archived=True))
+                elif payload.action == "unarchive":
+                    self.update_item(item_id, ItemUpdate(archived=False))
+                elif payload.action == "favorite":
+                    self.update_item(item_id, ItemUpdate(favorite=True))
+                elif payload.action == "unfavorite":
+                    self.update_item(item_id, ItemUpdate(favorite=False))
+                elif payload.action == "add_tags":
+                    existing = [tag.name for tag in self.get_item(item_id).tags]
+                    self.update_item(item_id, ItemUpdate(tags=list(dict.fromkeys([*existing, *tags]))))
+                elif payload.action == "remove_tags":
+                    remove = set(tags)
+                    existing = [tag.name for tag in self.get_item(item_id).tags]
+                    self.update_item(item_id, ItemUpdate(tags=[tag for tag in existing if tag not in remove]))
+                elif payload.action == "move_collection":
+                    self.update_item(item_id, ItemUpdate(cluster_id=payload.cluster_id, cluster_name=payload.cluster_name))
+                changed.append(item_id)
+            except KeyError:
+                errors[item_id] = "Item not found"
+        return ItemBatchResult(
+            requested=len(payload.item_ids),
+            changed=len(changed),
+            skipped=0,
+            failed=len(errors),
+            item_ids=changed,
+            errors=errors,
+        )
 
     def set_archived(self, item_id: str, archived: bool=True) -> ItemDetail:
         return self.update_item(item_id, ItemUpdate(archived=archived))

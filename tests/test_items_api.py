@@ -193,6 +193,61 @@ def test_items_list_limit_allows_gallery_overview_scale(tmp_path):
     assert len(listed["items"]) == 230
 
 
+def test_batch_archive_favorite_tag_and_move_items(tmp_path):
+    c = client(tmp_path)
+    first = c.post("/api/items", json=create_payload(title="Batch One", source_url="https://example.test/batch-one")).json()
+    second = c.post("/api/items", json=create_payload(title="Batch Two", source_url="https://example.test/batch-two")).json()
+
+    archived = c.post("/api/items/batch", json={"item_ids": [first["id"], second["id"]], "action": "archive"}).json()
+    assert archived["requested"] == 2
+    assert archived["changed"] == 2
+    assert c.get("/api/items").json()["total"] == 0
+    assert c.get("/api/items", params={"archived": True}).json()["total"] == 2
+
+    unarchived = c.post("/api/items/batch", json={"item_ids": [first["id"], second["id"]], "action": "unarchive"}).json()
+    assert unarchived["changed"] == 2
+    assert c.get("/api/items").json()["total"] == 2
+
+    favorite = c.post("/api/items/batch", json={"item_ids": [first["id"], second["id"]], "action": "favorite"}).json()
+    assert favorite["changed"] == 2
+    assert c.get("/api/items", params={"favorite": True}).json()["total"] == 2
+
+    tagged = c.post("/api/items/batch", json={"item_ids": [first["id"], second["id"]], "action": "add_tags", "tags": ["batch", "cleanup"]}).json()
+    assert tagged["changed"] == 2
+    assert c.get("/api/items", params={"q": "tag:batch"}).json()["total"] == 2
+
+    moved = c.post("/api/items/batch", json={"item_ids": [first["id"], second["id"]], "action": "move_collection", "cluster_name": "Batch Review"}).json()
+    assert moved["changed"] == 2
+    assert c.get("/api/items", params={"q": "collection:Batch"}).json()["total"] == 2
+
+    removed = c.post("/api/items/batch", json={"item_ids": [first["id"], second["id"]], "action": "remove_tags", "tags": ["cleanup"]}).json()
+    assert removed["changed"] == 2
+    assert c.get("/api/items", params={"q": "tag:cleanup"}).json()["total"] == 0
+
+    assert c.post("/api/items/batch", json={"item_ids": [first["id"]], "action": "add_tags"}).status_code == 400
+    assert c.post("/api/items/batch", json={"item_ids": [first["id"]], "action": "move_collection"}).status_code == 400
+
+
+def test_batch_delete_uses_server_side_delete_and_reports_missing_items(tmp_path):
+    c = client(tmp_path)
+    library = tmp_path / "library"
+    item = c.post("/api/items", json=create_payload(title="Batch Delete")).json()
+    uploaded = c.post(
+        f"/api/items/{item['id']}/images",
+        data={"role": "result_image"},
+        files={"file": ("result.png", png_bytes(), "image/png")},
+    ).json()
+    stored_paths = [library / uploaded[key] for key in ("original_path", "thumb_path", "preview_path")]
+    result = c.post("/api/items/batch", json={"item_ids": [item["id"], "missing"], "action": "delete"}).json()
+
+    assert result["requested"] == 2
+    assert result["changed"] == 1
+    assert result["failed"] == 1
+    assert "missing" in result["errors"]
+    assert c.get("/api/items").json()["total"] == 0
+    assert all(not path.exists() for path in stored_paths)
+
+
 def test_patch_favorite_and_delete_item(tmp_path):
     c = client(tmp_path)
     library = tmp_path / "library"
