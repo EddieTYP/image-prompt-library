@@ -1,4 +1,4 @@
-import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationProviderStatus, ItemCreate, ItemDetail, ItemList, ItemSortMode, ItemSummary, TagRecord, UploadImageRole } from '../types';
+import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationProviderStatus, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemList, ItemSortMode, ItemSummary, TagRecord, UploadImageRole } from '../types';
 import { DEFAULT_ITEM_SORT } from '../utils/searchSort';
 
 const API = '';
@@ -117,6 +117,7 @@ export const api = isDemoMode ? {
   createItem: (_payload: ItemCreate) => demoReadOnly(),
   updateItem: (_id: string, _payload: Partial<ItemCreate>) => demoReadOnly(),
   deleteItem: (_id: string) => demoReadOnly(),
+  batchItems: (_payload: ItemBatchRequest) => demoReadOnly(),
   favorite: (_id: string) => demoReadOnly(),
   uploadImage: (_id: string, _file: File, _role: UploadImageRole = 'result_image') => demoReadOnly(),
   generationProviders: () => Promise.resolve<GenerationProviderStatus[]>([
@@ -172,6 +173,7 @@ export const api = isDemoMode ? {
   createItem: (payload: ItemCreate) => json<ItemDetail>('/api/items', { method: 'POST', body: JSON.stringify(payload) }),
   updateItem: (id: string, payload: Partial<ItemCreate>) => json<ItemDetail>(`/api/items/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteItem: (id: string) => json<ItemDetail>(`/api/items/${id}`, { method: 'DELETE' }),
+  batchItems: (payload: ItemBatchRequest) => json<ItemBatchResult>('/api/items/batch', { method: 'POST', body: JSON.stringify(payload) }),
   favorite: (id: string) => json<ItemDetail>(`/api/items/${id}/favorite`, { method: 'POST' }),
   uploadImage: (id: string, file: File, role: UploadImageRole = 'result_image') => { const fd = new FormData(); fd.set('file', file); fd.set('role', role); return json(`/api/items/${id}/images`, { method: 'POST', body: fd }); },
   generationProviders: () => json<GenerationProviderStatus[]>('/api/generation-providers'),

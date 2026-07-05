@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Plus, Trash2, XCircle } from 'lucide-react';
+import { Archive, Check, FolderInput, Plus, Star, Tags, Trash2, XCircle } from 'lucide-react';
 import { api, isDemoMode } from './api/client';
 import TopBar from './components/TopBar';
 import FiltersPanel from './components/FiltersPanel';
@@ -12,7 +12,7 @@ import GenerationQueueDrawer from './components/GenerationQueueDrawer';
 import ConfigPanel from './components/ConfigPanel';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
-import type { AppConfig, AppUpdateStatus, ClusterRecord, GenerationJobRecord, GenerationProviderStatus, ItemDetail, ItemSortMode, ItemSummary, TagRecord, ViewMode } from './types';
+import type { AppConfig, AppUpdateStatus, ClusterRecord, GenerationJobRecord, GenerationProviderStatus, ItemBatchAction, ItemDetail, ItemSortMode, ItemSummary, TagRecord, ViewMode } from './types';
 import { copyTextToClipboard } from './utils/clipboard';
 import { localizedDemoTitle } from './utils/demoTitles';
 import { DEFAULT_UI_LANGUAGE, UI_LANGUAGE_LABELS, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
@@ -188,6 +188,7 @@ export default function App() {
   const clearSelection = () => setSelectedItemIds(new Set());
   const exitSelectionMode = () => { setSelectionMode(false); clearSelection(); };
   const deleted = () => { setDetailId(undefined); setEditing(undefined); exitSelectionMode(); refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
+  const batchChanged = () => { exitSelectionMode(); refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
   const updatePreferredLanguage = (language: PromptCopyLanguage) => {
     setPreferredLanguage(language);
     window.localStorage.setItem(PROMPT_LANGUAGE_STORAGE_KEY, language);
@@ -263,15 +264,30 @@ export default function App() {
       setToast({ title: t('saveFailed'), tone: 'error' });
     }
   };
-  const deleteSelectedItems = async () => {
+  const runBatchAction = async (action: ItemBatchAction, extra: { tags?: string[]; cluster_name?: string } = {}) => {
     if (!selectedItemIds.size) return;
-    if (!confirm(t('deleteSelectedReferencesConfirm').replace('${selectedItemIds.size}', String(selectedItemIds.size)))) return;
     try {
-      await Promise.all(Array.from(selectedItemIds).map(id => api.deleteItem(id)));
-      deleted();
+      await api.batchItems({ item_ids: Array.from(selectedItemIds), action, ...extra });
+      batchChanged();
     } catch {
       setToast({ title: t('saveFailed'), tone: 'error' });
     }
+  };
+  const deleteSelectedItems = async () => {
+    if (!selectedItemIds.size) return;
+    if (!confirm(t('deleteSelectedReferencesConfirm').replace('${selectedItemIds.size}', String(selectedItemIds.size)))) return;
+    await runBatchAction('delete');
+  };
+  const batchArchiveSelected = () => runBatchAction('archive');
+  const batchFavoriteSelected = () => runBatchAction('favorite');
+  const batchAddTagsSelected = () => {
+    const value = prompt(t('tagSelectedReferences'));
+    const tags = (value || '').split(',').map(tag => tag.trim()).filter(Boolean);
+    if (tags.length) runBatchAction('add_tags', { tags });
+  };
+  const batchMoveSelected = () => {
+    const cluster_name = (prompt(t('moveSelectedReferences')) || '').trim();
+    if (cluster_name) runBatchAction('move_collection', { cluster_name });
   };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   const focusedItemGenerationJobId = pendingGenerationSourceItemId ? focusedGenerationJobId : undefined;
@@ -317,6 +333,12 @@ export default function App() {
       <div className="selection-toolbar" role="toolbar" aria-label={t('selectReferences')}>
         <button type="button" className="selection-toolbar-button" onClick={exitSelectionMode}>{t('cancel')}</button>
         <span className="selection-toolbar-count">{selectedItemIds.size} {t('selectedReferences')}</span>
+        <div className="selection-toolbar-secondary">
+          <button type="button" className="selection-toolbar-button" onClick={batchArchiveSelected} disabled={!selectedItemIds.size}><Archive size={16} /> {t('archiveSelectedReferences')}</button>
+          <button type="button" className="selection-toolbar-button" onClick={batchFavoriteSelected} disabled={!selectedItemIds.size}><Star size={16} /> {t('favoriteSelectedReferences')}</button>
+          <button type="button" className="selection-toolbar-button" onClick={batchAddTagsSelected} disabled={!selectedItemIds.size}><Tags size={16} /> {t('tagSelectedReferences')}</button>
+          <button type="button" className="selection-toolbar-button" onClick={batchMoveSelected} disabled={!selectedItemIds.size}><FolderInput size={16} /> {t('moveSelectedReferences')}</button>
+        </div>
         <button type="button" className="selection-toolbar-delete" onClick={deleteSelectedItems} disabled={!selectedItemIds.size}><Trash2 size={16} /> {t('deleteSelectedReferences')}</button>
       </div>
     )}

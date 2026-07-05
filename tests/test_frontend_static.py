@@ -1484,7 +1484,8 @@ def test_delete_actions_live_in_detail_modal_and_cards_batch_select():
     assert "selectedItemIds" in app
     assert "selectionMode" in app
     assert "api.deleteItem(item.id)" in app
-    assert "Promise.all(Array.from(selectedItemIds).map(id => api.deleteItem(id)))" in app
+    assert "api.batchItems" in app
+    assert "Promise.all(Array.from(selectedItemIds).map(id => api.deleteItem(id)))" not in app
     assert "onDelete={isDemoMode ? undefined : deleteDetail}" in app
     assert "onToggleSelection={selectionMode ? toggleSelectedItem : undefined}" in app
     assert "onClick={deleteSelectedItems}" in app
@@ -1540,3 +1541,23 @@ def test_collection_names_are_localized_from_cluster_names_metadata():
     assert "clusters={localizedClusters}" in app
     assert "items={localizedData.items}" in app
     assert "clusterName={localizedClusterName(selectedCluster, uiLanguage)}" in app
+
+
+def test_selection_toolbar_uses_batch_api_for_power_user_actions():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+    types = (ROOT / "frontend" / "src" / "types.ts").read_text()
+    styles = (ROOT / "frontend" / "src" / "styles.css").read_text()
+
+    assert "ItemBatchRequest" in types
+    assert "ItemBatchResult" in types
+    assert "batchItems" in api_client
+    assert "api.batchItems" in app
+    assert "runBatchAction" in app
+    assert "batchArchiveSelected" in app
+    assert "batchFavoriteSelected" in app
+    assert "batchAddTagsSelected" in app
+    assert "batchMoveSelected" in app
+    assert "Promise.all(Array.from(selectedItemIds).map(id => api.deleteItem(id)))" not in app
+    assert "selection-toolbar-secondary" in app
+    assert ".selection-toolbar-secondary" in styles
