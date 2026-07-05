@@ -35,8 +35,9 @@ def test_search_bar_has_visible_sort_control_and_query_filter_chips():
     i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
 
     assert "parseSearchSortQuery(debouncedQ)" in app
+    assert "parseSearchSortQuery(q)" in app
     assert "const [sort, setSort]" in app
-    assert "const activeSort = parsedSearchQuery.explicitSort ? parsedSearchQuery.sort : sort" in app
+    assert "const activeSort = rawParsedSearchQuery.explicitSort ? rawParsedSearchQuery.sort : sort" in app
     assert "useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, activeSort)" in app
     assert "onSort={updateSort}" in app
     assert "removeSearchSortOperator(current)" in app
@@ -49,10 +50,13 @@ def test_search_bar_has_visible_sort_control_and_query_filter_chips():
     assert "onChange={event => onSort(event.currentTarget.value as ItemSortMode)}" in topbar
     assert "queryFilterChips" in topbar
     assert "className=\"chip active-filter sort-chip\"" in topbar
+    assert "×" not in topbar
+    assert "กง" not in topbar and "กจ" not in topbar and "กั" not in topbar
     assert all(marker in search_sort for marker in ["updated_desc", "created_desc", "created_asc", "title_asc", "title_desc", "source_asc", "model_asc"])
     assert all(marker in search_sort for marker in ["sort:updated", "sort:created", "sort:title", "sort:oldest", "sort:title-desc", "sort:source", "sort:model"])
     assert "sort:rating" not in search_sort
     assert "parseStructuredSearchChips" in search_sort
+    assert "['created', 'updated', 'tag', 'collection', 'model', 'source'].includes(normalizedKey)" in search_sort
     assert "sortLabelForMode" in search_sort
     assert all(marker in i18n for marker in ["sortByOldest", "sortByTitleDesc", "sortBySource", "sortByModel"])
     assert "sortByTitle" in i18n

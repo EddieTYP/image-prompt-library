@@ -84,7 +84,8 @@ export default function App() {
   const [sort, setSort] = useState<ItemSortMode>(DEFAULT_ITEM_SORT);
   const debouncedQ = useDebouncedValue(q);
   const parsedSearchQuery = useMemo(() => parseSearchSortQuery(debouncedQ), [debouncedQ]);
-  const activeSort = parsedSearchQuery.explicitSort ? parsedSearchQuery.sort : sort;
+  const rawParsedSearchQuery = useMemo(() => parseSearchSortQuery(q), [q]);
+  const activeSort = rawParsedSearchQuery.explicitSort ? rawParsedSearchQuery.sort : sort;
   const queryFilterChips = useMemo(() => parseStructuredSearchChips(q), [q]);
   const [clusterId, setClusterId] = useState<string>();
   const [view, setView] = useState<ViewMode>(loadPreferredView);
@@ -219,7 +220,7 @@ export default function App() {
     setSort(DEFAULT_ITEM_SORT);
     setQ(current => removeSearchSortOperator(current));
   };
-  const searchSortLabel = parsedSearchQuery.explicitSort ? sortLabelForMode(parsedSearchQuery.sort, t) : undefined;
+  const searchSortLabel = rawParsedSearchQuery.explicitSort ? sortLabelForMode(rawParsedSearchQuery.sort, t) : undefined;
   const showCopyToast = (success: boolean) => {
     setToast({ title: success ? t('copySuccess') : t('copyFailed'), tone: success ? 'success' : 'error' });
     window.setTimeout(() => setToast(undefined), 1800);

@@ -87,10 +87,10 @@ export default function TopBar({
           </select>
           {searchQuery && <span className="chip soft-chip">{t('searchChip')}: “{searchQuery}”</span>}
           {queryFilterChips.map(chip => <span key={chip} className="chip query-filter-chip">{chip}</span>)}
-          {sortLabel && onClearSort && <button className="chip active-filter sort-chip" onClick={onClearSort}>{t('sortChip')}: {sortLabel} ×</button>}
+          {sortLabel && onClearSort && <button className="chip active-filter sort-chip" onClick={onClearSort}>{t('sortChip')}: {sortLabel} x</button>}
           {clusterName && (
             <button className="chip active-filter" onClick={clearCluster}>
-              {t('collectionChip')}: {clusterName} ×
+              {t('collectionChip')}: {clusterName} x
             </button>
           )}
         </div>

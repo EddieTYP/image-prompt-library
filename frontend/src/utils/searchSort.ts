@@ -50,7 +50,7 @@ export function parseStructuredSearchChips(rawQuery: string): string[] {
     const normalizedKey = key.toLowerCase();
     const normalizedValue = value.toLowerCase();
     if (
-      ['tag', 'collection', 'model', 'source'].includes(normalizedKey) ||
+      ['created', 'updated', 'tag', 'collection', 'model', 'source'].includes(normalizedKey) ||
       (['fav', 'favorite'].includes(normalizedKey) && ['true', 'false'].includes(normalizedValue)) ||
       (normalizedKey === 'has' && normalizedValue === 'image')
     ) {
