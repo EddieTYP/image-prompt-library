@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Archive, Check, FolderInput, Plus, Star, Tags, Trash2, XCircle } from 'lucide-react';
+import { Archive, ArchiveRestore, Check, FolderInput, Plus, Star, Tags, Trash2, XCircle } from 'lucide-react';
 import { api, isDemoMode } from './api/client';
 import TopBar from './components/TopBar';
 import FiltersPanel from './components/FiltersPanel';
@@ -87,6 +87,7 @@ export default function App() {
   const rawParsedSearchQuery = useMemo(() => parseSearchSortQuery(q), [q]);
   const activeSort = rawParsedSearchQuery.explicitSort ? rawParsedSearchQuery.sort : sort;
   const queryFilterChips = useMemo(() => parseStructuredSearchChips(q), [q]);
+  const showingArchivedItems = /\barchived:true\b/i.test(q);
   const [clusterId, setClusterId] = useState<string>();
   const [view, setView] = useState<ViewMode>(loadPreferredView);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -278,7 +279,7 @@ export default function App() {
     if (!confirm(t('deleteSelectedReferencesConfirm').replace('${selectedItemIds.size}', String(selectedItemIds.size)))) return;
     await runBatchAction('delete');
   };
-  const batchArchiveSelected = () => runBatchAction('archive');
+  const batchArchiveSelected = () => runBatchAction(showingArchivedItems ? 'unarchive' : 'archive');
   const batchFavoriteSelected = () => runBatchAction('favorite');
   const batchAddTagsSelected = () => {
     const value = prompt(t('tagSelectedReferences'));
@@ -334,7 +335,9 @@ export default function App() {
         <button type="button" className="selection-toolbar-button" onClick={exitSelectionMode}>{t('cancel')}</button>
         <span className="selection-toolbar-count">{selectedItemIds.size} {t('selectedReferences')}</span>
         <div className="selection-toolbar-secondary">
-          <button type="button" className="selection-toolbar-button" onClick={batchArchiveSelected} disabled={!selectedItemIds.size}><Archive size={16} /> {t('archiveSelectedReferences')}</button>
+          <button type="button" className="selection-toolbar-button" onClick={batchArchiveSelected} disabled={!selectedItemIds.size}>
+            {showingArchivedItems ? <ArchiveRestore size={16} /> : <Archive size={16} />} {showingArchivedItems ? t('restoreSelectedReferences') : t('archiveSelectedReferences')}
+          </button>
           <button type="button" className="selection-toolbar-button" onClick={batchFavoriteSelected} disabled={!selectedItemIds.size}><Star size={16} /> {t('favoriteSelectedReferences')}</button>
           <button type="button" className="selection-toolbar-button" onClick={batchAddTagsSelected} disabled={!selectedItemIds.size}><Tags size={16} /> {t('tagSelectedReferences')}</button>
           <button type="button" className="selection-toolbar-button" onClick={batchMoveSelected} disabled={!selectedItemIds.size}><FolderInput size={16} /> {t('moveSelectedReferences')}</button>

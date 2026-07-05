@@ -72,6 +72,8 @@ class ItemRepository:
 
     def ensure_cluster(self, conn, name: str | None, cluster_id: str | None = None):
         if cluster_id:
+            if not conn.execute("SELECT id FROM clusters WHERE id=?", (cluster_id,)).fetchone():
+                raise ValueError("Cluster not found")
             return cluster_id
         if not name:
             return None
@@ -444,6 +446,8 @@ class ItemRepository:
 
     def list_items(self, q: str | None=None, cluster: str | None=None, tag: str | None=None, favorite: bool | None=None, archived: bool | None=False, sort: str="updated_desc", limit: int=100, offset: int=0) -> ItemList:
         parsed_query = parse_item_search_query(q or "")
+        if parsed_query.archived is not None:
+            archived = parsed_query.archived
         where=[]; params=[]
         if archived is not None: where.append("i.archived=?"); params.append(int(archived))
         if cluster: where.append("(i.cluster_id=? OR c.name=?)"); params += [cluster, cluster]

@@ -248,8 +248,10 @@ class CleanupPreview(BaseModel):
     broken_image_records: List[CleanupImageRecord] = Field(default_factory=list)
     unreferenced_files: List[CleanupFileRecord] = Field(default_factory=list)
     total_bytes: int = 0
+    preview_token: str
 
 class CleanupApplyRequest(BaseModel):
+    preview_token: str
     remove_broken_image_records: bool = False
     remove_unreferenced_files: bool = False
 

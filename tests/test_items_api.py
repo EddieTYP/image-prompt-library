@@ -163,6 +163,7 @@ def test_structured_query_filters_keywords_and_has_filters(tmp_path):
     assert c.get("/api/items", params={"q": "model:gpt-image-2 source:awesome apple"}).json()["total"] == 1
     assert c.get("/api/items", params={"q": "created:30d apple"}).json()["total"] == 1
     assert c.get("/api/items", params={"q": "has:result apple"}).json()["total"] == 1
+    assert c.get("/api/items", params={"q": "has:prompt apple"}).json()["total"] == 1
     assert c.get("/api/items", params={"q": "has:reference apple"}).json()["total"] == 0
     assert c.get("/api/items", params={"q": "creator:edward apple"}).json()["total"] == 0
 
@@ -203,6 +204,7 @@ def test_batch_archive_favorite_tag_and_move_items(tmp_path):
     assert archived["requested"] == 2
     assert archived["changed"] == 2
     assert c.get("/api/items").json()["total"] == 0
+    assert c.get("/api/items", params={"q": "archived:true"}).json()["total"] == 2
     assert c.get("/api/items", params={"archived": True}).json()["total"] == 2
 
     unarchived = c.post("/api/items/batch", json={"item_ids": [first["id"], second["id"]], "action": "unarchive"}).json()
@@ -228,6 +230,7 @@ def test_batch_archive_favorite_tag_and_move_items(tmp_path):
     assert c.post("/api/items/batch", json={"item_ids": [first["id"]], "action": "add_tags"}).status_code == 400
     assert c.post("/api/items/batch", json={"item_ids": [first["id"]], "action": "move_collection"}).status_code == 400
     assert c.post("/api/items/batch", json={"item_ids": [first["id"]], "action": "move_collection", "cluster_name": "   "}).status_code == 400
+    assert c.post("/api/items/batch", json={"item_ids": [first["id"]], "action": "move_collection", "cluster_id": "clu_missing"}).status_code == 400
 
 
 def test_batch_delete_uses_server_side_delete_and_reports_missing_items(tmp_path):

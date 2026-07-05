@@ -11,6 +11,7 @@ def test_plain_keyword_search_stays_plain():
     assert parsed.models == []
     assert parsed.sources == []
     assert parsed.favorite is None
+    assert parsed.archived is None
     assert parsed.has == set()
 
 
@@ -61,19 +62,21 @@ def test_unknown_keys_remain_keywords():
 
 def test_boolean_and_has_filters():
     parsed = parse_item_search_query(
-        "fav:true favorite:false has:image has:result has:reference has:prompt cat"
+        "fav:true favorite:false archived:true has:image has:result has:reference has:prompt cat"
     )
     assert parsed.keyword == "cat"
     assert parsed.favorite is False
+    assert parsed.archived is True
     assert parsed.has == {"image", "result", "reference", "prompt"}
 
 
 def test_invalid_filter_values_remain_keywords():
     parsed = parse_item_search_query(
-        "created:forever updated:someday fav:maybe has:video apple"
+        "created:forever updated:someday fav:maybe archived:maybe has:video apple"
     )
-    assert parsed.keyword == "created:forever updated:someday fav:maybe has:video apple"
+    assert parsed.keyword == "created:forever updated:someday fav:maybe archived:maybe has:video apple"
     assert parsed.created is None
     assert parsed.updated is None
     assert parsed.favorite is None
+    assert parsed.archived is None
     assert parsed.has == set()

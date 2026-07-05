@@ -75,15 +75,46 @@ def test_cleanup_apply_removes_only_previewed_safe_records_and_files(tmp_path):
         )
         conn.commit()
 
-    result = c.post("/api/cleanup/apply", json={"remove_broken_image_records": True, "remove_unreferenced_files": True}).json()
+    preview = c.get("/api/cleanup/preview").json()
+    late_extra = library / "originals" / "late-extra.png"
+    late_extra.write_bytes(b"late")
+    result = c.post(
+        "/api/cleanup/apply",
+        json={
+            "preview_token": preview["preview_token"],
+            "remove_broken_image_records": True,
+            "remove_unreferenced_files": True,
+        },
+    ).json()
 
     assert result["removed_broken_image_records"] == 1
     assert result["removed_unreferenced_files"] == 1
     assert not extra.exists()
+    assert late_extra.exists()
     assert (library / uploaded["original_path"]).exists()
     with connect(library) as conn:
         assert conn.execute("SELECT COUNT(*) FROM images WHERE id='img_broken'").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM images WHERE id=?", (uploaded["id"],)).fetchone()[0] == 1
+
+
+def test_cleanup_apply_requires_preview_token_before_deleting(tmp_path):
+    c = client(tmp_path)
+    library = tmp_path / "library"
+    c.post("/api/items", json=create_payload())
+    extra = library / "originals" / "extra.png"
+    extra.write_bytes(b"extra")
+
+    response = c.post(
+        "/api/cleanup/apply",
+        json={
+            "preview_token": "missing",
+            "remove_broken_image_records": False,
+            "remove_unreferenced_files": True,
+        },
+    )
+
+    assert response.status_code == 409
+    assert extra.exists()
 
 
 def test_cleanup_preview_ignores_generation_results(tmp_path):
@@ -136,7 +167,14 @@ def test_cleanup_treats_image_record_symlink_as_unsafe_without_deleting_target(t
         conn.commit()
 
     preview = c.get("/api/cleanup/preview").json()
-    result = c.post("/api/cleanup/apply", json={"remove_broken_image_records": True, "remove_unreferenced_files": True}).json()
+    result = c.post(
+        "/api/cleanup/apply",
+        json={
+            "preview_token": preview["preview_token"],
+            "remove_broken_image_records": True,
+            "remove_unreferenced_files": True,
+        },
+    ).json()
 
     broken = {record["image_id"]: record["reason"] for record in preview["broken_image_records"]}
     assert broken == {"img_symlink": "unsafe_image_path", "img_symlink_parent": "unsafe_image_path"}

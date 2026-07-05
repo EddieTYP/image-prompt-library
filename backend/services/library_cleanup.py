@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from contextlib import suppress
 from pathlib import Path
@@ -58,26 +60,27 @@ class LibraryCleanupService:
                     unreferenced_files.append(CleanupFileRecord(path=rel_path, bytes=candidate.stat().st_size, reason="unreferenced_media_file"))
 
         unreferenced_files.sort(key=lambda record: record.path)
-        return CleanupPreview(
+        preview = CleanupPreview(
             broken_image_records=broken_records,
             unreferenced_files=unreferenced_files,
             total_bytes=sum(record.bytes for record in unreferenced_files),
+            preview_token="",
         )
+        return preview.model_copy(update={"preview_token": self._preview_token(preview)})
 
-    def apply(self, *, remove_broken_image_records: bool, remove_unreferenced_files: bool) -> CleanupApplyResult:
-        before = self.preview()
+    def apply(self, preview: CleanupPreview, *, remove_broken_image_records: bool, remove_unreferenced_files: bool) -> CleanupApplyResult:
         removed_records = 0
         removed_files = 0
 
-        if remove_broken_image_records and before.broken_image_records:
-            image_ids = [record.image_id for record in before.broken_image_records]
+        if remove_broken_image_records and preview.broken_image_records:
+            image_ids = [record.image_id for record in preview.broken_image_records]
             placeholders = ",".join("?" for _ in image_ids)
             with connect(self.library_path) as conn:
                 removed_records = conn.execute(f"DELETE FROM images WHERE id IN ({placeholders})", image_ids).rowcount
                 conn.commit()
 
         if remove_unreferenced_files:
-            for record in before.unreferenced_files:
+            for record in preview.unreferenced_files:
                 candidate = self._safe_media_file(record.path)
                 if candidate is None or candidate.is_symlink() or not candidate.is_file():
                     continue
@@ -136,3 +139,12 @@ class LibraryCleanupService:
 
     def _normalize_rel_path(self, rel_path: str) -> str:
         return Path(rel_path).as_posix()
+
+    def _preview_token(self, preview: CleanupPreview) -> str:
+        payload = {
+            "broken_image_records": [record.model_dump() for record in preview.broken_image_records],
+            "unreferenced_files": [record.model_dump() for record in preview.unreferenced_files],
+            "total_bytes": preview.total_bytes,
+        }
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()

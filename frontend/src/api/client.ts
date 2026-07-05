@@ -52,7 +52,7 @@ function demoItemSort(sort: ItemSortMode) {
 
 function demoStructuredSearch(rawQuery: string) {
   const filters: Record<string, string[]> = {};
-  const q = rawQuery.replace(/(?:^|\s)(tag|collection|model|source|fav|favorite|has):([^\s]+)/gi, (_match, key: string, value: string) => {
+  const q = rawQuery.replace(/(?:^|\s)(tag|collection|model|source|fav|favorite|archived|has):([^\s]+)/gi, (_match, key: string, value: string) => {
     const normalizedKey = key.toLowerCase();
     (filters[normalizedKey] ||= []).push(value.toLowerCase());
     return ' ';
@@ -66,8 +66,11 @@ function demoMatchesStructuredSearch(item: ItemSummary, filters: Record<string, 
   if (filters.model?.some(model => !normalizeDemoText(item.model).includes(model))) return false;
   if (filters.source?.some(source => !normalizeDemoText(item.source_name).includes(source))) return false;
   if (filters.has?.includes('image') && !item.first_image) return false;
+  if (filters.has?.includes('prompt') && !item.prompts.some(prompt => prompt.text.trim())) return false;
   if ((filters.fav?.includes('true') || filters.favorite?.includes('true')) && !item.favorite) return false;
   if ((filters.fav?.includes('false') || filters.favorite?.includes('false')) && item.favorite) return false;
+  if (filters.archived?.includes('true') && !item.archived) return false;
+  if (filters.archived?.includes('false') && item.archived) return false;
   return true;
 }
 
@@ -112,7 +115,7 @@ export const api = isDemoMode ? {
   config: () => Promise.resolve<AppConfig>({ version: 'demo', library_path: 'GitHub Pages read-only sandbox', database_path: 'Static JSON bundle', preferred_prompt_language: 'en', features: { camelot: { percival: true } } }),
   updateStatus: () => Promise.resolve<AppUpdateStatus>({ current_version: 'demo', latest_version: null, update_available: false, checked_at: new Date().toISOString(), service_mode: 'not_applicable', active_generation_jobs: { running: 0, queued: 0 }, can_restart: false, requires_manual_restart: true }),
   startAppUpdate: (_payload: AppUpdateRequest) => demoReadOnly(),
-  cleanupPreview: () => Promise.resolve<CleanupPreview>({ broken_image_records: [], unreferenced_files: [], total_bytes: 0 }),
+  cleanupPreview: () => Promise.resolve<CleanupPreview>({ broken_image_records: [], unreferenced_files: [], total_bytes: 0, preview_token: 'demo' }),
   applyCleanup: (_payload: CleanupApplyRequest) => demoReadOnly(),
   items: demoItemList,
   item: demoItem,

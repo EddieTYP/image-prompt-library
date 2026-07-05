@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 
 from backend.schemas import CleanupApplyRequest, CleanupApplyResult, CleanupPreview
 from backend.services.library_cleanup import LibraryCleanupService
@@ -12,12 +12,20 @@ def service(request: Request) -> LibraryCleanupService:
 
 @router.get("/preview", response_model=CleanupPreview)
 def preview_cleanup(request: Request):
-    return service(request).preview()
+    preview = service(request).preview()
+    request.app.state.cleanup_preview = preview
+    return preview
 
 
 @router.post("/apply", response_model=CleanupApplyResult)
 def apply_cleanup(request: Request, payload: CleanupApplyRequest):
-    return service(request).apply(
+    preview = getattr(request.app.state, "cleanup_preview", None)
+    if preview is None or preview.preview_token != payload.preview_token:
+        raise HTTPException(409, "Preview cleanup before applying changes")
+    result = service(request).apply(
+        preview,
         remove_broken_image_records=payload.remove_broken_image_records,
         remove_unreferenced_files=payload.remove_unreferenced_files,
     )
+    request.app.state.cleanup_preview = result
+    return result

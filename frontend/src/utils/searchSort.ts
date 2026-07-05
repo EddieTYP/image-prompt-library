@@ -4,7 +4,7 @@ import type { Translator } from './i18n';
 export const DEFAULT_ITEM_SORT: ItemSortMode = 'updated_desc';
 
 const SORT_OPERATOR_RE = /(?:^|\s)sort:(updated|created|oldest|title|title-desc|source|model)(?=\s|$)/gi;
-const STRUCTURED_FILTER_RE = /(?:^|[\s,])((created|updated|tag|collection|model|source|fav|favorite|has):[^\s,]+)/gi;
+const STRUCTURED_FILTER_RE = /(?:^|[\s,])((created|updated|tag|collection|model|source|fav|favorite|archived|has):[^\s,]+)/gi;
 const SUPPORTED_DATE_FILTER_VALUES = ['today', 'yesterday', '7d', '30d'];
 
 const SORT_OPERATORS: Record<string, ItemSortMode> = {
@@ -53,8 +53,8 @@ export function parseStructuredSearchChips(rawQuery: string): string[] {
     if (
       (['created', 'updated'].includes(normalizedKey) && SUPPORTED_DATE_FILTER_VALUES.includes(normalizedValue)) ||
       ['tag', 'collection', 'model', 'source'].includes(normalizedKey) ||
-      (['fav', 'favorite'].includes(normalizedKey) && ['true', 'false'].includes(normalizedValue)) ||
-      (normalizedKey === 'has' && normalizedValue === 'image')
+      (['fav', 'favorite', 'archived'].includes(normalizedKey) && ['true', 'false'].includes(normalizedValue)) ||
+      (normalizedKey === 'has' && ['image', 'result', 'reference', 'prompt'].includes(normalizedValue))
     ) {
       chips.push(token);
     }

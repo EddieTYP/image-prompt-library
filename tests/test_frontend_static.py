@@ -60,6 +60,8 @@ def test_search_bar_has_visible_sort_control_and_query_filter_chips():
     assert "['today', 'yesterday', '7d', '30d']" in search_sort
     assert "['created', 'updated'].includes(normalizedKey) && SUPPORTED_DATE_FILTER_VALUES.includes(normalizedValue)" in search_sort
     assert "['tag', 'collection', 'model', 'source'].includes(normalizedKey)" in search_sort
+    assert "'archived'" in search_sort
+    assert "'prompt'" in search_sort
     assert "sortLabelForMode" in search_sort
     assert all(marker in i18n for marker in ["sortByOldest", "sortByTitleDesc", "sortBySource", "sortByModel"])
     assert "sortByTitle" in i18n
@@ -1555,6 +1557,8 @@ def test_selection_toolbar_uses_batch_api_for_power_user_actions():
     assert "api.batchItems" in app
     assert "runBatchAction" in app
     assert "batchArchiveSelected" in app
+    assert "showingArchivedItems ? 'unarchive' : 'archive'" in app
+    assert "restoreSelectedReferences" in app
     assert "batchFavoriteSelected" in app
     assert "batchAddTagsSelected" in app
     assert "batchMoveSelected" in app
@@ -1576,6 +1580,8 @@ def test_config_panel_has_local_only_cleanup_preview_and_apply():
     assert "cleanupPreview" in config
     assert "loadCleanupPreview" in config
     assert "applyCleanup" in config
+    assert "preview_token: cleanupPreview.preview_token" in config
+    assert "preview_token: string" in types
     assert "!isDemoMode" in config
     assert "onLibraryCleanup" in config
     assert "onLibraryCleanup={saved}" in app

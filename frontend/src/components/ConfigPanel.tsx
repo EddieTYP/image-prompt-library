@@ -251,12 +251,13 @@ export default function ConfigPanel({
   const unreferencedFileCount = cleanupPreview?.unreferenced_files.length || 0;
   const cleanupHasWork = brokenImageCount > 0 || unreferencedFileCount > 0;
   const applyCleanup = async () => {
-    if (!cleanupHasWork) return;
+    if (!cleanupHasWork || !cleanupPreview) return;
     if (!confirm(`Clean up ${brokenImageCount} broken image records and ${unreferencedFileCount} unreferenced files?`)) return;
     setCleanupBusy(true);
     setCleanupMessage(undefined);
     try {
       const result = await api.applyCleanup({
+        preview_token: cleanupPreview.preview_token,
         remove_broken_image_records: brokenImageCount > 0,
         remove_unreferenced_files: unreferencedFileCount > 0,
       });

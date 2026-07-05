@@ -92,7 +92,7 @@ Use structured search filters such as `tag:poster`, `collection:Ideas`, `source:
 
 Search also works with collection filters: choose a collection from **Filters**, then type a keyword or structured filter to search inside that collection.
 
-Select multiple cards to favorite, move, archive, restore, or delete references together. In local **Config**, preview cleanup before removing broken image records or unreferenced media stored in the local library folder.
+Select multiple cards to favorite, move, archive, restore, or delete references together; use `archived:true` to review archived references before restoring them. In local **Config**, preview cleanup before removing broken image records or unreferenced media stored in the local library folder.
 
 ## Local generation
 

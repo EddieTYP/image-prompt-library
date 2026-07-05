@@ -26,6 +26,7 @@ class ParsedItemSearchQuery:
     models: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     favorite: bool | None = None
+    archived: bool | None = None
     has: set[str] = field(default_factory=set)
 
 
@@ -38,6 +39,7 @@ def parse_item_search_query(query: str) -> ParsedItemSearchQuery:
     models: list[str] = []
     sources: list[str] = []
     favorite: bool | None = None
+    archived: bool | None = None
     has_values: set[str] = set()
 
     list_values = {
@@ -64,6 +66,8 @@ def parse_item_search_query(query: str) -> ParsedItemSearchQuery:
                 values.append(value)
         elif key in FAVORITE_KEYS and value in {"true", "false"}:
             favorite = value == "true"
+        elif key == "archived" and value in {"true", "false"}:
+            archived = value == "true"
         elif key == "has" and value in HAS_VALUES:
             has_values.add(value)
         else:
@@ -78,5 +82,6 @@ def parse_item_search_query(query: str) -> ParsedItemSearchQuery:
         models=models,
         sources=sources,
         favorite=favorite,
+        archived=archived,
         has=has_values,
     )
