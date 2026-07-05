@@ -56,7 +56,10 @@ def test_search_bar_has_visible_sort_control_and_query_filter_chips():
     assert all(marker in search_sort for marker in ["sort:updated", "sort:created", "sort:title", "sort:oldest", "sort:title-desc", "sort:source", "sort:model"])
     assert "sort:rating" not in search_sort
     assert "parseStructuredSearchChips" in search_sort
-    assert "['created', 'updated', 'tag', 'collection', 'model', 'source'].includes(normalizedKey)" in search_sort
+    assert "SUPPORTED_DATE_FILTER_VALUES" in search_sort
+    assert "['today', 'yesterday', '7d', '30d']" in search_sort
+    assert "['created', 'updated'].includes(normalizedKey) && SUPPORTED_DATE_FILTER_VALUES.includes(normalizedValue)" in search_sort
+    assert "['tag', 'collection', 'model', 'source'].includes(normalizedKey)" in search_sort
     assert "sortLabelForMode" in search_sort
     assert all(marker in i18n for marker in ["sortByOldest", "sortByTitleDesc", "sortBySource", "sortByModel"])
     assert "sortByTitle" in i18n

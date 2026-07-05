@@ -5,6 +5,7 @@ export const DEFAULT_ITEM_SORT: ItemSortMode = 'updated_desc';
 
 const SORT_OPERATOR_RE = /(?:^|\s)sort:(updated|created|oldest|title|title-desc|source|model)(?=\s|$)/gi;
 const STRUCTURED_FILTER_RE = /(?:^|[\s,])((created|updated|tag|collection|model|source|fav|favorite|has):[^\s,]+)/gi;
+const SUPPORTED_DATE_FILTER_VALUES = ['today', 'yesterday', '7d', '30d'];
 
 const SORT_OPERATORS: Record<string, ItemSortMode> = {
   'sort:updated': 'updated_desc',
@@ -50,7 +51,8 @@ export function parseStructuredSearchChips(rawQuery: string): string[] {
     const normalizedKey = key.toLowerCase();
     const normalizedValue = value.toLowerCase();
     if (
-      ['created', 'updated', 'tag', 'collection', 'model', 'source'].includes(normalizedKey) ||
+      (['created', 'updated'].includes(normalizedKey) && SUPPORTED_DATE_FILTER_VALUES.includes(normalizedValue)) ||
+      ['tag', 'collection', 'model', 'source'].includes(normalizedKey) ||
       (['fav', 'favorite'].includes(normalizedKey) && ['true', 'false'].includes(normalizedValue)) ||
       (normalizedKey === 'has' && normalizedValue === 'image')
     ) {
