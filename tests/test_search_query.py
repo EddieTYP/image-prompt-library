@@ -24,9 +24,10 @@ def test_supported_filters_are_removed_from_keyword_text():
 
 def test_all_supported_list_and_date_filters_are_parsed():
     parsed = parse_item_search_query(
-        "updated:yesterday collection:ads model:gpt-image source:awesome apple"
+        "created:30d updated:yesterday collection:ads model:gpt-image source:awesome apple"
     )
     assert parsed.keyword == "apple"
+    assert parsed.created == "30d"
     assert parsed.updated == "yesterday"
     assert parsed.collections == ["ads"]
     assert parsed.models == ["gpt-image"]
