@@ -233,6 +233,30 @@ class GenerationJobAcceptResult(BaseModel):
     job: GenerationJobRecord
     item: ItemDetail
 
+class CleanupFileRecord(BaseModel):
+    path: str
+    bytes: int
+    reason: str
+
+class CleanupImageRecord(BaseModel):
+    image_id: str
+    item_id: str
+    path: Optional[str] = None
+    reason: str
+
+class CleanupPreview(BaseModel):
+    broken_image_records: List[CleanupImageRecord] = Field(default_factory=list)
+    unreferenced_files: List[CleanupFileRecord] = Field(default_factory=list)
+    total_bytes: int = 0
+
+class CleanupApplyRequest(BaseModel):
+    remove_broken_image_records: bool = False
+    remove_unreferenced_files: bool = False
+
+class CleanupApplyResult(CleanupPreview):
+    removed_broken_image_records: int = 0
+    removed_unreferenced_files: int = 0
+
 class GenerationJobRetryResult(BaseModel):
     discarded_job: GenerationJobRecord
     retry_job: GenerationJobRecord
