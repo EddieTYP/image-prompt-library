@@ -1579,5 +1579,7 @@ def test_config_panel_has_local_only_cleanup_preview_and_apply():
     assert "!isDemoMode" in config
     assert "onLibraryCleanup" in config
     assert "onLibraryCleanup={saved}" in app
+    assert "const refreshGenerationAvailability = useCallback(() => api.generationProviders()" in app
+    assert "}, [refreshGenerationAvailability]);" in app
     assert "cleanup-section" in config
     assert ".cleanup-section" in styles

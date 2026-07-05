@@ -127,9 +127,9 @@ export default function App() {
   const localizedSelectedCluster = selectedCluster ? localizeCluster(selectedCluster, uiLanguage) : undefined;
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
   const refreshTags = () => api.tags().then(setTags).catch(() => setTags([]));
-  const refreshGenerationAvailability = () => api.generationProviders()
+  const refreshGenerationAvailability = useCallback(() => api.generationProviders()
     .then(providers => setGenerationAvailable(providers.some(generationProviderConnected)))
-    .catch(() => setGenerationAvailable(false));
+    .catch(() => setGenerationAvailable(false)), []);
   const refreshAppConfig = () => api.config().then(setAppConfig).catch(() => setAppConfig(undefined));
   const refreshUpdateStatus = useCallback(() => api.updateStatus().then(status => {
     setUpdateStatus(status);
@@ -158,7 +158,7 @@ export default function App() {
   useEffect(() => {
     const timer = window.setInterval(refreshGenerationAvailability, 3000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [refreshGenerationAvailability]);
   useEffect(() => {
     if (!toast) return undefined;
     const timer = window.setTimeout(() => setToast(undefined), 2600);
