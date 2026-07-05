@@ -76,19 +76,23 @@ For update, rollback, service mode, uninstall, WSL, and source-development setup
 
 ## Searching the library
 
-Use the search box at the top of the app to narrow visible references. In the current release, search is plain keyword search across item titles, prompt text, tags, collection names, source metadata, and notes.
+Use the search box at the top of the app to narrow visible references. Search combines plain keywords across item titles, prompt text, tags, collection names, source metadata, and notes with lightweight structured filters.
 
 Examples:
 
 ```text
 apple
-poster design
-product photo
-awesome-gpt-image-2
-電商
+poster design tag:poster
+product photo collection:Ideas
+source:awesome model:gpt-image-2
+favorite:true has:image created:30d updated:7d
 ```
 
-Search also works with collection filters: choose a collection from **Filters**, then type a keyword to search inside that collection.
+Use structured search filters such as `tag:poster`, `collection:Ideas`, `source:awesome`, `model:gpt-image-2`, `favorite:true`, `has:image`, `created:30d`, and `updated:7d` alongside plain keywords. Use the visible sort control to order references by updated date, created date, title, source, or model.
+
+Search also works with collection filters: choose a collection from **Filters**, then type a keyword or structured filter to search inside that collection.
+
+Select multiple cards to favorite, move, archive, restore, or delete references together. In local **Config**, preview cleanup before removing broken image records or unreferenced media stored in the local library folder.
 
 ## Local generation
 
