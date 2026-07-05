@@ -1,11 +1,12 @@
 from __future__ import annotations
 import json, re, uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from contextlib import suppress
 from .db import connect, init_db
 from .schemas import ClusterRecord, ImageRecord, ItemCreate, ItemDetail, ItemList, ItemSummary, ItemUpdate, PromptIn, PromptRecord, TagRecord
+from .services.search_query import parse_item_search_query
 from .services.text_normalize import to_traditional
 
 TEMPLATE_TAG_NAME = "template"
@@ -389,15 +390,56 @@ class ItemRepository:
             summary = self._summary_from_row(conn, row)
             return ItemDetail(**summary.model_dump(), images=self._images(conn,item_id), notes=row["notes"], author=row["author"])
 
+    def _date_filter_window(self, value: str) -> tuple[str, str | None]:
+        current = datetime.now(timezone.utc)
+        today = current.replace(hour=0, minute=0, second=0, microsecond=0)
+        if value == "today":
+            return today.isoformat(), None
+        if value == "yesterday":
+            return (today - timedelta(days=1)).isoformat(), today.isoformat()
+        days = 7 if value == "7d" else 30
+        return (current - timedelta(days=days)).isoformat(), None
+
     def list_items(self, q: str | None=None, cluster: str | None=None, tag: str | None=None, favorite: bool | None=None, archived: bool | None=False, sort: str="updated_desc", limit: int=100, offset: int=0) -> ItemList:
+        parsed_query = parse_item_search_query(q or "")
         where=[]; params=[]
         if archived is not None: where.append("i.archived=?"); params.append(int(archived))
         if cluster: where.append("(i.cluster_id=? OR c.name=?)"); params += [cluster, cluster]
         if tag: where.append("EXISTS (SELECT 1 FROM item_tags it JOIN tags t ON t.id=it.tag_id WHERE it.item_id=i.id AND (t.id=? OR t.name=?))"); params += [tag, tag]
         if favorite is not None: where.append("i.favorite=?"); params.append(int(favorite))
-        if q:
-            tokens = re.findall(r"[\w\u4e00-\u9fff]+", q)
-            like = f"%{q}%"
+        if parsed_query.favorite is not None: where.append("i.favorite=?"); params.append(int(parsed_query.favorite))
+        if parsed_query.created:
+            start, end = self._date_filter_window(parsed_query.created)
+            where.append("i.created_at>=?"); params.append(start)
+            if end: where.append("i.created_at<?"); params.append(end)
+        if parsed_query.updated:
+            start, end = self._date_filter_window(parsed_query.updated)
+            where.append("i.updated_at>=?"); params.append(start)
+            if end: where.append("i.updated_at<?"); params.append(end)
+        for tag_filter in parsed_query.tags:
+            where.append("EXISTS (SELECT 1 FROM item_tags it JOIN tags t ON t.id=it.tag_id WHERE it.item_id=i.id AND t.name LIKE ?)")
+            params.append(f"%{tag_filter}%")
+        for collection_filter in parsed_query.collections:
+            where.append("c.name LIKE ?")
+            params.append(f"%{collection_filter}%")
+        for model_filter in parsed_query.models:
+            where.append("i.model LIKE ?")
+            params.append(f"%{model_filter}%")
+        for source_filter in parsed_query.sources:
+            where.append("(i.source_name LIKE ? OR i.source_url LIKE ?)")
+            params += [f"%{source_filter}%", f"%{source_filter}%"]
+        for has_filter in parsed_query.has:
+            if has_filter == "image":
+                where.append("EXISTS (SELECT 1 FROM images img WHERE img.item_id=i.id)")
+            elif has_filter == "result":
+                where.append("EXISTS (SELECT 1 FROM images img WHERE img.item_id=i.id AND img.role='result_image')")
+            elif has_filter == "reference":
+                where.append("EXISTS (SELECT 1 FROM images img WHERE img.item_id=i.id AND img.role='reference_image')")
+            elif has_filter == "prompt":
+                where.append("EXISTS (SELECT 1 FROM prompts p WHERE p.item_id=i.id AND p.text!='')")
+        if parsed_query.keyword:
+            tokens = re.findall(r"[\w\u4e00-\u9fff]+", parsed_query.keyword)
+            like = f"%{parsed_query.keyword}%"
             if tokens:
                 where.append("i.id IN (SELECT item_id FROM item_search WHERE item_search MATCH ? UNION SELECT i2.id FROM items i2 LEFT JOIN prompts p2 ON p2.item_id=i2.id LEFT JOIN item_tags it2 ON it2.item_id=i2.id LEFT JOIN tags t2 ON t2.id=it2.tag_id LEFT JOIN clusters c2 ON c2.id=i2.cluster_id WHERE (i2.title LIKE ? OR p2.text LIKE ? OR t2.name LIKE ? OR c2.name LIKE ? OR i2.notes LIKE ?))")
                 match = ' '.join(part + '*' for part in tokens)
@@ -406,7 +448,7 @@ class ItemRepository:
                 where.append("i.id IN (SELECT i2.id FROM items i2 LEFT JOIN prompts p2 ON p2.item_id=i2.id LEFT JOIN item_tags it2 ON it2.item_id=i2.id LEFT JOIN tags t2 ON t2.id=it2.tag_id LEFT JOIN clusters c2 ON c2.id=i2.cluster_id WHERE (i2.title LIKE ? OR p2.text LIKE ? OR t2.name LIKE ? OR c2.name LIKE ? OR i2.notes LIKE ?))")
                 params += [like, like, like, like, like]
         where_sql = "WHERE " + " AND ".join(where) if where else ""
-        order = {"created_desc":"i.created_at DESC", "title_asc":"i.title COLLATE NOCASE ASC", "rating_desc":"i.rating DESC, i.updated_at DESC"}.get(sort, "i.updated_at DESC")
+        order = {"created_desc":"i.created_at DESC", "created_asc":"i.created_at ASC", "title_asc":"i.title COLLATE NOCASE ASC", "title_desc":"i.title COLLATE NOCASE DESC", "source_asc":"i.source_name COLLATE NOCASE ASC", "model_asc":"i.model COLLATE NOCASE ASC", "rating_desc":"i.rating DESC, i.updated_at DESC"}.get(sort, "i.updated_at DESC")
         with connect(self.library_path) as conn:
             total = conn.execute(f"SELECT COUNT(DISTINCT i.id) FROM items i LEFT JOIN clusters c ON c.id=i.cluster_id {where_sql}", params).fetchone()[0]
             rows = conn.execute(f"""SELECT i.*, c.id cluster_id, c.name cluster_name, c.names cluster_names, c.description cluster_description, c.sort_order cluster_sort_order FROM items i LEFT JOIN clusters c ON c.id=i.cluster_id {where_sql} GROUP BY i.id ORDER BY {order} LIMIT ? OFFSET ?""", (*params, limit, offset)).fetchall()
