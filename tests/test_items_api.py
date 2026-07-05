@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 from io import BytesIO
 from PIL import Image
@@ -334,7 +335,10 @@ def test_media_route_does_not_follow_allowed_dir_symlink_to_database(tmp_path):
     library = tmp_path / "library"
     leak = library / "originals" / "leak"
     leak.parent.mkdir(parents=True, exist_ok=True)
-    leak.symlink_to(library / "db.sqlite")
+    try:
+        leak.symlink_to(library / "db.sqlite")
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation is not available: {exc}")
     assert c.get("/media/originals/leak").status_code == 404
 
 
