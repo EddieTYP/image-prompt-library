@@ -1,5 +1,6 @@
 from io import BytesIO
 
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -97,3 +98,37 @@ def test_cleanup_preview_ignores_generation_results(tmp_path):
 
     assert [record["path"] for record in preview["unreferenced_files"]] == []
     assert generated.exists()
+
+
+def test_cleanup_treats_image_record_symlink_as_unsafe_without_deleting_target(tmp_path):
+    c = client(tmp_path)
+    library = tmp_path / "library"
+    item = c.post("/api/items", json=create_payload()).json()
+    target = library / "originals" / "target.png"
+    link = library / "originals" / "link.png"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"target")
+    try:
+        link.symlink_to(target)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation is not available: {exc}")
+    with connect(library) as conn:
+        conn.execute(
+            """INSERT INTO images(id,item_id,original_path,thumb_path,preview_path,role,sort_order,created_at)
+               VALUES(?,?,?,?,?,?,?,datetime('now'))""",
+            ("img_symlink", item["id"], "originals/link.png", None, None, "result_image", 0),
+        )
+        conn.execute(
+            """INSERT INTO images(id,item_id,original_path,thumb_path,preview_path,role,sort_order,created_at)
+               VALUES(?,?,?,?,?,?,?,datetime('now'))""",
+            ("img_target", item["id"], "originals/target.png", None, None, "result_image", 1),
+        )
+        conn.commit()
+
+    preview = c.get("/api/cleanup/preview").json()
+    result = c.post("/api/cleanup/apply", json={"remove_broken_image_records": True, "remove_unreferenced_files": True}).json()
+
+    assert preview["broken_image_records"][0]["image_id"] == "img_symlink"
+    assert preview["broken_image_records"][0]["reason"] == "unsafe_image_path"
+    assert result["removed_broken_image_records"] == 1
+    assert target.exists()

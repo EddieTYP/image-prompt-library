@@ -96,13 +96,22 @@ class LibraryCleanupService:
         rel = Path(rel_path)
         if not rel.parts or rel.parts[0] not in MEDIA_DIRS or rel.is_absolute():
             return None
-        candidate = (self.library_path / rel).resolve()
+        media_root = Path(os.path.abspath(self.library_path / rel.parts[0]))
+        candidate = Path(os.path.abspath(self.library_path / rel))
         try:
-            candidate.relative_to(self.library_root)
-            candidate.relative_to((self.library_path / rel.parts[0]).resolve())
+            candidate.relative_to(media_root)
         except ValueError:
             return None
-        return candidate
+        if candidate.is_symlink():
+            return None
+        resolved_candidate = candidate.resolve()
+        resolved_media_root = (self.library_path / rel.parts[0]).resolve()
+        try:
+            resolved_candidate.relative_to(self.library_root)
+            resolved_candidate.relative_to(resolved_media_root)
+        except ValueError:
+            return None
+        return resolved_candidate
 
     def _relative_library_path(self, path: Path) -> str | None:
         try:
