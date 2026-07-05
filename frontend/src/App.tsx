@@ -12,12 +12,12 @@ import GenerationQueueDrawer from './components/GenerationQueueDrawer';
 import ConfigPanel from './components/ConfigPanel';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
-import type { AppConfig, AppUpdateStatus, ClusterRecord, GenerationJobRecord, GenerationProviderStatus, ItemDetail, ItemSummary, TagRecord, ViewMode } from './types';
+import type { AppConfig, AppUpdateStatus, ClusterRecord, GenerationJobRecord, GenerationProviderStatus, ItemDetail, ItemSortMode, ItemSummary, TagRecord, ViewMode } from './types';
 import { copyTextToClipboard } from './utils/clipboard';
 import { localizedDemoTitle } from './utils/demoTitles';
 import { DEFAULT_UI_LANGUAGE, UI_LANGUAGE_LABELS, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
 import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptCopyLanguage } from './utils/prompts';
-import { parseSearchSortQuery, removeSearchSortOperator, sortLabelForMode } from './utils/searchSort';
+import { DEFAULT_ITEM_SORT, parseSearchSortQuery, parseStructuredSearchChips, removeSearchSortOperator, sortLabelForMode } from './utils/searchSort';
 
 const UI_LANGUAGE_STORAGE_KEY = 'image-prompt-library.ui_language';
 const PROMPT_LANGUAGE_STORAGE_KEY = 'image-prompt-library.preferred_prompt_language';
@@ -81,8 +81,11 @@ function generationProviderConnected(provider: GenerationProviderStatus) {
 
 export default function App() {
   const [q, setQ] = useState('');
+  const [sort, setSort] = useState<ItemSortMode>(DEFAULT_ITEM_SORT);
   const debouncedQ = useDebouncedValue(q);
   const parsedSearchQuery = useMemo(() => parseSearchSortQuery(debouncedQ), [debouncedQ]);
+  const activeSort = parsedSearchQuery.explicitSort ? parsedSearchQuery.sort : sort;
+  const queryFilterChips = useMemo(() => parseStructuredSearchChips(q), [q]);
   const [clusterId, setClusterId] = useState<string>();
   const [view, setView] = useState<ViewMode>(loadPreferredView);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -112,7 +115,7 @@ export default function App() {
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(() => new Set());
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>();
   const [restartRequiredVersion, setRestartRequiredVersion] = useState<string>();
-  const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, parsedSearchQuery.sort);
+  const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, activeSort);
   const exploreFocusedClusterId = view === 'explore'
     ? (clusterId || (dataScope.clusterId === pendingExploreUnfilterClusterId ? pendingExploreUnfilterClusterId : undefined))
     : clusterId;
@@ -208,7 +211,14 @@ export default function App() {
     setFocusThumbnailBudget(budget);
     window.localStorage.setItem(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, String(budget));
   };
-  const clearSearchSort = () => setQ(current => removeSearchSortOperator(current));
+  const updateSort = (nextSort: ItemSortMode) => {
+    setSort(nextSort);
+    setQ(current => removeSearchSortOperator(current));
+  };
+  const clearSearchSort = () => {
+    setSort(DEFAULT_ITEM_SORT);
+    setQ(current => removeSearchSortOperator(current));
+  };
   const searchSortLabel = parsedSearchQuery.explicitSort ? sortLabelForMode(parsedSearchQuery.sort, t) : undefined;
   const showCopyToast = (success: boolean) => {
     setToast({ title: success ? t('copySuccess') : t('copyFailed'), tone: success ? 'success' : 'error' });
@@ -282,7 +292,7 @@ export default function App() {
         </section>
       </div>
     )}
-    <TopBar t={t} q={q} searchQuery={parsedSearchQuery.q} sortLabel={searchSortLabel} updateBadgeLabel={updateBadgeLabel} onQ={setQ} onClearSort={clearSearchSort} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
+    <TopBar t={t} q={q} searchQuery={parsedSearchQuery.q} sort={activeSort} sortLabel={searchSortLabel} queryFilterChips={queryFilterChips} updateBadgeLabel={updateBadgeLabel} onQ={setQ} onSort={updateSort} onClearSort={clearSearchSort} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
     {isDemoMode && (
       <div className="demo-banner" role="status">
         <strong>{t('onlineReadOnlyDemo')}</strong>

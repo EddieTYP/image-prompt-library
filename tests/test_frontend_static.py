@@ -7,7 +7,7 @@ def test_item_save_refreshes_visible_item_query():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     hook = (ROOT / "frontend" / "src" / "hooks" / "useItemsQuery.ts").read_text()
     assert "const [itemsReloadKey, setItemsReloadKey]" in app
-    assert "useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, parsedSearchQuery.sort)" in app
+    assert "useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, activeSort)" in app
     assert "setItemsReloadKey(k => k + 1)" in app
     assert "reloadKey" in hook
     assert "[q, clusterId, tag, viewLimit, reloadKey, sort]" in hook
@@ -26,7 +26,7 @@ def test_topbar_is_toolbar_search_not_hero_or_keyboard_shortcut():
     assert "metaKey" not in app and "ctrlKey" not in app
 
 
-def test_search_bar_supports_sort_operators_without_extra_dropdown_ui():
+def test_search_bar_has_visible_sort_control_and_query_filter_chips():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     hook = (ROOT / "frontend" / "src" / "hooks" / "useItemsQuery.ts").read_text()
     topbar = (ROOT / "frontend" / "src" / "components" / "TopBar.tsx").read_text()
@@ -35,21 +35,30 @@ def test_search_bar_supports_sort_operators_without_extra_dropdown_ui():
     i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
 
     assert "parseSearchSortQuery(debouncedQ)" in app
-    assert "useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, parsedSearchQuery.sort)" in app
+    assert "const [sort, setSort]" in app
+    assert "const activeSort = parsedSearchQuery.explicitSort ? parsedSearchQuery.sort : sort" in app
+    assert "useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, activeSort)" in app
+    assert "onSort={updateSort}" in app
     assert "removeSearchSortOperator(current)" in app
     assert "onClearSort={clearSearchSort}" in app
     assert "sort: ItemSortMode = DEFAULT_ITEM_SORT" in hook
     assert "sort" in hook and "api.items({ q, cluster: clusterId, tag, limit: viewLimit, sort })" in hook
-    assert "sortLabel" in topbar and "onClearSort" in topbar
+    assert "queryFilterChips" in app
+    assert "sort-select" in topbar
+    assert "value={sort}" in topbar
+    assert "onChange={event => onSort(event.currentTarget.value as ItemSortMode)}" in topbar
+    assert "queryFilterChips" in topbar
     assert "className=\"chip active-filter sort-chip\"" in topbar
-    assert "sort:title" in search_sort and "title_asc" in search_sort
-    assert "sort:created" in search_sort and "created_desc" in search_sort
-    assert "sort:updated" in search_sort and "updated_desc" in search_sort
+    assert all(marker in search_sort for marker in ["updated_desc", "created_desc", "created_asc", "title_asc", "title_desc", "source_asc", "model_asc"])
+    assert all(marker in search_sort for marker in ["sort:updated", "sort:created", "sort:title", "sort:oldest", "sort:title-desc", "sort:source", "sort:model"])
     assert "sort:rating" not in search_sort
+    assert "parseStructuredSearchChips" in search_sort
     assert "sortLabelForMode" in search_sort
-    assert "sortByTitle" in i18n and "標題 A–Z" in i18n
+    assert all(marker in i18n for marker in ["sortByOldest", "sortByTitleDesc", "sortBySource", "sortByModel"])
+    assert "sortByTitle" in i18n
     assert "sortByRating" not in i18n
     assert "demoItemSort" in client
+    assert "demoStructuredSearch" in client
     assert "filtered.sort" in client
 
 

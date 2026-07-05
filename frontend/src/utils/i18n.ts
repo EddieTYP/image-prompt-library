@@ -2,7 +2,7 @@ import type { UiLanguage } from '../types';
 export type { UiLanguage } from '../types';
 type TranslationKey =
   | 'filters' | 'searchAria' | 'searchPlaceholder' | 'config' | 'referencesShown' | 'searchChip' | 'collectionChip'
-  | 'sortChip' | 'sortByUpdated' | 'sortByCreated' | 'sortByTitle'
+  | 'sortChip' | 'sortByUpdated' | 'sortByCreated' | 'sortByOldest' | 'sortByTitle' | 'sortByTitleDesc' | 'sortBySource' | 'sortByModel'
   | 'explore' | 'cards' | 'uiLanguage' | 'promptCopyLanguage' | 'promptCopyLanguageHelp' | 'providers'
   | 'globalThumbnails' | 'globalThumbnailsHelp' | 'focusThumbnails' | 'focusThumbnailsHelp'
   | 'calm' | 'balanced' | 'dense' | 'compact' | 'gallery' | 'full' | 'libraryPath' | 'databasePath'
@@ -37,7 +37,7 @@ export function normalizeUiLanguage(value?: string | null): UiLanguage {
 
 const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
   zh_hant: {
-    filters: '篩選', searchAria: '搜尋所有 prompts', searchPlaceholder: '搜尋所有 prompts、標題、標籤… 可用 sort:title', config: '設定', referencesShown: '個參考', searchChip: '搜尋', collectionChip: 'Collection', sortChip: '排序', sortByUpdated: '最近更新', sortByCreated: '最近加入', sortByTitle: '標題 A–Z',
+    filters: '篩選', searchAria: '搜尋所有 prompts', searchPlaceholder: '搜尋所有 prompts、標題、標籤… 可用 sort:title', config: '設定', referencesShown: '個參考', searchChip: '搜尋', collectionChip: 'Collection', sortChip: '排序', sortByUpdated: '最近更新', sortByCreated: '最近加入', sortByOldest: 'Oldest first', sortByTitle: '標題 A–Z', sortByTitleDesc: 'Title Z-A', sortBySource: 'Source A-Z', sortByModel: 'Model A-Z',
     explore: 'Explore', cards: 'Cards', uiLanguage: '介面語言', promptCopyLanguage: 'Prompt 複製語言', promptCopyLanguageHelp: '複製時可使用原文 prompt；原文通常最接近 sample image 的生成結果。', providers: '供應商',
     globalThumbnails: '全域縮圖', globalThumbnailsHelp: 'Explore 全部 collection 的整體密度。', focusThumbnails: '焦點縮圖', focusThumbnailsHelp: '選取 collection 周圍最多顯示的真實縮圖數量。',
     calm: '寬鬆', balanced: '平衡', dense: '密集', compact: '精簡', gallery: '圖庫', full: '完整', libraryPath: 'Library 路徑', databasePath: 'Database 路徑',
@@ -58,7 +58,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     chooseLanguage: '選擇介面語言', chooseLanguageHelp: '請選擇你想使用的介面語言。', changeLanguageLater: '之後可在設定中更改。',
   },
   zh_hans: {
-    filters: '筛选', searchAria: '搜索所有 prompts', searchPlaceholder: '搜索所有 prompts、标题、标签… 可用 sort:title', config: '设置', referencesShown: '个参考', searchChip: '搜索', collectionChip: 'Collection', sortChip: '排序', sortByUpdated: '最近更新', sortByCreated: '最近加入', sortByTitle: '标题 A–Z',
+    filters: '筛选', searchAria: '搜索所有 prompts', searchPlaceholder: '搜索所有 prompts、标题、标签… 可用 sort:title', config: '设置', referencesShown: '个参考', searchChip: '搜索', collectionChip: 'Collection', sortChip: '排序', sortByUpdated: '最近更新', sortByCreated: '最近加入', sortByOldest: 'Oldest first', sortByTitle: '标题 A–Z', sortByTitleDesc: 'Title Z-A', sortBySource: 'Source A-Z', sortByModel: 'Model A-Z',
     explore: 'Explore', cards: 'Cards', uiLanguage: '界面语言', promptCopyLanguage: 'Prompt 复制语言', promptCopyLanguageHelp: '复制时可使用原文 prompt；原文通常最接近 sample image 的生成结果。', providers: '供应商',
     globalThumbnails: '全局缩图', globalThumbnailsHelp: 'Explore 全部 collection 的整体密度。', focusThumbnails: '焦点缩图', focusThumbnailsHelp: '选中 collection 周围最多显示的真实缩图数量。',
     calm: '宽松', balanced: '平衡', dense: '密集', compact: '精简', gallery: '图库', full: '完整', libraryPath: 'Library 路径', databasePath: 'Database 路径',
@@ -79,7 +79,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     chooseLanguage: '选择界面语言', chooseLanguageHelp: '请选择你想使用的界面语言。', changeLanguageLater: '之后可在设置中更改。',
   },
   en: {
-    filters: 'Filters', searchAria: 'Search all prompts', searchPlaceholder: 'Search all prompts, titles, tags… try sort:title', config: 'Config', referencesShown: 'references', searchChip: 'Search', collectionChip: 'Collection', sortChip: 'Sort', sortByUpdated: 'Recently updated', sortByCreated: 'Recently added', sortByTitle: 'Title A–Z',
+    filters: 'Filters', searchAria: 'Search all prompts', searchPlaceholder: 'Search all prompts, titles, tags… try sort:title', config: 'Config', referencesShown: 'references', searchChip: 'Search', collectionChip: 'Collection', sortChip: 'Sort', sortByUpdated: 'Recently updated', sortByCreated: 'Recently added', sortByOldest: 'Oldest first', sortByTitle: 'Title A–Z', sortByTitleDesc: 'Title Z-A', sortBySource: 'Source A-Z', sortByModel: 'Model A-Z',
     explore: 'Explore', cards: 'Cards', uiLanguage: 'UI language', promptCopyLanguage: 'Prompt copy language', promptCopyLanguageHelp: 'Copy can use the origin prompt; the source/original prompt is usually closest to the sample image result.', providers: 'Providers',
     globalThumbnails: 'Global thumbnails', globalThumbnailsHelp: 'Overall Explore density across all clusters.', focusThumbnails: 'Focus thumbnails', focusThumbnailsHelp: 'Maximum real thumbnails around the selected cluster.',
     calm: 'Calm', balanced: 'Balanced', dense: 'Dense', compact: 'Compact', gallery: 'Gallery', full: 'Full', libraryPath: 'Library path', databasePath: 'Database path',

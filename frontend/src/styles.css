@@ -39,6 +39,8 @@ button{color:inherit}
 .active-filter-strip{display:flex;align-items:center;gap:9px;flex-wrap:wrap;min-width:0}
 .template-count{font-weight:800;color:#4c463d;background:#fff7dc;border:1px solid #f0dfaa;border-radius:999px;padding:8px 13px;white-space:nowrap}
 .soft-chip{background:#fff;border:1px solid var(--border);color:#615a50;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sort-select{height:38px;border:1px solid var(--border);border-radius:999px;background:#fff;padding:0 34px 0 12px;color:#3d352f;font-weight:850;box-shadow:none}
+.query-filter-chip{background:#f3efe6;border:1px solid rgba(226,221,208,.92);color:#5d554a;font-weight:850}
 .active-filter{background:#eee8ff;color:var(--accent-strong);font-weight:800}
 .sort-chip{border:1px solid rgba(109,74,255,.16)}
 .view-dock{flex:0 0 auto}

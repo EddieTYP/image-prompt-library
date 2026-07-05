@@ -36,23 +36,54 @@ function normalizeSearchText(item: ItemSummary) {
   ].filter(Boolean).join('\n').toLowerCase();
 }
 
+function normalizeDemoText(value?: string) {
+  return (value || '').toLowerCase();
+}
+
 function demoItemSort(sort: ItemSortMode) {
   if (sort === 'created_desc') return (a: ItemSummary, b: ItemSummary) => b.created_at.localeCompare(a.created_at);
+  if (sort === 'created_asc') return (a: ItemSummary, b: ItemSummary) => a.created_at.localeCompare(b.created_at);
   if (sort === 'title_asc') return (a: ItemSummary, b: ItemSummary) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+  if (sort === 'title_desc') return (a: ItemSummary, b: ItemSummary) => b.title.localeCompare(a.title, undefined, { sensitivity: 'base' });
+  if (sort === 'source_asc') return (a: ItemSummary, b: ItemSummary) => (a.source_name || '').localeCompare(b.source_name || '', undefined, { sensitivity: 'base' });
+  if (sort === 'model_asc') return (a: ItemSummary, b: ItemSummary) => a.model.localeCompare(b.model, undefined, { sensitivity: 'base' });
   return (a: ItemSummary, b: ItemSummary) => b.updated_at.localeCompare(a.updated_at);
+}
+
+function demoStructuredSearch(rawQuery: string) {
+  const filters: Record<string, string[]> = {};
+  const q = rawQuery.replace(/(?:^|\s)(tag|collection|model|source|fav|favorite|has):([^\s]+)/gi, (_match, key: string, value: string) => {
+    const normalizedKey = key.toLowerCase();
+    (filters[normalizedKey] ||= []).push(value.toLowerCase());
+    return ' ';
+  }).replace(/\s+/g, ' ').trim().toLowerCase();
+  return { q, filters };
+}
+
+function demoMatchesStructuredSearch(item: ItemSummary, filters: Record<string, string[]>) {
+  if (filters.tag?.some(tag => !item.tags.some(itemTag => normalizeDemoText(itemTag.name).includes(tag) || normalizeDemoText(itemTag.id).includes(tag)))) return false;
+  if (filters.collection?.some(collection => !normalizeDemoText(item.cluster?.name).includes(collection) && !normalizeDemoText(item.cluster?.id).includes(collection))) return false;
+  if (filters.model?.some(model => !normalizeDemoText(item.model).includes(model))) return false;
+  if (filters.source?.some(source => !normalizeDemoText(item.source_name).includes(source))) return false;
+  if (filters.has?.includes('image') && !item.first_image) return false;
+  if ((filters.fav?.includes('true') || filters.favorite?.includes('true')) && !item.favorite) return false;
+  if ((filters.fav?.includes('false') || filters.favorite?.includes('false')) && item.favorite) return false;
+  return true;
 }
 
 async function demoItemList(params: Record<string, string | number | boolean | undefined>): Promise<ItemList> {
   const allItems = await demoItems();
-  const q = String(params.q || '').trim().toLowerCase();
+  const structured = demoStructuredSearch(String(params.q || ''));
+  const q = structured.q;
   const cluster = String(params.cluster || '').trim();
   const tag = String(params.tag || '').trim();
-  const sort = (params.sort === 'created_desc' || params.sort === 'title_asc' || params.sort === 'updated_desc') ? params.sort : DEFAULT_ITEM_SORT;
+  const sort = (['updated_desc', 'created_desc', 'created_asc', 'title_asc', 'title_desc', 'source_asc', 'model_asc'].includes(String(params.sort))) ? params.sort as ItemSortMode : DEFAULT_ITEM_SORT;
   const limit = Math.max(0, Number(params.limit || 100));
   const offset = Math.max(0, Number(params.offset || 0));
   const filtered = allItems.filter(item => {
     if (cluster && item.cluster?.id !== cluster) return false;
     if (tag && !item.tags.some(itemTag => itemTag.name === tag || itemTag.id === tag)) return false;
+    if (!demoMatchesStructuredSearch(item, structured.filters)) return false;
     if (q && !normalizeSearchText(item).includes(q)) return false;
     return true;
   });
