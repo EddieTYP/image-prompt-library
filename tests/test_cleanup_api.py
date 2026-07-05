@@ -106,10 +106,15 @@ def test_cleanup_treats_image_record_symlink_as_unsafe_without_deleting_target(t
     item = c.post("/api/items", json=create_payload()).json()
     target = library / "originals" / "target.png"
     link = library / "originals" / "link.png"
+    outside_dir = library / "outside-media"
+    dir_link = library / "originals" / "linkdir"
     target.parent.mkdir(parents=True, exist_ok=True)
+    outside_dir.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"target")
+    (outside_dir / "image.png").write_bytes(b"outside")
     try:
         link.symlink_to(target)
+        dir_link.symlink_to(outside_dir, target_is_directory=True)
     except (OSError, NotImplementedError) as exc:
         pytest.skip(f"symlink creation is not available: {exc}")
     with connect(library) as conn:
@@ -121,14 +126,20 @@ def test_cleanup_treats_image_record_symlink_as_unsafe_without_deleting_target(t
         conn.execute(
             """INSERT INTO images(id,item_id,original_path,thumb_path,preview_path,role,sort_order,created_at)
                VALUES(?,?,?,?,?,?,?,datetime('now'))""",
-            ("img_target", item["id"], "originals/target.png", None, None, "result_image", 1),
+            ("img_symlink_parent", item["id"], "originals/linkdir/image.png", None, None, "result_image", 1),
+        )
+        conn.execute(
+            """INSERT INTO images(id,item_id,original_path,thumb_path,preview_path,role,sort_order,created_at)
+               VALUES(?,?,?,?,?,?,?,datetime('now'))""",
+            ("img_target", item["id"], "originals/target.png", None, None, "result_image", 2),
         )
         conn.commit()
 
     preview = c.get("/api/cleanup/preview").json()
     result = c.post("/api/cleanup/apply", json={"remove_broken_image_records": True, "remove_unreferenced_files": True}).json()
 
-    assert preview["broken_image_records"][0]["image_id"] == "img_symlink"
-    assert preview["broken_image_records"][0]["reason"] == "unsafe_image_path"
-    assert result["removed_broken_image_records"] == 1
+    broken = {record["image_id"]: record["reason"] for record in preview["broken_image_records"]}
+    assert broken == {"img_symlink": "unsafe_image_path", "img_symlink_parent": "unsafe_image_path"}
+    assert result["removed_broken_image_records"] == 2
     assert target.exists()
+    assert (outside_dir / "image.png").exists()

@@ -102,7 +102,7 @@ class LibraryCleanupService:
             candidate.relative_to(media_root)
         except ValueError:
             return None
-        if candidate.is_symlink():
+        if self._has_symlink_component(media_root, candidate):
             return None
         resolved_candidate = candidate.resolve()
         resolved_media_root = (self.library_path / rel.parts[0]).resolve()
@@ -112,6 +112,18 @@ class LibraryCleanupService:
         except ValueError:
             return None
         return resolved_candidate
+
+    def _has_symlink_component(self, root: Path, candidate: Path) -> bool:
+        current = root
+        if current.is_symlink():
+            return True
+        for part in candidate.relative_to(root).parts:
+            current = current / part
+            if current.is_symlink():
+                return True
+            if not current.exists():
+                return False
+        return False
 
     def _relative_library_path(self, path: Path) -> str | None:
         try:
