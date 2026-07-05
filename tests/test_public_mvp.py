@@ -75,14 +75,14 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Cards view" in readme
     assert "copy public sample prompts" in readme
     assert "Generate locally" in readme
-    assert "v0.7.4-beta" in readme
-    assert "prompt variables" in readme
-    assert "sort operators" in readme
-    assert "Used as ref" in readme
+    assert "v0.7.5-beta" in readme
+    assert "`{{variables}}`" in readme
+    assert "redacting raw input-image data" in readme
+    assert "attach to the current item" in readme
     assert "mobile browsing preview" not in readme
     assert "next-release mobile browsing and management plan" not in readme
-    assert "Template indicators" in readme
-    assert "generated-result cleanup" in readme
+    assert "keyboard/focus behavior" in readme
+    assert "local inbox" in readme
     assert "local media files" not in readme
     assert "review generated results in the local inbox" in readme.lower()
     assert "Local Generation Studio" not in readme
@@ -93,7 +93,7 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "ChatGPT / Codex OAuth" in readme
     assert "generate images" in readme.lower()
     assert "Current public beta:" in readme
-    assert "v0.7.4-beta" in readme
+    assert "v0.7.5-beta" in readme
     assert "Online sandbox" not in readme
     assert "只读 sample library" not in readme
     assert "唯讀 sample library" not in readme
@@ -260,7 +260,8 @@ def test_public_repo_hygiene_files_exist():
     assert "alternative/commercial licensing terms" in contributing
     assert "Local-first" in contributing
     assert "Run tests" in contributing
-    assert "Public AGPL local-install MVP" in roadmap
+    assert "Current public beta direction" in roadmap
+    assert "Historical public-alpha checklist" in roadmap
     assert "commercial licenses" in roadmap.lower()
     assert "runtime data" in roadmap
     assert "Reporting a vulnerability" in security

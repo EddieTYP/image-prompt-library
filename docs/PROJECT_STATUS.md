@@ -1,6 +1,9 @@
 # Maintainer Log
 
-Last updated: 2026-04-29
+> Maintainer log / historical notes. This file may lag current release docs. Use `README.md`, `docs/INSTALLATION.md`, `docs/GENERATION.md`, and `ROADMAP.md` for current user-facing truth.
+
+Historical snapshot last updated: 2026-04-29
+Public-doc cleanup note: 2026-07-05
 
 This file records public-safe maintainer notes for the Image Prompt Library project. It is intentionally more detailed than `ROADMAP.md`, but it should not contain private machine paths, credentials, runtime data, or local workflow details.
 
@@ -10,7 +13,7 @@ For the public product roadmap, see [`../ROADMAP.md`](../ROADMAP.md).
 
 Image Prompt Library is a local-first web app for saving generated images together with their prompts, collections, tags, and source metadata.
 
-The public alpha target is a clone-and-run local install:
+The original public-alpha target was a clone-and-run local install:
 
 - FastAPI backend
 - SQLite metadata store
@@ -18,9 +21,9 @@ The public alpha target is a clone-and-run local install:
 - React/Vite frontend
 - AGPL-3.0-or-later application code, with commercial licensing available for organizations that need terms outside the AGPL
 
-## Public alpha status
+## Historical public-alpha preparation status
 
-Current public-alpha preparation is focused on:
+Public-alpha preparation focused on:
 
 - clear public README and roadmap
 - reproducible local setup/start scripts
@@ -160,7 +163,7 @@ Recent preparation work includes:
 - added a GitHub Actions CI workflow for Python tests, local frontend build, and demo build
 - drafted `docs/releases/v0.1.0-alpha.md` as public-safe alpha release notes
 - verified a fresh clone setup/start/smoke-test path on a non-reserved port with Python 3.12, including empty-library onboarding and public sample-library installation
-- after public release, set the GitHub repo homepage to the read-only sandbox URL, polished README badges/release/demo affordances, drafted launch-post copy in the MacBook Downloads folder, verified unauthenticated public sample-data installation, and added SHA256 verification for the sample image ZIP
+- after public release, set the GitHub repo homepage to the read-only sandbox URL, polished README badges/release/demo affordances, verified unauthenticated public sample-data installation, and added SHA256 verification for the sample image ZIP
 - verified tests and frontend build before the latest public-alpha preparation commit
 - promoted the previous preview to `v0.3.0-alpha` positioning: a multilingual provenance-aware prompt vault rather than a small patch on the 0.2 mobile preview
 - prepared `v0.4.0-alpha` positioning around local ChatGPT OAuth direct image generation, versioned installer/update/rollback, and an Online Read Only Demo banner that keeps GitHub Pages non-mutating
@@ -185,10 +188,10 @@ Sample manifests now use a formal `schema_version: 2` provenance contract:
 - the origin/source prompt records its detected/source language (`en`, `zh_hant`, `zh_hans`, or another explicit language code when needed)
 - source-provided English and Chinese prompts remain source text unless explicitly marked as derived
 - Traditional/Simplified Chinese conversion is marked as derived when generated from the other Chinese script
-- machine-translated prompt variants are explicitly marked as derived/translated; current sample manifests now carry English, Traditional Chinese, and Simplified Chinese prompt records for every public sample item
+- machine-translated prompt variants are explicitly marked as derived/translated; sample manifests carry available prompt variants, with many items including English, Traditional Chinese, and Simplified Chinese while some upstream items are Chinese-only
 - README/demo copy explains that the original/source prompt is normally the best prompt to reproduce a result close to the sample image
 - collection names are localized via manifest metadata, while titles preserve upstream/source wording
-- the static demo bundle combines both sample packages and exports 510 compressed public sample references
+- the static demo bundle combines both sample packages and exports 533 compressed public sample references
 
 ## Verification checklist
 
@@ -231,11 +234,11 @@ Recommended implementation order:
 
 Next implementation focus:
 
-0. **Versioned installer / updater — MVP implemented, release publication next**: normal users can install/update a tagged release without cloning the repo or running `git pull`. The installer downloads GitHub Release artifacts, verifies SHA256, extracts versioned app directories under `~/.image-prompt-library/app/versions/`, switches `app/current`, preserves durable user data outside app code, and supports selected versions plus rollback. Release artifacts include the built frontend at `frontend/dist`, so normal release installs do not require Node.js. Remaining work is to push/tag the next public release and verify real GitHub Release download end-to-end.
+0. **Versioned installer / updater — MVP implemented in public beta**: normal users can install/update a tagged release without cloning the repo or running `git pull`. The installer downloads GitHub Release artifacts, verifies SHA256, extracts versioned app directories under `~/.image-prompt-library/app/versions/`, switches `app/current`, preserves durable user data outside app code, and supports selected versions plus rollback. Release artifacts include the built frontend at `frontend/dist`, so normal release installs do not require Node.js. Remaining work is service/update hardening and continued release-download QA.
 1. **ImportDraft core — done in backend**: persistent schema/storage, preview/list/detail/confirm API, duplicate checks, derived Traditional Chinese normalization on accepted items, and accept-draft writes into the normal library repository layer are implemented and tested.
 2. **Repository/dataset ingestion MVP — done for local markdown repositories**: the backend scans local markdown folders, extracts heading/fenced-prompt/image records, stages local image assets safely under the selected library, preserves source file/ref metadata, and emits ImportDraft records for review. Remote GitHub clone/download orchestration and richer dataset-specific parsers remain future hardening.
 3. **GenerationJob plus result inbox foundation — done in backend**: provider-agnostic generation job records, manual/stub result staging under `generation-results/`, list/detail review API, accept/discard lifecycle, accept-to-current-item media attachment, and save-as-new-variant behavior are implemented and tested.
-4. **`openai_codex_oauth_native` provider — backend/provider UI slices done**: app-owned native Codex auth store outside the library, frontend-ready optional provider status/list API, device-code start/poll/disconnect helpers, env/local-config client-id bootstrap, token refresh before expiry, Codex-compatible headers, `POST /api/generation-jobs/{job_id}/run` can stage Codex image results into the GenerationJob inbox, and the frontend Config drawer lists providers plus native Codex connect/poll/disconnect controls. Fresh OAuth onboarding QA, refresh lock hardening, reference/edit modes, model configuration UI, and retry controls remain follow-ups.
+4. **Local generation provider — backend/provider UI slices done**: app-owned provider state outside the library, frontend-ready optional provider status, connect/disconnect helpers, provider-gated job running, result staging into the GenerationJob inbox, and Config drawer provider controls are implemented. Fresh onboarding QA, refresh lock hardening, reference/edit modes, model configuration UI, and retry controls remain follow-ups.
 5. **Generation UX/result inbox frontend — local slice implemented**: item detail views can launch `Generate variant` only when a provider is connected, standalone Generate is available in local installs with a connected provider, GenerationJobs can be reviewed in a result inbox, generated results can attach to the current item or save as a new variant item after metadata review/edit, multi-image detail browsing works, manual result upload is demoted as an advanced/fallback action, and public GitHub Pages remains read-only.
 6. **Generation workflow polish — implemented for current local slice**: provider availability refreshes after OAuth without manual browser refresh, confirm-save closes the generation page and returns to the library, mobile Generate variant is provider-gated, mobile save-as-new auto-scrolls/focuses the metadata edit panel, a compact generation queue drawer shows active/succeeded/failed jobs, and policy/rate-limit/auth/provider failures use friendly states.
 7. **Generic URL plus X/Threads import** — public URL extraction and social-post/thread import behind local-only/experimental warnings.
@@ -251,14 +254,12 @@ Public-alpha follow-ups that remain useful:
 
 Private/local generation follow-ups:
 
-- Batch 3 provider-adapter generation foundation is now implemented in the backend: `POST /api/generation-jobs` creates provider-agnostic jobs, `POST /api/generation-jobs/{job_id}/result` stages manual/stub result images under `generation-results/`, `GET /api/generation-jobs` and `GET /api/generation-jobs/{job_id}` support review/inbox reads, and accept/discard endpoints finalize the result. Accepted images are copied through normal media storage into `originals/`, `thumbs/`, and `previews/` before attaching to the source item.
-- Batch 4 `openai_codex_oauth_native` backend/provider UI slices are now implemented: `backend/services/openai_codex_native.py` owns the app-native auth store (`~/.image-prompt-library/auth.json` by default, overrideable via `IMAGE_PROMPT_LIBRARY_AUTH_PATH`), frontend-ready provider status (`not_configured` / `not_connected` / `connected`), public native Codex OAuth client-id default with env/local-config override (`IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID` or `~/.image-prompt-library/config.json` / `IMAGE_PROMPT_LIBRARY_CONFIG_PATH`), redacted token status, device-code start/poll helpers, disconnect, access-token refresh before expiry, `ChatGPT-Account-ID` JWT header extraction, Codex-compatible headers, Codex Responses `image_generation` streaming, and result staging through the existing GenerationJob inbox. `backend/routers/generation_providers.py` exposes list/status/auth endpoints, `backend/routers/generation_jobs.py` exposes `POST /api/generation-jobs/{job_id}/run`, `scripts/codex_native_oauth_smoke.py` provides backend-only live OAuth/generation smoke commands, and `frontend/src/components/ConfigPanel.tsx` now lists manual/native Codex provider cards with connect, poll, and disconnect controls while keeping GitHub Pages demo mode read-only/local-only. Cross-process refresh lock hardening, Text+Reference/Image Edit payloads, model configuration UI, and retry controls remain follow-ups.
+- Batch 3 provider-adapter generation foundation is now implemented in the backend: provider-agnostic jobs, staged manual/stub results, review/inbox reads, and accept/discard endpoints finalize reviewed results. Accepted images are copied through normal media storage before attaching to the source item.
+- Batch 4 local generation provider UI slices are now implemented: app-owned provider state outside the library, frontend-ready provider status, redacted token/status handling, connect/disconnect helpers, provider-gated job running, result staging through the GenerationJob inbox, and Config drawer provider cards while GitHub Pages remains read-only/local-only. Cross-process refresh lock hardening, reference/edit payloads, model configuration UI, and retry controls remain follow-ups.
 - Batch 4.4 through 4.7 generation UX is implemented for the current local slice: local item detail views expose provider-gated `Generate variant`, standalone Generate appears only when a provider is connected, GenerationJobs are reviewed through a result inbox, manual external upload is demoted, generated images load through the app media route, item detail supports multiple images with thumbnail/counter browsing, users choose `Attach to current item` or `Save as new item`, save-as-new opens an editable metadata review panel before creating a variant item, confirm-save returns to the library, provider availability refreshes after OAuth without a manual browser refresh, mobile save-as-new scrolls/focuses the metadata editor, a compact generation queue drawer shows work status, and friendly failure states cover policy/rate-limit/auth/provider errors.
-- keep `openai_codex_oauth_native` local-only and experimental; it uses the ChatGPT/Codex backend, not the stable public OpenAI Images API
-- device-code login should create this app's own OAuth session and token store, separate from other local auth stores by default
-- token storage must live outside the library/export/demo data path, use restrictive permissions, refresh before expiry, and never enter git, sample bundles, backups, or GitHub Pages exports; cross-process refresh locking remains follow-up hardening
-- request handling must decode the OAuth JWT for `ChatGPT-Account-ID`, send Codex-compatible originator/user-agent headers, call the Codex Responses API with the `image_generation` tool and `gpt-image-2`, parse streamed base64 image output, and save results into a local review inbox
-- generated-output provenance should record provider `openai_codex_oauth_native`, auth mode `codex_oauth_native`, model/provider details, quality/size/aspect ratio, prompt variant, reference images, source item id, generation job id, timestamps, and user disposition
+- keep local generation adapters optional, local-only, and experimental unless backed by stable public provider contracts
+- provider auth/session storage must live outside the library/export/demo data path, use restrictive permissions, refresh safely, and never enter git, sample bundles, backups, or GitHub Pages exports
+- generated-output provenance should record provider/model details, prompt variant, reference images, source item id, generation job id, timestamps, and user disposition without exposing private auth material
 
 Import and agent-ingestion follow-ups:
 

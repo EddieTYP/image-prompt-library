@@ -24,7 +24,7 @@ A second sample package (`freestylefly/awesome-gpt-image-2`, Traditional Chinese
 ./scripts/install-sample-data.sh zh_hant awesome-gpt-image-2
 ```
 
-The manifests in `sample-data/manifests/` are kept in git. The image files are distributed separately as release assets so normal clones stay lightweight. Each public sample item currently includes English, Traditional Chinese, and Simplified Chinese prompt variants. Source/original text and derived machine translations or OpenCC conversions are marked in schema v2 prompt provenance. To refill missing variants during curation, install the optional curation dependencies and run:
+The manifests in `sample-data/manifests/` are kept in git. The image files are distributed separately as release assets so normal clones stay lightweight. Sample items include available prompt variants; many include English, Traditional Chinese, and Simplified Chinese, while some upstream items are Chinese-only. Source/original text and derived machine translations or OpenCC conversions are marked in schema v2 prompt provenance. To refill missing variants during curation, install the optional curation dependencies and run:
 
 ```bash
 python -m pip install deep-translator opencc-python-reimplemented
