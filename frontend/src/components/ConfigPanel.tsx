@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { X } from 'lucide-react';
 import { api, isDemoMode } from '../api/client';
-import type { AppConfig, AppUpdateStatus, CodexNativeAuthStart, GenerationProviderStatus } from '../types';
+import type { AppConfig, AppUpdateStatus, CleanupPreview, CodexNativeAuthStart, GenerationProviderStatus } from '../types';
 import { UI_LANGUAGE_LABELS, type Translator, type UiLanguage } from '../utils/i18n';
 import { getPromptCopyLanguageLabel, type PromptCopyLanguage } from '../utils/prompts';
 
@@ -78,6 +78,7 @@ export default function ConfigPanel({
   onRefreshUpdateStatus,
   onUpdateInstalled,
   onProvidersChanged = () => undefined,
+  onLibraryCleanup = () => undefined,
 }: {
   open: boolean;
   t: Translator;
@@ -94,9 +95,13 @@ export default function ConfigPanel({
   onRefreshUpdateStatus: () => Promise<AppUpdateStatus | undefined>;
   onUpdateInstalled: (targetVersion: string) => void;
   onProvidersChanged?: () => void;
+  onLibraryCleanup?: () => void;
 }) {
   const [cfg, setCfg] = useState<AppConfig>();
   const [providers, setProviders] = useState<GenerationProviderStatus[]>([]);
+  const [cleanupPreview, setCleanupPreview] = useState<CleanupPreview>();
+  const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [cleanupMessage, setCleanupMessage] = useState<string>();
   const [authStart, setAuthStart] = useState<CodexNativeAuthStart>();
   const [providerMessage, setProviderMessage] = useState<string>();
   const [providerBusy, setProviderBusy] = useState(false);
@@ -117,13 +122,27 @@ export default function ConfigPanel({
     onProvidersChanged();
   }), [onProvidersChanged]);
 
+  const loadCleanupPreview = useCallback(async () => {
+    if (isDemoMode) return;
+    setCleanupBusy(true);
+    setCleanupMessage(undefined);
+    try {
+      setCleanupPreview(await api.cleanupPreview());
+    } catch (err) {
+      setCleanupMessage(err instanceof Error ? err.message : 'Could not preview cleanup.');
+    } finally {
+      setCleanupBusy(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (open) {
       api.config().then(setCfg).catch(() => undefined);
       onRefreshUpdateStatus().catch(() => undefined);
       loadProviders();
+      if (!isDemoMode) void loadCleanupPreview();
     }
-  }, [open, onRefreshUpdateStatus, loadProviders]);
+  }, [open, onRefreshUpdateStatus, loadProviders, loadCleanupPreview]);
 
   useEffect(() => {
     if (!open) return;
@@ -228,6 +247,28 @@ export default function ConfigPanel({
   const restartInstruction = updateInstalled?.requiresManualRestart
     ? 'Stop the running Terminal server, then start Image Prompt Library again to use the new version.'
     : 'The update has been installed. The macOS service restart has been scheduled; reconnect after it comes back online.';
+  const brokenImageCount = cleanupPreview?.broken_image_records.length || 0;
+  const unreferencedFileCount = cleanupPreview?.unreferenced_files.length || 0;
+  const cleanupHasWork = brokenImageCount > 0 || unreferencedFileCount > 0;
+  const applyCleanup = async () => {
+    if (!cleanupHasWork) return;
+    if (!confirm(`Clean up ${brokenImageCount} broken image records and ${unreferencedFileCount} unreferenced files?`)) return;
+    setCleanupBusy(true);
+    setCleanupMessage(undefined);
+    try {
+      const result = await api.applyCleanup({
+        remove_broken_image_records: brokenImageCount > 0,
+        remove_unreferenced_files: unreferencedFileCount > 0,
+      });
+      setCleanupPreview(result);
+      setCleanupMessage(`Removed ${result.removed_broken_image_records} broken records and ${result.removed_unreferenced_files} files.`);
+      onLibraryCleanup();
+    } catch (err) {
+      setCleanupMessage(err instanceof Error ? err.message : 'Could not apply cleanup.');
+    } finally {
+      setCleanupBusy(false);
+    }
+  };
 
   return (
     <aside
@@ -354,6 +395,22 @@ export default function ConfigPanel({
         )}
         {updateMessage && <p className="provider-message">{updateMessage}</p>}
       </section>
+
+      {!isDemoMode && (
+        <section className="setting-group cleanup-section">
+          <h3>Library cleanup</h3>
+          <p className="muted">Local maintenance for missing image rows and unused media files.</p>
+          <div className="cleanup-counts">
+            <span><strong>{brokenImageCount}</strong> broken image records</span>
+            <span><strong>{unreferencedFileCount}</strong> unreferenced files</span>
+          </div>
+          <div className="provider-actions">
+            <button className="secondary" onClick={loadCleanupPreview} disabled={cleanupBusy}>{cleanupBusy ? 'Checking...' : 'Preview cleanup'}</button>
+            <button className="danger" onClick={applyCleanup} disabled={cleanupBusy || !cleanupHasWork}>Apply cleanup</button>
+          </div>
+          {cleanupMessage && <p className="provider-message">{cleanupMessage}</p>}
+        </section>
+      )}
 
       <section className="setting-group provider-section">
         <h3>{t('providers')}</h3>

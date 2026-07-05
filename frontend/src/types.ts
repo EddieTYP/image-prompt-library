@@ -9,6 +9,11 @@ export interface AppConfig { version: string; library_path: string; database_pat
 export interface AppUpdateStatus { current_version: string; latest_version?: string | null; update_available: boolean; release_url?: string | null; update_command?: string | null; checked_at: string; error?: string | null; service_mode: string; active_generation_jobs: { running: number; queued: number }; can_restart: boolean; requires_manual_restart: boolean }
 export interface AppUpdateRequest { target_version?: string | null; cancel_active_generation_jobs: boolean }
 export interface AppUpdateResult { status: string; target_version: string; cancelled_generation_jobs: number; restart_mode: string; requires_manual_restart: boolean; message: string; stdout?: string; stderr?: string }
+export interface CleanupFileRecord { path: string; bytes: number; reason: string }
+export interface CleanupImageRecord { image_id: string; item_id: string; path?: string | null; reason: string }
+export interface CleanupPreview { broken_image_records: CleanupImageRecord[]; unreferenced_files: CleanupFileRecord[]; total_bytes: number }
+export interface CleanupApplyRequest { remove_broken_image_records: boolean; remove_unreferenced_files: boolean }
+export interface CleanupApplyResult extends CleanupPreview { removed_broken_image_records: number; removed_unreferenced_files: number }
 export interface GenerationProviderFeatures { text_to_image?: boolean; text_reference_to_image?: boolean; image_edit?: boolean; manual_result_upload?: boolean }
 export interface GenerationProviderStatus { provider: string; display_name: string; auth_mode?: string; optional: boolean; configured: boolean; authenticated: boolean; available: boolean; state: string; reason?: string | null; features: GenerationProviderFeatures; token_present?: boolean; account_id?: string | null; auth_store_path?: string; orchestrator_models?: string[]; default_orchestrator_model?: string; image_models?: string[]; default_image_model?: string }
 export interface CodexNativeAuthStart { device_auth_id: string; user_code: string; verification_url: string; verification_uri?: string; verification_uri_complete?: string; expires_in?: number; interval?: number }

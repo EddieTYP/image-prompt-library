@@ -1561,3 +1561,23 @@ def test_selection_toolbar_uses_batch_api_for_power_user_actions():
     assert "Promise.all(Array.from(selectedItemIds).map(id => api.deleteItem(id)))" not in app
     assert "selection-toolbar-secondary" in app
     assert ".selection-toolbar-secondary" in styles
+
+
+def test_config_panel_has_local_only_cleanup_preview_and_apply():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+    api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+    types = (ROOT / "frontend" / "src" / "types.ts").read_text()
+    styles = (ROOT / "frontend" / "src" / "styles.css").read_text()
+
+    assert "CleanupPreview" in types
+    assert "cleanupPreview" in api_client
+    assert "applyCleanup" in api_client
+    assert "cleanupPreview" in config
+    assert "loadCleanupPreview" in config
+    assert "applyCleanup" in config
+    assert "!isDemoMode" in config
+    assert "onLibraryCleanup" in config
+    assert "onLibraryCleanup={saved}" in app
+    assert "cleanup-section" in config
+    assert ".cleanup-section" in styles
