@@ -2,7 +2,7 @@ import type { UiLanguage } from '../types';
 export type { UiLanguage } from '../types';
 type TranslationKey =
   | 'filters' | 'searchAria' | 'searchPlaceholder' | 'config' | 'referencesShown' | 'searchChip' | 'collectionChip'
-  | 'sortChip' | 'sortByUpdated' | 'sortByCreated' | 'sortByTitle'
+  | 'sortChip' | 'sortByUpdated' | 'sortByCreated' | 'sortByOldest' | 'sortByTitle' | 'sortByTitleDesc' | 'sortBySource' | 'sortByModel'
   | 'explore' | 'cards' | 'uiLanguage' | 'promptCopyLanguage' | 'promptCopyLanguageHelp' | 'providers'
   | 'globalThumbnails' | 'globalThumbnailsHelp' | 'focusThumbnails' | 'focusThumbnailsHelp'
   | 'calm' | 'balanced' | 'dense' | 'compact' | 'gallery' | 'full' | 'libraryPath' | 'databasePath'
@@ -14,7 +14,7 @@ type TranslationKey =
   | 'title' | 'titlePlaceholder' | 'collection' | 'collectionPlaceholder' | 'tags' | 'tagsPlaceholder' | 'existingTagSuggestions'
   | 'traditionalChinesePrompt' | 'traditionalPromptPlaceholder' | 'simplifiedChinesePrompt' | 'simplifiedPromptPlaceholder' | 'englishPrompt' | 'englishPromptPlaceholder'
   | 'resultImageAlreadySaved' | 'resultImageRequired' | 'resultImageHelp' | 'referencePhotoOptional' | 'referencePhotoHelp'
-  | 'deleteReference' | 'deleteReferenceConfirm' | 'selectReferences' | 'selectedReferences' | 'deleteSelectedReferences' | 'deleteSelectedReferencesConfirm' | 'cancel' | 'saving' | 'saveReference' | 'saveFailed'
+  | 'deleteReference' | 'deleteReferenceConfirm' | 'selectReferences' | 'selectedReferences' | 'archiveSelectedReferences' | 'restoreSelectedReferences' | 'favoriteSelectedReferences' | 'tagSelectedReferences' | 'moveSelectedReferences' | 'deleteSelectedReferences' | 'deleteSelectedReferencesConfirm' | 'cancel' | 'saving' | 'saveReference' | 'saveFailed'
   | 'primaryNavigation' | 'appHome' | 'currentFilters' | 'preferredPromptLanguage' | 'globalThumbnailBudget' | 'focusThumbnailBudget'
   | 'collectionFilters' | 'itemActions' | 'promptLanguage' | 'promptText' | 'source' | 'defaultModel' | 'localReference'
   | 'imageGeneratedFrom' | 'author' | 'sourceUrl' | 'notes' | 'addNote' | 'origin' | 'markAsOriginal' | 'originalPromptHelp'
@@ -37,7 +37,7 @@ export function normalizeUiLanguage(value?: string | null): UiLanguage {
 
 const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
   zh_hant: {
-    filters: '篩選', searchAria: '搜尋所有 prompts', searchPlaceholder: '搜尋所有 prompts、標題、標籤… 可用 sort:title', config: '設定', referencesShown: '個參考', searchChip: '搜尋', collectionChip: 'Collection', sortChip: '排序', sortByUpdated: '最近更新', sortByCreated: '最近加入', sortByTitle: '標題 A–Z',
+    filters: '篩選', searchAria: '搜尋所有 prompts', searchPlaceholder: '搜尋所有 prompts、標題、標籤… 可用 sort:title', config: '設定', referencesShown: '個參考', searchChip: '搜尋', collectionChip: 'Collection', sortChip: '排序', sortByUpdated: '最近更新', sortByCreated: '最近加入', sortByOldest: 'Oldest first', sortByTitle: '標題 A–Z', sortByTitleDesc: 'Title Z-A', sortBySource: 'Source A-Z', sortByModel: 'Model A-Z',
     explore: 'Explore', cards: 'Cards', uiLanguage: '介面語言', promptCopyLanguage: 'Prompt 複製語言', promptCopyLanguageHelp: '複製時可使用原文 prompt；原文通常最接近 sample image 的生成結果。', providers: '供應商',
     globalThumbnails: '全域縮圖', globalThumbnailsHelp: 'Explore 全部 collection 的整體密度。', focusThumbnails: '焦點縮圖', focusThumbnailsHelp: '選取 collection 周圍最多顯示的真實縮圖數量。',
     calm: '寬鬆', balanced: '平衡', dense: '密集', compact: '精簡', gallery: '圖庫', full: '完整', libraryPath: 'Library 路徑', databasePath: 'Database 路徑',
@@ -49,7 +49,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     title: '標題', titlePlaceholder: '為此參考命名，方便日後辨識', collection: 'Collection', collectionPlaceholder: '例如：產品商業', tags: '標籤', tagsPlaceholder: 'poster, product, cinematic', existingTagSuggestions: '現有標籤建議',
     traditionalChinesePrompt: '繁體中文 prompt', traditionalPromptPlaceholder: '貼上繁體中文 prompt…', simplifiedChinesePrompt: '簡體中文 prompt', simplifiedPromptPlaceholder: '貼上簡體中文 prompt…', englishPrompt: '英文 prompt', englishPromptPlaceholder: '貼上英文 prompt…',
     resultImageAlreadySaved: '完成圖片已儲存', resultImageRequired: '完成圖片為必填', resultImageHelp: '必填的最終輸出圖片 · PNG、JPG、WEBP 或 GIF', referencePhotoOptional: '參考圖片可選', referencePhotoHelp: '此 prompt 的可選來源／參考圖片',
-    deleteReference: '刪除參考', deleteReferenceConfirm: '刪除此參考？\n這會刪除 library 記錄；如果本機圖片檔案沒有被其他參考使用，也會一併刪除。', selectReferences: '選取', selectedReferences: '已選取', deleteSelectedReferences: '刪除', deleteSelectedReferencesConfirm: '刪除已選取的 ${selectedItemIds.size} 個參考？\nLibrary 記錄會被刪除；未被其他參考使用的本機圖片檔案也會一併刪除。', cancel: '取消', saving: '儲存中…', saveReference: '儲存參考', saveFailed: '儲存失敗，請再試一次。',
+    deleteReference: '刪除參考', deleteReferenceConfirm: '刪除此參考？\n這會刪除 library 記錄；如果本機圖片檔案沒有被其他參考使用，也會一併刪除。', selectReferences: '選取', selectedReferences: '已選取', archiveSelectedReferences: 'Archive', restoreSelectedReferences: 'Restore', favoriteSelectedReferences: 'Favorite', tagSelectedReferences: 'Tag', moveSelectedReferences: 'Move', deleteSelectedReferences: '刪除', deleteSelectedReferencesConfirm: '刪除已選取的 ${selectedItemIds.size} 個參考？\nLibrary 記錄會被刪除；未被其他參考使用的本機圖片檔案也會一併刪除。', cancel: '取消', saving: '儲存中…', saveReference: '儲存參考', saveFailed: '儲存失敗，請再試一次。',
     primaryNavigation: '主要導覽', appHome: 'Image Prompt Library 首頁', currentFilters: '目前篩選', preferredPromptLanguage: '偏好 prompt 語言', globalThumbnailBudget: '全域縮圖數量', focusThumbnailBudget: '焦點縮圖數量',
     collectionFilters: 'Collection 篩選', itemActions: '項目操作', promptLanguage: 'Prompt 語言', promptText: 'Prompt 文字', source: '來源', defaultModel: 'ChatGPT Image', localReference: '本機參考',
     imageGeneratedFrom: 'Image generated from', author: '作者', sourceUrl: '來源 URL', notes: '備註', addNote: '新增備註', origin: '原文', markAsOriginal: '標記為原文', originalPromptHelp: '原文 prompt 通常最接近 sample image 的生成結果。',
@@ -58,7 +58,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     chooseLanguage: '選擇介面語言', chooseLanguageHelp: '請選擇你想使用的介面語言。', changeLanguageLater: '之後可在設定中更改。',
   },
   zh_hans: {
-    filters: '筛选', searchAria: '搜索所有 prompts', searchPlaceholder: '搜索所有 prompts、标题、标签… 可用 sort:title', config: '设置', referencesShown: '个参考', searchChip: '搜索', collectionChip: 'Collection', sortChip: '排序', sortByUpdated: '最近更新', sortByCreated: '最近加入', sortByTitle: '标题 A–Z',
+    filters: '筛选', searchAria: '搜索所有 prompts', searchPlaceholder: '搜索所有 prompts、标题、标签… 可用 sort:title', config: '设置', referencesShown: '个参考', searchChip: '搜索', collectionChip: 'Collection', sortChip: '排序', sortByUpdated: '最近更新', sortByCreated: '最近加入', sortByOldest: 'Oldest first', sortByTitle: '标题 A–Z', sortByTitleDesc: 'Title Z-A', sortBySource: 'Source A-Z', sortByModel: 'Model A-Z',
     explore: 'Explore', cards: 'Cards', uiLanguage: '界面语言', promptCopyLanguage: 'Prompt 复制语言', promptCopyLanguageHelp: '复制时可使用原文 prompt；原文通常最接近 sample image 的生成结果。', providers: '供应商',
     globalThumbnails: '全局缩图', globalThumbnailsHelp: 'Explore 全部 collection 的整体密度。', focusThumbnails: '焦点缩图', focusThumbnailsHelp: '选中 collection 周围最多显示的真实缩图数量。',
     calm: '宽松', balanced: '平衡', dense: '密集', compact: '精简', gallery: '图库', full: '完整', libraryPath: 'Library 路径', databasePath: 'Database 路径',
@@ -70,7 +70,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     title: '标题', titlePlaceholder: '为此参考命名，方便日后辨识', collection: 'Collection', collectionPlaceholder: '例如：产品商业', tags: '标签', tagsPlaceholder: 'poster, product, cinematic', existingTagSuggestions: '现有标签建议',
     traditionalChinesePrompt: '繁体中文 prompt', traditionalPromptPlaceholder: '贴上繁体中文 prompt…', simplifiedChinesePrompt: '简体中文 prompt', simplifiedPromptPlaceholder: '粘贴简体中文 prompt…', englishPrompt: '英文 prompt', englishPromptPlaceholder: '粘贴英文 prompt…',
     resultImageAlreadySaved: '完成图片已保存', resultImageRequired: '完成图片为必填', resultImageHelp: '必填的最终输出图片 · PNG、JPG、WEBP 或 GIF', referencePhotoOptional: '参考图片可选', referencePhotoHelp: '此 prompt 的可选来源／参考图片',
-    deleteReference: '删除参考', deleteReferenceConfirm: '删除此参考？\n这会删除 library 记录；如果本地图片文件没有被其他参考使用，也会一并删除。', selectReferences: '选择', selectedReferences: '已选择', deleteSelectedReferences: '删除', deleteSelectedReferencesConfirm: '删除已选择的 ${selectedItemIds.size} 个参考？\nLibrary 记录会被删除；未被其他参考使用的本地图片文件也会一并删除。', cancel: '取消', saving: '保存中…', saveReference: '保存参考', saveFailed: '保存失败，请再试一次。',
+    deleteReference: '删除参考', deleteReferenceConfirm: '删除此参考？\n这会删除 library 记录；如果本地图片文件没有被其他参考使用，也会一并删除。', selectReferences: '选择', selectedReferences: '已选择', archiveSelectedReferences: 'Archive', restoreSelectedReferences: 'Restore', favoriteSelectedReferences: 'Favorite', tagSelectedReferences: 'Tag', moveSelectedReferences: 'Move', deleteSelectedReferences: '删除', deleteSelectedReferencesConfirm: '删除已选择的 ${selectedItemIds.size} 个参考？\nLibrary 记录会被删除；未被其他参考使用的本地图片文件也会一并删除。', cancel: '取消', saving: '保存中…', saveReference: '保存参考', saveFailed: '保存失败，请再试一次。',
     primaryNavigation: '主要导航', appHome: 'Image Prompt Library 首页', currentFilters: '当前筛选', preferredPromptLanguage: '偏好 prompt 语言', globalThumbnailBudget: '全局缩图数量', focusThumbnailBudget: '焦点缩图数量',
     collectionFilters: 'Collection 筛选', itemActions: '项目操作', promptLanguage: 'Prompt 语言', promptText: 'Prompt 文字', source: '来源', defaultModel: 'ChatGPT Image', localReference: '本地参考',
     imageGeneratedFrom: 'Image generated from', author: '作者', sourceUrl: '来源 URL', notes: '备注', addNote: '新增备注', origin: '原文', markAsOriginal: '标记为原文', originalPromptHelp: '原文 prompt 通常最接近 sample image 的生成结果。',
@@ -79,7 +79,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     chooseLanguage: '选择界面语言', chooseLanguageHelp: '请选择你想使用的界面语言。', changeLanguageLater: '之后可在设置中更改。',
   },
   en: {
-    filters: 'Filters', searchAria: 'Search all prompts', searchPlaceholder: 'Search all prompts, titles, tags… try sort:title', config: 'Config', referencesShown: 'references', searchChip: 'Search', collectionChip: 'Collection', sortChip: 'Sort', sortByUpdated: 'Recently updated', sortByCreated: 'Recently added', sortByTitle: 'Title A–Z',
+    filters: 'Filters', searchAria: 'Search all prompts', searchPlaceholder: 'Search all prompts, titles, tags… try sort:title', config: 'Config', referencesShown: 'references', searchChip: 'Search', collectionChip: 'Collection', sortChip: 'Sort', sortByUpdated: 'Recently updated', sortByCreated: 'Recently added', sortByOldest: 'Oldest first', sortByTitle: 'Title A–Z', sortByTitleDesc: 'Title Z-A', sortBySource: 'Source A-Z', sortByModel: 'Model A-Z',
     explore: 'Explore', cards: 'Cards', uiLanguage: 'UI language', promptCopyLanguage: 'Prompt copy language', promptCopyLanguageHelp: 'Copy can use the origin prompt; the source/original prompt is usually closest to the sample image result.', providers: 'Providers',
     globalThumbnails: 'Global thumbnails', globalThumbnailsHelp: 'Overall Explore density across all clusters.', focusThumbnails: 'Focus thumbnails', focusThumbnailsHelp: 'Maximum real thumbnails around the selected cluster.',
     calm: 'Calm', balanced: 'Balanced', dense: 'Dense', compact: 'Compact', gallery: 'Gallery', full: 'Full', libraryPath: 'Library path', databasePath: 'Database path',
@@ -91,7 +91,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     title: 'Title', titlePlaceholder: 'Give this reference a memorable name', collection: 'Collection', collectionPlaceholder: 'e.g. Product commercial', tags: 'Tags', tagsPlaceholder: 'poster, product, cinematic', existingTagSuggestions: 'Existing tag suggestions',
     traditionalChinesePrompt: 'Traditional Chinese prompt', traditionalPromptPlaceholder: 'Paste the Traditional Chinese prompt…', simplifiedChinesePrompt: 'Simplified Chinese prompt', simplifiedPromptPlaceholder: 'Paste the Simplified Chinese prompt…', englishPrompt: 'English prompt', englishPromptPlaceholder: 'Paste the English prompt…',
     resultImageAlreadySaved: 'Result image already saved', resultImageRequired: 'Result image required', resultImageHelp: 'Required finished output image · PNG, JPG, WEBP or GIF', referencePhotoOptional: 'Reference photo optional', referencePhotoHelp: 'Optional source/reference image for this prompt',
-    deleteReference: 'Delete reference', deleteReferenceConfirm: 'Delete this reference?\nThis deletes the library record. Local image files are also deleted if no other reference uses them.', selectReferences: 'Select', selectedReferences: 'selected', deleteSelectedReferences: 'Delete', deleteSelectedReferencesConfirm: 'Delete ${selectedItemIds.size} selected references?\nLibrary records will be deleted. Local image files are also deleted if no other reference uses them.', cancel: 'Cancel', saving: 'Saving…', saveReference: 'Save reference', saveFailed: 'Save failed. Please try again.',
+    deleteReference: 'Delete reference', deleteReferenceConfirm: 'Delete this reference?\nThis deletes the library record. Local image files are also deleted if no other reference uses them.', selectReferences: 'Select', selectedReferences: 'selected', archiveSelectedReferences: 'Archive', restoreSelectedReferences: 'Restore', favoriteSelectedReferences: 'Favorite', tagSelectedReferences: 'Tag', moveSelectedReferences: 'Move', deleteSelectedReferences: 'Delete', deleteSelectedReferencesConfirm: 'Delete ${selectedItemIds.size} selected references?\nLibrary records will be deleted. Local image files are also deleted if no other reference uses them.', cancel: 'Cancel', saving: 'Saving…', saveReference: 'Save reference', saveFailed: 'Save failed. Please try again.',
     primaryNavigation: 'Primary navigation', appHome: 'Image Prompt Library home', currentFilters: 'Current filters', preferredPromptLanguage: 'Preferred prompt language', globalThumbnailBudget: 'Global thumbnail budget', focusThumbnailBudget: 'Focus thumbnail budget',
     collectionFilters: 'Collection filters', itemActions: 'Item actions', promptLanguage: 'Prompt language', promptText: 'Prompt text', source: 'Source', defaultModel: 'ChatGPT Image', localReference: 'Local reference',
     imageGeneratedFrom: 'Image generated from', author: 'Author', sourceUrl: 'Source URL', notes: 'Notes', addNote: 'Add note', origin: 'Origin', markAsOriginal: 'Mark as origin', originalPromptHelp: 'The source/original prompt is usually closest to the sample image result.',

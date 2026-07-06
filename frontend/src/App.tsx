@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Plus, Trash2, XCircle } from 'lucide-react';
+import { Archive, ArchiveRestore, Check, FolderInput, Plus, Star, Tags, Trash2, XCircle } from 'lucide-react';
 import { api, isDemoMode } from './api/client';
 import TopBar from './components/TopBar';
 import FiltersPanel from './components/FiltersPanel';
@@ -12,12 +12,12 @@ import GenerationQueueDrawer from './components/GenerationQueueDrawer';
 import ConfigPanel from './components/ConfigPanel';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
-import type { AppConfig, AppUpdateStatus, ClusterRecord, GenerationJobRecord, GenerationProviderStatus, ItemDetail, ItemSummary, TagRecord, ViewMode } from './types';
+import type { AppConfig, AppUpdateStatus, ClusterRecord, GenerationJobRecord, GenerationProviderStatus, ItemBatchAction, ItemDetail, ItemSortMode, ItemSummary, TagRecord, ViewMode } from './types';
 import { copyTextToClipboard } from './utils/clipboard';
 import { localizedDemoTitle } from './utils/demoTitles';
 import { DEFAULT_UI_LANGUAGE, UI_LANGUAGE_LABELS, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
 import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptCopyLanguage } from './utils/prompts';
-import { parseSearchSortQuery, removeSearchSortOperator, sortLabelForMode } from './utils/searchSort';
+import { DEFAULT_ITEM_SORT, parseSearchSortQuery, parseStructuredSearchChips, removeSearchSortOperator, sortLabelForMode } from './utils/searchSort';
 
 const UI_LANGUAGE_STORAGE_KEY = 'image-prompt-library.ui_language';
 const PROMPT_LANGUAGE_STORAGE_KEY = 'image-prompt-library.preferred_prompt_language';
@@ -81,8 +81,13 @@ function generationProviderConnected(provider: GenerationProviderStatus) {
 
 export default function App() {
   const [q, setQ] = useState('');
+  const [sort, setSort] = useState<ItemSortMode>(DEFAULT_ITEM_SORT);
   const debouncedQ = useDebouncedValue(q);
   const parsedSearchQuery = useMemo(() => parseSearchSortQuery(debouncedQ), [debouncedQ]);
+  const rawParsedSearchQuery = useMemo(() => parseSearchSortQuery(q), [q]);
+  const activeSort = rawParsedSearchQuery.explicitSort ? rawParsedSearchQuery.sort : sort;
+  const queryFilterChips = useMemo(() => parseStructuredSearchChips(q), [q]);
+  const showingArchivedItems = /\barchived:true\b/i.test(q);
   const [clusterId, setClusterId] = useState<string>();
   const [view, setView] = useState<ViewMode>(loadPreferredView);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -112,7 +117,7 @@ export default function App() {
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(() => new Set());
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>();
   const [restartRequiredVersion, setRestartRequiredVersion] = useState<string>();
-  const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, parsedSearchQuery.sort);
+  const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, activeSort);
   const exploreFocusedClusterId = view === 'explore'
     ? (clusterId || (dataScope.clusterId === pendingExploreUnfilterClusterId ? pendingExploreUnfilterClusterId : undefined))
     : clusterId;
@@ -123,9 +128,9 @@ export default function App() {
   const localizedSelectedCluster = selectedCluster ? localizeCluster(selectedCluster, uiLanguage) : undefined;
   const refreshClusters = () => api.clusters().then(setClusters).catch(() => setClusters([]));
   const refreshTags = () => api.tags().then(setTags).catch(() => setTags([]));
-  const refreshGenerationAvailability = () => api.generationProviders()
+  const refreshGenerationAvailability = useCallback(() => api.generationProviders()
     .then(providers => setGenerationAvailable(providers.some(generationProviderConnected)))
-    .catch(() => setGenerationAvailable(false));
+    .catch(() => setGenerationAvailable(false)), []);
   const refreshAppConfig = () => api.config().then(setAppConfig).catch(() => setAppConfig(undefined));
   const refreshUpdateStatus = useCallback(() => api.updateStatus().then(status => {
     setUpdateStatus(status);
@@ -154,7 +159,7 @@ export default function App() {
   useEffect(() => {
     const timer = window.setInterval(refreshGenerationAvailability, 3000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [refreshGenerationAvailability]);
   useEffect(() => {
     if (!toast) return undefined;
     const timer = window.setTimeout(() => setToast(undefined), 2600);
@@ -184,6 +189,7 @@ export default function App() {
   const clearSelection = () => setSelectedItemIds(new Set());
   const exitSelectionMode = () => { setSelectionMode(false); clearSelection(); };
   const deleted = () => { setDetailId(undefined); setEditing(undefined); exitSelectionMode(); refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
+  const batchChanged = () => { exitSelectionMode(); refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
   const updatePreferredLanguage = (language: PromptCopyLanguage) => {
     setPreferredLanguage(language);
     window.localStorage.setItem(PROMPT_LANGUAGE_STORAGE_KEY, language);
@@ -208,8 +214,15 @@ export default function App() {
     setFocusThumbnailBudget(budget);
     window.localStorage.setItem(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, String(budget));
   };
-  const clearSearchSort = () => setQ(current => removeSearchSortOperator(current));
-  const searchSortLabel = parsedSearchQuery.explicitSort ? sortLabelForMode(parsedSearchQuery.sort, t) : undefined;
+  const updateSort = (nextSort: ItemSortMode) => {
+    setSort(nextSort);
+    setQ(current => removeSearchSortOperator(current));
+  };
+  const clearSearchSort = () => {
+    setSort(DEFAULT_ITEM_SORT);
+    setQ(current => removeSearchSortOperator(current));
+  };
+  const searchSortLabel = rawParsedSearchQuery.explicitSort ? sortLabelForMode(rawParsedSearchQuery.sort, t) : undefined;
   const showCopyToast = (success: boolean) => {
     setToast({ title: success ? t('copySuccess') : t('copyFailed'), tone: success ? 'success' : 'error' });
     window.setTimeout(() => setToast(undefined), 1800);
@@ -252,19 +265,35 @@ export default function App() {
       setToast({ title: t('saveFailed'), tone: 'error' });
     }
   };
-  const deleteSelectedItems = async () => {
+  const runBatchAction = async (action: ItemBatchAction, extra: { tags?: string[]; cluster_name?: string } = {}) => {
     if (!selectedItemIds.size) return;
-    if (!confirm(t('deleteSelectedReferencesConfirm').replace('${selectedItemIds.size}', String(selectedItemIds.size)))) return;
     try {
-      await Promise.all(Array.from(selectedItemIds).map(id => api.deleteItem(id)));
-      deleted();
+      await api.batchItems({ item_ids: Array.from(selectedItemIds), action, ...extra });
+      batchChanged();
     } catch {
       setToast({ title: t('saveFailed'), tone: 'error' });
     }
   };
+  const deleteSelectedItems = async () => {
+    if (!selectedItemIds.size) return;
+    if (!confirm(t('deleteSelectedReferencesConfirm').replace('${selectedItemIds.size}', String(selectedItemIds.size)))) return;
+    await runBatchAction('delete');
+  };
+  const batchArchiveSelected = () => runBatchAction(showingArchivedItems ? 'unarchive' : 'archive');
+  const batchFavoriteSelected = () => runBatchAction('favorite');
+  const batchAddTagsSelected = () => {
+    const value = prompt(t('tagSelectedReferences'));
+    const tags = (value || '').split(',').map(tag => tag.trim()).filter(Boolean);
+    if (tags.length) runBatchAction('add_tags', { tags });
+  };
+  const batchMoveSelected = () => {
+    const cluster_name = (prompt(t('moveSelectedReferences')) || '').trim();
+    if (cluster_name) runBatchAction('move_collection', { cluster_name });
+  };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   const focusedItemGenerationJobId = pendingGenerationSourceItemId ? focusedGenerationJobId : undefined;
   const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
+  const showFloatingActions = Boolean(!selectionMode && !filtersOpen && !configOpen && !detailId && !editorOpen && !standaloneGenerationOpen);
   const updateBadgeLabel = restartRequiredVersion ? 'Restart required' : (updateStatus?.update_available ? 'Update available' : undefined);
   return <div className={`app ${view === 'explore' ? 'explore-mode' : 'cards-mode'}`}>
     {!hasChosenUiLanguage && (
@@ -282,7 +311,7 @@ export default function App() {
         </section>
       </div>
     )}
-    <TopBar t={t} q={q} searchQuery={parsedSearchQuery.q} sortLabel={searchSortLabel} updateBadgeLabel={updateBadgeLabel} onQ={setQ} onClearSort={clearSearchSort} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
+    <TopBar t={t} q={q} searchQuery={parsedSearchQuery.q} sort={activeSort} sortLabel={searchSortLabel} queryFilterChips={queryFilterChips} updateBadgeLabel={updateBadgeLabel} onQ={setQ} onSort={updateSort} onClearSort={clearSearchSort} view={view} onView={updateView} onFilters={() => setFiltersOpen(true)} onConfig={() => setConfigOpen(true)} count={localizedData.total} clusterName={localizedClusterName(selectedCluster, uiLanguage)} clearCluster={clearCluster} />
     {isDemoMode && (
       <div className="demo-banner" role="status">
         <strong>{t('onlineReadOnlyDemo')}</strong>
@@ -292,7 +321,7 @@ export default function App() {
       </div>
     )}
     <FiltersPanel t={t} open={filtersOpen} clusters={localizedClusters} selected={clusterId} onSelect={handleFilterSelect} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
-    <ConfigPanel t={t} open={configOpen} onClose={() => setConfigOpen(false)} uiLanguage={uiLanguage} onUiLanguage={updateUiLanguage} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} updateStatus={updateStatus} onRefreshUpdateStatus={refreshUpdateStatus} onUpdateInstalled={setRestartRequiredVersion} onProvidersChanged={refreshGenerationAvailability} />
+    <ConfigPanel t={t} open={configOpen} onClose={() => setConfigOpen(false)} uiLanguage={uiLanguage} onUiLanguage={updateUiLanguage} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} updateStatus={updateStatus} onRefreshUpdateStatus={refreshUpdateStatus} onUpdateInstalled={setRestartRequiredVersion} onProvidersChanged={refreshGenerationAvailability} onLibraryCleanup={saved} />
     {/* Static-test compatibility marker: <main className="app-main"> */}
     <main className={`app-main ${refreshing ? 'is-refreshing' : ''}`} aria-busy={refreshing}>
       {refreshing && <div className="refresh-indicator" role="status">{t('loading')}</div>}
@@ -306,6 +335,14 @@ export default function App() {
       <div className="selection-toolbar" role="toolbar" aria-label={t('selectReferences')}>
         <button type="button" className="selection-toolbar-button" onClick={exitSelectionMode}>{t('cancel')}</button>
         <span className="selection-toolbar-count">{selectedItemIds.size} {t('selectedReferences')}</span>
+        <div className="selection-toolbar-secondary">
+          <button type="button" className="selection-toolbar-button" onClick={batchArchiveSelected} disabled={!selectedItemIds.size}>
+            {showingArchivedItems ? <ArchiveRestore size={16} /> : <Archive size={16} />} {showingArchivedItems ? t('restoreSelectedReferences') : t('archiveSelectedReferences')}
+          </button>
+          <button type="button" className="selection-toolbar-button" onClick={batchFavoriteSelected} disabled={!selectedItemIds.size}><Star size={16} /> {t('favoriteSelectedReferences')}</button>
+          <button type="button" className="selection-toolbar-button" onClick={batchAddTagsSelected} disabled={!selectedItemIds.size}><Tags size={16} /> {t('tagSelectedReferences')}</button>
+          <button type="button" className="selection-toolbar-button" onClick={batchMoveSelected} disabled={!selectedItemIds.size}><FolderInput size={16} /> {t('moveSelectedReferences')}</button>
+        </div>
         <button type="button" className="selection-toolbar-delete" onClick={deleteSelectedItems} disabled={!selectedItemIds.size}><Trash2 size={16} /> {t('deleteSelectedReferences')}</button>
       </div>
     )}
@@ -318,14 +355,14 @@ export default function App() {
       </button>
     )}
     {/* Static-test compatibility marker: !isDemoMode && <button className="fab" */}
-    {!isDemoMode && !selectionMode && (
+    {!isDemoMode && showFloatingActions && (
       <div className="floating-action-rail">
         {view === 'cards' && localizedData.items.length > 0 && <button className="fab select-fab" onClick={() => { setSelectionMode(true); clearSelection(); }}>{t('selectReferences')}</button>}
         <button className="fab add-fab" onClick={openNewItemEditor}><Plus/> {t('add')}</button>
         {generationAvailable && <button className="fab generate-fab" onClick={openStandaloneGeneration}>Generate</button>}
       </div>
     )}
-    {!isDemoMode && <GenerationQueueDrawer t={t} open={generationQueueOpen} onOpen={() => setGenerationQueueOpen(true)} onClose={() => setGenerationQueueOpen(false)} onOpenJob={openGenerationJob} />}
+    {!isDemoMode && showFloatingActions && <GenerationQueueDrawer t={t} open={generationQueueOpen} onOpen={() => setGenerationQueueOpen(true)} onClose={() => setGenerationQueueOpen(false)} onOpenJob={openGenerationJob} />}
     <ItemDetailModal t={t} id={detailId} uiLanguage={uiLanguage} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={() => setDetailId(undefined)} onCopyPrompt={showCopyToast} onChanged={saved} onDelete={isDemoMode ? undefined : deleteDetail} onOpenItem={setDetailId} onEdit={(item) => { setDetailId(undefined); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} canGenerate={generationAvailable} promptVariablesEnabled={Boolean(appConfig?.features?.camelot?.percival)} initialGenerationJobId={focusedItemGenerationJobId} />
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
     {editorOpen && <ItemEditorModal t={t} item={editing} clusters={localizedClusters} tags={tags} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} />}

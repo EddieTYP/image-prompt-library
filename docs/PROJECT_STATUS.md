@@ -148,6 +148,7 @@ Port convention:
 
 Recent preparation work includes:
 
+- 2026-07-05: Library Power-User Polish adds visible sort controls, lightweight structured search filters, backend-backed batch management, and preview-first local cleanup for broken image records and unreferenced media files.
 - added public repo hygiene files: `SECURITY.md` and GitHub issue templates
 - switched README project-status link to `ROADMAP.md`
 - published sample-data release asset `sample-data-v1`

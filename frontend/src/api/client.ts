@@ -1,4 +1,4 @@
-import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationProviderStatus, ItemCreate, ItemDetail, ItemList, ItemSortMode, ItemSummary, TagRecord, UploadImageRole } from '../types';
+import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationProviderStatus, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemList, ItemSortMode, ItemSummary, TagRecord, UploadImageRole } from '../types';
 import { DEFAULT_ITEM_SORT } from '../utils/searchSort';
 
 const API = '';
@@ -36,23 +36,57 @@ function normalizeSearchText(item: ItemSummary) {
   ].filter(Boolean).join('\n').toLowerCase();
 }
 
+function normalizeDemoText(value?: string) {
+  return (value || '').toLowerCase();
+}
+
 function demoItemSort(sort: ItemSortMode) {
   if (sort === 'created_desc') return (a: ItemSummary, b: ItemSummary) => b.created_at.localeCompare(a.created_at);
+  if (sort === 'created_asc') return (a: ItemSummary, b: ItemSummary) => a.created_at.localeCompare(b.created_at);
   if (sort === 'title_asc') return (a: ItemSummary, b: ItemSummary) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+  if (sort === 'title_desc') return (a: ItemSummary, b: ItemSummary) => b.title.localeCompare(a.title, undefined, { sensitivity: 'base' });
+  if (sort === 'source_asc') return (a: ItemSummary, b: ItemSummary) => (a.source_name || '').localeCompare(b.source_name || '', undefined, { sensitivity: 'base' });
+  if (sort === 'model_asc') return (a: ItemSummary, b: ItemSummary) => a.model.localeCompare(b.model, undefined, { sensitivity: 'base' });
   return (a: ItemSummary, b: ItemSummary) => b.updated_at.localeCompare(a.updated_at);
+}
+
+function demoStructuredSearch(rawQuery: string) {
+  const filters: Record<string, string[]> = {};
+  const q = rawQuery.replace(/(?:^|\s)(tag|collection|model|source|fav|favorite|archived|has):([^\s]+)/gi, (_match, key: string, value: string) => {
+    const normalizedKey = key.toLowerCase();
+    (filters[normalizedKey] ||= []).push(value.toLowerCase());
+    return ' ';
+  }).replace(/\s+/g, ' ').trim().toLowerCase();
+  return { q, filters };
+}
+
+function demoMatchesStructuredSearch(item: ItemSummary, filters: Record<string, string[]>) {
+  if (filters.tag?.some(tag => !item.tags.some(itemTag => normalizeDemoText(itemTag.name).includes(tag) || normalizeDemoText(itemTag.id).includes(tag)))) return false;
+  if (filters.collection?.some(collection => !normalizeDemoText(item.cluster?.name).includes(collection) && !normalizeDemoText(item.cluster?.id).includes(collection))) return false;
+  if (filters.model?.some(model => !normalizeDemoText(item.model).includes(model))) return false;
+  if (filters.source?.some(source => !normalizeDemoText(item.source_name).includes(source))) return false;
+  if (filters.has?.includes('image') && !item.first_image) return false;
+  if (filters.has?.includes('prompt') && !item.prompts.some(prompt => prompt.text.trim())) return false;
+  if ((filters.fav?.includes('true') || filters.favorite?.includes('true')) && !item.favorite) return false;
+  if ((filters.fav?.includes('false') || filters.favorite?.includes('false')) && item.favorite) return false;
+  if (filters.archived?.includes('true') && !item.archived) return false;
+  if (filters.archived?.includes('false') && item.archived) return false;
+  return true;
 }
 
 async function demoItemList(params: Record<string, string | number | boolean | undefined>): Promise<ItemList> {
   const allItems = await demoItems();
-  const q = String(params.q || '').trim().toLowerCase();
+  const structured = demoStructuredSearch(String(params.q || ''));
+  const q = structured.q;
   const cluster = String(params.cluster || '').trim();
   const tag = String(params.tag || '').trim();
-  const sort = (params.sort === 'created_desc' || params.sort === 'title_asc' || params.sort === 'updated_desc') ? params.sort : DEFAULT_ITEM_SORT;
+  const sort = (['updated_desc', 'created_desc', 'created_asc', 'title_asc', 'title_desc', 'source_asc', 'model_asc'].includes(String(params.sort))) ? params.sort as ItemSortMode : DEFAULT_ITEM_SORT;
   const limit = Math.max(0, Number(params.limit || 100));
   const offset = Math.max(0, Number(params.offset || 0));
   const filtered = allItems.filter(item => {
     if (cluster && item.cluster?.id !== cluster) return false;
     if (tag && !item.tags.some(itemTag => itemTag.name === tag || itemTag.id === tag)) return false;
+    if (!demoMatchesStructuredSearch(item, structured.filters)) return false;
     if (q && !normalizeSearchText(item).includes(q)) return false;
     return true;
   });
@@ -81,11 +115,14 @@ export const api = isDemoMode ? {
   config: () => Promise.resolve<AppConfig>({ version: 'demo', library_path: 'GitHub Pages read-only sandbox', database_path: 'Static JSON bundle', preferred_prompt_language: 'en', features: { camelot: { percival: true } } }),
   updateStatus: () => Promise.resolve<AppUpdateStatus>({ current_version: 'demo', latest_version: null, update_available: false, checked_at: new Date().toISOString(), service_mode: 'not_applicable', active_generation_jobs: { running: 0, queued: 0 }, can_restart: false, requires_manual_restart: true }),
   startAppUpdate: (_payload: AppUpdateRequest) => demoReadOnly(),
+  cleanupPreview: () => Promise.resolve<CleanupPreview>({ broken_image_records: [], unreferenced_files: [], total_bytes: 0, preview_token: 'demo' }),
+  applyCleanup: (_payload: CleanupApplyRequest) => demoReadOnly(),
   items: demoItemList,
   item: demoItem,
   createItem: (_payload: ItemCreate) => demoReadOnly(),
   updateItem: (_id: string, _payload: Partial<ItemCreate>) => demoReadOnly(),
   deleteItem: (_id: string) => demoReadOnly(),
+  batchItems: (_payload: ItemBatchRequest) => demoReadOnly(),
   favorite: (_id: string) => demoReadOnly(),
   uploadImage: (_id: string, _file: File, _role: UploadImageRole = 'result_image') => demoReadOnly(),
   generationProviders: () => Promise.resolve<GenerationProviderStatus[]>([
@@ -136,11 +173,14 @@ export const api = isDemoMode ? {
   config: () => json<AppConfig>('/api/config'),
   updateStatus: () => json<AppUpdateStatus>('/api/update-status'),
   startAppUpdate: (payload: AppUpdateRequest) => json<AppUpdateResult>('/api/app-update/jobs', { method: 'POST', body: JSON.stringify(payload) }),
+  cleanupPreview: () => json<CleanupPreview>('/api/cleanup/preview'),
+  applyCleanup: (payload: CleanupApplyRequest) => json<CleanupApplyResult>('/api/cleanup/apply', { method: 'POST', body: JSON.stringify(payload) }),
   items: (params: Record<string, string | number | boolean | undefined>) => { const qs = new URLSearchParams(); Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)); }); return json<ItemList>(`/api/items?${qs}`); },
   item: (id: string) => json<ItemDetail>(`/api/items/${id}`),
   createItem: (payload: ItemCreate) => json<ItemDetail>('/api/items', { method: 'POST', body: JSON.stringify(payload) }),
   updateItem: (id: string, payload: Partial<ItemCreate>) => json<ItemDetail>(`/api/items/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteItem: (id: string) => json<ItemDetail>(`/api/items/${id}`, { method: 'DELETE' }),
+  batchItems: (payload: ItemBatchRequest) => json<ItemBatchResult>('/api/items/batch', { method: 'POST', body: JSON.stringify(payload) }),
   favorite: (id: string) => json<ItemDetail>(`/api/items/${id}/favorite`, { method: 'POST' }),
   uploadImage: (id: string, file: File, role: UploadImageRole = 'result_image') => { const fd = new FormData(); fd.set('file', file); fd.set('role', role); return json(`/api/items/${id}/images`, { method: 'POST', body: fd }); },
   generationProviders: () => json<GenerationProviderStatus[]>('/api/generation-providers'),

@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 from io import BytesIO
 from PIL import Image
@@ -123,6 +124,67 @@ def test_item_list_sorts_by_created_and_title_without_rating_ui(tmp_path):
     assert [item["title"] for item in c.get("/api/items", params={"sort": "title_asc"}).json()["items"]] == ["Alpha Sort", "Beta Sort", "Zebra Sort"]
 
 
+def test_structured_query_filters_keywords_and_has_filters(tmp_path):
+    c = client(tmp_path)
+    library = tmp_path / "library"
+    apple = c.post("/api/items", json=create_payload(
+        title="Apple Package",
+        cluster_name="Packaging",
+        tags=["template", "fruit"],
+        prompts=[{"language": "en", "text": "Apple {{package}}", "is_primary": True}],
+        model="gpt-image-2",
+        source_name="awesome-gpt-image-2",
+        source_url="https://example.test/apple",
+    )).json()
+    poster = c.post("/api/items", json=create_payload(
+        title="Poster Study",
+        cluster_name="Poster",
+        tags=["poster"],
+        model="other-model",
+        source_name="manual",
+        source_url="https://example.test/poster",
+    )).json()
+    c.post(
+        f"/api/items/{apple['id']}/images",
+        data={"role": "result_image"},
+        files={"file": ("result.png", png_bytes(), "image/png")},
+    )
+    c.post(
+        f"/api/items/{poster['id']}/images",
+        data={"role": "reference_image"},
+        files={"file": ("reference.png", png_bytes(color=(1, 2, 3)), "image/png")},
+    )
+    with connect(library) as conn:
+        conn.execute("UPDATE items SET created_at=?, updated_at=? WHERE id=?", ("2000-01-01T01:00:00+00:00", "2000-01-01T02:00:00+00:00", poster["id"]))
+        conn.commit()
+
+    assert c.get("/api/items", params={"q": "tag:template apple"}).json()["total"] == 1
+    assert c.get("/api/items", params={"q": "collection:Packaging apple"}).json()["total"] == 1
+    assert c.get("/api/items", params={"q": "model:gpt-image-2 source:awesome apple"}).json()["total"] == 1
+    assert c.get("/api/items", params={"q": "created:30d apple"}).json()["total"] == 1
+    assert c.get("/api/items", params={"q": "has:result apple"}).json()["total"] == 1
+    assert c.get("/api/items", params={"q": "has:prompt apple"}).json()["total"] == 1
+    assert c.get("/api/items", params={"q": "has:reference apple"}).json()["total"] == 0
+    assert c.get("/api/items", params={"q": "creator:edward apple"}).json()["total"] == 0
+
+
+def test_extended_item_sort_modes(tmp_path):
+    c = client(tmp_path)
+    alpha = c.post("/api/items", json=create_payload(title="Alpha Sort", model="Model B", source_name="Source B", source_url="https://example.test/alpha")).json()
+    beta = c.post("/api/items", json=create_payload(title="Beta Sort", model="Model A", source_name="Source C", source_url="https://example.test/beta")).json()
+    gamma = c.post("/api/items", json=create_payload(title="Gamma Sort", model="Model C", source_name="Source A", source_url="https://example.test/gamma")).json()
+    with connect(tmp_path / "library") as conn:
+        conn.execute("UPDATE items SET created_at=?, updated_at=? WHERE id=?", ("2026-01-01T00:00:00+00:00", "2026-01-04T00:00:00+00:00", alpha["id"]))
+        conn.execute("UPDATE items SET created_at=?, updated_at=? WHERE id=?", ("2026-01-02T00:00:00+00:00", "2026-01-03T00:00:00+00:00", beta["id"]))
+        conn.execute("UPDATE items SET created_at=?, updated_at=? WHERE id=?", ("2026-01-03T00:00:00+00:00", "2026-01-02T00:00:00+00:00", gamma["id"]))
+        conn.commit()
+
+    assert [item["title"] for item in c.get("/api/items", params={"sort": "created_asc"}).json()["items"]] == ["Alpha Sort", "Beta Sort", "Gamma Sort"]
+    assert [item["title"] for item in c.get("/api/items", params={"sort": "title_desc"}).json()["items"]] == ["Gamma Sort", "Beta Sort", "Alpha Sort"]
+    assert [item["title"] for item in c.get("/api/items", params={"sort": "source_asc"}).json()["items"]] == ["Gamma Sort", "Alpha Sort", "Beta Sort"]
+    assert [item["title"] for item in c.get("/api/items", params={"sort": "model_asc"}).json()["items"]] == ["Beta Sort", "Alpha Sort", "Gamma Sort"]
+
+
 def test_items_list_limit_allows_gallery_overview_scale(tmp_path):
     c = client(tmp_path)
     for idx in range(230):
@@ -131,6 +193,64 @@ def test_items_list_limit_allows_gallery_overview_scale(tmp_path):
     assert listed["total"] == 230
     assert listed["limit"] == 300
     assert len(listed["items"]) == 230
+
+
+def test_batch_archive_favorite_tag_and_move_items(tmp_path):
+    c = client(tmp_path)
+    first = c.post("/api/items", json=create_payload(title="Batch One", source_url="https://example.test/batch-one")).json()
+    second = c.post("/api/items", json=create_payload(title="Batch Two", source_url="https://example.test/batch-two")).json()
+
+    archived = c.post("/api/items/batch", json={"item_ids": [first["id"], second["id"]], "action": "archive"}).json()
+    assert archived["requested"] == 2
+    assert archived["changed"] == 2
+    assert c.get("/api/items").json()["total"] == 0
+    assert c.get("/api/items", params={"q": "archived:true"}).json()["total"] == 2
+    assert c.get("/api/items", params={"archived": True}).json()["total"] == 2
+
+    unarchived = c.post("/api/items/batch", json={"item_ids": [first["id"], second["id"]], "action": "unarchive"}).json()
+    assert unarchived["changed"] == 2
+    assert c.get("/api/items").json()["total"] == 2
+
+    favorite = c.post("/api/items/batch", json={"item_ids": [first["id"], second["id"]], "action": "favorite"}).json()
+    assert favorite["changed"] == 2
+    assert c.get("/api/items", params={"favorite": True}).json()["total"] == 2
+
+    tagged = c.post("/api/items/batch", json={"item_ids": [first["id"], second["id"]], "action": "add_tags", "tags": ["batch", "cleanup"]}).json()
+    assert tagged["changed"] == 2
+    assert c.get("/api/items", params={"q": "tag:batch"}).json()["total"] == 2
+
+    moved = c.post("/api/items/batch", json={"item_ids": [first["id"], second["id"]], "action": "move_collection", "cluster_name": "Batch Review"}).json()
+    assert moved["changed"] == 2
+    assert c.get("/api/items", params={"q": "collection:Batch"}).json()["total"] == 2
+
+    removed = c.post("/api/items/batch", json={"item_ids": [first["id"], second["id"]], "action": "remove_tags", "tags": ["cleanup"]}).json()
+    assert removed["changed"] == 2
+    assert c.get("/api/items", params={"q": "tag:cleanup"}).json()["total"] == 0
+
+    assert c.post("/api/items/batch", json={"item_ids": [first["id"]], "action": "add_tags"}).status_code == 400
+    assert c.post("/api/items/batch", json={"item_ids": [first["id"]], "action": "move_collection"}).status_code == 400
+    assert c.post("/api/items/batch", json={"item_ids": [first["id"]], "action": "move_collection", "cluster_name": "   "}).status_code == 400
+    assert c.post("/api/items/batch", json={"item_ids": [first["id"]], "action": "move_collection", "cluster_id": "clu_missing"}).status_code == 400
+
+
+def test_batch_delete_uses_server_side_delete_and_reports_missing_items(tmp_path):
+    c = client(tmp_path)
+    library = tmp_path / "library"
+    item = c.post("/api/items", json=create_payload(title="Batch Delete")).json()
+    uploaded = c.post(
+        f"/api/items/{item['id']}/images",
+        data={"role": "result_image"},
+        files={"file": ("result.png", png_bytes(), "image/png")},
+    ).json()
+    stored_paths = [library / uploaded[key] for key in ("original_path", "thumb_path", "preview_path")]
+    result = c.post("/api/items/batch", json={"item_ids": [item["id"], "missing"], "action": "delete"}).json()
+
+    assert result["requested"] == 2
+    assert result["changed"] == 1
+    assert result["failed"] == 1
+    assert "missing" in result["errors"]
+    assert c.get("/api/items").json()["total"] == 0
+    assert all(not path.exists() for path in stored_paths)
 
 
 def test_patch_favorite_and_delete_item(tmp_path):
@@ -218,7 +338,10 @@ def test_media_route_does_not_follow_allowed_dir_symlink_to_database(tmp_path):
     library = tmp_path / "library"
     leak = library / "originals" / "leak"
     leak.parent.mkdir(parents=True, exist_ok=True)
-    leak.symlink_to(library / "db.sqlite")
+    try:
+        leak.symlink_to(library / "db.sqlite")
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation is not available: {exc}")
     assert c.get("/media/originals/leak").status_code == 404
 
 

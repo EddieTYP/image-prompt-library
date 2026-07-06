@@ -7,7 +7,7 @@ def test_item_save_refreshes_visible_item_query():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     hook = (ROOT / "frontend" / "src" / "hooks" / "useItemsQuery.ts").read_text()
     assert "const [itemsReloadKey, setItemsReloadKey]" in app
-    assert "useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, parsedSearchQuery.sort)" in app
+    assert "useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, activeSort)" in app
     assert "setItemsReloadKey(k => k + 1)" in app
     assert "reloadKey" in hook
     assert "[q, clusterId, tag, viewLimit, reloadKey, sort]" in hook
@@ -26,7 +26,7 @@ def test_topbar_is_toolbar_search_not_hero_or_keyboard_shortcut():
     assert "metaKey" not in app and "ctrlKey" not in app
 
 
-def test_search_bar_supports_sort_operators_without_extra_dropdown_ui():
+def test_search_bar_has_visible_sort_control_and_query_filter_chips():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     hook = (ROOT / "frontend" / "src" / "hooks" / "useItemsQuery.ts").read_text()
     topbar = (ROOT / "frontend" / "src" / "components" / "TopBar.tsx").read_text()
@@ -35,21 +35,39 @@ def test_search_bar_supports_sort_operators_without_extra_dropdown_ui():
     i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
 
     assert "parseSearchSortQuery(debouncedQ)" in app
-    assert "useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, parsedSearchQuery.sort)" in app
+    assert "parseSearchSortQuery(q)" in app
+    assert "const [sort, setSort]" in app
+    assert "const activeSort = rawParsedSearchQuery.explicitSort ? rawParsedSearchQuery.sort : sort" in app
+    assert "useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, activeSort)" in app
+    assert "onSort={updateSort}" in app
     assert "removeSearchSortOperator(current)" in app
     assert "onClearSort={clearSearchSort}" in app
     assert "sort: ItemSortMode = DEFAULT_ITEM_SORT" in hook
     assert "sort" in hook and "api.items({ q, cluster: clusterId, tag, limit: viewLimit, sort })" in hook
-    assert "sortLabel" in topbar and "onClearSort" in topbar
+    assert "queryFilterChips" in app
+    assert "sort-select" in topbar
+    assert "value={sort}" in topbar
+    assert "onChange={event => onSort(event.currentTarget.value as ItemSortMode)}" in topbar
+    assert "queryFilterChips" in topbar
     assert "className=\"chip active-filter sort-chip\"" in topbar
-    assert "sort:title" in search_sort and "title_asc" in search_sort
-    assert "sort:created" in search_sort and "created_desc" in search_sort
-    assert "sort:updated" in search_sort and "updated_desc" in search_sort
+    assert "×" not in topbar
+    assert "กง" not in topbar and "กจ" not in topbar and "กั" not in topbar
+    assert all(marker in search_sort for marker in ["updated_desc", "created_desc", "created_asc", "title_asc", "title_desc", "source_asc", "model_asc"])
+    assert all(marker in search_sort for marker in ["sort:updated", "sort:created", "sort:title", "sort:oldest", "sort:title-desc", "sort:source", "sort:model"])
     assert "sort:rating" not in search_sort
+    assert "parseStructuredSearchChips" in search_sort
+    assert "SUPPORTED_DATE_FILTER_VALUES" in search_sort
+    assert "['today', 'yesterday', '7d', '30d']" in search_sort
+    assert "['created', 'updated'].includes(normalizedKey) && SUPPORTED_DATE_FILTER_VALUES.includes(normalizedValue)" in search_sort
+    assert "['tag', 'collection', 'model', 'source'].includes(normalizedKey)" in search_sort
+    assert "'archived'" in search_sort
+    assert "'prompt'" in search_sort
     assert "sortLabelForMode" in search_sort
-    assert "sortByTitle" in i18n and "標題 A–Z" in i18n
+    assert all(marker in i18n for marker in ["sortByOldest", "sortByTitleDesc", "sortBySource", "sortByModel"])
+    assert "sortByTitle" in i18n
     assert "sortByRating" not in i18n
     assert "demoItemSort" in client
+    assert "demoStructuredSearch" in client
     assert "filtered.sort" in client
 
 
@@ -186,7 +204,8 @@ def test_mobile_header_keeps_brand_centered_and_status_inline():
     assert ".nav-row{grid-template-columns:auto1frauto;" in compact_css
     assert ".toolbar-search{grid-column:1/-1;order:4}" in compact_css
     assert ".mobile-brand{justify-self:center" in compact_css
-    assert ".status-row{flex-direction:row;align-items:center;" in compact_css
+    assert ".status-row{flex-direction:row;align-items:flex-start;" in compact_css
+    assert ".status-row:has(.active-filter-strip.chip){flex-wrap:wrap;justify-content:flex-end}" in compact_css
 
 
 def test_mobile_generation_queue_trigger_stays_clear_of_bottom_fabs():
@@ -219,7 +238,12 @@ def test_mobile_selected_collection_uses_bottom_floating_dock_and_active_filter_
     assert ".filter-active-dot" not in css
     assert ".filter-active-count" not in css
     assert "@media(max-width:760px)" in css
-    assert ".active-filter-strip.active-filter{display:none}" in compact_css
+    assert ".active-filter-strip{flex:1;overflow:visible;flex-wrap:wrap}" in compact_css
+    assert ".active-filter-strip.active-filter{display:none}" not in compact_css
+    assert ".active-filter-strip.chip{max-width:100%}" in compact_css
+    assert ".active-filter-strip.soft-chip{flex:11100%;max-width:100%}" in compact_css
+    assert ".status-row:has(.active-filter-strip.chip){flex-wrap:wrap;justify-content:flex-end}" in compact_css
+    assert ".status-row:has(.active-filter-strip.chip).active-filter-strip{order:2;flex:11100%;width:100%}" in compact_css
     assert ".selected-collection-dock{display:none}" in compact_css
     assert "@media(min-width:761px){.selected-collection-dock{position:fixed;left:16px;right:16px;bottom:calc(16px+env(safe-area-inset-bottom));" in compact_css
     assert ".selected-collection-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:clamp(14px,3.7vw,16px);" in compact_css
@@ -751,7 +775,7 @@ def test_generation_work_queue_and_standalone_generate_entry_are_local_only():
     assert "generate-fab" in app
     assert "!isDemoMode && (" in app
     assert "generationAvailable && <button className=\"fab generate-fab\"" in app
-    assert "!isDemoMode && <GenerationQueueDrawer" in app
+    assert "!isDemoMode && showFloatingActions && <GenerationQueueDrawer" in app
     assert "focusedGenerationJobId" in app
     assert "openGenerationJob" in app
     assert "onOpenJob={openGenerationJob}" in app
@@ -1468,7 +1492,8 @@ def test_delete_actions_live_in_detail_modal_and_cards_batch_select():
     assert "selectedItemIds" in app
     assert "selectionMode" in app
     assert "api.deleteItem(item.id)" in app
-    assert "Promise.all(Array.from(selectedItemIds).map(id => api.deleteItem(id)))" in app
+    assert "api.batchItems" in app
+    assert "Promise.all(Array.from(selectedItemIds).map(id => api.deleteItem(id)))" not in app
     assert "onDelete={isDemoMode ? undefined : deleteDetail}" in app
     assert "onToggleSelection={selectionMode ? toggleSelectedItem : undefined}" in app
     assert "onClick={deleteSelectedItems}" in app
@@ -1524,3 +1549,50 @@ def test_collection_names_are_localized_from_cluster_names_metadata():
     assert "clusters={localizedClusters}" in app
     assert "items={localizedData.items}" in app
     assert "clusterName={localizedClusterName(selectedCluster, uiLanguage)}" in app
+
+
+def test_selection_toolbar_uses_batch_api_for_power_user_actions():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+    types = (ROOT / "frontend" / "src" / "types.ts").read_text()
+    styles = (ROOT / "frontend" / "src" / "styles.css").read_text()
+
+    assert "ItemBatchRequest" in types
+    assert "ItemBatchResult" in types
+    assert "batchItems" in api_client
+    assert "api.batchItems" in app
+    assert "runBatchAction" in app
+    assert "!configOpen" in app and "showFloatingActions" in app
+    assert "batchArchiveSelected" in app
+    assert "showingArchivedItems ? 'unarchive' : 'archive'" in app
+    assert "restoreSelectedReferences" in app
+    assert "batchFavoriteSelected" in app
+    assert "batchAddTagsSelected" in app
+    assert "batchMoveSelected" in app
+    assert "Promise.all(Array.from(selectedItemIds).map(id => api.deleteItem(id)))" not in app
+    assert "selection-toolbar-secondary" in app
+    assert ".selection-toolbar-secondary" in styles
+
+
+def test_config_panel_has_local_only_cleanup_preview_and_apply():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+    api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+    types = (ROOT / "frontend" / "src" / "types.ts").read_text()
+    styles = (ROOT / "frontend" / "src" / "styles.css").read_text()
+
+    assert "CleanupPreview" in types
+    assert "cleanupPreview" in api_client
+    assert "applyCleanup" in api_client
+    assert "cleanupPreview" in config
+    assert "loadCleanupPreview" in config
+    assert "applyCleanup" in config
+    assert "preview_token: cleanupPreview.preview_token" in config
+    assert "preview_token: string" in types
+    assert "!isDemoMode" in config
+    assert "onLibraryCleanup" in config
+    assert "onLibraryCleanup={saved}" in app
+    assert "const refreshGenerationAvailability = useCallback(() => api.generationProviders()" in app
+    assert "}, [refreshGenerationAvailability]);" in app
+    assert "cleanup-section" in config
+    assert ".cleanup-section" in styles
