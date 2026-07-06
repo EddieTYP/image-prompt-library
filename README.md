@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.5-beta)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.6-beta)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 <p align="center">
@@ -33,7 +33,7 @@ Use the online demo as a visual prompt catalogue: search for ideas, inspect prom
 
 If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate new images through ChatGPT / Codex OAuth while keeping your SQLite database and image files on your own computer.
 
-Current public beta: [`v0.7.5-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.5-beta). This patch keeps generation history safer to inspect by redacting raw input-image data from job API responses, and improves keyboard/focus behavior in Filters, Config, gallery cards, and detail modals.
+Current public beta: [`v0.7.6-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.6-beta). This patch adds power-user library management with structured search filters, visible sorting, batch reference actions, and local cleanup preview/apply tools, with desktop and mobile layout polish.
 
 ## Quick start
 
@@ -150,4 +150,4 @@ Privacy model:
 
 ## Project status
 
-This is a public beta. Core browsing, search, local add/edit, optional local generation, versioned installs, update/rollback, and the read-only online demo are available today. Remaining work includes service/update hardening, management-mode cleanup tools, search/sort polish, batch image editing, import-flow polish, and deeper mobile Explore gestures.
+This is a public beta. Core browsing, structured search and sort, local add/edit, batch reference management, local cleanup tools, optional local generation, versioned installs, update/rollback, and the read-only online demo are available today. Remaining work includes service/update hardening, generation hardening, install/onboarding polish, import-flow polish, batch image editing, and deeper mobile Explore gestures.
