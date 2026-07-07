@@ -124,7 +124,7 @@ function jobQuality(job?: GenerationJobRecord) {
   return typeof value === 'string' && ['low', 'medium', 'high'].includes(value) ? value : 'high';
 }
 
-const STALE_RUNNING_JOB_MS = 30 * 60 * 1000;
+const STALE_RUNNING_JOB_MS = 10 * 60 * 1000;
 
 function retriedByJobId(job?: GenerationJobRecord) {
   const value = job?.metadata?.retried_by_generation_job_id;
@@ -724,7 +724,8 @@ export default function GenerationPanel({
           <strong>Generating…</strong>
           {isStaleRunningJob(selectedStageJob) && (
             <div className="generation-stage-actions" aria-label="Stale generation actions">
-              <button className="stage-action" onClick={() => markStaleRunningJobFailed(selectedStageJob)} disabled={busy} aria-label="Mark stale job failed" title="Mark stale job failed">
+              <p className="generation-stale-copy">Generation may have stalled. Mark failed to retry.</p>
+              <button className="stage-action" onClick={() => markStaleRunningJobFailed(selectedStageJob)} disabled={busy} aria-label="Mark failed to retry" title="Mark failed to retry">
                 Mark failed
               </button>
             </div>

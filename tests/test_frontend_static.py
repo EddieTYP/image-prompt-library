@@ -219,6 +219,20 @@ def test_mobile_generation_queue_trigger_stays_clear_of_bottom_fabs():
     assert "max-height:calc(70dvh-56px)" in mobile_queue_css
 
 
+def test_generation_frontend_uses_ten_minute_stale_threshold_and_clear_retry_copy():
+    panel = (ROOT / "frontend" / "src" / "components" / "GenerationPanel.tsx").read_text(encoding="utf-8")
+    drawer = (ROOT / "frontend" / "src" / "components" / "GenerationQueueDrawer.tsx").read_text(encoding="utf-8")
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
+
+    assert "const STALE_RUNNING_JOB_MS = 10 * 60 * 1000" in panel
+    assert "const STALE_RUNNING_JOB_MS = 10 * 60 * 1000" in drawer
+    assert "Generation may have stalled." in panel
+    assert "Mark failed to retry." in panel
+    assert "Generation may have stalled" in drawer
+    assert "Retry failed job" in drawer
+    assert "generation-stale-copy" in css
+
+
 def test_mobile_selected_collection_uses_bottom_floating_dock_and_active_filter_state():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     topbar = (ROOT / "frontend" / "src" / "components" / "TopBar.tsx").read_text()
