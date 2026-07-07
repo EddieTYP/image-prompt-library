@@ -76,7 +76,7 @@ function localizeItemForDisplay(item: ItemSummary, language: UiLanguage): ItemSu
 }
 
 function generationProviderConnected(provider: GenerationProviderStatus) {
-  return provider.provider !== 'manual_upload' && provider.available && provider.authenticated && provider.configured;
+  return provider.can_generate ?? Boolean(provider.available && provider.authenticated && provider.configured);
 }
 
 export default function App() {

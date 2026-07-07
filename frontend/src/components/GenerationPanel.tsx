@@ -15,6 +15,20 @@ function providerReady(provider: GenerationProviderStatus) {
   return Boolean(provider.available && provider.authenticated && provider.configured);
 }
 
+function providerCanGenerate(provider?: GenerationProviderStatus) {
+  if (!provider) return false;
+  return provider.can_generate ?? providerReady(provider);
+}
+
+function providerReadinessLabel(provider?: GenerationProviderStatus) {
+  if (!provider) return 'Provider unavailable';
+  if (providerCanGenerate(provider)) return `${provider.display_name} ready`;
+  if (provider.message) return provider.message;
+  if (provider.status === 'login_required' || provider.state === 'not_connected') return `Connect ${provider.display_name} before generating.`;
+  if (provider.status === 'auth_error') return `${provider.display_name} needs attention before generating.`;
+  return `${provider.display_name} is unavailable.`;
+}
+
 function statusLabel(status: string, isUsedAsGenerationReference = false) {
   if (status === 'queued') return 'Queued';
   if (status === 'running') return 'Running';
@@ -198,6 +212,8 @@ export default function GenerationPanel({
   const selectedStageJob = (historyReviewJob || activeJob)?.status !== 'discarded' ? (historyReviewJob || activeJob) : undefined;
   const visibleJobs = useMemo(() => jobs.filter(job => job.status !== 'discarded'), [jobs]);
   const selectedProvider = useMemo(() => providers.find(candidate => candidate.provider === provider), [providers, provider]);
+  const selectedProviderCanGenerate = providerCanGenerate(selectedProvider);
+  const selectedProviderMessage = providerReadinessLabel(selectedProvider);
   const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.4'];
   const templateVariables = useMemo(() => promptVariablesEnabled ? extractPromptTemplateVariableRecords(promptText) : [], [promptVariablesEnabled, promptText]);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
@@ -326,7 +342,7 @@ export default function GenerationPanel({
 
   const createJob = async () => {
     const prompt = promptText.trim();
-    if (!prompt || hasMissingTemplateValues || !resolvedPrompt) return;
+    if (!prompt || hasMissingTemplateValues || !resolvedPrompt || !selectedProviderCanGenerate) return;
     setBusy(true);
     setMessage('');
     setHistoryReviewJobId(undefined);
@@ -850,7 +866,10 @@ export default function GenerationPanel({
                   <button className="generation-control-trigger generation-attach-trigger" type="button" onClick={() => attachmentInputRef.current?.click()} disabled={editAttachments.length >= MAX_EDIT_ATTACHMENTS} aria-label="Attach image" title={editAttachments.length >= MAX_EDIT_ATTACHMENTS ? 'Maximum 4 images' : 'Attach image'}>
                     <Plus size={18} aria-hidden="true" />
                   </button>
-                  <button className="primary generation-primary-action" onClick={createJob} disabled={busy || !promptText.trim() || hasMissingTemplateValues}>Generate</button>
+                  <span className={`generation-provider-readiness ${selectedProviderCanGenerate ? 'is-ready' : 'needs-attention'}`}>
+                    {selectedProviderMessage}
+                  </span>
+                  <button className="primary generation-primary-action" onClick={createJob} disabled={busy || !selectedProviderCanGenerate || !promptText.trim() || hasMissingTemplateValues}>Generate</button>
                   <button className="generation-history-control" onClick={() => setShowHistoryDrawer(true)} aria-label="History" title="History" type="button"><Clock3 size={17} /></button>
                 </div>
               </>

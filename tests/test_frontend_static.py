@@ -1488,6 +1488,22 @@ def test_generation_provider_status_has_readiness_contract():
     assert "can_generate: false" in api
 
 
+def test_generation_panel_surfaces_provider_readiness_and_blocks_unavailable_submit():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+    panel = (ROOT / "frontend" / "src" / "components" / "GenerationPanel.tsx").read_text(encoding="utf-8")
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
+
+    assert "provider.can_generate ??" in app
+    assert "providerReadinessLabel" in panel
+    assert "selectedProviderCanGenerate" in panel
+    assert "selectedProviderMessage" in panel
+    assert "disabled={busy || !selectedProviderCanGenerate || !promptText.trim() || hasMissingTemplateValues}" in panel
+    assert "generation-provider-readiness" in panel
+    assert "generation-provider-readiness" in css
+    assert "generation-control-value" in panel
+    assert "generation-attach-trigger" in panel
+
+
 def test_delete_actions_live_in_detail_modal_and_cards_batch_select():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
