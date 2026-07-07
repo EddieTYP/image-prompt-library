@@ -1473,6 +1473,16 @@ def test_frontend_prefers_result_image_for_card_and_detail_hero():
     assert "const primaryImage = uniqueImages[0]" not in detail
 
 
+def test_generation_provider_status_has_readiness_contract():
+    types = (ROOT / "frontend" / "src" / "types.ts").read_text()
+    api = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+
+    assert "status?: 'ready' | 'unavailable' | 'login_required' | 'auth_error'" in types
+    assert "can_generate?: boolean" in types
+    assert "message?: string | null" in types
+    assert "can_generate:" in api
+
+
 def test_delete_actions_live_in_detail_modal_and_cards_batch_select():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()

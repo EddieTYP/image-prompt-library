@@ -337,6 +337,44 @@ def test_codex_native_status_exposes_orchestrator_and_image_models(tmp_path, mon
     assert codex["default_image_model"] == "gpt-image-2"
 
 
+def test_codex_native_status_exposes_generation_readiness_fields(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh-secret"})
+    payload = client(tmp_path).get("/api/generation-providers/openai-codex-native/status").json()
+
+    assert payload["status"] == "ready"
+    assert payload["can_generate"] is True
+    assert payload["message"] is None
+
+
+def test_codex_native_missing_login_maps_to_login_required(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    payload = client(tmp_path).get("/api/generation-providers/openai-codex-native/status").json()
+
+    assert payload["status"] == "login_required"
+    assert payload["can_generate"] is False
+    assert payload["message"] == "Connect ChatGPT / Codex OAuth before generating."
+
+
+def test_generation_providers_manual_upload_is_always_generation_ready(tmp_path, monkeypatch):
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+    providers = client(tmp_path).get("/api/generation-providers").json()
+    manual = providers[0]
+
+    assert manual["provider"] == "manual_upload"
+    assert manual["status"] == "ready"
+    assert manual["can_generate"] is True
+    assert manual["message"] is None
+
+
 def test_codex_native_run_executes_job_and_stages_result_without_leaking_tokens(tmp_path, monkeypatch):
     auth_path = tmp_path / "auth" / "auth.json"
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
