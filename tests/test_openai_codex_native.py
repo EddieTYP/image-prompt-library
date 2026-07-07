@@ -383,6 +383,8 @@ def test_codex_native_broken_saved_login_maps_to_auth_error(tmp_path, monkeypatc
 
     payload = client(tmp_path).get("/api/generation-providers/openai-codex-native/status").json()
 
+    assert payload["state"] == "not_connected"
+    assert payload["reason"] == "not_authenticated"
     assert payload["status"] == "auth_error"
     assert payload["can_generate"] is False
     assert payload["message"] == "ChatGPT / Codex OAuth needs attention before generating."

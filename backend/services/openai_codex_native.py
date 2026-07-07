@@ -291,9 +291,20 @@ def _response_int(payload: dict[str, Any], key: str, default: int, context: str)
         raise CodexNativeAuthError(f"{context} returned invalid {key}") from exc
 
 
-def _generation_readiness(configured: bool, token_present: bool, state: str) -> dict[str, Any]:
+def _generation_readiness(
+    configured: bool,
+    token_present: bool,
+    state: str,
+    credentials_present_but_unusable: bool = False,
+) -> dict[str, Any]:
     if configured and token_present:
         return {"status": "ready", "message": None, "can_generate": True}
+    if configured and credentials_present_but_unusable:
+        return {
+            "status": "auth_error",
+            "message": "ChatGPT / Codex OAuth needs attention before generating.",
+            "can_generate": False,
+        }
     if configured and state == "not_connected":
         return {
             "status": "login_required",
@@ -307,8 +318,8 @@ def _generation_readiness(configured: bool, token_present: bool, state: str) -> 
             "can_generate": False,
         }
     return {
-        "status": "auth_error",
-        "message": "ChatGPT / Codex OAuth needs attention before generating.",
+        "status": "unavailable",
+        "message": "ChatGPT / Codex OAuth is not configured.",
         "can_generate": False,
     }
 
@@ -435,16 +446,18 @@ class CodexNativeAuthStore:
         if not configured:
             state = "not_configured"
             reason = "missing_client_id"
-        elif saved_credentials_broken:
-            state = "credentials_need_attention"
-            reason = "auth_error"
         elif not token_present:
             state = "not_connected"
             reason = "not_authenticated"
         else:
             state = "connected"
             reason = None
-        readiness = _generation_readiness(configured, token_present, state)
+        readiness = _generation_readiness(
+            configured,
+            token_present,
+            state,
+            credentials_present_but_unusable=saved_credentials_broken,
+        )
         return {
             "provider": PROVIDER_ID,
             "display_name": DISPLAY_NAME,

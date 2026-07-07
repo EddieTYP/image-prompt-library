@@ -169,3 +169,38 @@ Warnings remained unchanged:
 
 - FastAPI / Starlette `TestClient` deprecation warning from site-packages
 - pytest cache write warning under `.pytest_cache`
+
+## Re-review Fix
+
+Addressed the additive-only follow-up finding on the broken-saved-credentials path.
+
+### Root cause
+
+- The previous follow-up fix used new public `state` / `reason` values to distinguish broken saved credentials.
+- That made the readiness fix work, but it violated the compatibility requirement for existing provider response fields and introduced a `state` value the current ConfigPanel does not label.
+
+### Fix
+
+- Preserved the legacy public contract for configured-but-unusable saved credentials:
+  - `state == "not_connected"`
+  - `reason == "not_authenticated"`
+- Kept `status == "auth_error"` by driving `_generation_readiness(...)` from a separate internal boolean:
+  - `credentials_present_but_unusable`
+- Updated the focused broken-saved-credentials test to assert both the legacy compatibility fields and the additive readiness field.
+
+### Focused verification
+
+Command run:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py::test_codex_native_status_exposes_generation_readiness_fields tests/test_openai_codex_native.py::test_codex_native_missing_login_maps_to_login_required tests/test_openai_codex_native.py::test_codex_native_broken_saved_login_maps_to_auth_error tests/test_openai_codex_native.py::test_generation_providers_manual_upload_is_always_generation_ready tests/test_frontend_static.py::test_generation_provider_status_has_readiness_contract -q
+```
+
+Result:
+
+- `5 passed, 2 warnings in 1.98s`
+
+Warnings remained unchanged:
+
+- FastAPI / Starlette `TestClient` deprecation warning from site-packages
+- pytest cache write warning under `.pytest_cache`
