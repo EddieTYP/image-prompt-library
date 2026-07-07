@@ -12,7 +12,7 @@ from PIL import Image
 from backend.db import connect
 from backend.main import create_app
 from backend.schemas import GenerationJobCreate
-from backend.services.generation_jobs import GenerationJobRepository
+from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository
 
 
 def png_bytes(color="orange", size=(18, 12)) -> bytes:
@@ -33,6 +33,20 @@ def create_source_item(c, *, author=None):
     if author is not None:
         payload["author"] = author
     return c.post("/api/items", json=payload).json()
+
+
+def _make_running_job(tmp_path, *, started_minutes_ago: int):
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="stale prompt"))
+    running = repo.mark_running(job.id)
+    started = (datetime.now(timezone.utc) - timedelta(minutes=started_minutes_ago)).isoformat()
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET started_at=?, updated_at=? WHERE id=?",
+            (started, started, running.id),
+        )
+        conn.commit()
+    return repo, running.id
 
 
 def test_generation_job_can_stage_result_and_accept_into_source_item(tmp_path):
@@ -881,47 +895,59 @@ def test_failed_generation_job_can_be_retried_without_rerunning_original(tmp_pat
     assert [candidate["metadata"].get("retry_of_generation_job_id") for candidate in jobs].count(job["id"]) == 1
 
 
-def test_stale_running_generation_job_can_be_marked_failed_for_manual_retry(tmp_path):
-    c = client(tmp_path)
-    source_item = create_source_item(c)
-    job = c.post("/api/generation-jobs", json={
-        "source_item_id": source_item["id"],
-        "provider": "manual_upload",
-        "prompt_text": "A stale running robot",
-    }).json()
+def test_running_generation_job_is_not_stale_before_ten_minutes(tmp_path):
+    repo, job_id = _make_running_job(tmp_path, started_minutes_ago=9)
+
+    try:
+        repo.mark_stale_running_failed(job_id)
+    except GenerationJobConflict as exc:
+        assert "not stale yet" in str(exc)
+    else:
+        raise AssertionError("Expected job to remain running before ten minutes")
+
+
+def test_stale_running_generation_job_fails_with_retryable_message(tmp_path):
+    repo, job_id = _make_running_job(tmp_path, started_minutes_ago=11)
+
+    failed = repo.mark_stale_running_failed(job_id)
+    retry = repo.retry_failed_job(job_id)
+
+    assert failed.status == "failed"
+    assert failed.error == "Generation took too long and may have stalled. Retry to run it again."
+    assert failed.metadata["stale_running_marked_failed"] is True
+    assert failed.metadata["stale_running_threshold_minutes"] == 10
+    assert retry.status == "queued"
+    assert retry.metadata["retry_of_generation_job_id"] == job_id
+
+
+def test_queued_and_running_generation_jobs_can_be_cancelled(tmp_path):
     repo = GenerationJobRepository(tmp_path / "library")
-    repo.mark_running(job["id"])
-    stale_started = (datetime.now(timezone.utc) - timedelta(minutes=45)).isoformat()
-    with connect(tmp_path / "library") as conn:
-        conn.execute("UPDATE generation_jobs SET started_at=?, updated_at=? WHERE id=?", (stale_started, stale_started, job["id"]))
-        conn.commit()
+    queued = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="queued"))
+    running = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="running"))
+    repo.mark_running(running.id)
 
-    response = c.post(f"/api/generation-jobs/{job['id']}/mark-failed")
-
-    assert response.status_code == 200
-    failed = response.json()
-    assert failed["status"] == "failed"
-    assert failed["completed_at"] is not None
-    assert failed["error"] == "Generation job was marked failed after running too long. Retry to run it again."
-    assert failed["metadata"]["stale_running_marked_failed"] is True
+    assert repo.cancel_job(queued.id).status == "cancelled"
+    assert repo.cancel_job(running.id).status == "cancelled"
 
 
-def test_fresh_running_generation_job_cannot_be_marked_failed_as_stale(tmp_path):
-    c = client(tmp_path)
-    source_item = create_source_item(c)
-    job = c.post("/api/generation-jobs", json={
-        "source_item_id": source_item["id"],
-        "provider": "manual_upload",
-        "prompt_text": "A fresh running robot",
-    }).json()
+def test_recover_interrupted_generation_jobs_marks_only_provider_running_failed(tmp_path):
+    from backend.services.generation_queue import INTERRUPTED_BY_BACKEND_RESTART_ERROR, recover_interrupted_generation_jobs
+    from backend.services.openai_codex_native import PROVIDER_ID
+
     repo = GenerationJobRepository(tmp_path / "library")
-    repo.mark_running(job["id"])
+    running_provider = repo.create_job(GenerationJobCreate(provider=PROVIDER_ID, prompt_text="provider running"))
+    queued_provider = repo.create_job(GenerationJobCreate(provider=PROVIDER_ID, prompt_text="provider queued"))
+    running_manual = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="manual running"))
+    repo.mark_running(running_provider.id)
+    repo.mark_running(running_manual.id)
 
-    response = c.post(f"/api/generation-jobs/{job['id']}/mark-failed")
+    recovered = recover_interrupted_generation_jobs(tmp_path / "library")
 
-    assert response.status_code == 409
-    assert "not stale yet" in response.json()["detail"]
-    assert c.get(f"/api/generation-jobs/{job['id']}").json()["status"] == "running"
+    assert [job.id for job in recovered] == [running_provider.id]
+    assert repo.get_job(running_provider.id).status == "failed"
+    assert repo.get_job(running_provider.id).error == INTERRUPTED_BY_BACKEND_RESTART_ERROR
+    assert repo.get_job(queued_provider.id).status == "queued"
+    assert repo.get_job(running_manual.id).status == "running"
 
 
 def test_generation_job_retry_rejects_saved_or_unfinished_jobs(tmp_path):
