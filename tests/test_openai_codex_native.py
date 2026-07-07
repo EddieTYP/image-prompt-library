@@ -364,6 +364,31 @@ def test_codex_native_missing_login_maps_to_login_required(tmp_path, monkeypatch
     assert payload["message"] == "Connect ChatGPT / Codex OAuth before generating."
 
 
+def test_codex_native_broken_saved_login_maps_to_auth_error(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthError, CodexNativeAuthStore
+
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(exp=1), "refresh_token": "refresh-secret"})
+    monkeypatch.setattr(
+        openai_codex_native.CodexNativeAuthStore,
+        "refresh_tokens",
+        lambda self, refresh_token, http_client=None: (_ for _ in ()).throw(
+            CodexNativeAuthError("refresh-secret should stay private")
+        ),
+    )
+
+    payload = client(tmp_path).get("/api/generation-providers/openai-codex-native/status").json()
+
+    assert payload["status"] == "auth_error"
+    assert payload["can_generate"] is False
+    assert payload["message"] == "ChatGPT / Codex OAuth needs attention before generating."
+    assert "refresh-secret" not in json.dumps(payload)
+
+
 def test_generation_providers_manual_upload_is_always_generation_ready(tmp_path, monkeypatch):
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
     providers = client(tmp_path).get("/api/generation-providers").json()

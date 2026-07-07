@@ -419,16 +419,25 @@ class CodexNativeAuthStore:
         configured = bool(configured_client_id())
         token_present = False
         account_id = None
+        saved_credentials_broken = False
         try:
+            raw_tokens = self._read_raw_tokens()
+            token_present = True
+            account_id = account_id_from_access_token(raw_tokens["access_token"])
             tokens = self.read_tokens()
             token_present = True
             account_id = account_id_from_access_token(tokens["access_token"])
         except Exception:
             token_present = False
+            account_id = None
+            saved_credentials_broken = self.path.is_file()
         available = configured and token_present
         if not configured:
             state = "not_configured"
             reason = "missing_client_id"
+        elif saved_credentials_broken:
+            state = "credentials_need_attention"
+            reason = "auth_error"
         elif not token_present:
             state = "not_connected"
             reason = "not_authenticated"

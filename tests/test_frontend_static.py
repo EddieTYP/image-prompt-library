@@ -1480,7 +1480,12 @@ def test_generation_provider_status_has_readiness_contract():
     assert "status?: 'ready' | 'unavailable' | 'login_required' | 'auth_error'" in types
     assert "can_generate?: boolean" in types
     assert "message?: string | null" in types
-    assert "can_generate:" in api
+    assert "status: 'ready'" in api
+    assert "message: null" in api
+    assert "can_generate: true" in api
+    assert "status: 'unavailable'" in api
+    assert "message: 'Generation requires a local install.'" in api
+    assert "can_generate: false" in api
 
 
 def test_delete_actions_live_in_detail_modal_and_cards_batch_select():

@@ -130,3 +130,42 @@ Planned commit message per brief:
 ```text
 feat: clarify generation provider readiness
 ```
+
+## Review Follow-Up Fix
+
+Addressed the Task 1 review finding that saved-but-unusable credentials were being flattened into `login_required`.
+
+### Root cause
+
+- `CodexNativeAuthStore.status()` treated every `read_tokens()` failure as if no usable credentials existed.
+- That made expired tokens with a failed refresh path look identical to a true "never connected" state.
+- As a result, `_generation_readiness()` never reached the `auth_error` branch for saved-but-broken credentials.
+
+### Fix
+
+- Added backend coverage for a saved auth store whose refresh fails:
+  - expected `status == "auth_error"`
+  - expected `can_generate is False`
+  - expected the generic attention message
+  - verified the response does not echo the refresh-secret text
+- Updated `CodexNativeAuthStore.status()` to distinguish:
+  - no saved credential store -> `not_connected` / `login_required`
+  - saved credential store that fails read/refresh -> `credentials_need_attention` / `auth_error`
+- Strengthened the frontend static contract test to assert demo `status`, `message`, and `can_generate` strings instead of only checking for `can_generate:`.
+
+### Focused verification
+
+Command run:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py::test_codex_native_status_exposes_generation_readiness_fields tests/test_openai_codex_native.py::test_codex_native_missing_login_maps_to_login_required tests/test_openai_codex_native.py::test_codex_native_broken_saved_login_maps_to_auth_error tests/test_openai_codex_native.py::test_generation_providers_manual_upload_is_always_generation_ready tests/test_frontend_static.py::test_generation_provider_status_has_readiness_contract -q
+```
+
+Result:
+
+- `5 passed, 2 warnings in 2.02s`
+
+Warnings remained unchanged:
+
+- FastAPI / Starlette `TestClient` deprecation warning from site-packages
+- pytest cache write warning under `.pytest_cache`
