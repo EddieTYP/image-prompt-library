@@ -9,6 +9,7 @@ library/previews/*
 .env
 backups/
 .local-work/
+.worktrees/
 node_modules/
 .vite/
 .venv/
