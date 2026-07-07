@@ -325,7 +325,7 @@ export default function GenerationQueueDrawer({
                     <span>{job.edited_prompt_text || job.prompt_text}</span>
                     <span className="generation-queue-row-actions">
                       <b>{statusLabel(job, isUsedAsGenerationReference(job, jobs))}</b>
-                      {isStaleRunningJob(job) && <em className="generation-stale-copy">Generation may have stalled</em>}
+                      {isStaleRunningJob(job) && <em className="generation-stale-copy">Generation may have stalled.</em>}
                       {isActive(job) && (
                         <button
                           type="button"

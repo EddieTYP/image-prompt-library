@@ -223,14 +223,27 @@ def test_generation_frontend_uses_ten_minute_stale_threshold_and_clear_retry_cop
     panel = (ROOT / "frontend" / "src" / "components" / "GenerationPanel.tsx").read_text(encoding="utf-8")
     drawer = (ROOT / "frontend" / "src" / "components" / "GenerationQueueDrawer.tsx").read_text(encoding="utf-8")
     css = (ROOT / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
+    compact_css = css.replace(" ", "")
+    queue_actions_css = compact_css[
+        compact_css.find(".generation-queue-row-actions{") : compact_css.find(".generation-queue-cancel{")
+    ]
+    final_generation_css = compact_css[
+        compact_css.rfind("/*Generationcontrols,editattachments,andmobilelayoutstabilization*/") :
+    ]
 
     assert "const STALE_RUNNING_JOB_MS = 10 * 60 * 1000" in panel
     assert "const STALE_RUNNING_JOB_MS = 10 * 60 * 1000" in drawer
     assert "Generation may have stalled." in panel
     assert "Mark failed to retry." in panel
-    assert "Generation may have stalled" in drawer
+    assert "Generation may have stalled." in drawer
     assert "Retry failed job" in drawer
     assert "generation-stale-copy" in css
+    assert ".generation-queue-row-actions{display:flex;flex-wrap:wrap;" in queue_actions_css
+    assert "display:inline-flex" not in queue_actions_css
+    assert "min-width:max-content" not in queue_actions_css
+    assert ".generation-stage-actions{position:absolute;left:14px;right:14px;bottom:12px;z-index:6;display:flex;flex-wrap:wrap;" in final_generation_css
+    assert ".generation-stage-actions.generation-stage-actions{display:inline-flex" not in final_generation_css
+    assert ".generation-stage-actions{max-width:calc(100%-24px);overflow:visible}" in final_generation_css
 
 
 def test_mobile_selected_collection_uses_bottom_floating_dock_and_active_filter_state():
