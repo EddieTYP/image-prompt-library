@@ -203,7 +203,7 @@ main{max-width:1680px;margin:0 auto;padding:26px 30px 88px}.app.explore-mode{hei
 .generation-prompt-area textarea,.generation-history-prompt-preview textarea{width:100%;height:100%;min-height:0;border:1px solid rgba(122,108,145,.18);border-radius:20px;background:rgba(255,255,255,.92);color:#30283a;padding:18px;font-size:16px;line-height:1.56;resize:none;box-shadow:inset 0 1px 0 rgba(255,255,255,.72)}
 .generation-prompt-area textarea::placeholder{color:rgba(73,58,104,.42)}
 .generation-prompt-area textarea:focus,.generation-history-prompt-preview textarea:focus{outline:0;border-color:rgba(109,93,252,.42);box-shadow:0 0 0 3px rgba(109,93,252,.12),inset 0 1px 0 rgba(255,255,255,.72)}
-.generation-compact-controls{display:grid;grid-template-columns:44px 44px 44px 44px minmax(112px,1fr) 44px;gap:8px;align-items:center;width:100%;max-width:100%;min-width:0;box-sizing:border-box;overflow:visible}
+.generation-compact-controls{display:grid;grid-template-columns:44px 44px 44px 44px minmax(0,1fr) minmax(112px,max-content) 44px;gap:8px;align-items:center;width:100%;max-width:100%;min-width:0;box-sizing:border-box;overflow:visible}
 .generation-compact-controls>*{min-width:0}
 .generation-control-wrap{position:relative;display:flex;align-items:center;min-width:0;width:44px;height:44px}
 .generation-control-trigger,.generation-history-control,.generation-attach-trigger{width:44px;min-width:44px;height:44px;min-height:44px;border-radius:14px;padding:0;border:1px solid rgba(122,108,145,.20);background:rgba(255,255,255,.82);color:#493a68;display:grid;place-items:center;cursor:pointer;position:relative;overflow:hidden}
@@ -253,12 +253,12 @@ main{max-width:1680px;margin:0 auto;padding:26px 30px 88px}.app.explore-mode{hei
   .generation-compose-card.generation-composer-card{min-height:calc(100dvh - 24px);height:calc(100dvh - 24px);flex:0 0 auto;display:grid;grid-template-rows:minmax(0,1fr) auto;scroll-snap-align:start}
   .generation-stage-card{min-height:calc(100dvh - 24px);height:calc(100dvh - 24px);flex:0 0 auto;scroll-snap-align:start;overflow:hidden}
   .generation-prompt-area textarea,.generation-history-prompt-preview textarea{min-height:0;height:100%}
-  .generation-compact-controls{grid-template-columns:40px 40px 40px 40px minmax(96px,1fr) 40px;gap:7px;position:relative;z-index:5;overflow:visible;padding-bottom:2px;scrollbar-width:none}
+  .generation-compact-controls{grid-template-columns:40px 40px 40px 40px 40px minmax(88px,1fr) 40px;gap:7px;position:relative;z-index:5;overflow:visible;padding-bottom:2px;scrollbar-width:none}
   .generation-compact-controls::-webkit-scrollbar{display:none}
   .generation-control-wrap,.generation-control-trigger,.generation-history-control,.generation-attach-trigger{width:40px;min-width:40px;height:40px;min-height:40px}
   .generation-control-icon{width:21px;height:21px}
-  .generation-provider-readiness{flex:1 1 100%;max-width:100%}
-  .generation-primary-action{width:auto;min-width:0;height:40px;min-height:40px;margin-top:0;padding:0 12px;grid-column:auto}
+  .generation-provider-readiness{grid-column:1/span 5;max-width:none}
+  .generation-primary-action{width:auto;min-width:0;height:40px;min-height:40px;margin-top:0;padding:0 12px;grid-column:6}
   .generation-attachment-strip{bottom:12px}
   .generation-attachment-thumb{width:46px;height:46px;border-radius:12px}
   .generation-attachment-thumb img{border-radius:11px}

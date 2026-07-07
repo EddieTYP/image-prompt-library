@@ -273,7 +273,7 @@ export default function GenerationPanel({
       .then(nextProviders => {
         if (cancelled) return;
         setProviders(nextProviders);
-        const firstReady = nextProviders.find(nextProvider => nextProvider.provider !== 'manual_upload' && providerReady(nextProvider)) || nextProviders.find(providerReady) || nextProviders[0];
+        const firstReady = nextProviders.find(nextProvider => nextProvider.provider !== 'manual_upload' && providerCanGenerate(nextProvider)) || nextProviders.find(providerCanGenerate) || nextProviders[0];
         if (firstReady) {
           setProvider(firstReady.provider);
           setOrchestratorModel(firstReady.default_orchestrator_model || firstReady.orchestrator_models?.[0] || 'gpt-5.4');

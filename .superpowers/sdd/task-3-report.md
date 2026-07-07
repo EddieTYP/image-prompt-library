@@ -140,3 +140,40 @@ Planned commit message:
 ```text
 feat: clarify generation provider readiness in UI
 ```
+
+## Review Fixes
+
+### Follow-up findings addressed
+
+1. `GenerationPanel` initial provider auto-selection now uses additive readiness via `providerCanGenerate(...)` for both the preferred non-manual provider and the fallback provider search.
+2. The compact controls grid now matches the seven rendered items:
+   - desktop: `44px 44px 44px 44px minmax(0,1fr) minmax(112px,max-content) 44px`
+   - mobile: `40px 40px 40px 40px 40px minmax(88px,1fr) 40px`
+   - mobile readiness copy now wraps with `grid-column: 1 / span 5` instead of the ineffective old `flex` rule on a grid item.
+3. Static coverage now asserts:
+   - initial auto-selection uses `providerCanGenerate(...)`
+   - fallback selection uses `nextProviders.find(providerCanGenerate)`
+   - desktop/mobile compact grid layouts reflect the seven-item row
+   - the old mobile readiness `flex` rule is absent
+
+### Focused verification rerun
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests/test_frontend_static.py::test_generation_panel_surfaces_provider_readiness_and_blocks_unavailable_submit -q
+```
+
+Result:
+
+- `1 passed, 1 warning in 0.47s`
+- warning remained the same `PytestCacheWarning` for `.pytest_cache` permission writes
+
+### Build rerun
+
+```powershell
+npm run build
+```
+
+Result:
+
+- `tsc && vite build` succeeded
+- frontend production bundle emitted under `frontend/dist`
