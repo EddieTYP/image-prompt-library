@@ -90,7 +90,7 @@ def test_prompt_template_variables_ui_is_feature_flagged_and_submits_resolved_pr
     assert "const value = event.currentTarget.value" in panel
     assert "setTemplateValues(current => ({ ...current, [variable.key]: value }))" in panel
     assert "event.currentTarget.value }))" not in panel
-    assert "disabled={busy || !promptText.trim() || hasMissingTemplateValues}" in panel
+    assert "disabled={busy || !selectedProviderCanGenerate || !promptText.trim() || hasMissingTemplateValues}" in panel
     assert "promptVariablesEnabled={Boolean(appConfig?.features?.camelot?.percival)}" in app
     assert "promptVariablesEnabled={promptVariablesEnabled}" in detail
     assert ".generation-template-variable-fields" in styles
@@ -486,7 +486,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Save as new" in panel
     assert "aria-label=\"Retry\"" in panel
     assert "aria-label=\"Retry failed job\"" in panel
-    assert "aria-label=\"Mark stale job failed\"" in panel
+    assert "aria-label=\"Mark failed to retry\"" in panel
     assert "Retried" in panel
     assert "title=\"Retry\"" in panel
     assert "generation-stage-actions" in panel
