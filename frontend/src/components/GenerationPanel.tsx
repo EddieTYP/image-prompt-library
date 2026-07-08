@@ -29,6 +29,11 @@ function providerReadinessLabel(provider?: GenerationProviderStatus) {
   return `${provider.display_name} is unavailable.`;
 }
 
+function compactProviderReadinessLabel(provider?: GenerationProviderStatus) {
+  if (providerCanGenerate(provider)) return 'Ready';
+  return providerReadinessLabel(provider);
+}
+
 function statusLabel(status: string, isUsedAsGenerationReference = false) {
   if (status === 'queued') return 'Queued';
   if (status === 'running') return 'Running';
@@ -214,6 +219,7 @@ export default function GenerationPanel({
   const selectedProvider = useMemo(() => providers.find(candidate => candidate.provider === provider), [providers, provider]);
   const selectedProviderCanGenerate = providerCanGenerate(selectedProvider);
   const selectedProviderMessage = providerReadinessLabel(selectedProvider);
+  const compactProviderMessage = compactProviderReadinessLabel(selectedProvider);
   const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.4'];
   const templateVariables = useMemo(() => promptVariablesEnabled ? extractPromptTemplateVariableRecords(promptText) : [], [promptVariablesEnabled, promptText]);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
@@ -867,8 +873,8 @@ export default function GenerationPanel({
                   <button className="generation-control-trigger generation-attach-trigger" type="button" onClick={() => attachmentInputRef.current?.click()} disabled={editAttachments.length >= MAX_EDIT_ATTACHMENTS} aria-label="Attach image" title={editAttachments.length >= MAX_EDIT_ATTACHMENTS ? 'Maximum 4 images' : 'Attach image'}>
                     <Plus size={18} aria-hidden="true" />
                   </button>
-                  <span className={`generation-provider-readiness ${selectedProviderCanGenerate ? 'is-ready' : 'needs-attention'}`}>
-                    {selectedProviderMessage}
+                  <span className={`generation-provider-readiness ${selectedProviderCanGenerate ? 'is-ready' : 'needs-attention'}`} title={selectedProviderMessage} aria-label={selectedProviderMessage}>
+                    {compactProviderMessage}
                   </span>
                   <button className="primary generation-primary-action" onClick={createJob} disabled={busy || !selectedProviderCanGenerate || !promptText.trim() || hasMissingTemplateValues}>Generate</button>
                   <button className="generation-history-control" onClick={() => setShowHistoryDrawer(true)} aria-label="History" title="History" type="button"><Clock3 size={17} /></button>

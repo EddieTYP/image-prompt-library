@@ -17,6 +17,9 @@ Date: 2026-07-08
 - `PYTHONUTF8=1 pytest tests/test_frontend_static.py -q`: PASS, `60 passed`.
 - Focused Task 1-4 tests: PASS as recorded in task reports.
 - `npm run build`: PASS.
+- Post-live-QA fix recheck:
+  - `PYTHONUTF8=1 .\.venv\Scripts\python.exe -m pytest tests/test_frontend_static.py -q`: PASS, `60 passed`.
+  - `npm run build`: PASS.
 
 ## Desktop Visual QA
 
@@ -59,21 +62,39 @@ Observed:
 ## Live OAuth / Generation QA
 
 - Provider: `openai_codex_oauth_native`
-- OAuth/session: BLOCKED
+- OAuth/session: PASS after user approved the OpenAI device flow in the in-app browser.
 - Provider status from `/api/generation-providers`:
   - `configured: true`
-  - `authenticated: false`
-  - `available: false`
-  - `state: not_connected`
-  - `status: login_required`
-  - `can_generate: false`
-  - `message: Connect ChatGPT / Codex OAuth before generating.`
-- Prompt: not submitted to live provider.
-- Settings: not submitted to live provider.
-- Job flow: manual-upload fallback job was created and queued; live provider job was not created.
-- Result: live OAuth and full live generation require the user to reconnect/approve the provider session.
-- Failure message, if any: app correctly reports provider login required via provider readiness fields.
-- Retry/recovery: not exercised for live provider because OAuth is not authenticated.
+  - `authenticated: true`
+  - `available: true`
+  - `state: connected`
+  - `status: ready`
+  - `can_generate: true`
+  - `features.text_to_image: true`
+  - `features.text_reference_to_image: true`
+  - `features.image_edit: true`
+- Prompt: `A small friendly robot watering a single sunflower, clean studio illustration, soft daylight.`
+- Settings:
+  - provider: `openai_codex_oauth_native`
+  - image model: `gpt-image-2`
+  - orchestrator model: `gpt-5.4`
+  - quality: `low`
+  - requested aspect ratio: `auto`
+- Job flow:
+  - Created job `gen_6d6a6ba4e3954838`.
+  - Job entered `running`.
+  - Job completed with `status: succeeded`.
+  - Result file: `generation-results/gen_6d6a6ba4e3954838/result-0c4b3d1a863f.png`.
+  - Result dimensions: `1254x1254`.
+  - Result sha256: `0c4b3d1a863fd104c35e71a92386ef304c0a09529a81c84c5b587cbac0d0ed6e`.
+- Visual QA follow-up:
+  - Desktop screenshot after live auth/generation fix: `G:\Temp\ipl-generation-hardening-live-desktop.png`.
+  - Mobile screenshot after live auth/generation fix: `G:\Temp\ipl-generation-hardening-live-mobile.png`.
+  - Desktop provider readiness compact label no longer breaks provider text into one-letter lines; compact bar shows `Ready` and retains the full provider readiness label as tooltip/aria text.
+  - Mobile 390x844 compact controls fit without horizontal page overflow: `innerWidth=390`, `documentScrollWidth=390`, `bodyScrollWidth=390`, `hasHorizontalOverflow=false`.
+  - Generate and History controls remain visible on mobile after tightening control gap/padding.
+- Failure message, if any: none during the live job.
+- Retry/recovery: not exercised for the live provider because the first live job succeeded.
 
 ## Release Gate
 
@@ -82,6 +103,6 @@ Observed:
 - Frontend build passed: yes.
 - Desktop QA recorded: yes.
 - Mobile QA recorded: yes.
-- Live provider QA recorded: blocked on user OAuth re-authentication.
+- Live provider QA recorded: yes.
 
-This milestone should not be released until live OAuth and one full live generation attempt are completed with the user present.
+Release gate is satisfied for the focused Generation Hardening milestone. Full `pytest -q` still has the previously recorded Windows/platform failures and should not be treated as a milestone regression.

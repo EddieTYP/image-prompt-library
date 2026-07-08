@@ -678,7 +678,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert ".generation-control-trigger.generation-quality-trigger{width:" in compact_css
     assert ".generation-control-trigger.generation-model-trigger{width:" in compact_css
     assert "grid-template-columns:44px44px44px44pxminmax(0,1fr)minmax(112px,max-content)44px" in compact_css
-    assert "grid-template-columns:40px40px40px40px40pxminmax(88px,1fr)40px" in compact_css
+    assert "grid-template-columns:40px40px40px40px40pxminmax(84px,1fr)40px" in compact_css
     assert ".generation-attachment-input{display:none" in compact_css
     assert ".generation-attachment-strip{position:absolute;left:14px;bottom:12px" in compact_css
     assert ".generation-attachment-thumbbutton{position:absolute;right:-6px;top:-6px" in compact_css
@@ -726,9 +726,9 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert ".generation-stage-card{min-height:calc(100dvh-24px);height:calc(100dvh-24px);" in compact_css
     assert ".generation-stage-result{height:100%;min-height:100%;" in compact_css
     assert ".generation-result-image.generation-result-fade-in{position:absolute;inset:0;width:100%;height:100%;" in compact_css
-    assert ".generation-compact-controls{grid-template-columns:40px40px40px40px40pxminmax(88px,1fr)40px;gap:7px;position:relative;z-index:5;overflow:visible;padding-bottom:2px;scrollbar-width:none}" in compact_css
+    assert ".generation-compact-controls{grid-template-columns:40px40px40px40px40pxminmax(84px,1fr)40px;gap:5px;position:relative;z-index:5;overflow:visible;padding-bottom:2px;scrollbar-width:none}" in compact_css
     assert ".generation-provider-readiness{grid-column:1/span5;max-width:none}" in compact_css
-    assert ".generation-primary-action{width:auto;min-width:0;height:40px;min-height:40px;margin-top:0;padding:012px;grid-column:6}" in compact_css
+    assert ".generation-primary-action{width:auto;min-width:0;height:40px;min-height:40px;margin-top:0;padding:010px;grid-column:6}" in compact_css
     assert ".generation-control-popover{position:absolute;left:0;bottom:calc(100%+8px);min-width:132px;z-index:40;" in compact_css
     assert "<X size={20} strokeWidth={2.25} />" in panel
 
@@ -1534,10 +1534,10 @@ def test_generation_panel_surfaces_provider_readiness_and_blocks_unavailable_sub
     assert "generation-provider-readiness" in panel
     assert "generation-provider-readiness" in css
     assert "grid-template-columns:44px44px44px44pxminmax(0,1fr)minmax(112px,max-content)44px" in compact_css
-    assert "grid-template-columns:40px40px40px40px40pxminmax(88px,1fr)40px" in compact_css
+    assert "grid-template-columns:40px40px40px40px40pxminmax(84px,1fr)40px" in compact_css
     assert ".generation-provider-readiness{grid-column:1/span5;max-width:none}" in compact_css
     assert ".generation-provider-readiness{flex:11100%;max-width:100%}" not in compact_css
-    assert ".generation-primary-action{width:auto;min-width:0;height:40px;min-height:40px;margin-top:0;padding:012px;grid-column:6}" in compact_css
+    assert ".generation-primary-action{width:auto;min-width:0;height:40px;min-height:40px;margin-top:0;padding:010px;grid-column:6}" in compact_css
     assert "generation-control-value" in panel
     assert "generation-attach-trigger" in panel
 
