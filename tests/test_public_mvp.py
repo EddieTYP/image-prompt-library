@@ -75,7 +75,7 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Cards view" in readme
     assert "copy public sample prompts" in readme
     assert "Generate locally" in readme
-    assert "v0.7.6-beta" in readme
+    assert "v0.7.7-beta" in readme
     assert "`{{variables}}`" in readme
     assert "structured search filters" in readme
     assert "batch reference actions" in readme
@@ -95,7 +95,7 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "ChatGPT / Codex OAuth" in readme
     assert "generate images" in readme.lower()
     assert "Current public beta:" in readme
-    assert "v0.7.6-beta" in readme
+    assert "v0.7.7-beta" in readme
     assert "Online sandbox" not in readme
     assert "只读 sample library" not in readme
     assert "唯讀 sample library" not in readme
