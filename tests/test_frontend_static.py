@@ -83,10 +83,12 @@ def test_local_empty_library_uses_first_run_panel_without_replacing_search_no_re
     assert "emptyMode?: 'first-run' | 'no-results'" in cards
     assert "emptyMode === 'first-run'" in cards
     assert "t('firstRunEmptyTitle')" in cards
+    assert "t('firstRunLocalInstall')" in cards
     assert "t('firstRunSampleCommand')" in cards
     assert "onOpenConfig" in cards
     assert "t('noMatchingPrompts')" in cards
     assert "firstRunEmptyTitle" in i18n
+    assert "firstRunLocalInstall" in i18n
     assert "Your private library is empty" in i18n
     assert "image-prompt-library sample-data en" in i18n
     assert ".first-run-empty" in css

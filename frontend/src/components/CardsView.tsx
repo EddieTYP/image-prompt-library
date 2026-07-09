@@ -31,7 +31,7 @@ export default function CardsView({
   if (!items.length && emptyMode === 'first-run') {
     return (
       <div className="empty first-run-empty">
-        <p className="empty-eyebrow">Local install</p>
+        <p className="empty-eyebrow">{t('firstRunLocalInstall')}</p>
         <h2>{t('firstRunEmptyTitle')}</h2>
         <p>{t('firstRunEmptyHelp')}</p>
         <div className="empty-actions">

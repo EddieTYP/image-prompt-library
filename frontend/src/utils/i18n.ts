@@ -8,7 +8,7 @@ type TranslationKey =
   | 'calm' | 'balanced' | 'dense' | 'compact' | 'gallery' | 'full' | 'libraryPath' | 'databasePath'
   | 'libraryEmptyTitle' | 'libraryEmptyHelp' | 'noMatchingPrompts' | 'noMatchingPromptsHelp' | 'addFirstPrompt'
   | 'firstRunEmptyTitle' | 'firstRunEmptyHelp' | 'firstRunOpenConfig'
-  | 'firstRunSampleCommand' | 'firstRunSampleHelp' | 'firstRunGenerationHelp';
+  | 'firstRunSampleCommand' | 'firstRunSampleHelp' | 'firstRunGenerationHelp' | 'firstRunLocalInstall'
   | 'copyPrompt' | 'favorite' | 'saved' | 'edit' | 'noImage' | 'unclustered'
   | 'collections' | 'closeFilters' | 'searchCollections' | 'allReferences' | 'noCollectionsFound'
   | 'loading' | 'copySuccess' | 'copyFailed' | 'add' | 'close' | 'closeConfig'
@@ -61,6 +61,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     firstRunEmptyTitle: '你的私人資料庫目前是空的',
     firstRunEmptyHelp: '這是全新本機安裝後的正常狀態。新增一個提示、可選地匯入範例資料，或在準備好時再連接生成。',
     firstRunOpenConfig: '開啟設定',
+    firstRunLocalInstall: 'Local install',
     firstRunSampleCommand: 'image-prompt-library sample-data en',
     firstRunSampleHelp: '可選：在終端機執行此指令以新增入門參考。',
     firstRunGenerationHelp: '可選的生成位於「設定」，需要 ChatGPT / Codex OAuth 驗證。',
@@ -89,6 +90,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     firstRunEmptyTitle: '你的私人资料库目前是空的',
     firstRunEmptyHelp: '这是全新本机安装后的正常状态。添加提示、可选导入示例，或在准备好后再连接生成。',
     firstRunOpenConfig: '打开设置',
+    firstRunLocalInstall: 'Local install',
     firstRunSampleCommand: 'image-prompt-library sample-data en',
     firstRunSampleHelp: '可选：在终端执行此命令以添加入门参考。',
     firstRunGenerationHelp: '可选生成在「设置」中配置，需要 ChatGPT / Codex OAuth 验证。',
@@ -99,7 +101,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     explore: 'Explore', cards: 'Cards', uiLanguage: 'UI language', promptCopyLanguage: 'Prompt copy language', promptCopyLanguageHelp: 'Copy can use the origin prompt; the source/original prompt is usually closest to the sample image result.', providers: 'Providers',
     globalThumbnails: 'Global thumbnails', globalThumbnailsHelp: 'Overall Explore density across all clusters.', focusThumbnails: 'Focus thumbnails', focusThumbnailsHelp: 'Maximum real thumbnails around the selected cluster.',
     calm: 'Calm', balanced: 'Balanced', dense: 'Dense', compact: 'Compact', gallery: 'Gallery', full: 'Full', libraryPath: 'Library path', databasePath: 'Database path',
-    libraryEmptyTitle: 'Your library is empty', libraryEmptyHelp: 'Add your first prompt, or install the sample library if you want demo content first.', noMatchingPrompts: 'No matching prompts', noMatchingPromptsHelp: 'Try another search, clear filters, or add a new prompt reference.', addFirstPrompt: 'Add your first prompt', firstRunEmptyTitle: 'Your private library is empty', firstRunEmptyHelp: 'That is expected after a fresh local install. Add a prompt, import optional samples, or connect generation when you are ready.', firstRunOpenConfig: 'Open Config', firstRunSampleCommand: 'image-prompt-library sample-data en', firstRunSampleHelp: 'Optional: run this command in Terminal to add starter references.', firstRunGenerationHelp: 'Optional generation lives in Config and requires ChatGPT / Codex OAuth.',
+    libraryEmptyTitle: 'Your library is empty', libraryEmptyHelp: 'Add your first prompt, or install the sample library if you want demo content first.', noMatchingPrompts: 'No matching prompts', noMatchingPromptsHelp: 'Try another search, clear filters, or add a new prompt reference.', addFirstPrompt: 'Add your first prompt', firstRunEmptyTitle: 'Your private library is empty', firstRunEmptyHelp: 'That is expected after a fresh local install. Add a prompt, import optional samples, or connect generation when you are ready.', firstRunOpenConfig: 'Open Config', firstRunLocalInstall: 'Local install', firstRunSampleCommand: 'image-prompt-library sample-data en', firstRunSampleHelp: 'Optional: run this command in Terminal to add starter references.', firstRunGenerationHelp: 'Optional generation lives in Config and requires ChatGPT / Codex OAuth.',
     copyPrompt: 'Copy prompt', favorite: 'Favorite', saved: 'Saved', edit: 'Edit', noImage: 'No image', unclustered: 'Unclustered',
     collections: 'Collections', closeFilters: 'Close filters', searchCollections: 'Search collections', allReferences: 'All references', noCollectionsFound: 'No collections found',
     loading: 'Loading…', copySuccess: 'Prompt copied', copyFailed: 'Copy failed', add: 'Add', close: 'Close', closeConfig: 'Close config',
