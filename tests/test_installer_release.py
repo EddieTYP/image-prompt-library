@@ -77,6 +77,8 @@ _subprocess_check_output = subprocess.check_output
 def _rewrite_bash_args(args: object, kwargs: dict[str, object]) -> tuple[object, dict[str, object]]:
     if not isinstance(args, (list, tuple)) or not args or args[0] != "bash":
         return args, kwargs
+    if len(args) > 1 and args[1] == "-lc":
+        return args, kwargs
     env = kwargs.get("env")
     rewritten_kwargs = dict(kwargs)
     rewritten_kwargs["env"] = git_bash_env(env if isinstance(env, dict) else None)
