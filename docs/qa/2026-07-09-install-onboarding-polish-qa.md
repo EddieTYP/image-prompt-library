@@ -21,7 +21,16 @@
 Screenshots:
 
 - `G:\Temp\ipl-install-onboarding-desktop.png`
-- `G:\Temp\ipl-install-onboarding-mobile.png`
+- `docs/qa/screenshots/install-onboarding-mobile-empty.png`
+- `docs/qa/screenshots/install-onboarding-mobile-config.png`
+
+Mobile screenshot method:
+
+- The browser viewport was set so the page had a measured `375px` CSS content width.
+- The first-run page used a full-page capture after load completed.
+- The fixed Config drawer used a viewport capture after its `220ms` transition completed. Full-page capture is not valid for this state because the browser temporarily resizes the page and mis-composites fixed elements.
+- Measured results: document `scrollWidth` was `375px`; the first-run panel stayed within the viewport; the settled Config drawer started at `x=0` and its visible header ended at `x=357.2`.
+- The earlier `G:\Temp\ipl-install-onboarding-mobile.png` is superseded because it captured the fixed drawer incorrectly and is not valid QA evidence.
 
 ## CLI QA
 
