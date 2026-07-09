@@ -1,5 +1,6 @@
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tarfile
@@ -11,6 +12,22 @@ from PIL import Image
 from backend.repositories import ItemRepository
 
 ROOT = Path(__file__).resolve().parents[1]
+GIT_BASH = Path(r"C:\Program Files\Git\bin\bash.exe")
+if not GIT_BASH.exists():
+    GIT_BASH = Path(r"C:\Program Files\Git\usr\bin\bash.exe")
+if not GIT_BASH.exists():
+    GIT_BASH = Path("bash")
+
+
+def git_bash_arg(part: object) -> str:
+    value = part.as_posix() if isinstance(part, Path) else str(part)
+    return value.replace("\\", "/")
+
+
+def git_bash_cmd(*parts: object) -> list[str]:
+    command = " ".join(shlex.quote(git_bash_arg(part)) for part in parts)
+    python = shlex.quote(Path(sys.executable).as_posix())
+    return [str(GIT_BASH), "-lc", f"python3() {{ {python} \"$@\"; }}; export -f python3; {command}"]
 
 
 def read(path: str) -> str:
@@ -68,6 +85,11 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "WSL" in appctl
     assert "version)" in appctl
     assert "doctor)" in appctl
+    assert "status)" in appctl
+    assert "status_app()" in appctl
+    assert "Image Prompt Library status" in appctl
+    assert "## App" in appctl
+    assert "## Next steps" in appctl
     assert "service)" in appctl
     assert "service install" in appctl
     assert "launchctl" in appctl
@@ -428,7 +450,7 @@ def test_installed_start_flags_override_env_host_and_port(tmp_path):
 
 def test_installed_doctor_reports_paths_db_and_provider_state_without_sensitive_values(tmp_path):
     subprocess.run(
-        ["bash", "scripts/package-release.sh", "v9.9.2-test", "--skip-build"],
+        git_bash_cmd("scripts/package-release.sh", "v9.9.2-test", "--skip-build"),
         cwd=ROOT,
         check=True,
         text=True,
@@ -441,10 +463,9 @@ def test_installed_doctor_reports_paths_db_and_provider_state_without_sensitive_
     env = os.environ.copy()
     env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
     env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
-    env["PYTHON"] = sys.executable
+    env["PYTHON"] = Path(sys.executable).as_posix()
     install = subprocess.run(
-        [
-            "bash",
+        git_bash_cmd(
             "scripts/install.sh",
             "--version",
             "v9.9.2-test",
@@ -453,7 +474,7 @@ def test_installed_doctor_reports_paths_db_and_provider_state_without_sensitive_
             "--library-path",
             str(library),
             "--no-shim",
-        ],
+        ),
         cwd=ROOT,
         env=env,
         text=True,
@@ -464,7 +485,7 @@ def test_installed_doctor_reports_paths_db_and_provider_state_without_sensitive_
 
     appctl = prefix / "app" / "current" / "scripts" / "appctl.sh"
     doctor = subprocess.run(
-        ["bash", str(appctl), "doctor"],
+        git_bash_cmd(appctl, "doctor"),
         cwd=tmp_path,
         env={**env, "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix)},
         text=True,
@@ -474,14 +495,77 @@ def test_installed_doctor_reports_paths_db_and_provider_state_without_sensitive_
 
     assert doctor.returncode == 0, doctor.stdout + doctor.stderr
     assert "Image Prompt Library doctor" in doctor.stdout
-    assert "Version: v9.9.2-test" in doctor.stdout
-    assert f"Install prefix: {prefix}" in doctor.stdout
-    assert f"Library path: {library}" in doctor.stdout
-    assert "Backend: 127.0.0.1:8000" in doctor.stdout
-    assert "Database integrity: ok" in doctor.stdout
-    assert "Generation provider: openai_codex_oauth_native state=" in doctor.stdout
+    assert "## App" in doctor.stdout
+    assert "OK Version: v9.9.2-test" in doctor.stdout
+    assert f"OK Install prefix: {prefix}" in doctor.stdout
+    assert f"OK Library path: {library}" in doctor.stdout
+    assert "OK Backend URL: http://127.0.0.1:8000/" in doctor.stdout
+    assert "## Database" in doctor.stdout
+    assert "OK Database integrity: ok" in doctor.stdout
+    assert "Item count: 0" in doctor.stdout
+    assert "## Generation" in doctor.stdout
+    assert "openai_codex_oauth_native" in doctor.stdout
+    assert "## Next steps" in doctor.stdout
+    assert "image-prompt-library sample-data en" in doctor.stdout
     assert "[REDACTED]" not in doctor.stdout
     assert "app_" not in doctor.stdout
+
+
+def test_installed_status_reports_short_local_summary(tmp_path):
+    subprocess.run(
+        git_bash_cmd("scripts/package-release.sh", "v9.9.3-test", "--skip-build"),
+        cwd=ROOT,
+        check=True,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library-data"
+    env = os.environ.copy()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
+    env["PYTHON"] = Path(sys.executable).as_posix()
+    install = subprocess.run(
+        git_bash_cmd(
+            "scripts/install.sh",
+            "--version",
+            "v9.9.3-test",
+            "--prefix",
+            str(prefix),
+            "--library-path",
+            str(library),
+            "--no-shim",
+        ),
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert install.returncode == 0, install.stdout + install.stderr
+
+    appctl = prefix / "app" / "current" / "scripts" / "appctl.sh"
+    status = subprocess.run(
+        git_bash_cmd(appctl, "status"),
+        cwd=tmp_path,
+        env={**env, "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix)},
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+
+    assert status.returncode == 0, status.stdout + status.stderr
+    assert "Image Prompt Library status" in status.stdout
+    assert "Version: v9.9.3-test" in status.stdout
+    assert f"Library: {library}" in status.stdout
+    assert "URL: http://127.0.0.1:8000/" in status.stdout
+    assert "Items: 0" in status.stdout
+    assert "Generation:" in status.stdout
+    assert "Run image-prompt-library doctor for detailed diagnostics." in status.stdout
+    assert "[REDACTED]" not in status.stdout
+    assert "app_" not in status.stdout
 
 
 def test_installed_service_commands_manage_macos_launchagent_with_fake_launchctl(tmp_path):

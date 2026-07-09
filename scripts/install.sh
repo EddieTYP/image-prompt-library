@@ -158,7 +158,7 @@ python_download "$MANIFEST_URL" "$DOWNLOAD_DIR/$MANIFEST"
 python_download "$ARTIFACT_URL" "$DOWNLOAD_DIR/$ARTIFACT"
 python_download "$CHECKSUM_URL" "$DOWNLOAD_DIR/$CHECKSUM_FILE"
 
-EXPECTED_SHA="$($PYTHON_BIN - "$DOWNLOAD_DIR/$MANIFEST" <<'PY'
+EXPECTED_SHA="$($PYTHON_BIN - "$DOWNLOAD_DIR/$MANIFEST" <<'PY' | tr -d '\r'
 import json
 import sys
 with open(sys.argv[1], encoding="utf-8") as handle:
@@ -177,7 +177,7 @@ fi
 
 rm -rf "$INSTALL_DIR.tmp"
 mkdir -p "$INSTALL_DIR.tmp"
-tar -xzf "$DOWNLOAD_DIR/$ARTIFACT" -C "$INSTALL_DIR.tmp"
+(cd "$DOWNLOAD_DIR" && tar -xzf "$ARTIFACT" -C "$INSTALL_DIR.tmp")
 if [ -d "$INSTALL_DIR" ]; then
   rm -rf "$INSTALL_DIR"
 fi
