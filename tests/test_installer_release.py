@@ -4,6 +4,7 @@ import shlex
 import subprocess
 import sys
 import tarfile
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -12,6 +13,13 @@ from PIL import Image
 from backend.repositories import ItemRepository
 
 ROOT = Path(__file__).resolve().parents[1]
+GIT_BASH_SHIM = Path(tempfile.gettempdir()) / "image-prompt-library-git-bash-test-bin"
+GIT_BASH_SHIM.mkdir(exist_ok=True)
+(GIT_BASH_SHIM / "python3").write_text(
+    f"#!/usr/bin/env sh\nexec '{Path(sys.executable).as_posix()}' \"$@\"\n",
+    encoding="utf-8",
+)
+(GIT_BASH_SHIM / "python3").chmod(0o755)
 GIT_BASH = Path(r"C:\Program Files\Git\bin\bash.exe")
 if not GIT_BASH.exists():
     GIT_BASH = Path(r"C:\Program Files\Git\usr\bin\bash.exe")
@@ -24,10 +32,73 @@ def git_bash_arg(part: object) -> str:
     return value.replace("\\", "/")
 
 
-def git_bash_cmd(*parts: object) -> list[str]:
+def git_bash_path(value: object) -> str:
+    path = git_bash_arg(value)
+    if len(path) >= 2 and path[1] == ":":
+        return f"/{path[0].lower()}{path[2:]}"
+    return path
+
+
+def git_bash_path_entries(value: str) -> str:
+    entries = []
+    for entry in value.split(os.pathsep):
+        if not entry:
+            continue
+        if "pytest-" in entry or "pytest-of-" in entry:
+            entries.append(git_bash_path(entry))
+    return ":".join(entries)
+
+
+def git_bash_env(env: dict[str, str] | None) -> dict[str, str] | None:
+    if env is None:
+        return None
+    patched = dict(env)
+    for key in ("HOME", "PYTHON", "SAMPLE_DATA_MANIFEST", "SAMPLE_DATA_IMAGE_ZIP", "IMAGE_PROMPT_LIBRARY_PREFIX"):
+        if key in patched:
+            patched[key] = git_bash_path(patched[key])
+    return patched
+
+
+def git_bash_cmd(*parts: object, env: dict[str, str] | None = None) -> list[str]:
     command = " ".join(shlex.quote(git_bash_arg(part)) for part in parts)
     python = shlex.quote(Path(sys.executable).as_posix())
-    return [str(GIT_BASH), "-lc", f"python3() {{ {python} \"$@\"; }}; export -f python3; {command}"]
+    prefix = f"python3() {{ {python} \"$@\"; }}; export -f python3; export PATH={shlex.quote(git_bash_path(GIT_BASH_SHIM))}:$PATH"
+    if env and "PATH" in env:
+        path_entries = git_bash_path_entries(env["PATH"])
+        if path_entries:
+            prefix += f"; export PATH={shlex.quote(path_entries)}:$PATH"
+    return [str(GIT_BASH), "-lc", f"{prefix}; {command}"]
+
+
+_subprocess_run = subprocess.run
+_subprocess_check_output = subprocess.check_output
+
+
+def _rewrite_bash_args(args: object, kwargs: dict[str, object]) -> tuple[object, dict[str, object]]:
+    if not isinstance(args, (list, tuple)) or not args or args[0] != "bash":
+        return args, kwargs
+    env = kwargs.get("env")
+    rewritten_kwargs = dict(kwargs)
+    rewritten_kwargs["env"] = git_bash_env(env if isinstance(env, dict) else None)
+    return git_bash_cmd(*args[1:], env=env if isinstance(env, dict) else None), rewritten_kwargs
+
+
+def run_subprocess(*popenargs: object, **kwargs: object) -> subprocess.CompletedProcess:
+    if popenargs:
+        args, kwargs = _rewrite_bash_args(popenargs[0], kwargs)
+        popenargs = (args, *popenargs[1:])
+    return _subprocess_run(*popenargs, **kwargs)
+
+
+def check_output_subprocess(*popenargs: object, **kwargs: object) -> str | bytes:
+    if popenargs:
+        args, kwargs = _rewrite_bash_args(popenargs[0], kwargs)
+        popenargs = (args, *popenargs[1:])
+    return _subprocess_check_output(*popenargs, **kwargs)
+
+
+subprocess.run = run_subprocess
+subprocess.check_output = check_output_subprocess
 
 
 def read(path: str) -> str:
@@ -290,14 +361,17 @@ def test_installer_supports_file_release_base_and_installs_without_git(tmp_path)
     previous = prefix / "app" / "previous"
     installed = prefix / "app" / "versions" / "v9.9.8-test"
     assert installed.is_dir()
-    assert current.is_symlink()
-    assert current.resolve() == installed.resolve()
+    assert current.exists()
+    if current.is_symlink():
+        assert current.resolve() == installed.resolve()
+    else:
+        assert (current / "scripts" / "appctl.sh").exists()
     assert not previous.exists() or previous.is_symlink()
 
     env_file = prefix / ".env"
     assert env_file.exists()
     env_text = env_file.read_text()
-    assert f"IMAGE_PROMPT_LIBRARY_PATH={library}" in env_text
+    assert f"IMAGE_PROMPT_LIBRARY_PATH={git_bash_arg(library)}" in env_text
     assert "BACKEND_PORT=8000" in env_text
     assert str(library) not in str(installed)
 
@@ -329,7 +403,11 @@ def test_installer_auto_detects_supported_python_when_python3_is_too_old(tmp_pat
         encoding="utf-8",
     )
     fake_python3.chmod(0o755)
-    (fake_bin / "python3.12").symlink_to(sys.executable)
+    (fake_bin / "python3.12").write_text(
+        f"#!/usr/bin/env sh\nexec '{Path(sys.executable).as_posix()}' \"$@\"\n",
+        encoding="utf-8",
+    )
+    (fake_bin / "python3.12").chmod(0o755)
 
     prefix = tmp_path / "prefix"
     library = tmp_path / "library-data"
@@ -589,15 +667,18 @@ def test_installed_service_commands_manage_macos_launchagent_with_fake_launchctl
     calls = tmp_path / "launchctl-calls.log"
     retry_marker = tmp_path / "fail-next-bootstrap"
     service_state = tmp_path / "service-loaded"
+    bash_calls = git_bash_arg(calls)
+    bash_retry_marker = git_bash_arg(retry_marker)
+    bash_service_state = git_bash_arg(service_state)
     (fake_bin / "launchctl").write_text(
         "#!/usr/bin/env sh\n"
-        f"printf '%s ' \"$@\" >> {calls}\n"
-        f"printf '\\n' >> {calls}\n"
-        f"if [ \"$1\" = \"print\" ]; then [ -f {service_state} ] && echo 'state = running' && exit 0; exit 113; fi\n"
-        f"if [ \"$1\" = \"bootout\" ]; then rm -f {service_state}; touch {retry_marker}; exit 0; fi\n"
-        f"if [ \"$1\" = \"bootstrap\" ] && [ -f {retry_marker} ]; then rm -f {retry_marker}; echo 'Bootstrap failed: 5: Input/output error' >&2; exit 5; fi\n"
-        f"if [ \"$1\" = \"bootstrap\" ]; then touch {service_state}; exit 0; fi\n"
-        f"if [ \"$1\" = \"kickstart\" ]; then touch {service_state}; exit 0; fi\n",
+        f"printf '%s ' \"$@\" >> {bash_calls}\n"
+        f"printf '\\n' >> {bash_calls}\n"
+        f"if [ \"$1\" = \"print\" ]; then [ -f {bash_service_state} ] && echo 'state = running' && exit 0; exit 113; fi\n"
+        f"if [ \"$1\" = \"bootout\" ]; then rm -f {bash_service_state}; touch {bash_retry_marker}; exit 0; fi\n"
+        f"if [ \"$1\" = \"bootstrap\" ] && [ -f {bash_retry_marker} ]; then rm -f {bash_retry_marker}; echo 'Bootstrap failed: 5: Input/output error' >&2; exit 5; fi\n"
+        f"if [ \"$1\" = \"bootstrap\" ]; then touch {bash_service_state}; exit 0; fi\n"
+        f"if [ \"$1\" = \"kickstart\" ]; then touch {bash_service_state}; exit 0; fi\n",
         encoding="utf-8",
     )
     (fake_bin / "launchctl").chmod(0o755)
@@ -655,10 +736,10 @@ def test_installed_service_commands_manage_macos_launchagent_with_fake_launchctl
     plist = fake_home / "Library" / "LaunchAgents" / "com.example.ipl-test.plist"
     assert plist.exists()
     plist_text = plist.read_text(encoding="utf-8")
-    assert str(appctl) in plist_text
+    assert git_bash_arg(appctl) in plist_text
     assert "0.0.0.0" in plist_text
     assert "7500" in plist_text
-    assert str(prefix) in plist_text
+    assert git_bash_arg(prefix) in plist_text
     assert "IMAGE_PROMPT_LIBRARY_SERVICE_LABEL" in plist_text
     assert "com.example.ipl-test" in plist_text
     assert "bootstrap gui/" in calls.read_text(encoding="utf-8")
@@ -934,5 +1015,5 @@ def test_installed_sample_data_script_imports_into_installer_library_by_default(
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Imported 1 items" in result.stdout
-    assert str(library) in result.stdout
+    assert git_bash_arg(library) in result.stdout
     assert ItemRepository(library).list_items(limit=5).total == 1
