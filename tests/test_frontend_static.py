@@ -78,6 +78,7 @@ def test_local_empty_library_uses_first_run_panel_without_replacing_search_no_re
     css = (ROOT / "frontend" / "src" / "styles.css").read_text()
 
     assert "const emptyMode = !isDemoMode && localizedData.items.length === 0 && !q.trim() && !clusterId ? 'first-run' : 'no-results'" in app
+    assert "emptyMode !== 'first-run'" in app
     assert "emptyMode={emptyMode}" in app
     assert "onOpenConfig={() => setConfigOpen(true)}" in app
     assert "emptyMode?: 'first-run' | 'no-results'" in cards

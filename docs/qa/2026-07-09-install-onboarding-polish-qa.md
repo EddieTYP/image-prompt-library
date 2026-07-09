@@ -13,6 +13,7 @@
 - PASS: Desktop `Add your first prompt` opens the new reference editor.
 - PASS: Desktop Config Local Setup section is visible with `status`, `doctor`, and `sample-data en` commands.
 - PASS: Mobile empty-library first-run panel fits without horizontal overflow.
+- PASS: Mobile first-run hides the floating Add, Generate, and generation queue controls so they cannot cover onboarding content.
 - PASS: Mobile buttons remain tappable.
 - PASS: Mobile Config Local Setup section fits in the drawer.
 - PASS: Mobile command hints do not overflow the viewport.
@@ -27,9 +28,8 @@ Screenshots:
 Mobile screenshot method:
 
 - The browser viewport was set so the page had a measured `375px` CSS content width.
-- The first-run page used a full-page capture after load completed.
-- The fixed Config drawer used a viewport capture after its `220ms` transition completed. Full-page capture is not valid for this state because the browser temporarily resizes the page and mis-composites fixed elements.
-- Measured results: document `scrollWidth` was `375px`; the first-run panel stayed within the viewport; the settled Config drawer started at `x=0` and its visible header ended at `x=357.2`.
+- Both states used viewport captures from fresh tabs after the `220ms` drawer transition settled. Full-page capture is not valid because the browser temporarily resizes the page and can mis-composite fixed or transformed drawers.
+- Measured results: document `scrollWidth` was `375px`; the first-run panel stayed within the viewport; floating rail and queue trigger counts were both `0`; the settled Config drawer started at `x=0` and its visible header ended at `x=357.2`.
 - The earlier `G:\Temp\ipl-install-onboarding-mobile.png` is superseded because it captured the fixed drawer incorrectly and is not valid QA evidence.
 
 ## CLI QA
