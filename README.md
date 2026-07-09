@@ -46,20 +46,17 @@ image-prompt-library start
 
 `image-prompt-library start` runs the local server in the current terminal. Keep it open, then visit <http://127.0.0.1:8000/> in your browser. Press `Ctrl-C` in that terminal to stop the server.
 
-Optional: import a starter sample pack if you want demo references in a fresh local library.
+A fresh local library starts empty. Use `+ Add` in the app to create your first private prompt card, or import the optional English starter sample pack if you want demo references first:
 
 ```bash
-image-prompt-library sample-data en       # English collection names
-image-prompt-library sample-data zh_hans  # Simplified Chinese collection names
-image-prompt-library sample-data zh_hant  # Traditional Chinese collection names
+image-prompt-library sample-data en
 ```
 
-The starter sample pack can be installed with localized collection names in English, Simplified Chinese, or Traditional Chinese. The underlying sample references keep their source titles/prompts and available prompt variants; this choice mainly affects the imported collection labels and default sample-pack language metadata.
-
-For the larger Traditional Chinese `awesome-gpt-image-2` sample pack:
+For a quick local check:
 
 ```bash
-image-prompt-library sample-data zh_hant awesome-gpt-image-2
+image-prompt-library status
+image-prompt-library doctor
 ```
 
 For update, rollback, service mode, uninstall, WSL, and source-development setup, see [Documentation](#documentation).

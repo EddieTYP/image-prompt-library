@@ -146,6 +146,7 @@ def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developer
     assert "## Quick start" in readme
     assert "scripts/install.sh" in installation
     assert "image-prompt-library start" in readme
+    assert "image-prompt-library status" in readme
     assert "image-prompt-library update" in installation
     assert "image-prompt-library update --version <version>" in installation
     assert "curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash -s -- --version <version>" in installation
@@ -164,6 +165,7 @@ def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developer
     assert "image-prompt-library start --host 0.0.0.0" in installation
     assert "Binding to `0.0.0.0` can expose the app" in installation
     assert "image-prompt-library doctor" in installation
+    assert "image-prompt-library status" in installation
     assert "image-prompt-library service install --host 127.0.0.1 --port 8000" in installation
     assert "image-prompt-library service install --host 0.0.0.0 --port 7500" not in readme
     assert "Use the next release tag" not in readme

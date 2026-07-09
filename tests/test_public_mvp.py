@@ -66,6 +66,23 @@ def test_public_import_and_example_data_section_prefers_attributed_demo_source()
     assert "local/exported source" not in sample_section
 
 
+def test_public_docs_explain_first_run_status_and_doctor():
+    readme = (ROOT / "README.md").read_text()
+    installation = (ROOT / "docs" / "INSTALLATION.md").read_text()
+    troubleshooting = (ROOT / "docs" / "TROUBLESHOOTING.md").read_text()
+    roadmap = (ROOT / "ROADMAP.md").read_text()
+
+    assert "v0.7.7-beta" in roadmap
+    for doc in (readme, installation, troubleshooting):
+        assert "image-prompt-library status" in doc
+        assert "image-prompt-library doctor" in doc
+    assert "A fresh local library starts empty" in readme
+    assert "First run" in installation
+    assert "Native Windows PowerShell" in installation
+    assert "WSL 2" in installation
+    assert "sample-data en" in troubleshooting
+
+
 def test_public_readme_includes_product_story_and_screenshots():
     readme = (ROOT / "README.md").read_text()
 
