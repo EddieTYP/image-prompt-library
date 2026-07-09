@@ -44,7 +44,7 @@ function canOpenJob(job: GenerationJobRecord) {
   return job.status !== 'discarded';
 }
 
-const STALE_RUNNING_JOB_MS = 30 * 60 * 1000;
+const STALE_RUNNING_JOB_MS = 10 * 60 * 1000;
 
 function retriedByJobId(job: GenerationJobRecord) {
   const value = job.metadata?.retried_by_generation_job_id;
@@ -325,6 +325,7 @@ export default function GenerationQueueDrawer({
                     <span>{job.edited_prompt_text || job.prompt_text}</span>
                     <span className="generation-queue-row-actions">
                       <b>{statusLabel(job, isUsedAsGenerationReference(job, jobs))}</b>
+                      {isStaleRunningJob(job) && <em className="generation-stale-copy">Generation may have stalled.</em>}
                       {isActive(job) && (
                         <button
                           type="button"
@@ -345,6 +346,8 @@ export default function GenerationQueueDrawer({
                             markFailedJob(job).catch(() => undefined);
                           }}
                           disabled={markFailedBusyIds.has(job.id)}
+                          aria-label="Mark stalled generation failed"
+                          title="Mark failed to retry"
                         >Mark failed</button>
                       )}
                       {canRetryFailedJob(job) && (
@@ -356,6 +359,8 @@ export default function GenerationQueueDrawer({
                             retryJob(job).catch(() => undefined);
                           }}
                           disabled={retryBusyIds.has(job.id)}
+                          aria-label="Retry failed job"
+                          title="Retry failed job"
                         >Retry</button>
                       )}
                       {job.status === 'failed' && retriedByJobId(job) && <em>Retried</em>}

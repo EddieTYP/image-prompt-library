@@ -291,6 +291,39 @@ def _response_int(payload: dict[str, Any], key: str, default: int, context: str)
         raise CodexNativeAuthError(f"{context} returned invalid {key}") from exc
 
 
+def _generation_readiness(
+    configured: bool,
+    token_present: bool,
+    state: str,
+    credentials_present_but_unusable: bool = False,
+) -> dict[str, Any]:
+    if configured and token_present:
+        return {"status": "ready", "message": None, "can_generate": True}
+    if configured and credentials_present_but_unusable:
+        return {
+            "status": "auth_error",
+            "message": "ChatGPT / Codex OAuth needs attention before generating.",
+            "can_generate": False,
+        }
+    if configured and state == "not_connected":
+        return {
+            "status": "login_required",
+            "message": "Connect ChatGPT / Codex OAuth before generating.",
+            "can_generate": False,
+        }
+    if not configured:
+        return {
+            "status": "unavailable",
+            "message": "ChatGPT / Codex OAuth is not configured.",
+            "can_generate": False,
+        }
+    return {
+        "status": "unavailable",
+        "message": "ChatGPT / Codex OAuth is not configured.",
+        "can_generate": False,
+    }
+
+
 class CodexNativeAuthStore:
 
     """App-owned Codex OAuth token store.
@@ -322,14 +355,20 @@ class CodexNativeAuthStore:
         serialized = json.dumps(payload, indent=2)
         fd, temp_name = tempfile.mkstemp(prefix="auth-", suffix=".tmp", dir=self.path.parent)
         temp_path = Path(temp_name)
+        handle = None
         try:
-            os.fchmod(fd, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                handle.write(serialized)
+            if hasattr(os, "fchmod"):
+                os.fchmod(fd, 0o600)
+            handle = os.fdopen(fd, "w", encoding="utf-8")
+            handle.write(serialized)
+            handle.close()
+            handle = None
             os.replace(temp_path, self.path)
             self.path.chmod(0o600)
         except Exception:
             try:
+                if handle is not None:
+                    handle.close()
                 temp_path.unlink(missing_ok=True)
             finally:
                 raise
@@ -391,12 +430,18 @@ class CodexNativeAuthStore:
         configured = bool(configured_client_id())
         token_present = False
         account_id = None
+        saved_credentials_broken = False
         try:
+            raw_tokens = self._read_raw_tokens()
+            token_present = True
+            account_id = account_id_from_access_token(raw_tokens["access_token"])
             tokens = self.read_tokens()
             token_present = True
             account_id = account_id_from_access_token(tokens["access_token"])
         except Exception:
             token_present = False
+            account_id = None
+            saved_credentials_broken = self.path.is_file()
         available = configured and token_present
         if not configured:
             state = "not_configured"
@@ -407,6 +452,12 @@ class CodexNativeAuthStore:
         else:
             state = "connected"
             reason = None
+        readiness = _generation_readiness(
+            configured,
+            token_present,
+            state,
+            credentials_present_but_unusable=saved_credentials_broken,
+        )
         return {
             "provider": PROVIDER_ID,
             "display_name": DISPLAY_NAME,
@@ -417,6 +468,7 @@ class CodexNativeAuthStore:
             "available": available,
             "state": state,
             "reason": reason,
+            **readiness,
             "features": {
                 "text_to_image": available,
                 "text_reference_to_image": available,

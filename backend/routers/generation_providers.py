@@ -24,6 +24,9 @@ def list_generation_providers(request: Request):
             "available": True,
             "state": "available",
             "reason": None,
+            "status": "ready",
+            "message": None,
+            "can_generate": True,
             "features": {
                 "text_to_image": False,
                 "text_reference_to_image": False,

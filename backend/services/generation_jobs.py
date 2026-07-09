@@ -31,8 +31,8 @@ class GenerationJobConflict(ValueError):
 
 
 MAX_GENERATION_INPUT_IMAGES = 4
-STALE_RUNNING_JOB_AFTER = timedelta(minutes=30)
-STALE_RUNNING_JOB_ERROR = "Generation job was marked failed after running too long. Retry to run it again."
+STALE_RUNNING_JOB_AFTER = timedelta(minutes=10)
+STALE_RUNNING_JOB_ERROR = "Generation took too long and may have stalled. Retry to run it again."
 GENERATION_RESULT_ROOT = "generation-results"
 GENERATION_REFERENCE_ROOT = "generation-references"
 GENERATION_INPUT_IMAGE_ROOTS = {GENERATION_RESULT_ROOT, GENERATION_REFERENCE_ROOT}

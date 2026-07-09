@@ -90,7 +90,7 @@ def test_prompt_template_variables_ui_is_feature_flagged_and_submits_resolved_pr
     assert "const value = event.currentTarget.value" in panel
     assert "setTemplateValues(current => ({ ...current, [variable.key]: value }))" in panel
     assert "event.currentTarget.value }))" not in panel
-    assert "disabled={busy || !promptText.trim() || hasMissingTemplateValues}" in panel
+    assert "disabled={busy || !selectedProviderCanGenerate || !promptText.trim() || hasMissingTemplateValues}" in panel
     assert "promptVariablesEnabled={Boolean(appConfig?.features?.camelot?.percival)}" in app
     assert "promptVariablesEnabled={promptVariablesEnabled}" in detail
     assert ".generation-template-variable-fields" in styles
@@ -217,6 +217,33 @@ def test_mobile_generation_queue_trigger_stays_clear_of_bottom_fabs():
     assert "bottom:calc(18px+env(safe-area-inset-bottom))" not in mobile_queue_css
     assert ".generation-queue-drawer{left:12px;right:12px;bottom:calc(132px+env(safe-area-inset-bottom));" in mobile_queue_css
     assert "max-height:calc(70dvh-56px)" in mobile_queue_css
+
+
+def test_generation_frontend_uses_ten_minute_stale_threshold_and_clear_retry_copy():
+    panel = (ROOT / "frontend" / "src" / "components" / "GenerationPanel.tsx").read_text(encoding="utf-8")
+    drawer = (ROOT / "frontend" / "src" / "components" / "GenerationQueueDrawer.tsx").read_text(encoding="utf-8")
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
+    compact_css = css.replace(" ", "")
+    queue_actions_css = compact_css[
+        compact_css.find(".generation-queue-row-actions{") : compact_css.find(".generation-queue-cancel{")
+    ]
+    final_generation_css = compact_css[
+        compact_css.rfind("/*Generationcontrols,editattachments,andmobilelayoutstabilization*/") :
+    ]
+
+    assert "const STALE_RUNNING_JOB_MS = 10 * 60 * 1000" in panel
+    assert "const STALE_RUNNING_JOB_MS = 10 * 60 * 1000" in drawer
+    assert "Generation may have stalled." in panel
+    assert "Mark failed to retry." in panel
+    assert "Generation may have stalled." in drawer
+    assert "Retry failed job" in drawer
+    assert "generation-stale-copy" in css
+    assert ".generation-queue-row-actions{display:flex;flex-wrap:wrap;" in queue_actions_css
+    assert "display:inline-flex" not in queue_actions_css
+    assert "min-width:max-content" not in queue_actions_css
+    assert ".generation-stage-actions{position:absolute;left:14px;right:14px;bottom:12px;z-index:6;display:flex;flex-wrap:wrap;" in final_generation_css
+    assert ".generation-stage-actions.generation-stage-actions{display:inline-flex" not in final_generation_css
+    assert ".generation-stage-actions{max-width:calc(100%-24px);overflow:visible}" in final_generation_css
 
 
 def test_mobile_selected_collection_uses_bottom_floating_dock_and_active_filter_state():
@@ -459,7 +486,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "Save as new" in panel
     assert "aria-label=\"Retry\"" in panel
     assert "aria-label=\"Retry failed job\"" in panel
-    assert "aria-label=\"Mark stale job failed\"" in panel
+    assert "aria-label=\"Mark failed to retry\"" in panel
     assert "Retried" in panel
     assert "title=\"Retry\"" in panel
     assert "generation-stage-actions" in panel
@@ -650,8 +677,8 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert ".generation-control-trigger.generation-aspect-trigger{width:" in compact_css
     assert ".generation-control-trigger.generation-quality-trigger{width:" in compact_css
     assert ".generation-control-trigger.generation-model-trigger{width:" in compact_css
-    assert "grid-template-columns:44px44px44px44pxminmax(112px,1fr)44px" in compact_css
-    assert "grid-template-columns:40px40px40px40pxminmax(96px,1fr)40px" in compact_css
+    assert "grid-template-columns:44px44px44px44pxminmax(0,1fr)minmax(112px,max-content)44px" in compact_css
+    assert "grid-template-columns:40px40px40px40px40pxminmax(84px,1fr)40px" in compact_css
     assert ".generation-attachment-input{display:none" in compact_css
     assert ".generation-attachment-strip{position:absolute;left:14px;bottom:12px" in compact_css
     assert ".generation-attachment-thumbbutton{position:absolute;right:-6px;top:-6px" in compact_css
@@ -659,7 +686,7 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert ".generation-control-trigger,.generation-history-control,.generation-attach-trigger{width:44px;min-width:44px" in compact_css
     assert ".generation-control-value{position:absolute" in compact_css
     assert ".generation-control-icon{width:20px;height:20px" in compact_css
-    assert ".generation-compact-controls{display:grid;grid-template-columns:44px44px44px44pxminmax(112px,1fr)44px" in compact_css
+    assert ".generation-compact-controls{display:grid;grid-template-columns:44px44px44px44pxminmax(0,1fr)minmax(112px,max-content)44px" in compact_css
     assert ".generation-stage-actions{position:absolute;" in compact_css
     assert "transform:none" in compact_css
     assert ".generation-stage-actions{position:absolute;left:14px;right:14px;" in compact_css
@@ -699,7 +726,9 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert ".generation-stage-card{min-height:calc(100dvh-24px);height:calc(100dvh-24px);" in compact_css
     assert ".generation-stage-result{height:100%;min-height:100%;" in compact_css
     assert ".generation-result-image.generation-result-fade-in{position:absolute;inset:0;width:100%;height:100%;" in compact_css
-    assert ".generation-compact-controls{grid-template-columns:40px40px40px40pxminmax(96px,1fr)40px;gap:7px;position:relative;z-index:5;overflow:visible;padding-bottom:2px;scrollbar-width:none}" in compact_css
+    assert ".generation-compact-controls{grid-template-columns:40px40px40px40px40pxminmax(84px,1fr)40px;gap:5px;position:relative;z-index:5;overflow:visible;padding-bottom:2px;scrollbar-width:none}" in compact_css
+    assert ".generation-provider-readiness{grid-column:1/span5;max-width:none}" in compact_css
+    assert ".generation-primary-action{width:auto;min-width:0;height:40px;min-height:40px;margin-top:0;padding:010px;grid-column:6}" in compact_css
     assert ".generation-control-popover{position:absolute;left:0;bottom:calc(100%+8px);min-width:132px;z-index:40;" in compact_css
     assert "<X size={20} strokeWidth={2.25} />" in panel
 
@@ -1471,6 +1500,46 @@ def test_frontend_prefers_result_image_for_card_and_detail_hero():
     assert "download={downloadFileName(item.title, primaryImage?.original_path || imagePath)}" in card
     assert "item.first_image?.thumb_path" not in card
     assert "const primaryImage = uniqueImages[0]" not in detail
+
+
+def test_generation_provider_status_has_readiness_contract():
+    types = (ROOT / "frontend" / "src" / "types.ts").read_text()
+    api = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
+
+    assert "status?: 'ready' | 'unavailable' | 'login_required' | 'auth_error'" in types
+    assert "can_generate?: boolean" in types
+    assert "message?: string | null" in types
+    assert "status: 'ready'" in api
+    assert "message: null" in api
+    assert "can_generate: true" in api
+    assert "status: 'unavailable'" in api
+    assert "message: 'Generation requires a local install.'" in api
+    assert "can_generate: false" in api
+
+
+def test_generation_panel_surfaces_provider_readiness_and_blocks_unavailable_submit():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+    panel = (ROOT / "frontend" / "src" / "components" / "GenerationPanel.tsx").read_text(encoding="utf-8")
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text(encoding="utf-8")
+    compact_css = css.replace(" ", "")
+
+    assert "provider.can_generate ??" in app
+    assert "providerCanGenerate" in panel
+    assert "providerReadinessLabel" in panel
+    assert "nextProviders.find(nextProvider => nextProvider.provider !== 'manual_upload' && providerCanGenerate(nextProvider))" in panel
+    assert "nextProviders.find(providerCanGenerate)" in panel
+    assert "selectedProviderCanGenerate" in panel
+    assert "selectedProviderMessage" in panel
+    assert "disabled={busy || !selectedProviderCanGenerate || !promptText.trim() || hasMissingTemplateValues}" in panel
+    assert "generation-provider-readiness" in panel
+    assert "generation-provider-readiness" in css
+    assert "grid-template-columns:44px44px44px44pxminmax(0,1fr)minmax(112px,max-content)44px" in compact_css
+    assert "grid-template-columns:40px40px40px40px40pxminmax(84px,1fr)40px" in compact_css
+    assert ".generation-provider-readiness{grid-column:1/span5;max-width:none}" in compact_css
+    assert ".generation-provider-readiness{flex:11100%;max-width:100%}" not in compact_css
+    assert ".generation-primary-action{width:auto;min-width:0;height:40px;min-height:40px;margin-top:0;padding:010px;grid-column:6}" in compact_css
+    assert "generation-control-value" in panel
+    assert "generation-attach-trigger" in panel
 
 
 def test_delete_actions_live_in_detail_modal_and_cards_batch_select():
