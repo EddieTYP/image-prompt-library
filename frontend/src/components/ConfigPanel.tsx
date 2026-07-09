@@ -214,6 +214,11 @@ export default function ConfigPanel({
   };
 
   const activeUpdateJobs = (updateStatus?.active_generation_jobs.running || 0) + (updateStatus?.active_generation_jobs.queued || 0);
+  const readyProviderCount = providers.filter(provider => provider.can_generate ?? Boolean(provider.available && provider.authenticated && provider.configured)).length;
+  const generationSetupLabel = readyProviderCount > 0 ? `${readyProviderCount} ready` : 'Optional; not connected';
+  const updateSetupLabel = updateStatus
+    ? (updateStatus.update_available ? `Update available: ${updateStatus.latest_version}` : `Up to date: ${updateStatus.current_version}`)
+    : 'Unavailable';
   const refreshUpdateStatus = () => onRefreshUpdateStatus().catch(() => {
     setUpdateMessage('Could not check app updates.');
     return undefined;
@@ -292,6 +297,25 @@ export default function ConfigPanel({
           <X size={20} strokeWidth={2.25} />
         </button>
       </div>
+
+      {!isDemoMode && (
+        <section className="setting-group local-setup-section">
+          <h3>{t('localSetup')}</h3>
+          <p className="muted">{t('localSetupHelp')}</p>
+          <dl className="local-setup-list">
+            <div><dt>{t('appVersion')}</dt><dd><code>{cfg?.version || updateStatus?.current_version || 'unknown'}</code></dd></div>
+            <div><dt>{t('libraryPath')}</dt><dd><code>{cfg?.library_path || 'unavailable'}</code></dd></div>
+            <div><dt>{t('databasePath')}</dt><dd><code>{cfg?.database_path || 'unavailable'}</code></dd></div>
+            <div><dt>{t('updateStatusLabel')}</dt><dd>{updateSetupLabel}</dd></div>
+            <div><dt>{t('generationStatusLabel')}</dt><dd>{generationSetupLabel}</dd></div>
+          </dl>
+          <div className="local-setup-commands" aria-label={t('setupCommands')}>
+            <p><span>{t('statusCommandHelp')}</span><code>image-prompt-library status</code></p>
+            <p><span>{t('doctorCommandHelp')}</span><code>image-prompt-library doctor</code></p>
+            <p><span>{t('firstRunSampleHelp')}</span><code>image-prompt-library sample-data en</code></p>
+          </div>
+        </section>
+      )}
 
       <section className="setting-group">
         <h3>{t('uiLanguage')}</h3>

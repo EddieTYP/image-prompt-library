@@ -1688,3 +1688,23 @@ def test_config_panel_has_local_only_cleanup_preview_and_apply():
     assert "}, [refreshGenerationAvailability]);" in app
     assert "cleanup-section" in config
     assert ".cleanup-section" in styles
+
+
+def test_config_panel_has_local_setup_summary_for_installed_users():
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+    i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+
+    assert "local-setup-section" in config
+    assert "t('localSetup')" in config
+    assert "cfg?.version" in config
+    assert "cfg?.library_path" in config
+    assert "cfg?.database_path" in config
+    assert "updateStatus?.current_version" in config
+    assert "readyProviderCount" in config
+    assert "image-prompt-library status" in config
+    assert "image-prompt-library doctor" in config
+    assert "image-prompt-library sample-data en" in config
+    assert "localSetup" in i18n
+    assert "Local setup" in i18n
+    assert ".local-setup-section" in css
