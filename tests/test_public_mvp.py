@@ -79,7 +79,7 @@ def test_public_docs_explain_first_run_status_and_doctor():
     assert "A fresh local library starts empty" in readme
     assert "image-prompt-library sample-data zh_hans" in readme
     assert "image-prompt-library sample-data zh_hant" in readme
-    assert "awesome-gpt-image-2" in readme
+    assert "image-prompt-library sample-data zh_hant awesome-gpt-image-2" in readme
     assert "First run" in installation
     assert "Native Windows PowerShell" in installation
     assert "WSL 2" in installation
