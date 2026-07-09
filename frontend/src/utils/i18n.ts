@@ -10,7 +10,7 @@ type TranslationKey =
   | 'firstRunEmptyTitle' | 'firstRunEmptyHelp' | 'firstRunOpenConfig'
   | 'firstRunSampleCommand' | 'firstRunSampleHelp' | 'firstRunGenerationHelp' | 'firstRunLocalInstall'
   | 'localSetup' | 'localSetupHelp' | 'appVersion' | 'updateStatusLabel'
-  | 'generationStatusLabel' | 'setupCommands' | 'statusCommandHelp' | 'doctorCommandHelp';
+  | 'generationStatusLabel' | 'setupCommands' | 'statusCommandHelp' | 'doctorCommandHelp'
   | 'copyPrompt' | 'favorite' | 'saved' | 'edit' | 'noImage' | 'unclustered'
   | 'collections' | 'closeFilters' | 'searchCollections' | 'allReferences' | 'noCollectionsFound'
   | 'loading' | 'copySuccess' | 'copyFailed' | 'add' | 'close' | 'closeConfig'
