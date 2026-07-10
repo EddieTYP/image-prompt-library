@@ -196,7 +196,7 @@ Before extraction:
 
 Any mismatch stops installation before extraction or pointer changes.
 
-Extract into a version-specific temporary directory with the validated Python interpreter and the standard-library `tarfile` module. Before extraction, reject absolute paths, parent traversal, links, device entries, and any member whose resolved destination leaves the temporary directory. Confirm the expected package files exist after extraction, then run `setup-runtime.ps1`. Only a fully extracted and configured version may replace an existing version directory or become current.
+Extract into a version-specific temporary directory with the validated Python interpreter and the standard-library `tarfile` module. Before extraction, reject absolute paths, parent traversal, links, device entries, and any member whose resolved destination leaves the temporary directory. Confirm the expected package files exist after extraction, then move only the extracted application code into the final version path before running `setup-runtime.ps1`; a Python virtual environment must never be moved after creation because its entry points contain absolute paths. If a non-current target version already exists, keep it at one exact backup path until setup in the final target succeeds. On setup failure, remove the failed final target and restore that backup. Only a fully configured final version may become current.
 
 ## Runtime Setup
 
@@ -206,10 +206,10 @@ Extract into a version-specific temporary directory with the validated Python in
 2. use `<version>\.venv\Scripts\python.exe` for every later package operation;
 3. upgrade/install only what the existing packaged runtime setup requires;
 4. install the packaged project without Node.js;
-5. verify that `uvicorn` and `backend.main` can be imported;
+5. verify that `uvicorn` and `backend.main` can be imported while `IMAGE_PROMPT_LIBRARY_PATH` points to a new disposable directory beneath the OS temporary directory;
 6. exit nonzero on any failure.
 
-A setup failure leaves `current-version` and the running app unchanged. Temporary extraction may be removed only by an exact literal path beneath the configured prefix.
+A setup failure leaves `current-version` and the running app unchanged. The import probe must restore the incoming environment value and remove only its exact generated temporary library target, so preparing an update never initializes or migrates the user's real database. Temporary extraction may be removed only by an exact literal path beneath the configured prefix.
 
 ## Command Shim and PATH
 
@@ -340,27 +340,27 @@ It must remain optional and idempotent according to the existing importer contra
 
 ## Transactional Update and Rollback
 
-`update` records whether the owned app is running, then fully downloads, verifies, extracts, and configures the target version before changing pointers.
+`update` records whether the owned app is running and, when running, its recorded host and port. It then fully downloads, verifies, extracts, and configures the target version before changing pointers.
 
 After the target is ready:
 
 1. stop the owned running process, if any;
 2. write the old current version to `previous-version`;
 3. atomically replace `current-version` with the target;
-4. if the app was running, start the new version without opening another browser;
+4. if the app was running, start the new version on the same recorded host and port without opening another browser;
 5. require the new health check to pass.
 
 If the new version fails to start or pass health:
 
 1. stop only the newly started owned process;
 2. restore the old current and previous pointer values;
-3. restart the old version when it was previously running;
+3. restart the old version on the same recorded host and port when it was previously running;
 4. report that the update failed and automatic recovery occurred;
 5. print both relevant log paths.
 
 If the app was stopped before update, it remains stopped after a successful update.
 
-`rollback` uses the same pointer-switch and restart transaction with current and previous reversed. It fails without changing anything when no valid previous version exists.
+`rollback` uses the same pointer-switch and host/port-preserving restart transaction with current and previous reversed. It fails without changing anything when no valid previous version exists.
 
 ## Uninstall Safety
 
@@ -405,6 +405,8 @@ Expected failures must use concise messages with a next action rather than raw s
 
 The default scripts should not emit PowerShell exception dumps. An advanced verbose mode may expose additional non-secret diagnostics.
 
+When the bootstrap is executed through `irm ... | iex`, a failure must return control to the user's existing PowerShell session instead of closing that session. Direct `-File` execution and controller subprocesses must still return a nonzero process exit code on failure.
+
 ## Public Documentation
 
 Update:
@@ -437,13 +439,15 @@ The implementation PR must not claim that an older release supports native Windo
 Native Windows support is a stable minor-release feature, not a hotfix. With `v0.7.10` as the current stable release, the expected first compatible release is `v0.8.0`, subject to the release gates below. The rollout is:
 
 1. merge the verified implementation and capability-aware docs;
-2. publish the next stable minor tag from the merge commit;
+2. create the next minor tag/release from the merge commit as a prerelease so failed asset QA cannot become the stable default;
 3. wait for release-assets CI to publish the capability-bearing manifest and artifact;
-4. run the public raw-URL installer against the real GitHub release on native Windows with a temporary prefix and library;
+4. run the public raw-URL installer with the explicit prerelease version against the real GitHub assets on native Windows with a temporary prefix and library;
 5. verify start, browser load, status, update/rollback behavior where applicable, stop, and uninstall;
-6. synchronize the public current-release wording after the real release passes.
+6. promote the same tested release to stable/latest only after those checks pass;
+7. use another fresh prefix to verify default stable-release discovery selects it;
+8. synchronize the public current-release wording after the stable/default discovery check passes.
 
-Do not advertise a legacy release as Windows-native merely because `install.ps1` exists on `main`.
+Do not advertise a legacy release as Windows-native merely because `install.ps1` exists on `main`. If real-asset QA fails, leave the release marked prerelease and do not update stable docs.
 
 ## Automated Verification
 
