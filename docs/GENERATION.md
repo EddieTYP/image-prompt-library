@@ -74,7 +74,7 @@ The current beta line includes an experimental `openai_codex_oauth_native` provi
 
 The current local composer supports attached input images for reference/edit-style generation jobs. Current hardening follow-ups include:
 
-- Cross-process token refresh locking.
+- Normal OAuth token renewal is coordinated locally and should not interrupt Config or generation. If the provider is temporarily unreachable, try again shortly; reconnect only when the app explicitly says OAuth needs attention.
 - Fresh OAuth onboarding QA.
 - Clearer error mapping for auth expiry, Cloudflare/challenge, empty image results, and upstream API drift.
 - Richer saved-reference selection and input-image UX polish.
