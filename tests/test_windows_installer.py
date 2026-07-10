@@ -112,3 +112,21 @@ def test_windows_appctl_doctor_uses_user_path_and_status_database_data():
     assert "Get-AppStatusData" in database_section
     assert "$status.Items" in database_section
     assert "Test-Path" not in database_section
+
+
+def test_windows_appctl_records_exact_process_identity_before_stop():
+    script = read("scripts/appctl.ps1")
+    for name in ("Read-ServerRecord", "Get-OwnedProcess", "Test-AppHealth", "Test-PortInUse", "Start-App", "Stop-App"):
+        assert f"function {name}" in script
+    assert "process_start_time_utc_ticks" in script
+    assert "process_executable_path" in script
+    assert "app.previous.out.log" in script
+    assert "app.previous.err.log" in script
+    assert '"/api/health"' in script
+    assert "Start-Process" in script
+    assert "-WindowStyle Hidden" in script
+    assert "-RedirectStandardOutput" in script
+    assert "-RedirectStandardError" in script
+    assert '"start"' in script
+    assert '"stop"' in script
+    assert "Stop-Process -Id" in script
