@@ -426,10 +426,6 @@ class CodexNativeAuthStore:
                         marker.unlink()
                     except FileNotFoundError:
                         pass
-                    try:
-                        lock_path.rmdir()
-                    except OSError:
-                        pass
                     raise
                 owner_marker = marker
                 owned_lock = (lock_stat.st_dev, lock_stat.st_ino)
@@ -443,13 +439,50 @@ class CodexNativeAuthStore:
                     if stale:
                         stale_lock_retried = True
                         try:
+                            entries = list(lock_path.iterdir())
                             markers = [
-                                entry for entry in lock_path.iterdir()
+                                entry for entry in entries
                                 if entry.name.startswith("owner-") and entry.is_file()
                             ]
                         except FileNotFoundError:
                             continue
-                        if len(markers) == 1:
+                        if not entries:
+                            cleanup_id = uuid4().hex
+                            cleanup_marker = lock_path / f"cleanup-{cleanup_id}"
+                            stale_path = lock_path.with_name(f"{lock_path.name}.stale-{cleanup_id}")
+                            try:
+                                cleanup_marker.touch(exist_ok=False)
+                            except OSError:
+                                continue
+                            try:
+                                try:
+                                    current_stat = lock_path.stat()
+                                    same_lock = (
+                                        current_stat.st_dev,
+                                        current_stat.st_ino,
+                                    ) == (lock_stat.st_dev, lock_stat.st_ino)
+                                except FileNotFoundError:
+                                    same_lock = False
+                                if not same_lock:
+                                    continue
+                                try:
+                                    lock_path.rename(stale_path)
+                                except OSError:
+                                    continue
+                                renamed_marker = stale_path / cleanup_marker.name
+                                try:
+                                    renamed_marker.unlink()
+                                finally:
+                                    try:
+                                        stale_path.rmdir()
+                                    except OSError:
+                                        pass
+                            finally:
+                                try:
+                                    cleanup_marker.unlink()
+                                except FileNotFoundError:
+                                    pass
+                        elif len(markers) == 1:
                             marker_removed = False
                             try:
                                 markers[0].unlink()

@@ -454,6 +454,54 @@ def test_codex_native_refresh_recovers_stale_lock_but_preserves_fresh_lock(tmp_p
     assert lock_path.exists()
 
 
+def test_codex_native_refresh_recovers_empty_stale_lock(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    import httpx
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    store = CodexNativeAuthStore(auth_path)
+    store.save_tokens({"access_token": fake_jwt(exp=1), "refresh_token": "refresh-token-old"})
+    lock_path = auth_path.with_name(f"{auth_path.name}.refresh.lock")
+    lock_path.mkdir()
+    stale_time = time.time() - openai_codex_native.AUTH_REFRESH_LOCK_STALE_SECONDS - 1
+    os.utime(lock_path, (stale_time, stale_time))
+    monkeypatch.setattr(openai_codex_native, "AUTH_REFRESH_LOCK_WAIT_SECONDS", 0)
+
+    refreshed = store.read_tokens(http_client=httpx.Client(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, json={
+            "access_token": fake_jwt("acct_refreshed"),
+            "refresh_token": "refresh-token-rotated",
+        })
+    )))
+
+    assert refreshed["access_token"] == fake_jwt("acct_refreshed")
+    assert lock_path.exists() is False
+    assert list(lock_path.parent.glob(f"{lock_path.name}.stale-*")) == []
+
+
+def test_codex_native_refresh_preserves_empty_fresh_lock(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore, CodexNativeTemporaryError
+
+    store = CodexNativeAuthStore(auth_path)
+    store.save_tokens({"access_token": fake_jwt(exp=1), "refresh_token": "refresh-token-old"})
+    lock_path = auth_path.with_name(f"{auth_path.name}.refresh.lock")
+    lock_path.mkdir()
+    monkeypatch.setattr(openai_codex_native, "AUTH_REFRESH_LOCK_WAIT_SECONDS", 0)
+
+    with pytest.raises(CodexNativeTemporaryError):
+        store.read_tokens()
+
+    assert lock_path.is_dir()
+    assert list(lock_path.iterdir()) == []
+
+
 def test_codex_native_stale_cleanup_preserves_replacement_fresh_lock(tmp_path, monkeypatch):
     auth_path = tmp_path / "auth" / "auth.json"
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")

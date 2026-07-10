@@ -158,3 +158,55 @@ Result: `39 passed, 1 skipped, 1 warning in 6.98s`.
 - Directory identity remains a second check; `rmdir()` still requires the directory to be empty.
 - No API shape, frontend, provider, queue, or dependency changes were made.
 - The existing Windows symlink privilege skip and Starlette `TestClient` deprecation warning remain unchanged.
+
+## Re-Review Fix: Empty Stale Lock Recovery
+
+### Finding Addressed
+
+- Added recovery for an empty refresh-lock directory older than `AUTH_REFRESH_LOCK_STALE_SECONDS`, covering crashes before owner-marker creation or after marker removal.
+- Preserved a fresh empty lock as an in-progress acquisition; wait expiry raises `CodexNativeTemporaryError` without deleting it.
+- Empty stale cleanup writes a unique cleanup claim, verifies the observed directory identity, atomically renames that claimed directory to a unique tombstone, then removes the claim and tombstone with `rmdir()`.
+- Removed pathname-only `rmdir()` from owner-marker creation failure so a delayed creator cannot delete a replacement empty lock after its original directory was renamed.
+- Existing owner-marker cleanup and replacement-fresh-lock safety remain unchanged.
+
+### RED Evidence
+
+Command:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py::test_codex_native_refresh_recovers_empty_stale_lock tests/test_openai_codex_native.py::test_codex_native_refresh_preserves_empty_fresh_lock -q -p no:cacheprovider
+```
+
+Result: `1 failed, 1 passed, 1 warning in 0.89s`.
+
+- Empty stale recovery raised `CodexNativeTemporaryError` because markerless stale directories were ignored.
+- Fresh empty preservation already passed and remained the invariant for the implementation.
+
+### GREEN Evidence
+
+Regression command:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py::test_codex_native_refresh_recovers_empty_stale_lock tests/test_openai_codex_native.py::test_codex_native_refresh_preserves_empty_fresh_lock -q -p no:cacheprovider
+```
+
+Result: `2 passed, 1 warning in 0.74s`.
+
+Final focused auth-store suite:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py -q -p no:cacheprovider
+```
+
+Result: `41 passed, 1 skipped, 1 warning in 7.03s`.
+
+### Files Changed
+
+- `backend/services/openai_codex_native.py`
+- `tests/test_openai_codex_native.py`
+- `.superpowers/sdd/task-2-report.md` (required report append only)
+
+### Concerns
+
+- The existing Windows symlink privilege skip remains unrelated to auth locking.
+- The existing Starlette `TestClient` deprecation warning remains unchanged.
