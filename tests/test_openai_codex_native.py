@@ -224,7 +224,7 @@ def test_codex_native_refreshes_expired_access_token_before_use(tmp_path, monkey
 
 def test_codex_native_refresh_coordinates_independent_processes(tmp_path, monkeypatch):
     auth_path = tmp_path / "auth" / "auth.json"
-    second_started_path = tmp_path / "second-started"
+    second_refresh_started_path = tmp_path / "second-refresh-started"
     refreshed_access_token = fake_jwt("acct_refreshed")
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
 
@@ -273,11 +273,18 @@ def test_codex_native_refresh_coordinates_independent_processes(tmp_path, monkey
         "from backend.services import openai_codex_native",
         "openai_codex_native.CODEX_TOKEN_URL = sys.argv[2]",
         "if len(sys.argv) == 4:",
-        "    Path(sys.argv[3]).write_text('started', encoding='utf-8')",
+        "    expires_soon = openai_codex_native._token_expires_soon",
+        "    def signal_refresh_start(token, skew_seconds=300):",
+        "        Path(sys.argv[3]).write_text('started', encoding='utf-8')",
+        "        return expires_soon(token, skew_seconds)",
+        "    openai_codex_native._token_expires_soon = signal_refresh_start",
         "tokens = openai_codex_native.CodexNativeAuthStore(Path(sys.argv[1])).read_tokens()",
         "print(json.dumps(tokens))",
     ])
 
+    first = None
+    second = None
+    workers_completed = False
     try:
         first = subprocess.Popen(
             [sys.executable, "-c", worker, str(auth_path), token_url],
@@ -289,22 +296,34 @@ def test_codex_native_refresh_coordinates_independent_processes(tmp_path, monkey
         assert first_request.wait(timeout=10)
 
         second = subprocess.Popen(
-            [sys.executable, "-c", worker, str(auth_path), token_url, str(second_started_path)],
+            [sys.executable, "-c", worker, str(auth_path), token_url, str(second_refresh_started_path)],
             cwd=Path(__file__).resolve().parents[1],
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         deadline = time.monotonic() + 10
-        while not second_started_path.exists() and time.monotonic() < deadline:
+        while not second_refresh_started_path.exists() and time.monotonic() < deadline:
             time.sleep(0.01)
-        assert second_started_path.exists()
+        assert second_refresh_started_path.exists()
         release_first_response.set()
 
         first_stdout, first_stderr = first.communicate(timeout=10)
         second_stdout, second_stderr = second.communicate(timeout=10)
+        workers_completed = True
     finally:
         release_first_response.set()
+        if not workers_completed:
+            for worker_process in (first, second):
+                if worker_process is None:
+                    continue
+                if worker_process.poll() is None:
+                    worker_process.terminate()
+                try:
+                    worker_process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    worker_process.kill()
+                    worker_process.communicate(timeout=5)
         server.shutdown()
         server.server_close()
         server_thread.join(timeout=10)
@@ -330,7 +349,11 @@ def test_codex_native_refresh_recovers_stale_lock_but_preserves_fresh_lock(tmp_p
     store.save_tokens({"access_token": fake_jwt(exp=1), "refresh_token": "refresh-token-old"})
     lock_path = auth_path.with_name(f"{auth_path.name}.refresh.lock")
     lock_path.mkdir()
-    stale_time = time.time() - 31
+    assert getattr(openai_codex_native, "AUTH_REFRESH_LOCK_POLL_SECONDS", None) == 0.1
+    assert getattr(openai_codex_native, "AUTH_REFRESH_LOCK_WAIT_SECONDS", None) == 20.0
+    stale_seconds = getattr(openai_codex_native, "AUTH_REFRESH_LOCK_STALE_SECONDS", None)
+    assert stale_seconds == 30.0
+    stale_time = time.time() - stale_seconds - 1
     os.utime(lock_path, (stale_time, stale_time))
     refreshed = store.read_tokens(http_client=httpx.Client(transport=httpx.MockTransport(
         lambda request: httpx.Response(200, json={
@@ -344,7 +367,7 @@ def test_codex_native_refresh_recovers_stale_lock_but_preserves_fresh_lock(tmp_p
 
     store.save_tokens({"access_token": fake_jwt(exp=1), "refresh_token": "refresh-token-old"})
     lock_path.mkdir()
-    monkeypatch.setattr(openai_codex_native, "AUTH_REFRESH_LOCK_WAIT_SECONDS", 0, raising=False)
+    monkeypatch.setattr(openai_codex_native, "AUTH_REFRESH_LOCK_WAIT_SECONDS", 0)
     temporary_error = getattr(openai_codex_native, "CodexNativeTemporaryError", RuntimeError)
 
     with pytest.raises(temporary_error):
@@ -525,6 +548,7 @@ def test_codex_native_broken_saved_login_maps_to_auth_error(tmp_path, monkeypatc
     assert payload["can_generate"] is False
     assert payload["message"] == "ChatGPT / Codex OAuth needs attention before generating."
     assert "refresh-secret" not in json.dumps(payload)
+    assert str(auth_path.with_name(f"{auth_path.name}.refresh.lock")) not in json.dumps(payload)
 
 
 def test_codex_native_temporary_refresh_failure_remains_connected_and_redacted(tmp_path, monkeypatch):
@@ -554,6 +578,7 @@ def test_codex_native_temporary_refresh_failure_remains_connected_and_redacted(t
     assert payload["status"] == "unavailable"
     assert payload["message"] == "ChatGPT / Codex OAuth is temporarily unavailable. Try again shortly."
     assert "refresh-secret" not in json.dumps(payload)
+    assert str(auth_path.with_name(f"{auth_path.name}.refresh.lock")) not in json.dumps(payload)
 
 
 def test_generation_providers_manual_upload_is_always_generation_ready(tmp_path, monkeypatch):

@@ -259,3 +259,33 @@ Unrelated existing failures observed during the focused suite:
 
 - The new lock tests intentionally reference the planned `AUTH_REFRESH_LOCK_WAIT_SECONDS` and `CodexNativeTemporaryError` contracts with compatibility fallbacks so that they fail as behavior assertions before Task 2 introduces those names. Task 2 should add the named constant and temporary-error class for the tests to exercise the exact final interface.
 - The full focused file is not green before Task 2 because this task deliberately adds regression tests ahead of the production implementation, and the two unrelated Windows-specific failures remain present.
+
+## OAuth Session Reliability Test Review Fixes (2026-07-10)
+
+### Test Changes
+
+- The second subprocess now signals from inside `_token_expires_soon()` while `read_tokens()` evaluates the expired credential, proving it has entered the refresh path before the first token endpoint response is released.
+- Failure cleanup now terminates and reaps both subprocesses, escalating to `kill()` if a process does not exit within five seconds.
+- The lock test now pins `AUTH_REFRESH_LOCK_POLL_SECONDS == 0.1`, `AUTH_REFRESH_LOCK_WAIT_SECONDS == 20.0`, and `AUTH_REFRESH_LOCK_STALE_SECONDS == 30.0`. Its stale fixture derives from the asserted 30-second threshold.
+- Both temporary and credential status payload tests assert that the exact `<auth-file>.refresh.lock` path is redacted.
+
+### Focused Red Verification
+
+Command run from `G:\Codex\image-prompt-library`:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests\test_openai_codex_native.py -q -p no:cacheprovider
+```
+
+Result: `5 failed, 24 passed, 1 warning in 7.24s` (exit code 1).
+
+Expected Task 1 failures:
+
+- `test_codex_native_refresh_coordinates_independent_processes`: `refresh_requests == 2`, with the second child having signalled from within its refresh path before the first response was released.
+- `test_codex_native_refresh_recovers_stale_lock_but_preserves_fresh_lock`: `AUTH_REFRESH_LOCK_POLL_SECONDS` is currently absent instead of `0.1`; the remaining exact timing checks will exercise Task 2 once that constant is added.
+- `test_codex_native_temporary_refresh_failure_remains_connected_and_redacted`: temporary refresh failure still reports `authenticated == False` instead of preserving connected authentication state.
+
+Unrelated existing Windows failures remained unchanged:
+
+- Auth-file permission mode observed as `0o666` rather than the POSIX expectation `0o600`.
+- Symlink creation was denied with `WinError 1314`.
