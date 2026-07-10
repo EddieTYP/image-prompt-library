@@ -114,11 +114,10 @@ git commit -m "fix: coordinate OAuth token refresh"
 **Files:**
 - Modify: `tests/test_frontend_static.py`
 - Modify: `docs/GENERATION.md`
-- Create: `docs/qa/2026-07-10-oauth-session-reliability-qa.md`
 
 **Interfaces:**
 - Consumes: current provider `message`, `authenticated`, and Config/GenerationPanel UI.
-- Produces: a static UX guard, user documentation, and a public-safe QA record.
+- Produces: a static UX guard and user documentation.
 
 - [ ] **Step 1: Add and run the static UX guard**
 
@@ -142,17 +141,43 @@ Replace the completed `Cross-process token refresh locking` follow-up in `docs/G
 - Normal OAuth token renewal is coordinated locally and should not interrupt Config or generation. If the provider is temporarily unreachable, try again shortly; reconnect only when the app explicitly says OAuth needs attention.
 ```
 
-- [ ] **Step 3: Run checks, build, and live QA**
+- [ ] **Step 3: Run static checks and commit**
+
+Run `PYTHONUTF8=1 .\.venv\Scripts\python.exe -m pytest tests/test_frontend_static.py -q -p no:cacheprovider` and `git diff --check`.
+
+Expected: static checks pass and `git diff --check` has no output.
+
+- [ ] **Step 4: Commit the UX guard and docs**
+
+```powershell
+git add tests/test_frontend_static.py docs/GENERATION.md
+git commit -m "docs: clarify OAuth session recovery"
+```
+
+### Task 4: Perform Real Browser And Live OAuth QA
+
+**Files:**
+- Create: `docs/qa/2026-07-10-oauth-session-reliability-qa.md`
+
+**Interfaces:**
+- Consumes: the connected local Config provider card, generation composer, queue, and OAuth session.
+- Produces: a public-safe visual/live QA record.
+
+- [ ] **Step 1: Run focused automated checks and production build**
 
 Run `PYTHONUTF8=1 .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py tests/test_frontend_static.py -q -p no:cacheprovider`, then run `npm run build` and `git diff --check`.
 
-On desktop and a 375px-wide mobile content viewport, verify connected Config, provider-ready composer, queued/running/result flow, wrapped provider text, and no overlaps. Use a fresh browser tab and ordinary viewport screenshots after drawer transitions settle.
+- [ ] **Step 2: Perform desktop and mobile browser QA**
 
-Run one live OAuth generation attempt. Record only public-safe observations in `docs/qa/2026-07-10-oauth-session-reliability-qa.md`; omit accounts, tokens, URLs, user codes, private prompts, and private images.
+At desktop and a 375px-wide mobile content viewport, verify connected Config, provider-ready composer, normal queued/running/result flow, wrapped provider text, and no overlapping controls. Use a fresh browser tab and ordinary viewport screenshots after drawer transitions settle.
 
-- [ ] **Step 4: Commit the UX guard, docs, and QA record**
+- [ ] **Step 3: Perform live OAuth generation QA and record it**
+
+Run one real OAuth generation attempt. Create `docs/qa/2026-07-10-oauth-session-reliability-qa.md` with focused-check/build results, desktop/mobile observations, live result, and platform limitations. Omit account IDs, credentials, auth URLs, user codes, private prompts, and private images.
+
+- [ ] **Step 4: Commit the QA record**
 
 ```powershell
-git add tests/test_frontend_static.py docs/GENERATION.md docs/qa/2026-07-10-oauth-session-reliability-qa.md
+git add docs/qa/2026-07-10-oauth-session-reliability-qa.md
 git commit -m "docs: record OAuth session QA"
 ```
