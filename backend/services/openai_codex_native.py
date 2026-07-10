@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import httpx
 from PIL import Image, UnidentifiedImageError
@@ -391,13 +392,17 @@ class CodexNativeAuthStore:
             raise CodexNativeAuthError("No native Codex OAuth credentials saved")
         try:
             payload = json.loads(self.path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise CodexNativeAuthError("Native Codex auth store contains invalid JSON") from exc
         tokens = payload.get("tokens") if isinstance(payload, dict) else None
         if not isinstance(tokens, dict):
             raise CodexNativeAuthError("Native Codex auth store is missing tokens")
-        access_token = str(tokens.get("access_token", "") or "").strip()
-        refresh_token = str(tokens.get("refresh_token", "") or "").strip()
+        raw_access_token = tokens.get("access_token")
+        raw_refresh_token = tokens.get("refresh_token")
+        if not isinstance(raw_access_token, str) or not isinstance(raw_refresh_token, str):
+            raise CodexNativeAuthError("Native Codex auth store has invalid token values")
+        access_token = raw_access_token.strip()
+        refresh_token = raw_refresh_token.strip()
         if not access_token or not refresh_token:
             raise CodexNativeAuthError("Native Codex auth store has incomplete tokens")
         return {"access_token": access_token, "refresh_token": refresh_token}
@@ -407,24 +412,64 @@ class CodexNativeAuthStore:
         lock_path = _refresh_lock_path(self.path)
         deadline = time.monotonic() + AUTH_REFRESH_LOCK_WAIT_SECONDS
         stale_lock_retried = False
+        owner_marker: Path | None = None
         owned_lock: tuple[int, int] | None = None
-        while owned_lock is None:
+        while owner_marker is None:
             try:
                 lock_path.mkdir()
-                lock_stat = lock_path.stat()
+                marker = lock_path / f"owner-{uuid4().hex}"
+                try:
+                    marker.touch(exist_ok=False)
+                    lock_stat = lock_path.stat()
+                except Exception:
+                    try:
+                        marker.unlink()
+                    except FileNotFoundError:
+                        pass
+                    try:
+                        lock_path.rmdir()
+                    except OSError:
+                        pass
+                    raise
+                owner_marker = marker
                 owned_lock = (lock_stat.st_dev, lock_stat.st_ino)
             except FileExistsError:
                 if not stale_lock_retried:
                     try:
-                        stale = time.time() - lock_path.stat().st_mtime >= AUTH_REFRESH_LOCK_STALE_SECONDS
+                        lock_stat = lock_path.stat()
                     except FileNotFoundError:
                         continue
+                    stale = time.time() - lock_stat.st_mtime >= AUTH_REFRESH_LOCK_STALE_SECONDS
                     if stale:
                         stale_lock_retried = True
                         try:
-                            lock_path.rmdir()
-                        except OSError:
-                            pass
+                            markers = [
+                                entry for entry in lock_path.iterdir()
+                                if entry.name.startswith("owner-") and entry.is_file()
+                            ]
+                        except FileNotFoundError:
+                            continue
+                        if len(markers) == 1:
+                            marker_removed = False
+                            try:
+                                markers[0].unlink()
+                                marker_removed = True
+                            except FileNotFoundError:
+                                pass
+                            if marker_removed:
+                                try:
+                                    current_stat = lock_path.stat()
+                                    same_lock = (
+                                        current_stat.st_dev,
+                                        current_stat.st_ino,
+                                    ) == (lock_stat.st_dev, lock_stat.st_ino)
+                                except FileNotFoundError:
+                                    same_lock = False
+                                if same_lock:
+                                    try:
+                                        lock_path.rmdir()
+                                    except OSError:
+                                        pass
                         continue
                 if time.monotonic() >= deadline:
                     raise CodexNativeTemporaryError("Token refresh is temporarily unavailable")
@@ -432,12 +477,23 @@ class CodexNativeAuthStore:
         try:
             yield
         finally:
+            marker_removed = False
             try:
-                lock_stat = lock_path.stat()
-                if (lock_stat.st_dev, lock_stat.st_ino) == owned_lock:
-                    lock_path.rmdir()
+                owner_marker.unlink()
+                marker_removed = True
             except FileNotFoundError:
                 pass
+            if marker_removed:
+                try:
+                    lock_stat = lock_path.stat()
+                    same_lock = (lock_stat.st_dev, lock_stat.st_ino) == owned_lock
+                except FileNotFoundError:
+                    same_lock = False
+                if same_lock:
+                    try:
+                        lock_path.rmdir()
+                    except OSError:
+                        pass
 
     def read_tokens(self, http_client: httpx.Client | None = None) -> dict[str, str]:
         tokens = self._read_raw_tokens()

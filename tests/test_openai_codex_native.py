@@ -235,10 +235,33 @@ def test_codex_native_refresh_maps_transient_failures_to_temporary_error(tmp_pat
             raise httpx.ReadTimeout("timed out", request=request)
         return httpx.Response(503)
 
-    store = CodexNativeAuthStore(tmp_path / "auth" / "auth.json")
+    auth_path = tmp_path / "auth" / "auth.json"
+    store = CodexNativeAuthStore(auth_path)
+    store.save_tokens({"access_token": fake_jwt(exp=1), "refresh_token": "refresh-secret"})
+    saved_credentials = auth_path.read_bytes()
     with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
         with pytest.raises(CodexNativeTemporaryError):
             store.refresh_tokens("refresh-secret", http_client=http_client)
+    assert auth_path.read_bytes() == saved_credentials
+
+
+@pytest.mark.parametrize("status_code", [400, 401, 403])
+def test_codex_native_refresh_keeps_oauth_credential_failures_as_auth_errors(tmp_path, monkeypatch, status_code):
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    import httpx
+    from backend.services.openai_codex_native import (
+        CodexNativeAuthError,
+        CodexNativeAuthStore,
+        CodexNativeTemporaryError,
+    )
+
+    store = CodexNativeAuthStore(tmp_path / "auth.json")
+    with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(status_code))) as http_client:
+        with pytest.raises(CodexNativeAuthError) as error:
+            store.refresh_tokens("refresh-secret", http_client=http_client)
+
+    assert not isinstance(error.value, CodexNativeTemporaryError)
 
 
 def test_codex_native_malformed_local_credentials_raise_auth_error(tmp_path):
@@ -246,6 +269,30 @@ def test_codex_native_malformed_local_credentials_raise_auth_error(tmp_path):
 
     auth_path = tmp_path / "auth.json"
     auth_path.write_text("{", encoding="utf-8")
+
+    with pytest.raises(CodexNativeAuthError):
+        CodexNativeAuthStore(auth_path).read_tokens()
+
+
+def test_codex_native_invalid_utf8_credentials_raise_auth_error(tmp_path):
+    from backend.services.openai_codex_native import CodexNativeAuthError, CodexNativeAuthStore
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_bytes(b"\xff")
+
+    with pytest.raises(CodexNativeAuthError):
+        CodexNativeAuthStore(auth_path).read_tokens()
+
+
+@pytest.mark.parametrize("tokens", [
+    {"access_token": 123, "refresh_token": "refresh-secret"},
+    {"access_token": fake_jwt(), "refresh_token": ["refresh-secret"]},
+])
+def test_codex_native_non_string_token_values_raise_auth_error(tmp_path, tokens):
+    from backend.services.openai_codex_native import CodexNativeAuthError, CodexNativeAuthStore
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text(json.dumps({"tokens": tokens}), encoding="utf-8")
 
     with pytest.raises(CodexNativeAuthError):
         CodexNativeAuthStore(auth_path).read_tokens()
@@ -378,6 +425,7 @@ def test_codex_native_refresh_recovers_stale_lock_but_preserves_fresh_lock(tmp_p
     store.save_tokens({"access_token": fake_jwt(exp=1), "refresh_token": "refresh-token-old"})
     lock_path = auth_path.with_name(f"{auth_path.name}.refresh.lock")
     lock_path.mkdir()
+    (lock_path / "owner-stale").write_text("stale", encoding="utf-8")
     assert getattr(openai_codex_native, "AUTH_REFRESH_LOCK_POLL_SECONDS", None) == 0.1
     assert getattr(openai_codex_native, "AUTH_REFRESH_LOCK_WAIT_SECONDS", None) == 20.0
     stale_seconds = getattr(openai_codex_native, "AUTH_REFRESH_LOCK_STALE_SECONDS", None)
@@ -396,6 +444,7 @@ def test_codex_native_refresh_recovers_stale_lock_but_preserves_fresh_lock(tmp_p
 
     store.save_tokens({"access_token": fake_jwt(exp=1), "refresh_token": "refresh-token-old"})
     lock_path.mkdir()
+    (lock_path / "owner-fresh").write_text("fresh", encoding="utf-8")
     monkeypatch.setattr(openai_codex_native, "AUTH_REFRESH_LOCK_WAIT_SECONDS", 0)
     temporary_error = getattr(openai_codex_native, "CodexNativeTemporaryError", RuntimeError)
 
@@ -403,6 +452,68 @@ def test_codex_native_refresh_recovers_stale_lock_but_preserves_fresh_lock(tmp_p
         store.read_tokens()
 
     assert lock_path.exists()
+
+
+def test_codex_native_stale_cleanup_preserves_replacement_fresh_lock(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore, CodexNativeTemporaryError
+
+    store = CodexNativeAuthStore(auth_path)
+    store.save_tokens({"access_token": fake_jwt(exp=1), "refresh_token": "refresh-token-old"})
+    lock_path = auth_path.with_name(f"{auth_path.name}.refresh.lock")
+    lock_path.mkdir()
+    stale_marker = lock_path / "owner-stale"
+    stale_marker.write_text("stale", encoding="utf-8")
+    stale_time = time.time() - openai_codex_native.AUTH_REFRESH_LOCK_STALE_SECONDS - 1
+    os.utime(lock_path, (stale_time, stale_time))
+
+    fresh_marker = lock_path / "owner-fresh"
+    real_unlink = Path.unlink
+    replaced = False
+    cleanup_enabled = True
+
+    def replace_stale_lock(path, *args, **kwargs):
+        nonlocal replaced
+        if cleanup_enabled and path == stale_marker:
+            real_unlink(path, *args, **kwargs)
+            lock_path.rmdir()
+            lock_path.mkdir()
+            fresh_marker.write_text("fresh", encoding="utf-8")
+            replaced = True
+            return None
+        return real_unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", replace_stale_lock)
+    monkeypatch.setattr(openai_codex_native, "AUTH_REFRESH_LOCK_WAIT_SECONDS", 0)
+    try:
+        with pytest.raises(CodexNativeTemporaryError):
+            store.read_tokens()
+    finally:
+        cleanup_enabled = False
+
+    assert replaced is True
+    assert fresh_marker.read_text(encoding="utf-8") == "fresh"
+
+
+def test_codex_native_refresh_lock_uses_a_unique_owner_marker(tmp_path):
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    store = CodexNativeAuthStore(tmp_path / "auth" / "auth.json")
+    store.save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh-secret"})
+    lock_path = store.path.with_name(f"{store.path.name}.refresh.lock")
+    marker_names = []
+
+    for _ in range(2):
+        with store._refresh_lock():
+            markers = list(lock_path.iterdir())
+            assert len(markers) == 1
+            marker_names.append(markers[0].name)
+        assert lock_path.exists() is False
+
+    assert marker_names[0] != marker_names[1]
 
 
 def test_codex_native_device_flow_uses_codex_endpoints_and_saves_app_owned_tokens(tmp_path, monkeypatch):

@@ -89,3 +89,72 @@ Result: `31 passed, 1 skipped, 1 warning in 7.03s`.
 - The Windows environment cannot validate POSIX `0600` mode bits through `stat()`, so that assertion remains active only on non-Windows systems.
 - The unsafe-result-root symlink test is skipped only because this Windows account lacks symlink privilege (`WinError 1314`).
 - Pytest reports the existing Starlette `TestClient` deprecation warning.
+
+## Review Fix: Owner Markers And Strict Credential Parsing
+
+### Findings Addressed
+
+- Replaced pathname-only stale cleanup with a unique `owner-<uuid>` marker for every acquired lock.
+- Stale cleanup removes only the single owner marker it observed, confirms the lock directory identity did not change, and calls `rmdir()` only after that marker removal succeeds.
+- Normal release removes only its own unique marker and preserves any replacement lock.
+- Converted invalid UTF-8 auth files to `CodexNativeAuthError`.
+- Rejected non-string access and refresh token values instead of coercing them with `str()`.
+- Added explicit coverage that OAuth 400, 401, and 403 remain credential failures.
+- Added byte-for-byte checks that transport and 5xx refresh failures do not alter the saved credential file.
+
+### RED Evidence
+
+Command:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py::test_codex_native_refresh_maps_transient_failures_to_temporary_error tests/test_openai_codex_native.py::test_codex_native_refresh_keeps_oauth_credential_failures_as_auth_errors tests/test_openai_codex_native.py::test_codex_native_invalid_utf8_credentials_raise_auth_error tests/test_openai_codex_native.py::test_codex_native_non_string_token_values_raise_auth_error tests/test_openai_codex_native.py::test_codex_native_refresh_recovers_stale_lock_but_preserves_fresh_lock tests/test_openai_codex_native.py::test_codex_native_stale_cleanup_preserves_replacement_fresh_lock -q -p no:cacheprovider
+```
+
+Result: `5 failed, 5 passed, 1 warning in 21.06s`.
+
+Expected failures:
+
+- Invalid UTF-8 escaped as `UnicodeDecodeError`.
+- Integer access tokens and list refresh tokens were accepted after string coercion.
+- Marker-backed stale locks could not be recovered.
+- Stale cleanup never observed or removed an owner marker, so the replacement-lock race regression failed.
+
+Unique-marker acquisition RED command:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py::test_codex_native_refresh_lock_uses_a_unique_owner_marker -q -p no:cacheprovider
+```
+
+Result: `1 failed, 1 warning in 0.82s`; the acquired lock directory contained no owner marker.
+
+### GREEN Evidence
+
+Review-focused command:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py::test_codex_native_refresh_maps_transient_failures_to_temporary_error tests/test_openai_codex_native.py::test_codex_native_refresh_keeps_oauth_credential_failures_as_auth_errors tests/test_openai_codex_native.py::test_codex_native_invalid_utf8_credentials_raise_auth_error tests/test_openai_codex_native.py::test_codex_native_non_string_token_values_raise_auth_error tests/test_openai_codex_native.py::test_codex_native_refresh_recovers_stale_lock_but_preserves_fresh_lock tests/test_openai_codex_native.py::test_codex_native_stale_cleanup_preserves_replacement_fresh_lock tests/test_openai_codex_native.py::test_codex_native_refresh_lock_uses_a_unique_owner_marker -q -p no:cacheprovider
+```
+
+Result: `11 passed, 1 warning in 0.76s`.
+
+Final focused auth-store suite:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py -q -p no:cacheprovider
+```
+
+Result: `39 passed, 1 skipped, 1 warning in 6.98s`.
+
+### Files Changed
+
+- `backend/services/openai_codex_native.py`
+- `tests/test_openai_codex_native.py`
+- `.superpowers/sdd/task-2-report.md` (required report append only)
+
+### Self-Review And Concerns
+
+- The marker filename is unique per acquisition, so a stale cleaner cannot target a replacement owner's marker.
+- Both stale cleanup and normal release require successful removal of the expected marker before attempting directory removal.
+- Directory identity remains a second check; `rmdir()` still requires the directory to be empty.
+- No API shape, frontend, provider, queue, or dependency changes were made.
+- The existing Windows symlink privilege skip and Starlette `TestClient` deprecation warning remain unchanged.
