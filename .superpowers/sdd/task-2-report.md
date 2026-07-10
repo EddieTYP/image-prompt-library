@@ -273,3 +273,70 @@ Result: `42 passed, 1 skipped, 1 warning in 6.97s`.
 - Publication losers cannot write into or delete the winning canonical lock.
 - The deterministic race asserts the delayed owner never enters, never adds a second canonical marker, and leaves no private pending directory.
 - The existing Windows symlink privilege skip and Starlette `TestClient` deprecation warning remain unchanged.
+
+## Architecture Reset: OS Advisory Refresh Lock
+
+### Approved Replacement
+
+- Removed the directory, owner-marker, stale-age, pending-directory, tombstone, rename, and deletion protocol in full.
+- The canonical `<auth-file>.refresh.lock` is now a persistent regular file.
+- Windows uses `msvcrt.locking(..., LK_NBLCK, 1)` on a persistent byte.
+- macOS and Linux use `fcntl.flock(..., LOCK_EX | LOCK_NB)`.
+- Acquisition retries every `0.1` seconds for at most `20.0` seconds.
+- Wait expiry raises `CodexNativeTemporaryError`.
+- Owned locks are unlocked and file descriptors are closed in `finally`; operating-system process teardown releases a killed owner's lock automatically.
+- Lock files are never aged, renamed, unlinked, or deleted.
+- Existing coordinated token reread, temporary error mapping, credential validation, status semantics, and redaction behavior remain unchanged.
+
+### Test Replacement
+
+- Kept the genuine independent-process refresh test requiring exactly one token endpoint request and identical refreshed credentials.
+- Removed six obsolete directory/marker/stale-cleanup tests.
+- Added a real child-process holder that acquires the production advisory lock.
+- Added killed-owner coverage proving immediate reacquisition after process termination.
+- Added bounded-wait coverage proving a live owner yields `CodexNativeTemporaryError` within the configured wait and leaves a regular lock file.
+- Pinned the required `0.1` polling and `20.0` default wait constants and asserted that no stale-age constant remains.
+
+### RED Evidence
+
+Command:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py::test_codex_native_refresh_lock_releases_when_owner_is_killed tests/test_openai_codex_native.py::test_codex_native_refresh_lock_wait_is_bounded_and_temporary -q -p no:cacheprovider
+```
+
+Result: `2 failed, 1 warning in 3.07s`.
+
+- Killing the directory-lock owner left an unrecoverable canonical directory and reacquisition timed out.
+- The held canonical path was a directory rather than the required regular advisory-lock file.
+
+### GREEN Evidence
+
+Core coordination and advisory-lock command:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py::test_codex_native_refresh_lock_releases_when_owner_is_killed tests/test_openai_codex_native.py::test_codex_native_refresh_lock_wait_is_bounded_and_temporary tests/test_openai_codex_native.py::test_codex_native_refresh_coordinates_independent_processes -q -p no:cacheprovider
+```
+
+Result: `3 passed, 1 warning in 3.29s`.
+
+Final focused auth-store suite:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py -q -p no:cacheprovider
+```
+
+Result: `38 passed, 1 skipped, 1 warning in 7.99s`.
+
+### Files Changed
+
+- `backend/services/openai_codex_native.py`
+- `tests/test_openai_codex_native.py`
+- `.superpowers/sdd/task-2-report.md` (required report append only)
+
+### Self-Review And Concerns
+
+- Protocol scans found no stale-age, marker, pending, tombstone, rename, unlink, or directory-deletion logic in the auth lock path.
+- The Windows `msvcrt` branch was exercised by the focused suite, including process-kill release and bounded contention.
+- The `fcntl` branch uses the standard macOS/Linux `flock` API but could not execute in this Windows environment.
+- The existing Windows symlink privilege skip and Starlette `TestClient` deprecation warning remain unchanged.

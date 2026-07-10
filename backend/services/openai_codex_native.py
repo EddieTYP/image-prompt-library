@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import errno
 import hashlib
 import json
 import os
@@ -13,7 +14,11 @@ from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+
+if os.name == "nt":
+    import msvcrt
+else:
+    import fcntl
 
 import httpx
 from PIL import Image, UnidentifiedImageError
@@ -41,7 +46,6 @@ QUALITY_ALIASES = {"standard": "medium", "medium": "medium", "high": "high", "lo
 MAX_INPUT_IMAGES = 4
 AUTH_REFRESH_LOCK_POLL_SECONDS = 0.1
 AUTH_REFRESH_LOCK_WAIT_SECONDS = 20.0
-AUTH_REFRESH_LOCK_STALE_SECONDS = 30.0
 
 
 def _data_url_from_bytes(data: bytes, *, mime_type: str = "image/png") -> str:
@@ -199,6 +203,28 @@ def _auth_path() -> Path:
 
 def _refresh_lock_path(auth_path: Path) -> Path:
     return auth_path.with_name(f"{auth_path.name}.refresh.lock")
+
+
+def _try_lock_file(handle) -> bool:
+    try:
+        if os.name == "nt":
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as exc:
+        if exc.errno in {errno.EACCES, errno.EAGAIN, errno.EDEADLK}:
+            return False
+        raise
+    return True
+
+
+def _unlock_file(handle) -> None:
+    if os.name == "nt":
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _config_path() -> Path:
@@ -411,136 +437,23 @@ class CodexNativeAuthStore:
     def _refresh_lock(self) -> Iterator[None]:
         lock_path = _refresh_lock_path(self.path)
         deadline = time.monotonic() + AUTH_REFRESH_LOCK_WAIT_SECONDS
-        stale_lock_retried = False
-        owner_marker: Path | None = None
-        owned_lock: tuple[int, int] | None = None
-        while owner_marker is None:
-            if not lock_path.exists():
-                owner_id = uuid4().hex
-                pending_lock = lock_path.with_name(f".{lock_path.name}.pending-{owner_id}")
-                pending_marker = pending_lock / f"owner-{owner_id}"
-                pending_lock.mkdir()
-                published = False
-                try:
-                    pending_marker.touch(exist_ok=False)
-                    pending_stat = pending_lock.stat()
-                    try:
-                        pending_lock.rename(lock_path)
-                        published = True
-                    except OSError:
-                        if not lock_path.exists():
-                            raise
-                finally:
-                    if not published:
-                        try:
-                            pending_marker.unlink()
-                        except FileNotFoundError:
-                            pass
-                        try:
-                            pending_lock.rmdir()
-                        except OSError:
-                            pass
-                if published:
-                    owner_marker = lock_path / pending_marker.name
-                    owned_lock = (pending_stat.st_dev, pending_stat.st_ino)
-                    continue
-            if not stale_lock_retried:
-                try:
-                    lock_stat = lock_path.stat()
-                except FileNotFoundError:
-                    continue
-                stale = time.time() - lock_stat.st_mtime >= AUTH_REFRESH_LOCK_STALE_SECONDS
-                if stale:
-                    stale_lock_retried = True
-                    try:
-                        entries = list(lock_path.iterdir())
-                        markers = [
-                            entry for entry in entries
-                            if entry.name.startswith("owner-") and entry.is_file()
-                        ]
-                    except FileNotFoundError:
-                        continue
-                    if not entries:
-                        cleanup_id = uuid4().hex
-                        cleanup_marker = lock_path / f"cleanup-{cleanup_id}"
-                        stale_path = lock_path.with_name(f"{lock_path.name}.stale-{cleanup_id}")
-                        try:
-                            cleanup_marker.touch(exist_ok=False)
-                        except OSError:
-                            continue
-                        try:
-                            try:
-                                current_stat = lock_path.stat()
-                                same_lock = (
-                                    current_stat.st_dev,
-                                    current_stat.st_ino,
-                                ) == (lock_stat.st_dev, lock_stat.st_ino)
-                            except FileNotFoundError:
-                                same_lock = False
-                            if not same_lock:
-                                continue
-                            try:
-                                lock_path.rename(stale_path)
-                            except OSError:
-                                continue
-                            renamed_marker = stale_path / cleanup_marker.name
-                            try:
-                                renamed_marker.unlink()
-                            finally:
-                                try:
-                                    stale_path.rmdir()
-                                except OSError:
-                                    pass
-                        finally:
-                            try:
-                                cleanup_marker.unlink()
-                            except FileNotFoundError:
-                                pass
-                    elif len(markers) == 1:
-                        marker_removed = False
-                        try:
-                            markers[0].unlink()
-                            marker_removed = True
-                        except FileNotFoundError:
-                            pass
-                        if marker_removed:
-                            try:
-                                current_stat = lock_path.stat()
-                                same_lock = (
-                                    current_stat.st_dev,
-                                    current_stat.st_ino,
-                                ) == (lock_stat.st_dev, lock_stat.st_ino)
-                            except FileNotFoundError:
-                                same_lock = False
-                            if same_lock:
-                                try:
-                                    lock_path.rmdir()
-                                except OSError:
-                                    pass
-                    continue
-            if time.monotonic() >= deadline:
-                raise CodexNativeTemporaryError("Token refresh is temporarily unavailable")
-            time.sleep(AUTH_REFRESH_LOCK_POLL_SECONDS)
-        try:
-            yield
-        finally:
-            marker_removed = False
+        with lock_path.open("a+b") as lock_file:
+            if lock_path.stat().st_size == 0:
+                lock_file.write(b"\0")
+                lock_file.flush()
+            acquired = False
             try:
-                owner_marker.unlink()
-                marker_removed = True
-            except FileNotFoundError:
-                pass
-            if marker_removed:
-                try:
-                    lock_stat = lock_path.stat()
-                    same_lock = (lock_stat.st_dev, lock_stat.st_ino) == owned_lock
-                except FileNotFoundError:
-                    same_lock = False
-                if same_lock:
-                    try:
-                        lock_path.rmdir()
-                    except OSError:
-                        pass
+                while not acquired:
+                    acquired = _try_lock_file(lock_file)
+                    if acquired:
+                        break
+                    if time.monotonic() >= deadline:
+                        raise CodexNativeTemporaryError("Token refresh is temporarily unavailable")
+                    time.sleep(AUTH_REFRESH_LOCK_POLL_SECONDS)
+                yield
+            finally:
+                if acquired:
+                    _unlock_file(lock_file)
 
     def read_tokens(self, http_client: httpx.Client | None = None) -> dict[str, str]:
         tokens = self._read_raw_tokens()
