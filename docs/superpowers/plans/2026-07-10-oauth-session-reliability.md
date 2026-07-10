@@ -29,7 +29,7 @@
 
 - [ ] **Step 1: Write failing concurrency tests**
 
-Use two `CodexNativeAuthStore` instances sharing `auth_path` and two separate `httpx.MockTransport` clients. Block the first refresh handler with `threading.Event` until both readers begin, then assert:
+Start two independent Python processes that each create `CodexNativeAuthStore(auth_path)` and call `read_tokens()` against one local token-endpoint test server. Block the first endpoint response with `threading.Event` until the second process begins, then assert:
 
 ```python
 assert refresh_requests == 1
@@ -43,7 +43,7 @@ Create `auth_path.with_name(f"{auth_path.name}.refresh.lock")`, age it past 30 s
 
 Run `PYTHONUTF8=1 .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py -q -p no:cacheprovider`.
 
-Expected: FAIL because the current store has no cross-caller refresh lock.
+Expected: FAIL because the current store has no cross-process refresh lock.
 
 - [ ] **Step 3: Write failing status tests**
 
