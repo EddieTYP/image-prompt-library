@@ -8,8 +8,10 @@ This record verifies the C.2 OAuth session reliability milestone. Live testing u
 
 ## Automated checks
 
-- `python -m pytest tests/test_openai_codex_native.py tests/test_frontend_static.py -q -p no:cacheprovider`
-  - Passed: `101 passed, 1 skipped, 1 warning`
+- `$env:PYTHONUTF8='1'; $env:PYTHONDONTWRITEBYTECODE='1'; .\\.venv\\Scripts\\python.exe -B -m pytest tests/test_openai_codex_native.py tests/test_frontend_static.py -q -p no:cacheprovider`
+  - Passed: `105 passed, 1 skipped, 1 warning`.
+- `$env:PYTHONUTF8='1'; $env:PYTHONDONTWRITEBYTECODE='1'; .\\.venv\\Scripts\\python.exe -B -m pytest tests/test_generation_jobs.py::test_temporary_token_refresh_errors_are_not_classified_as_auth_required -q -p no:cacheprovider`
+  - Passed: `1 passed, 1 warning`.
   - The warning is the existing Starlette `TestClient` / httpx deprecation warning.
 - `npm run build`
   - Passed: TypeScript type-check and Vite production build completed.

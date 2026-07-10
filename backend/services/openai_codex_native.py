@@ -444,12 +444,15 @@ class CodexNativeAuthStore:
             acquired = False
             try:
                 while not acquired:
+                    if time.monotonic() >= deadline:
+                        raise CodexNativeTemporaryError("Token refresh is temporarily unavailable")
                     acquired = _try_lock_file(lock_file)
                     if acquired:
                         break
-                    if time.monotonic() >= deadline:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
                         raise CodexNativeTemporaryError("Token refresh is temporarily unavailable")
-                    time.sleep(AUTH_REFRESH_LOCK_POLL_SECONDS)
+                    time.sleep(min(AUTH_REFRESH_LOCK_POLL_SECONDS, remaining))
                 yield
             finally:
                 if acquired:
@@ -459,11 +462,20 @@ class CodexNativeAuthStore:
         tokens = self._read_raw_tokens()
         if not _token_expires_soon(tokens["access_token"]):
             return tokens
-        with self._refresh_lock():
-            tokens = self._read_raw_tokens()
-            if _token_expires_soon(tokens["access_token"]):
-                return self.refresh_tokens(tokens["refresh_token"], http_client=http_client)
-            return tokens
+        try:
+            with self._refresh_lock():
+                tokens = self._read_raw_tokens()
+                if _token_expires_soon(tokens["access_token"]):
+                    return self.refresh_tokens(tokens["refresh_token"], http_client=http_client)
+                return tokens
+        except CodexNativeTemporaryError as error:
+            try:
+                tokens = self._read_raw_tokens()
+            except Exception:
+                raise error
+            if not _token_expires_soon(tokens["access_token"]):
+                return tokens
+            raise error
 
     def refresh_tokens(self, refresh_token: str, http_client: httpx.Client | None = None) -> dict[str, str]:
         client_id = _codex_client_id()
@@ -481,7 +493,7 @@ class CodexNativeAuthStore:
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                 )
             except httpx.HTTPError as exc:
-                raise CodexNativeTemporaryError("Token refresh failed") from exc
+                raise CodexNativeTemporaryError("Token refresh is temporarily unavailable") from exc
         finally:
             if close_client:
                 client.close()

@@ -152,10 +152,10 @@ def _classify_error(message: str) -> str:
         return "policy_violation"
     if any(term in lowered for term in ("rate limit", "too many", "slow down", "retry later", "429")):
         return "rate_limited"
-    if any(term in lowered for term in ("auth", "login", "token", "credential", "unauthorized", "forbidden", "401", "403")):
-        return "auth_required"
     if any(term in lowered for term in ("unavailable", "timeout", "temporarily", "503", "502")):
         return "provider_unavailable"
+    if any(term in lowered for term in ("auth", "login", "token", "credential", "unauthorized", "forbidden", "401", "403")):
+        return "auth_required"
     return "unknown"
 
 
