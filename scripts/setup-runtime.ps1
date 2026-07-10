@@ -51,7 +51,6 @@ if (-not (Test-Path -LiteralPath (Join-Path $AppRoot "pyproject.toml") -PathType
 $python = Find-SupportedPython
 $venvPython = Join-Path $AppRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
-    # Runtime commands: -m venv and -m pip install.
     $venvArgs = @($python.PrefixArgs) + @("-m", "venv", (Join-Path $AppRoot ".venv"))
     Invoke-PythonChecked -Exe $python.Exe -Args $venvArgs -FailureMessage "Could not create the version-local Python environment."
 }
