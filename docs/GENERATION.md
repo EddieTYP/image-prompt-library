@@ -36,7 +36,7 @@ Choose **Connect**. The app opens a device-login step: follow the verification l
   <img src="assets/screenshots/generation-provider-device-url.png" alt="Providers panel showing the OAuth verification URL and user code entry step" width="320" />
 </p>
 
-The browser approval page may say **Codex CLI** because the current beta provider uses the Codex OAuth device flow behind the scenes. Only approve it if you started the flow yourself from your local Image Prompt Library app.
+The browser approval page may say **Codex CLI** because the current provider uses the Codex OAuth device flow behind the scenes. Only approve it if you started the flow yourself from your local Image Prompt Library app.
 
 <p align="center">
   <img src="assets/screenshots/generation-codex-cli-oauth-device.png" alt="Browser device authorization page for Codex CLI OAuth" width="460" />
@@ -70,7 +70,7 @@ If you save a result as a new library item, review and edit the metadata first. 
 
 ## Current provider notes
 
-The current beta line includes an experimental `openai_codex_oauth_native` provider path labelled in the UI as **ChatGPT / Codex OAuth**.
+The current stable release includes the `openai_codex_oauth_native` provider path labelled in the UI as **ChatGPT / Codex OAuth**. Compatibility maintenance may be needed if the upstream OAuth or generation service changes.
 
 The current local composer supports attached input images for reference/edit-style generation jobs. Current hardening follow-ups include:
 
