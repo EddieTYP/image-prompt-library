@@ -196,7 +196,7 @@ Command run:
 .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py::test_codex_native_status_exposes_generation_readiness_fields tests/test_openai_codex_native.py::test_codex_native_missing_login_maps_to_login_required tests/test_openai_codex_native.py::test_codex_native_broken_saved_login_maps_to_auth_error tests/test_openai_codex_native.py::test_generation_providers_manual_upload_is_always_generation_ready tests/test_frontend_static.py::test_generation_provider_status_has_readiness_contract -q
 ```
 
-Result:
+- Result:
 
 - `5 passed, 2 warnings in 1.98s`
 
@@ -204,3 +204,16 @@ Warnings remained unchanged:
 
 - FastAPI / Starlette `TestClient` deprecation warning from site-packages
 - pytest cache write warning under `.pytest_cache`
+
+- fix_task1_review_findings_2026-07-09:
+  - changed_files:
+    - frontend/src/components/CardsView.tsx
+    - frontend/src/utils/i18n.ts
+    - tests/test_frontend_static.py
+  - fixes:
+    - repaired `TranslationKey` union by removing the stray semicolon that terminated after `firstRunGenerationHelp`
+    - added `firstRunLocalInstall` to all locales and switched the `CardsView` first-run eyebrow text to `t('firstRunLocalInstall')`
+    - added static assertions for `t('firstRunLocalInstall')` and `firstRunLocalInstall` in the focused test
+  - tests_run:
+    - `PYTHONUTF8=1 .\\.venv\\Scripts\\python.exe -m pytest tests/test_frontend_static.py::test_local_empty_library_uses_first_run_panel_without_replacing_search_no_results -q` -> `1 passed, 1 warning in 0.44s`
+    - `npm run build` -> build succeeded (`tsc && vite build`)

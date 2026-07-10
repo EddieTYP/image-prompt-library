@@ -33,10 +33,17 @@ image-prompt-library start --port 8001
 
 ## Empty library after first start
 
-That is expected for a fresh install. Click `+ Add` to create your first prompt card, or install the optional sample library if you want demo content first:
+That is expected for a fresh install. A fresh local library starts empty. Click `+ Add` to create your first prompt card, or install the optional sample library if you want demo content first:
 
 ```bash
 image-prompt-library sample-data en
+```
+
+To confirm the installed app is using the library path you expect, run:
+
+```bash
+image-prompt-library status
+image-prompt-library doctor
 ```
 
 ## Images or database missing after moving folders

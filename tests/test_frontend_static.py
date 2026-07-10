@@ -71,6 +71,30 @@ def test_search_bar_has_visible_sort_control_and_query_filter_chips():
     assert "filtered.sort" in client
 
 
+def test_local_empty_library_uses_first_run_panel_without_replacing_search_no_results():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
+    cards = (ROOT / "frontend" / "src" / "components" / "CardsView.tsx").read_text()
+    i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+
+    assert "const emptyMode = !isDemoMode && localizedData.items.length === 0 && !q.trim() && !clusterId ? 'first-run' : 'no-results'" in app
+    assert "emptyMode !== 'first-run'" in app
+    assert "emptyMode={emptyMode}" in app
+    assert "onOpenConfig={() => setConfigOpen(true)}" in app
+    assert "emptyMode?: 'first-run' | 'no-results'" in cards
+    assert "emptyMode === 'first-run'" in cards
+    assert "t('firstRunEmptyTitle')" in cards
+    assert "t('firstRunLocalInstall')" in cards
+    assert "t('firstRunSampleCommand')" in cards
+    assert "onOpenConfig" in cards
+    assert "t('noMatchingPrompts')" in cards
+    assert "firstRunEmptyTitle" in i18n
+    assert "firstRunLocalInstall" in i18n
+    assert "Your private library is empty" in i18n
+    assert "image-prompt-library sample-data en" in i18n
+    assert ".first-run-empty" in css
+
+
 def test_prompt_template_variables_ui_is_feature_flagged_and_submits_resolved_prompt():
     panel = (ROOT / "frontend" / "src" / "components" / "GenerationPanel.tsx").read_text()
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
@@ -1665,3 +1689,23 @@ def test_config_panel_has_local_only_cleanup_preview_and_apply():
     assert "}, [refreshGenerationAvailability]);" in app
     assert "cleanup-section" in config
     assert ".cleanup-section" in styles
+
+
+def test_config_panel_has_local_setup_summary_for_installed_users():
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+    i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
+    css = (ROOT / "frontend" / "src" / "styles.css").read_text()
+
+    assert "local-setup-section" in config
+    assert "t('localSetup')" in config
+    assert "cfg?.version" in config
+    assert "cfg?.library_path" in config
+    assert "cfg?.database_path" in config
+    assert "updateStatus?.current_version" in config
+    assert "readyProviderCount" in config
+    assert "image-prompt-library status" in config
+    assert "image-prompt-library doctor" in config
+    assert "image-prompt-library sample-data en" in config
+    assert "localSetup" in i18n
+    assert "Local setup" in i18n
+    assert ".local-setup-section" in css

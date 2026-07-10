@@ -122,13 +122,18 @@ version = sys.argv[6]
 sys.path.insert(0, str(app_root))
 
 print("Image Prompt Library doctor")
-print(f"Version: {version}")
-print(f"Install prefix: {app_prefix}")
-print(f"App root: {app_root}")
-print(f"Library path: {library_path}")
-print(f"Backend: {backend_host}:{backend_port}")
-print(f"Platform: {platform.system()} {platform.release()}")
+print()
+print("## App")
+print(f"OK Version: {version}")
+print(f"OK Install prefix: {app_prefix}")
+print(f"OK App root: {app_root}")
+print(f"OK Backend URL: http://{backend_host}:{backend_port}/")
+print(f"OK Platform: {platform.system()} {platform.release()}")
+print()
+print("## Library")
+print(f"OK Library path: {library_path}")
 
+item_count = None
 try:
     library_path.mkdir(parents=True, exist_ok=True)
     db_path = library_path / "db.sqlite"
@@ -138,12 +143,18 @@ try:
     with sqlite3.connect(db_path) as conn:
         integrity = conn.execute("PRAGMA integrity_check").fetchone()[0]
         item_count = conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
-    print(f"Database path: {db_path}")
-    print(f"Database integrity: {integrity}")
-    print(f"Item count: {item_count}")
+    print()
+    print("## Database")
+    print(f"OK Database path: {db_path}")
+    print(f"OK Database integrity: {integrity}")
+    print(f"OK Item count: {item_count}")
 except Exception as exc:
-    print(f"Database integrity: error ({type(exc).__name__})")
+    print()
+    print("## Database")
+    print(f"ERROR Database integrity: {type(exc).__name__}")
+    item_count = None
 
+generation_optional = True
 try:
     from backend.services.openai_codex_native import CodexNativeAuthStore, PROVIDER_ID, configured_client_id
     store = CodexNativeAuthStore()
@@ -155,9 +166,17 @@ try:
         state = "saved_auth_present"
     else:
         state = "not_connected"
-    print(f"Generation provider: {PROVIDER_ID} state={state} configured={configured}")
+    severity = "OK" if state == "saved_auth_present" else "WARN"
+    print()
+    print("## Generation")
+    print(f"{severity} Generation provider: {PROVIDER_ID} state={state} configured={configured}")
 except Exception as exc:
-    print(f"Generation provider: unavailable ({type(exc).__name__})")
+    print()
+    print("## Generation")
+    print(f"WARN Generation provider: unavailable ({type(exc).__name__})")
+
+print()
+print("## Updates / Service")
 
 if platform.system() == "Darwin":
     label = os.environ.get("IMAGE_PROMPT_LIBRARY_SERVICE_LABEL", "com.eddietyp.image-prompt-library")
@@ -167,11 +186,80 @@ if platform.system() == "Darwin":
         state = "running" if "state = running" in result.stdout else "not loaded"
     except Exception:
         state = "unknown"
-    print(f"macOS service: {label} {state}")
-    print(f"macOS service plist: {Path.home() / 'Library' / 'LaunchAgents' / (label + '.plist')}")
-    print(f"Logs: {Path.home() / 'Library' / 'Logs' / 'image-prompt-library.out.log'}")
+    print(f"OK macOS service: {label} {state}")
+    print(f"OK macOS service plist: {Path.home() / 'Library' / 'LaunchAgents' / (label + '.plist')}")
+    print(f"OK Logs: {Path.home() / 'Library' / 'Logs' / 'image-prompt-library.out.log'}")
 else:
-    print("macOS service: not applicable")
+    print("WARN macOS service: not applicable")
+
+print()
+print("## Next steps")
+if item_count == 0:
+    print("WARN Empty library: add a prompt in the app, or run image-prompt-library sample-data en")
+else:
+    print("OK Library has saved references.")
+if generation_optional:
+    print("OK Generation is optional. Connect ChatGPT / Codex OAuth in Config only if you want local generation.")
+print("OK For a shorter summary, run image-prompt-library status")
+PY
+}
+
+status_app() {
+  load_env
+  PYTHON_BIN="$(python_bin)"
+  cd "$APP_ROOT"
+  "$PYTHON_BIN" - "$APP_ROOT" "$IMAGE_PROMPT_LIBRARY_PATH" "$BACKEND_HOST" "$BACKEND_PORT" "$(print_version)" <<'PY'
+from __future__ import annotations
+
+import platform
+import sqlite3
+import sys
+from pathlib import Path
+
+app_root = Path(sys.argv[1])
+library_path = Path(sys.argv[2]).expanduser()
+backend_host = sys.argv[3]
+backend_port = sys.argv[4]
+version = sys.argv[5]
+sys.path.insert(0, str(app_root))
+
+print("Image Prompt Library status")
+print(f"Version: {version}")
+print(f"Library: {library_path}")
+print(f"URL: http://{backend_host}:{backend_port}/")
+
+try:
+    db_path = library_path / "db.sqlite"
+    if not db_path.exists():
+        from backend.db import init_db
+        init_db(library_path)
+    with sqlite3.connect(db_path) as conn:
+        item_count = conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+    print(f"Items: {item_count}")
+except Exception as exc:
+    print(f"Items: unavailable ({type(exc).__name__})")
+
+try:
+    from backend.services.openai_codex_native import CodexNativeAuthStore, PROVIDER_ID, configured_client_id
+    store = CodexNativeAuthStore()
+    configured = bool(configured_client_id())
+    saved_auth_present = store.path.is_file()
+    if not configured:
+        state = "not configured"
+    elif saved_auth_present:
+        state = "connected"
+    else:
+        state = "not connected"
+    print(f"Generation: {PROVIDER_ID} {state}")
+except Exception as exc:
+    print(f"Generation: unavailable ({type(exc).__name__})")
+
+if platform.system() == "Darwin":
+    print("Service: macOS launchd available; run image-prompt-library service status for details.")
+else:
+    print("Service: not applicable")
+
+print("Run image-prompt-library doctor for detailed diagnostics.")
 PY
 }
 
@@ -593,6 +681,7 @@ Commands:
   start [--host H] [--port P]
                         Start the local app server
   doctor                Print local diagnostics with private values omitted
+  status                Print short local app status
   service <command>     Manage the macOS launchd user service
   version               Print installed app version
   update [--version V]  Install latest or selected release version
@@ -608,6 +697,7 @@ if [ -n "$COMMAND" ]; then shift; fi
 case "$COMMAND" in
   start) start_app "$@" ;;
   doctor) doctor_app "$@" ;;
+  status) status_app "$@" ;;
   service) service_app "$@" ;;
   version) print_version ;;
   update) update_app "$@" ;;

@@ -4,6 +4,7 @@ import ItemCard from './ItemCard';
 
 export default function CardsView({
   items,
+  emptyMode,
   t,
   onOpen,
   onFavorite,
@@ -12,8 +13,10 @@ export default function CardsView({
   selectedIds,
   onCopyPrompt,
   onAdd,
+  onOpenConfig,
 }: {
   items: ItemSummary[];
+  emptyMode?: 'first-run' | 'no-results';
   t: Translator;
   onOpen: (id: string) => void;
   onFavorite?: (id: string) => void;
@@ -22,8 +25,28 @@ export default function CardsView({
   selectedIds?: Set<string>;
   onCopyPrompt: (item: ItemSummary) => void;
   onAdd?: () => void;
+  onOpenConfig?: () => void;
 }) {
   const showActions = Boolean(onFavorite && onEdit) && !onToggleSelection;
+  if (!items.length && emptyMode === 'first-run') {
+    return (
+      <div className="empty first-run-empty">
+        <p className="empty-eyebrow">{t('firstRunLocalInstall')}</p>
+        <h2>{t('firstRunEmptyTitle')}</h2>
+        <p>{t('firstRunEmptyHelp')}</p>
+        <div className="empty-actions">
+          {onAdd && <button className="empty-primary" onClick={onAdd}>{t('addFirstPrompt')}</button>}
+          {onOpenConfig && <button className="secondary" onClick={onOpenConfig}>{t('firstRunOpenConfig')}</button>}
+        </div>
+        <div className="first-run-command">
+          <span>{t('firstRunSampleHelp')}</span>
+          <code>{t('firstRunSampleCommand')}</code>
+        </div>
+        <p className="first-run-generation-hint">{t('firstRunGenerationHelp')}</p>
+      </div>
+    );
+  }
+
   if (!items.length) {
     return (
       <div className="empty">

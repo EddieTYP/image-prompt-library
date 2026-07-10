@@ -7,6 +7,10 @@ type TranslationKey =
   | 'globalThumbnails' | 'globalThumbnailsHelp' | 'focusThumbnails' | 'focusThumbnailsHelp'
   | 'calm' | 'balanced' | 'dense' | 'compact' | 'gallery' | 'full' | 'libraryPath' | 'databasePath'
   | 'libraryEmptyTitle' | 'libraryEmptyHelp' | 'noMatchingPrompts' | 'noMatchingPromptsHelp' | 'addFirstPrompt'
+  | 'firstRunEmptyTitle' | 'firstRunEmptyHelp' | 'firstRunOpenConfig'
+  | 'firstRunSampleCommand' | 'firstRunSampleHelp' | 'firstRunGenerationHelp' | 'firstRunLocalInstall'
+  | 'localSetup' | 'localSetupHelp' | 'appVersion' | 'updateStatusLabel'
+  | 'generationStatusLabel' | 'setupCommands' | 'statusCommandHelp' | 'doctorCommandHelp'
   | 'copyPrompt' | 'favorite' | 'saved' | 'edit' | 'noImage' | 'unclustered'
   | 'collections' | 'closeFilters' | 'searchCollections' | 'allReferences' | 'noCollectionsFound'
   | 'loading' | 'copySuccess' | 'copyFailed' | 'add' | 'close' | 'closeConfig'
@@ -56,6 +60,22 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     constellationGraph: 'Prompt clusters 縮圖星座圖', constellationControls: '星座圖控制', zoomOut: '縮小', zoomIn: '放大', resetView: '重設', focusThumbnailsVisible: '張焦點縮圖', thumbnailsVisible: '張縮圖顯示中', visible: '顯示中', references: '個參考', more: '更多',
     onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: '新增／編輯／生成需要本機安裝，請在本機運行以建立你的私人 prompt library。', localV06SupportsMobileGeneration: '最新 v0.7 beta 加入 prompt variables 和 Template 標示', viewOnGitHub: '在 GitHub 查看',
     chooseLanguage: '選擇介面語言', chooseLanguageHelp: '請選擇你想使用的介面語言。', changeLanguageLater: '之後可在設定中更改。',
+    firstRunEmptyTitle: '你的私人資料庫目前是空的',
+    firstRunEmptyHelp: '這是全新本機安裝後的正常狀態。新增一個提示、可選地匯入範例資料，或在準備好時再連接生成。',
+    firstRunOpenConfig: '開啟設定',
+    firstRunLocalInstall: '本機安裝',
+    firstRunSampleCommand: 'image-prompt-library sample-data en',
+    firstRunSampleHelp: '可選：在終端機執行此指令以新增入門參考。',
+    firstRunGenerationHelp: '可選的生成位於「設定」，需要 ChatGPT / Codex OAuth 驗證。',
+    localSetup: '本機安裝',
+    localSetupHelp: '這是本機安裝應用的快速檢查摘要。',
+    appVersion: '應用程式版本',
+    updateStatusLabel: '更新狀態',
+    generationStatusLabel: '生成狀態',
+    setupCommands: '設定命令',
+    statusCommandHelp: '快速本機摘要',
+    doctorCommandHelp: '詳細診斷',
+
   },
   zh_hans: {
     filters: '筛选', searchAria: '搜索所有 prompts', searchPlaceholder: '搜索所有 prompts、标题、标签… 可用 sort:title', config: '设置', referencesShown: '个参考', searchChip: '搜索', collectionChip: 'Collection', sortChip: '排序', sortByUpdated: '最近更新', sortByCreated: '最近加入', sortByOldest: 'Oldest first', sortByTitle: '标题 A–Z', sortByTitleDesc: 'Title Z-A', sortBySource: 'Source A-Z', sortByModel: 'Model A-Z',
@@ -77,13 +97,37 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     constellationGraph: 'Prompt clusters 缩图星座图', constellationControls: '星座图控制', zoomOut: '缩小', zoomIn: '放大', resetView: '重置', focusThumbnailsVisible: '张焦点缩图', thumbnailsVisible: '张缩图显示中', visible: '显示中', references: '个参考', more: '更多',
     onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: '新增／编辑／生成需要本机安装，请在本机运行以建立你的私人 prompt library。', localV06SupportsMobileGeneration: '最新 v0.6 beta 改善生成流程并支持附件改图', viewOnGitHub: '在 GitHub 查看',
     chooseLanguage: '选择界面语言', chooseLanguageHelp: '请选择你想使用的界面语言。', changeLanguageLater: '之后可在设置中更改。',
+    firstRunEmptyTitle: '你的私人资料库目前是空的',
+    firstRunEmptyHelp: '这是全新本机安装后的正常状态。添加提示、可选导入示例，或在准备好后再连接生成。',
+    firstRunOpenConfig: '打开设置',
+    firstRunLocalInstall: '本机安装',
+    firstRunSampleCommand: 'image-prompt-library sample-data en',
+    firstRunSampleHelp: '可选：在终端执行此命令以添加入门参考。',
+    firstRunGenerationHelp: '可选生成在「设置」中配置，需要 ChatGPT / Codex OAuth 验证。',
+    localSetup: '本机安装',
+    localSetupHelp: '这是本机安装应用的快速检查摘要。',
+    appVersion: '应用程序版本',
+    updateStatusLabel: '更新状态',
+    generationStatusLabel: '生成状态',
+    setupCommands: '设置命令',
+    statusCommandHelp: '快速本机摘要',
+    doctorCommandHelp: '详细诊断',
+
   },
   en: {
     filters: 'Filters', searchAria: 'Search all prompts', searchPlaceholder: 'Search all prompts, titles, tags… try sort:title', config: 'Config', referencesShown: 'references', searchChip: 'Search', collectionChip: 'Collection', sortChip: 'Sort', sortByUpdated: 'Recently updated', sortByCreated: 'Recently added', sortByOldest: 'Oldest first', sortByTitle: 'Title A–Z', sortByTitleDesc: 'Title Z-A', sortBySource: 'Source A-Z', sortByModel: 'Model A-Z',
     explore: 'Explore', cards: 'Cards', uiLanguage: 'UI language', promptCopyLanguage: 'Prompt copy language', promptCopyLanguageHelp: 'Copy can use the origin prompt; the source/original prompt is usually closest to the sample image result.', providers: 'Providers',
     globalThumbnails: 'Global thumbnails', globalThumbnailsHelp: 'Overall Explore density across all clusters.', focusThumbnails: 'Focus thumbnails', focusThumbnailsHelp: 'Maximum real thumbnails around the selected cluster.',
     calm: 'Calm', balanced: 'Balanced', dense: 'Dense', compact: 'Compact', gallery: 'Gallery', full: 'Full', libraryPath: 'Library path', databasePath: 'Database path',
-    libraryEmptyTitle: 'Your library is empty', libraryEmptyHelp: 'Add your first prompt, or install the sample library if you want demo content first.', noMatchingPrompts: 'No matching prompts', noMatchingPromptsHelp: 'Try another search, clear filters, or add a new prompt reference.', addFirstPrompt: 'Add your first prompt',
+    libraryEmptyTitle: 'Your library is empty', libraryEmptyHelp: 'Add your first prompt, or install the sample library if you want demo content first.', noMatchingPrompts: 'No matching prompts', noMatchingPromptsHelp: 'Try another search, clear filters, or add a new prompt reference.', addFirstPrompt: 'Add your first prompt', firstRunEmptyTitle: 'Your private library is empty', firstRunEmptyHelp: 'That is expected after a fresh local install. Add a prompt, import optional samples, or connect generation when you are ready.', firstRunOpenConfig: 'Open Config', firstRunLocalInstall: 'Local install', firstRunSampleCommand: 'image-prompt-library sample-data en', firstRunSampleHelp: 'Optional: run this command in Terminal to add starter references.', firstRunGenerationHelp: 'Optional generation lives in Config and requires ChatGPT / Codex OAuth.',
+    localSetup: 'Local setup',
+    localSetupHelp: 'Quick checks for this installed local app.',
+    appVersion: 'App version',
+    updateStatusLabel: 'Update status',
+    generationStatusLabel: 'Generation status',
+    setupCommands: 'Setup commands',
+    statusCommandHelp: 'Quick local summary',
+    doctorCommandHelp: 'Detailed diagnostics',
     copyPrompt: 'Copy prompt', favorite: 'Favorite', saved: 'Saved', edit: 'Edit', noImage: 'No image', unclustered: 'Unclustered',
     collections: 'Collections', closeFilters: 'Close filters', searchCollections: 'Search collections', allReferences: 'All references', noCollectionsFound: 'No collections found',
     loading: 'Loading…', copySuccess: 'Prompt copied', copyFailed: 'Copy failed', add: 'Add', close: 'Close', closeConfig: 'Close config',

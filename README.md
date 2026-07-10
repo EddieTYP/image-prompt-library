@@ -46,7 +46,7 @@ image-prompt-library start
 
 `image-prompt-library start` runs the local server in the current terminal. Keep it open, then visit <http://127.0.0.1:8000/> in your browser. Press `Ctrl-C` in that terminal to stop the server.
 
-Optional: import a starter sample pack if you want demo references in a fresh local library.
+A fresh local library starts empty. Use `+ Add` in the app to create your first private prompt card, or import an optional starter sample pack if you want demo references first:
 
 ```bash
 image-prompt-library sample-data en       # English collection names
@@ -60,6 +60,13 @@ For the larger Traditional Chinese `awesome-gpt-image-2` sample pack:
 
 ```bash
 image-prompt-library sample-data zh_hant awesome-gpt-image-2
+```
+
+For a quick local check:
+
+```bash
+image-prompt-library status
+image-prompt-library doctor
 ```
 
 For update, rollback, service mode, uninstall, WSL, and source-development setup, see [Documentation](#documentation).

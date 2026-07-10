@@ -232,6 +232,7 @@ export default function App() {
     const copied = await copyTextToClipboard(text);
     showCopyToast(copied);
   };
+  const emptyMode = !isDemoMode && localizedData.items.length === 0 && !q.trim() && !clusterId ? 'first-run' : 'no-results';
   const openNewItemEditor = () => { setEditing(undefined); setEditorOpen(true); };
   const openStandaloneGeneration = () => { if (!generationAvailable) return; setFocusedGenerationJobId(undefined); setPendingGenerationSourceItemId(undefined); setStandaloneGenerationOpen(true); setGenerationQueueOpen(false); };
   const openGenerationJob = (job: GenerationJobRecord) => {
@@ -293,7 +294,7 @@ export default function App() {
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   const focusedItemGenerationJobId = pendingGenerationSourceItemId ? focusedGenerationJobId : undefined;
   const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
-  const showFloatingActions = Boolean(!selectionMode && !filtersOpen && !configOpen && !detailId && !editorOpen && !standaloneGenerationOpen);
+  const showFloatingActions = Boolean(emptyMode !== 'first-run' && !selectionMode && !filtersOpen && !configOpen && !detailId && !editorOpen && !standaloneGenerationOpen);
   const updateBadgeLabel = restartRequiredVersion ? 'Restart required' : (updateStatus?.update_available ? 'Update available' : undefined);
   return <div className={`app ${view === 'explore' ? 'explore-mode' : 'cards-mode'}`}>
     {!hasChosenUiLanguage && (
@@ -329,7 +330,7 @@ export default function App() {
       {error && <div className="error">{error}</div>}
       {view === 'explore'
         ? <ExploreView t={t} clusters={localizedClusters} items={localizedData.items} focusedClusterId={exploreFocusedClusterId} fitRequestKey={exploreFitRequestKey} unfilterTransitionPhase={exploreUnfilterFadePhase} globalThumbnailBudget={globalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusCluster={focusCluster} onOpen={setDetailId} onAdd={isDemoMode ? undefined : openNewItemEditor} />
-        : <CardsView t={t} items={localizedData.items} onOpen={setDetailId} onFavorite={isDemoMode ? undefined : favorite} onEdit={isDemoMode ? undefined : editSummary} onToggleSelection={selectionMode ? toggleSelectedItem : undefined} selectedIds={selectedItemIds} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} />}
+        : <CardsView t={t} items={localizedData.items} emptyMode={emptyMode} onOpen={setDetailId} onFavorite={isDemoMode ? undefined : favorite} onEdit={isDemoMode ? undefined : editSummary} onToggleSelection={selectionMode ? toggleSelectedItem : undefined} selectedIds={selectedItemIds} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} onOpenConfig={() => setConfigOpen(true)} />}
     </main>
     {selectionMode && !isDemoMode && (
       <div className="selection-toolbar" role="toolbar" aria-label={t('selectReferences')}>
