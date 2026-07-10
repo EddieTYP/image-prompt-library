@@ -210,3 +210,66 @@ Result: `41 passed, 1 skipped, 1 warning in 7.03s`.
 
 - The existing Windows symlink privilege skip remains unrelated to auth locking.
 - The existing Starlette `TestClient` deprecation warning remains unchanged.
+
+## Final Review Fix: Atomic Lock Publication
+
+### Finding Addressed
+
+- Refactored new lock acquisition so the canonical `<auth-file>.refresh.lock` path is never created empty.
+- Each contender creates a UUID-named private sibling directory, writes its unique `owner-<uuid>` marker inside, and records that prepared directory's identity before publication.
+- The fully prepared directory is atomically renamed to the canonical lock path.
+- A contender that loses publication because the canonical path exists removes only its private marker and private directory, then follows normal stale-check and wait behavior.
+- Preserved marker-owned stale cleanup, replacement fresh-lock protection, and claimed recovery of legacy empty stale canonical directories.
+
+### RED Evidence
+
+Deterministic delayed-owner command:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py::test_codex_native_delayed_owner_cannot_enter_replacement_lock -q -p no:cacheprovider
+```
+
+Result: `1 failed, 1 warning in 0.86s`.
+
+- Owner A created the canonical directory before its marker and was paused.
+- Cleanup recovered that empty stale directory and owner B acquired the replacement lock.
+- When resumed, owner A wrote its marker into owner B's canonical directory and incorrectly entered owner B's lock.
+
+### GREEN Evidence
+
+Delayed-owner regression:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py::test_codex_native_delayed_owner_cannot_enter_replacement_lock -q -p no:cacheprovider
+```
+
+Result: `1 passed, 1 warning in 0.70s`.
+
+Combined lock-protocol regressions:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py::test_codex_native_refresh_coordinates_independent_processes tests/test_openai_codex_native.py::test_codex_native_refresh_recovers_stale_lock_but_preserves_fresh_lock tests/test_openai_codex_native.py::test_codex_native_refresh_recovers_empty_stale_lock tests/test_openai_codex_native.py::test_codex_native_refresh_preserves_empty_fresh_lock tests/test_openai_codex_native.py::test_codex_native_stale_cleanup_preserves_replacement_fresh_lock tests/test_openai_codex_native.py::test_codex_native_refresh_lock_uses_a_unique_owner_marker tests/test_openai_codex_native.py::test_codex_native_delayed_owner_cannot_enter_replacement_lock -q -p no:cacheprovider
+```
+
+Result: `7 passed, 1 warning in 2.31s`.
+
+Final focused auth-store suite:
+
+```powershell
+$env:PYTHONUTF8='1'; .\.venv\Scripts\python.exe -m pytest tests/test_openai_codex_native.py -q -p no:cacheprovider
+```
+
+Result: `42 passed, 1 skipped, 1 warning in 6.97s`.
+
+### Files Changed
+
+- `backend/services/openai_codex_native.py`
+- `tests/test_openai_codex_native.py`
+- `.superpowers/sdd/task-2-report.md` (required report append only)
+
+### Self-Review And Concerns
+
+- The canonical lock appears only after its owner marker exists in the prepared directory.
+- Publication losers cannot write into or delete the winning canonical lock.
+- The deterministic race asserts the delayed owner never enters, never adds a second canonical marker, and leaves no private pending directory.
+- The existing Windows symlink privilege skip and Starlette `TestClient` deprecation warning remain unchanged.
