@@ -12,7 +12,7 @@ from PIL import Image
 from backend.db import connect
 from backend.main import create_app
 from backend.schemas import GenerationJobCreate
-from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository
+from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository, _classify_error
 
 
 def png_bytes(color="orange", size=(18, 12)) -> bytes:
@@ -23,6 +23,10 @@ def png_bytes(color="orange", size=(18, 12)) -> bytes:
 
 def client(tmp_path):
     return TestClient(create_app(library_path=tmp_path / "library"))
+
+
+def test_temporary_token_refresh_errors_are_not_classified_as_auth_required():
+    assert _classify_error("Token refresh is temporarily unavailable") == "provider_unavailable"
 
 
 def create_source_item(c, *, author=None):

@@ -3,11 +3,16 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import time
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 from PIL import Image
+import pytest
 
 from backend.db import connect
 from backend.main import create_app
@@ -56,7 +61,8 @@ def test_codex_native_token_store_is_app_owned_redacted_and_permissioned(tmp_pat
     assert raw["provider"] == "openai_codex_oauth_native"
     assert raw["auth_mode"] == "codex_oauth_native"
     assert raw["tokens"]["access_token"].startswith("ey")
-    assert oct(auth_path.stat().st_mode & 0o777) == "0o600"
+    if os.name != "nt":
+        assert oct(auth_path.stat().st_mode & 0o777) == "0o600"
 
     status = store.status()
     assert status["provider"] == "openai_codex_oauth_native"
@@ -216,6 +222,377 @@ def test_codex_native_refreshes_expired_access_token_before_use(tmp_path, monkey
     assert "grant_type=refresh_token" in seen_bodies[0]
     assert "client_id=codex-client-test" in seen_bodies[0]
     assert "refresh-token-rotated" in auth_path.read_text()
+
+
+@pytest.mark.parametrize("failure", ["network", "server"])
+def test_codex_native_refresh_maps_transient_failures_to_temporary_error(tmp_path, monkeypatch, failure):
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    import httpx
+    from backend.services.openai_codex_native import CodexNativeAuthStore, CodexNativeTemporaryError
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if failure == "network":
+            raise httpx.ReadTimeout("timed out", request=request)
+        return httpx.Response(503)
+
+    auth_path = tmp_path / "auth" / "auth.json"
+    store = CodexNativeAuthStore(auth_path)
+    store.save_tokens({"access_token": fake_jwt(exp=1), "refresh_token": "refresh-secret"})
+    saved_credentials = auth_path.read_bytes()
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        with pytest.raises(CodexNativeTemporaryError) as error:
+            store.refresh_tokens("refresh-secret", http_client=http_client)
+    assert str(error.value) == "Token refresh is temporarily unavailable"
+    assert auth_path.read_bytes() == saved_credentials
+
+
+@pytest.mark.parametrize("status_code", [400, 401, 403])
+def test_codex_native_refresh_keeps_oauth_credential_failures_as_auth_errors(tmp_path, monkeypatch, status_code):
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    import httpx
+    from backend.services.openai_codex_native import (
+        CodexNativeAuthError,
+        CodexNativeAuthStore,
+        CodexNativeTemporaryError,
+    )
+
+    store = CodexNativeAuthStore(tmp_path / "auth.json")
+    with httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(status_code))) as http_client:
+        with pytest.raises(CodexNativeAuthError) as error:
+            store.refresh_tokens("refresh-secret", http_client=http_client)
+
+    assert not isinstance(error.value, CodexNativeTemporaryError)
+
+
+def test_codex_native_malformed_local_credentials_raise_auth_error(tmp_path):
+    from backend.services.openai_codex_native import CodexNativeAuthError, CodexNativeAuthStore
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text("{", encoding="utf-8")
+
+    with pytest.raises(CodexNativeAuthError):
+        CodexNativeAuthStore(auth_path).read_tokens()
+
+
+def test_codex_native_invalid_utf8_credentials_raise_auth_error(tmp_path):
+    from backend.services.openai_codex_native import CodexNativeAuthError, CodexNativeAuthStore
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_bytes(b"\xff")
+
+    with pytest.raises(CodexNativeAuthError):
+        CodexNativeAuthStore(auth_path).read_tokens()
+
+
+@pytest.mark.parametrize("tokens", [
+    {"access_token": 123, "refresh_token": "refresh-secret"},
+    {"access_token": fake_jwt(), "refresh_token": ["refresh-secret"]},
+])
+def test_codex_native_non_string_token_values_raise_auth_error(tmp_path, tokens):
+    from backend.services.openai_codex_native import CodexNativeAuthError, CodexNativeAuthStore
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text(json.dumps({"tokens": tokens}), encoding="utf-8")
+
+    with pytest.raises(CodexNativeAuthError):
+        CodexNativeAuthStore(auth_path).read_tokens()
+
+
+def test_codex_native_refresh_coordinates_independent_processes(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    second_refresh_started_path = tmp_path / "second-refresh-started"
+    refreshed_access_token = fake_jwt("acct_refreshed")
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    CodexNativeAuthStore(auth_path).save_tokens({
+        "access_token": fake_jwt("acct_expired", exp=1),
+        "refresh_token": "refresh-token-old",
+    })
+
+    first_request = threading.Event()
+    release_first_response = threading.Event()
+    request_lock = threading.Lock()
+    refresh_requests = 0
+
+    class TokenHandler(BaseHTTPRequestHandler):
+        def do_POST(self):
+            nonlocal refresh_requests
+            with request_lock:
+                refresh_requests += 1
+                request_number = refresh_requests
+            if request_number == 1:
+                first_request.set()
+                assert release_first_response.wait(timeout=10)
+            body = json.dumps({
+                "access_token": refreshed_access_token,
+                "refresh_token": "refresh-token-rotated",
+            }).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, format, *args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), TokenHandler)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    token_url = f"http://127.0.0.1:{server.server_port}/oauth/token"
+    worker = "\n".join([
+        "import json",
+        "import sys",
+        "from pathlib import Path",
+        "from backend.services import openai_codex_native",
+        "openai_codex_native.CODEX_TOKEN_URL = sys.argv[2]",
+        "if len(sys.argv) == 4:",
+        "    expires_soon = openai_codex_native._token_expires_soon",
+        "    def signal_refresh_start(token, skew_seconds=300):",
+        "        Path(sys.argv[3]).write_text('started', encoding='utf-8')",
+        "        return expires_soon(token, skew_seconds)",
+        "    openai_codex_native._token_expires_soon = signal_refresh_start",
+        "tokens = openai_codex_native.CodexNativeAuthStore(Path(sys.argv[1])).read_tokens()",
+        "print(json.dumps(tokens))",
+    ])
+
+    first = None
+    second = None
+    workers_completed = False
+    try:
+        first = subprocess.Popen(
+            [sys.executable, "-c", worker, str(auth_path), token_url],
+            cwd=Path(__file__).resolve().parents[1],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        assert first_request.wait(timeout=10)
+
+        second = subprocess.Popen(
+            [sys.executable, "-c", worker, str(auth_path), token_url, str(second_refresh_started_path)],
+            cwd=Path(__file__).resolve().parents[1],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        deadline = time.monotonic() + 10
+        while not second_refresh_started_path.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert second_refresh_started_path.exists()
+        release_first_response.set()
+
+        first_stdout, first_stderr = first.communicate(timeout=10)
+        second_stdout, second_stderr = second.communicate(timeout=10)
+        workers_completed = True
+    finally:
+        release_first_response.set()
+        if not workers_completed:
+            for worker_process in (first, second):
+                if worker_process is None:
+                    continue
+                if worker_process.poll() is None:
+                    worker_process.terminate()
+                try:
+                    worker_process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    worker_process.kill()
+                    worker_process.communicate(timeout=5)
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=10)
+
+    assert first.returncode == 0, first_stderr
+    assert second.returncode == 0, second_stderr
+    first_result = json.loads(first_stdout)
+    second_result = json.loads(second_stdout)
+    assert refresh_requests == 1
+    assert first_result["access_token"] == refreshed_access_token
+    assert second_result["access_token"] == refreshed_access_token
+
+
+def _start_codex_lock_holder(auth_path, ready_path):
+    worker = "\n".join([
+        "import time",
+        "import sys",
+        "from pathlib import Path",
+        "from backend.services.openai_codex_native import CodexNativeAuthStore",
+        "with CodexNativeAuthStore(Path(sys.argv[1]))._refresh_lock():",
+        "    Path(sys.argv[2]).write_text('ready', encoding='utf-8')",
+        "    time.sleep(60)",
+    ])
+    process = subprocess.Popen(
+        [sys.executable, "-c", worker, str(auth_path), str(ready_path)],
+        cwd=Path(__file__).resolve().parents[1],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    deadline = time.monotonic() + 10
+    while not ready_path.exists() and process.poll() is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+    if ready_path.exists():
+        return process
+    if process.poll() is None:
+        process.terminate()
+    _, stderr = process.communicate(timeout=5)
+    raise AssertionError(stderr or "Lock holder did not become ready")
+
+
+def test_codex_native_refresh_lock_releases_when_owner_is_killed(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    ready_path = tmp_path / "lock-ready"
+
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    store = CodexNativeAuthStore(auth_path)
+    store.save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh-secret"})
+    process = _start_codex_lock_holder(auth_path, ready_path)
+    try:
+        process.kill()
+        process.communicate(timeout=5)
+        monkeypatch.setattr(openai_codex_native, "AUTH_REFRESH_LOCK_WAIT_SECONDS", 1.0)
+
+        with store._refresh_lock():
+            assert auth_path.with_name(f"{auth_path.name}.refresh.lock").is_file()
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate(timeout=5)
+
+    assert auth_path.with_name(f"{auth_path.name}.refresh.lock").is_file()
+
+
+def test_codex_native_refresh_lock_wait_is_bounded_and_temporary(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    ready_path = tmp_path / "lock-ready"
+
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore, CodexNativeTemporaryError
+
+    store = CodexNativeAuthStore(auth_path)
+    store.save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh-secret"})
+    process = _start_codex_lock_holder(auth_path, ready_path)
+    try:
+        assert openai_codex_native.AUTH_REFRESH_LOCK_POLL_SECONDS == 0.1
+        assert openai_codex_native.AUTH_REFRESH_LOCK_WAIT_SECONDS == 20.0
+        assert not hasattr(openai_codex_native, "AUTH_REFRESH_LOCK_STALE_SECONDS")
+        monkeypatch.setattr(openai_codex_native, "AUTH_REFRESH_LOCK_WAIT_SECONDS", 0.25)
+        started = time.monotonic()
+        with pytest.raises(CodexNativeTemporaryError):
+            with store._refresh_lock():
+                pass
+        elapsed = time.monotonic() - started
+
+        assert 0.2 <= elapsed < 2.0
+        lock_path = auth_path.with_name(f"{auth_path.name}.refresh.lock")
+        assert lock_path.is_file()
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.communicate(timeout=5)
+
+
+def test_codex_native_lock_timeout_returns_fresh_tokens_written_at_deadline(tmp_path, monkeypatch):
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore, CodexNativeTemporaryError
+
+    store = CodexNativeAuthStore(tmp_path / "auth.json")
+    expired = {"access_token": fake_jwt(exp=1), "refresh_token": "refresh-secret"}
+    refreshed = {"access_token": fake_jwt(exp=4_102_444_800), "refresh_token": "refresh-token-rotated"}
+    reads = iter([expired, refreshed])
+
+    @contextmanager
+    def timed_out_lock():
+        raise CodexNativeTemporaryError("Token refresh is temporarily unavailable")
+        yield
+
+    monkeypatch.setattr(store, "_read_raw_tokens", lambda: next(reads))
+    monkeypatch.setattr(store, "_refresh_lock", timed_out_lock)
+
+    assert store.read_tokens() == refreshed
+
+
+def test_codex_native_refresh_lock_never_retries_after_its_deadline(tmp_path, monkeypatch):
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore, CodexNativeTemporaryError
+
+    store = CodexNativeAuthStore(tmp_path / "auth.json")
+    clock = [0.0]
+    sleep_calls = []
+    attempts = []
+
+    def sleep(seconds):
+        sleep_calls.append(seconds)
+        clock[0] += seconds
+
+    monkeypatch.setattr(openai_codex_native, "AUTH_REFRESH_LOCK_WAIT_SECONDS", 0.25)
+    monkeypatch.setattr(openai_codex_native.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(openai_codex_native.time, "sleep", sleep)
+    monkeypatch.setattr(openai_codex_native, "_try_lock_file", lambda lock_file: attempts.append(1) and False)
+
+    with pytest.raises(CodexNativeTemporaryError):
+        with store._refresh_lock():
+            pass
+
+    assert len(attempts) == 3
+    assert sleep_calls == pytest.approx([0.1, 0.1, 0.05])
+
+
+def test_codex_native_refresh_lock_raises_temporary_error_when_deadline_passes_during_acquire(tmp_path, monkeypatch):
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore, CodexNativeTemporaryError
+
+    store = CodexNativeAuthStore(tmp_path / "auth.json")
+    clock = [0.0]
+    sleep_calls = []
+
+    def failed_acquire(lock_file):
+        clock[0] = 0.3
+        return False
+
+    monkeypatch.setattr(openai_codex_native, "AUTH_REFRESH_LOCK_WAIT_SECONDS", 0.25)
+    monkeypatch.setattr(openai_codex_native.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(openai_codex_native.time, "sleep", sleep_calls.append)
+    monkeypatch.setattr(openai_codex_native, "_try_lock_file", failed_acquire)
+
+    with pytest.raises(CodexNativeTemporaryError):
+        with store._refresh_lock():
+            pass
+
+    assert sleep_calls == []
+
+
+def test_codex_native_lock_timeout_preserves_temporary_error_when_final_reread_is_invalid(tmp_path, monkeypatch):
+    from backend.services.openai_codex_native import CodexNativeAuthError, CodexNativeAuthStore, CodexNativeTemporaryError
+
+    store = CodexNativeAuthStore(tmp_path / "auth.json")
+    reads = iter([
+        {"access_token": fake_jwt(exp=1), "refresh_token": "refresh-secret"},
+        CodexNativeAuthError("Native Codex auth store has invalid token values"),
+    ])
+
+    @contextmanager
+    def timed_out_lock():
+        raise CodexNativeTemporaryError("Token refresh is temporarily unavailable")
+        yield
+
+    def read_tokens():
+        value = next(reads)
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(store, "_read_raw_tokens", read_tokens)
+    monkeypatch.setattr(store, "_refresh_lock", timed_out_lock)
+
+    with pytest.raises(CodexNativeTemporaryError):
+        store.read_tokens()
 
 
 def test_codex_native_device_flow_uses_codex_endpoints_and_saves_app_owned_tokens(tmp_path, monkeypatch):
@@ -384,11 +761,43 @@ def test_codex_native_broken_saved_login_maps_to_auth_error(tmp_path, monkeypatc
     payload = client(tmp_path).get("/api/generation-providers/openai-codex-native/status").json()
 
     assert payload["state"] == "not_connected"
+    assert payload["authenticated"] is False
     assert payload["reason"] == "not_authenticated"
     assert payload["status"] == "auth_error"
     assert payload["can_generate"] is False
     assert payload["message"] == "ChatGPT / Codex OAuth needs attention before generating."
     assert "refresh-secret" not in json.dumps(payload)
+    assert str(auth_path.with_name(f"{auth_path.name}.refresh.lock")) not in json.dumps(payload)
+
+
+def test_codex_native_temporary_refresh_failure_remains_connected_and_redacted(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    import httpx
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(exp=1), "refresh_token": "refresh-secret"})
+    temporary_error = getattr(openai_codex_native, "CodexNativeTemporaryError", httpx.ReadTimeout)
+    monkeypatch.setattr(
+        openai_codex_native.CodexNativeAuthStore,
+        "refresh_tokens",
+        lambda self, refresh_token, http_client=None: (_ for _ in ()).throw(
+            temporary_error("refresh-secret should stay private")
+        ),
+    )
+
+    payload = client(tmp_path).get("/api/generation-providers/openai-codex-native/status").json()
+
+    assert payload["authenticated"] is True
+    assert payload["state"] == "connected"
+    assert payload["available"] is False
+    assert payload["status"] == "unavailable"
+    assert payload["message"] == "ChatGPT / Codex OAuth is temporarily unavailable. Try again shortly."
+    assert "refresh-secret" not in json.dumps(payload)
+    assert str(auth_path.with_name(f"{auth_path.name}.refresh.lock")) not in json.dumps(payload)
 
 
 def test_generation_providers_manual_upload_is_always_generation_ready(tmp_path, monkeypatch):
@@ -673,7 +1082,12 @@ def test_codex_native_marks_failed_when_stage_result_rejects_unsafe_result_root(
     }).json()
     wrong_results = tmp_path / "library" / "wrong-results"
     wrong_results.mkdir()
-    (tmp_path / "library" / "generation-results").symlink_to(wrong_results, target_is_directory=True)
+    try:
+        (tmp_path / "library" / "generation-results").symlink_to(wrong_results, target_is_directory=True)
+    except OSError as exc:
+        if os.name == "nt" and getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink privilege is unavailable")
+        raise
 
     response = c.post(f"/api/generation-jobs/{job['id']}/run")
 

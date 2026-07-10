@@ -1566,6 +1566,15 @@ def test_generation_panel_surfaces_provider_readiness_and_blocks_unavailable_sub
     assert "generation-attach-trigger" in panel
 
 
+def test_oauth_session_recovery_keeps_provider_message_and_auth_actions_stable():
+    panel = (ROOT / "frontend" / "src" / "components" / "GenerationPanel.tsx").read_text()
+    config = (ROOT / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text()
+
+    assert "if (provider.message) return provider.message;" in panel
+    assert "!provider.authenticated && !authStart" in config
+    assert "provider.authenticated && <button" in config
+
+
 def test_delete_actions_live_in_detail_modal_and_cards_batch_select():
     app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
     api_client = (ROOT / "frontend" / "src" / "api" / "client.ts").read_text()
