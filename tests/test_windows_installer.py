@@ -18,6 +18,8 @@ def test_windows_runtime_setup_is_local_and_never_installs_python():
     assert "Set-StrictMode -Version Latest" in script
     assert "sys.version_info >= (3, 10)" in script
     assert 'Join-Path $AppRoot ".venv\\Scripts\\python.exe"' in script
+    assert 'Test-PythonCandidate -Exe $venvPython -PrefixArgs @()' in script
+    assert 'Existing .venv Python is unsupported; remove .venv and rerun setup.' in script
     assert '@("-m", "venv", (Join-Path $AppRoot ".venv"))' in script
     assert '-Args @("-m", "pip", "install", $AppRoot)' in script
     assert "import backend.main, uvicorn" in script

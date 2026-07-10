@@ -53,6 +53,8 @@ $venvPython = Join-Path $AppRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
     $venvArgs = @($python.PrefixArgs) + @("-m", "venv", (Join-Path $AppRoot ".venv"))
     Invoke-PythonChecked -Exe $python.Exe -Args $venvArgs -FailureMessage "Could not create the version-local Python environment."
+} elseif (-not (Test-PythonCandidate -Exe $venvPython -PrefixArgs @())) {
+    throw "Existing .venv Python is unsupported; remove .venv and rerun setup."
 }
 
 Invoke-PythonChecked -Exe $venvPython -Args @("-m", "pip", "install", "--upgrade", "pip") -FailureMessage "Could not prepare pip in the version-local environment."
