@@ -224,7 +224,7 @@ def test_codex_native_refreshes_expired_access_token_before_use(tmp_path, monkey
     assert "refresh-token-rotated" in auth_path.read_text()
 
 
-@pytest.mark.parametrize("failure", ["network", "server"])
+@pytest.mark.parametrize("failure", ["network", "request_timeout", "server"])
 def test_codex_native_refresh_maps_transient_failures_to_temporary_error(tmp_path, monkeypatch, failure):
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
 
@@ -234,6 +234,8 @@ def test_codex_native_refresh_maps_transient_failures_to_temporary_error(tmp_pat
     def handler(request: httpx.Request) -> httpx.Response:
         if failure == "network":
             raise httpx.ReadTimeout("timed out", request=request)
+        if failure == "request_timeout":
+            return httpx.Response(408)
         return httpx.Response(503)
 
     auth_path = tmp_path / "auth" / "auth.json"
@@ -466,6 +468,30 @@ def test_codex_native_refresh_lock_releases_when_owner_is_killed(tmp_path, monke
             process.communicate(timeout=5)
 
     assert auth_path.with_name(f"{auth_path.name}.refresh.lock").is_file()
+
+
+def test_codex_native_refresh_lock_open_failure_is_temporary_and_redacted(tmp_path, monkeypatch):
+    auth_path = tmp_path / "private-auth" / "auth.json"
+    lock_path = auth_path.with_name(f"{auth_path.name}.refresh.lock")
+
+    from backend.services.openai_codex_native import CodexNativeAuthStore, CodexNativeTemporaryError
+
+    store = CodexNativeAuthStore(auth_path)
+    original_open = Path.open
+
+    def fail_open(self, *args, **kwargs):
+        if self == lock_path:
+            raise OSError(f"permission denied: {lock_path}")
+        return original_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fail_open)
+
+    with pytest.raises(CodexNativeTemporaryError) as error:
+        with store._refresh_lock():
+            pass
+
+    assert str(error.value) == "Token refresh is temporarily unavailable"
+    assert str(lock_path) not in str(error.value)
 
 
 def test_codex_native_refresh_lock_wait_is_bounded_and_temporary(tmp_path, monkeypatch):
@@ -798,6 +824,48 @@ def test_codex_native_temporary_refresh_failure_remains_connected_and_redacted(t
     assert payload["message"] == "ChatGPT / Codex OAuth is temporarily unavailable. Try again shortly."
     assert "refresh-secret" not in json.dumps(payload)
     assert str(auth_path.with_name(f"{auth_path.name}.refresh.lock")) not in json.dumps(payload)
+
+
+def test_codex_native_lock_open_failure_stays_unavailable_and_redacted(tmp_path, monkeypatch):
+    auth_path = tmp_path / "private-auth" / "auth.json"
+    lock_path = auth_path.with_name(f"{auth_path.name}.refresh.lock")
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda *args, **kwargs: None)
+
+    from backend.services.openai_codex_native import CodexNativeAuthStore, CodexNativeTemporaryError
+
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(exp=1), "refresh_token": "refresh-secret"})
+
+    @contextmanager
+    def lock_open_failure(self):
+        raise CodexNativeTemporaryError("Token refresh is temporarily unavailable")
+        yield
+
+    monkeypatch.setattr(CodexNativeAuthStore, "_refresh_lock", lock_open_failure)
+    c = client(tmp_path)
+    status = c.get("/api/generation-providers/openai-codex-native/status").json()
+
+    assert status["state"] == "connected"
+    assert status["status"] == "unavailable"
+    assert str(lock_path) not in json.dumps(status)
+
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "text_to_image",
+        "provider": "openai_codex_oauth_native",
+        "model": "gpt-image-2",
+        "prompt_text": "A neon library in the rain",
+    }).json()
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+    assert response.status_code == 409
+
+    failed = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert failed["metadata"]["error_kind"] == "provider_unavailable"
+    assert str(lock_path) not in json.dumps(failed)
+    assert "refresh-secret" not in json.dumps(failed)
 
 
 def test_generation_providers_manual_upload_is_always_generation_ready(tmp_path, monkeypatch):

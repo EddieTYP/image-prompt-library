@@ -437,7 +437,11 @@ class CodexNativeAuthStore:
     def _refresh_lock(self) -> Iterator[None]:
         lock_path = _refresh_lock_path(self.path)
         deadline = time.monotonic() + AUTH_REFRESH_LOCK_WAIT_SECONDS
-        with lock_path.open("a+b") as lock_file:
+        try:
+            lock_file = lock_path.open("a+b")
+        except OSError as exc:
+            raise CodexNativeTemporaryError("Token refresh is temporarily unavailable") from exc
+        with lock_file:
             if lock_path.stat().st_size == 0:
                 lock_file.write(b"\0")
                 lock_file.flush()
@@ -497,7 +501,7 @@ class CodexNativeAuthStore:
         finally:
             if close_client:
                 client.close()
-        if response.status_code >= 500:
+        if response.status_code == 408 or response.status_code >= 500:
             raise CodexNativeTemporaryError("Token refresh is temporarily unavailable")
         if response.status_code != 200:
             raise CodexNativeAuthError(f"Token refresh returned status {response.status_code}")
