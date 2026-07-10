@@ -30,3 +30,28 @@ def test_windows_runtime_setup_is_local_and_never_installs_python():
     assert "npm" not in script.lower()
     assert "node" not in script.lower()
     assert "Start-Process" not in script
+
+
+def test_windows_appctl_loads_known_config_and_exposes_diagnostics():
+    path = ROOT / "scripts" / "appctl.ps1"
+    assert path.is_file()
+    script = path.read_text(encoding="utf-8")
+    for name in (
+        "Get-InstallContext",
+        "Read-AppEnvironment",
+        "Get-CurrentVersion",
+        "Get-AppStatusData",
+        "Show-Status",
+        "Show-Doctor",
+    ):
+        assert f"function {name}" in script
+    assert "IMAGE_PROMPT_LIBRARY_PATH" in script
+    assert "BACKEND_HOST" in script
+    assert "BACKEND_PORT" in script
+    assert "App" in script
+    assert "Library" in script
+    assert '"version"' in script
+    assert '"status"' in script
+    assert '"doctor"' in script
+    assert ". $EnvFile" not in script
+    assert "Invoke-Expression" not in script
