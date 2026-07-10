@@ -497,7 +497,7 @@ class CodexNativeAuthStore:
         finally:
             if close_client:
                 client.close()
-        if response.status_code >= 500:
+        if response.status_code == 408 or response.status_code >= 500:
             raise CodexNativeTemporaryError("Token refresh is temporarily unavailable")
         if response.status_code != 200:
             raise CodexNativeAuthError(f"Token refresh returned status {response.status_code}")

@@ -224,7 +224,7 @@ def test_codex_native_refreshes_expired_access_token_before_use(tmp_path, monkey
     assert "refresh-token-rotated" in auth_path.read_text()
 
 
-@pytest.mark.parametrize("failure", ["network", "server"])
+@pytest.mark.parametrize("failure", ["network", "request_timeout", "server"])
 def test_codex_native_refresh_maps_transient_failures_to_temporary_error(tmp_path, monkeypatch, failure):
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
 
@@ -234,6 +234,8 @@ def test_codex_native_refresh_maps_transient_failures_to_temporary_error(tmp_pat
     def handler(request: httpx.Request) -> httpx.Response:
         if failure == "network":
             raise httpx.ReadTimeout("timed out", request=request)
+        if failure == "request_timeout":
+            return httpx.Response(408)
         return httpx.Response(503)
 
     auth_path = tmp_path / "auth" / "auth.json"
