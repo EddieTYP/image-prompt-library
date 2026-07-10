@@ -60,7 +60,8 @@ def test_codex_native_token_store_is_app_owned_redacted_and_permissioned(tmp_pat
     assert raw["provider"] == "openai_codex_oauth_native"
     assert raw["auth_mode"] == "codex_oauth_native"
     assert raw["tokens"]["access_token"].startswith("ey")
-    assert oct(auth_path.stat().st_mode & 0o777) == "0o600"
+    if os.name != "nt":
+        assert oct(auth_path.stat().st_mode & 0o777) == "0o600"
 
     status = store.status()
     assert status["provider"] == "openai_codex_oauth_native"
@@ -220,6 +221,34 @@ def test_codex_native_refreshes_expired_access_token_before_use(tmp_path, monkey
     assert "grant_type=refresh_token" in seen_bodies[0]
     assert "client_id=codex-client-test" in seen_bodies[0]
     assert "refresh-token-rotated" in auth_path.read_text()
+
+
+@pytest.mark.parametrize("failure", ["network", "server"])
+def test_codex_native_refresh_maps_transient_failures_to_temporary_error(tmp_path, monkeypatch, failure):
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID", "codex-client-test")
+
+    import httpx
+    from backend.services.openai_codex_native import CodexNativeAuthStore, CodexNativeTemporaryError
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if failure == "network":
+            raise httpx.ReadTimeout("timed out", request=request)
+        return httpx.Response(503)
+
+    store = CodexNativeAuthStore(tmp_path / "auth" / "auth.json")
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        with pytest.raises(CodexNativeTemporaryError):
+            store.refresh_tokens("refresh-secret", http_client=http_client)
+
+
+def test_codex_native_malformed_local_credentials_raise_auth_error(tmp_path):
+    from backend.services.openai_codex_native import CodexNativeAuthError, CodexNativeAuthStore
+
+    auth_path = tmp_path / "auth.json"
+    auth_path.write_text("{", encoding="utf-8")
+
+    with pytest.raises(CodexNativeAuthError):
+        CodexNativeAuthStore(auth_path).read_tokens()
 
 
 def test_codex_native_refresh_coordinates_independent_processes(tmp_path, monkeypatch):
@@ -863,7 +892,12 @@ def test_codex_native_marks_failed_when_stage_result_rejects_unsafe_result_root(
     }).json()
     wrong_results = tmp_path / "library" / "wrong-results"
     wrong_results.mkdir()
-    (tmp_path / "library" / "generation-results").symlink_to(wrong_results, target_is_directory=True)
+    try:
+        (tmp_path / "library" / "generation-results").symlink_to(wrong_results, target_is_directory=True)
+    except OSError as exc:
+        if os.name == "nt" and getattr(exc, "winerror", None) == 1314:
+            pytest.skip("Windows symlink privilege is unavailable")
+        raise
 
     response = c.post(f"/api/generation-jobs/{job['id']}/run")
 

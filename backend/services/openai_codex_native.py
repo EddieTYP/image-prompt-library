@@ -7,6 +7,8 @@ import json
 import os
 import time
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from io import BytesIO
 from pathlib import Path
@@ -36,6 +38,9 @@ IMAGE_MODEL = "gpt-image-2"
 DEFAULT_QUALITY = "high"
 QUALITY_ALIASES = {"standard": "medium", "medium": "medium", "high": "high", "low": "low", "auto": "auto"}
 MAX_INPUT_IMAGES = 4
+AUTH_REFRESH_LOCK_POLL_SECONDS = 0.1
+AUTH_REFRESH_LOCK_WAIT_SECONDS = 20.0
+AUTH_REFRESH_LOCK_STALE_SECONDS = 30.0
 
 
 def _data_url_from_bytes(data: bytes, *, mime_type: str = "image/png") -> str:
@@ -176,6 +181,10 @@ class CodexNativeAuthError(RuntimeError):
     pass
 
 
+class CodexNativeTemporaryError(CodexNativeAuthError):
+    pass
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -185,6 +194,10 @@ def _auth_path() -> Path:
     if configured:
         return Path(configured).expanduser()
     return DEFAULT_AUTH_PATH
+
+
+def _refresh_lock_path(auth_path: Path) -> Path:
+    return auth_path.with_name(f"{auth_path.name}.refresh.lock")
 
 
 def _config_path() -> Path:
@@ -376,7 +389,10 @@ class CodexNativeAuthStore:
     def _read_raw_tokens(self) -> dict[str, str]:
         if not self.path.is_file():
             raise CodexNativeAuthError("No native Codex OAuth credentials saved")
-        payload = json.loads(self.path.read_text(encoding="utf-8"))
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise CodexNativeAuthError("Native Codex auth store contains invalid JSON") from exc
         tokens = payload.get("tokens") if isinstance(payload, dict) else None
         if not isinstance(tokens, dict):
             raise CodexNativeAuthError("Native Codex auth store is missing tokens")
@@ -386,11 +402,52 @@ class CodexNativeAuthStore:
             raise CodexNativeAuthError("Native Codex auth store has incomplete tokens")
         return {"access_token": access_token, "refresh_token": refresh_token}
 
+    @contextmanager
+    def _refresh_lock(self) -> Iterator[None]:
+        lock_path = _refresh_lock_path(self.path)
+        deadline = time.monotonic() + AUTH_REFRESH_LOCK_WAIT_SECONDS
+        stale_lock_retried = False
+        owned_lock: tuple[int, int] | None = None
+        while owned_lock is None:
+            try:
+                lock_path.mkdir()
+                lock_stat = lock_path.stat()
+                owned_lock = (lock_stat.st_dev, lock_stat.st_ino)
+            except FileExistsError:
+                if not stale_lock_retried:
+                    try:
+                        stale = time.time() - lock_path.stat().st_mtime >= AUTH_REFRESH_LOCK_STALE_SECONDS
+                    except FileNotFoundError:
+                        continue
+                    if stale:
+                        stale_lock_retried = True
+                        try:
+                            lock_path.rmdir()
+                        except OSError:
+                            pass
+                        continue
+                if time.monotonic() >= deadline:
+                    raise CodexNativeTemporaryError("Token refresh is temporarily unavailable")
+                time.sleep(AUTH_REFRESH_LOCK_POLL_SECONDS)
+        try:
+            yield
+        finally:
+            try:
+                lock_stat = lock_path.stat()
+                if (lock_stat.st_dev, lock_stat.st_ino) == owned_lock:
+                    lock_path.rmdir()
+            except FileNotFoundError:
+                pass
+
     def read_tokens(self, http_client: httpx.Client | None = None) -> dict[str, str]:
         tokens = self._read_raw_tokens()
-        if _token_expires_soon(tokens["access_token"]):
-            tokens = self.refresh_tokens(tokens["refresh_token"], http_client=http_client)
-        return tokens
+        if not _token_expires_soon(tokens["access_token"]):
+            return tokens
+        with self._refresh_lock():
+            tokens = self._read_raw_tokens()
+            if _token_expires_soon(tokens["access_token"]):
+                return self.refresh_tokens(tokens["refresh_token"], http_client=http_client)
+            return tokens
 
     def refresh_tokens(self, refresh_token: str, http_client: httpx.Client | None = None) -> dict[str, str]:
         client_id = _codex_client_id()
@@ -408,10 +465,12 @@ class CodexNativeAuthStore:
                     headers={"Content-Type": "application/x-www-form-urlencoded"},
                 )
             except httpx.HTTPError as exc:
-                raise CodexNativeAuthError("Token refresh failed") from exc
+                raise CodexNativeTemporaryError("Token refresh failed") from exc
         finally:
             if close_client:
                 client.close()
+        if response.status_code >= 500:
+            raise CodexNativeTemporaryError("Token refresh is temporarily unavailable")
         if response.status_code != 200:
             raise CodexNativeAuthError(f"Token refresh returned status {response.status_code}")
         payload = _response_json(response, "Token refresh")
@@ -431,18 +490,26 @@ class CodexNativeAuthStore:
         token_present = False
         account_id = None
         saved_credentials_broken = False
+        temporary_unavailable = False
         try:
             raw_tokens = self._read_raw_tokens()
             token_present = True
             account_id = account_id_from_access_token(raw_tokens["access_token"])
-            tokens = self.read_tokens()
-            token_present = True
-            account_id = account_id_from_access_token(tokens["access_token"])
         except Exception:
             token_present = False
             account_id = None
             saved_credentials_broken = self.path.is_file()
-        available = configured and token_present
+        else:
+            try:
+                tokens = self.read_tokens()
+                account_id = account_id_from_access_token(tokens["access_token"])
+            except CodexNativeTemporaryError:
+                temporary_unavailable = True
+            except Exception:
+                token_present = False
+                account_id = None
+                saved_credentials_broken = self.path.is_file()
+        available = configured and token_present and not temporary_unavailable
         if not configured:
             state = "not_configured"
             reason = "missing_client_id"
@@ -452,12 +519,19 @@ class CodexNativeAuthStore:
         else:
             state = "connected"
             reason = None
-        readiness = _generation_readiness(
-            configured,
-            token_present,
-            state,
-            credentials_present_but_unusable=saved_credentials_broken,
-        )
+        if temporary_unavailable:
+            readiness = {
+                "status": "unavailable",
+                "message": "ChatGPT / Codex OAuth is temporarily unavailable. Try again shortly.",
+                "can_generate": False,
+            }
+        else:
+            readiness = _generation_readiness(
+                configured,
+                token_present,
+                state,
+                credentials_present_but_unusable=saved_credentials_broken,
+            )
         return {
             "provider": PROVIDER_ID,
             "display_name": DISPLAY_NAME,
