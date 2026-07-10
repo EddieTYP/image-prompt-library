@@ -47,8 +47,10 @@ function Get-CurrentVersion {
     $pointer = Join-Path $Context.AppDir "current-version"
     if (-not (Test-Path -LiteralPath $pointer -PathType Leaf)) { throw "No installed version is selected." }
     $version = (Get-Content -LiteralPath $pointer -Raw).Trim()
-    if (-not $version -or $version -match '[\\/]') { throw "The current version pointer is invalid." }
-    $root = Join-Path $Context.AppDir ("versions\" + $version)
+    if (-not $version -or $version -eq "." -or $version -eq ".." -or $version -match '[\\/]') { throw "The current version pointer is invalid." }
+    $versionsRoot = [IO.Path]::GetFullPath((Join-Path $Context.AppDir "versions"))
+    $root = [IO.Path]::GetFullPath((Join-Path $versionsRoot $version))
+    if (-not $root.StartsWith($versionsRoot + "\", [StringComparison]::OrdinalIgnoreCase)) { throw "The current version pointer is invalid." }
     if (-not (Test-Path -LiteralPath $root -PathType Container)) { throw "The current version directory is missing: $root" }
     [pscustomobject]@{ Version = $version; Root = $root; Python = Join-Path $root ".venv\Scripts\python.exe" }
 }
@@ -60,14 +62,18 @@ import json, sqlite3, sys
 from pathlib import Path
 
 library = Path(sys.argv[1])
-payload = {"items": None, "generation": "unavailable"}
+payload = {"items": None, "database": "missing", "generation": "unavailable"}
 try:
     db = library / "db.sqlite"
     if db.exists():
-        with sqlite3.connect(db) as conn:
-            payload["items"] = conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+        try:
+            with sqlite3.connect(db) as conn:
+                payload["items"] = conn.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+            payload["database"] = "ok"
+        except Exception:
+            payload["database"] = "unavailable"
 except Exception:
-    pass
+    payload["database"] = "unavailable"
 try:
     from backend.services.openai_codex_native import CodexNativeAuthStore, configured_client_id
     if not configured_client_id():
@@ -81,17 +87,17 @@ except Exception:
 print(json.dumps(payload))
 '@
     if (-not (Test-Path -LiteralPath $Version.Python -PathType Leaf)) {
-        return [pscustomobject]@{ Items = $null; Generation = "unavailable" }
+        return [pscustomobject]@{ Items = $null; Database = "unavailable"; Generation = "unavailable" }
     }
     $output = & $Version.Python @("-c", $statusScript, $Environment.LibraryPath) 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $output) {
-        return [pscustomobject]@{ Items = $null; Generation = "unavailable" }
+        return [pscustomobject]@{ Items = $null; Database = "unavailable"; Generation = "unavailable" }
     }
     try {
         $payload = $output | ConvertFrom-Json
-        return [pscustomobject]@{ Items = $payload.items; Generation = $payload.generation }
+        return [pscustomobject]@{ Items = $payload.items; Database = $payload.database; Generation = $payload.generation }
     } catch {
-        return [pscustomobject]@{ Items = $null; Generation = "unavailable" }
+        return [pscustomobject]@{ Items = $null; Database = "unavailable"; Generation = "unavailable" }
     }
 }
 
@@ -129,9 +135,15 @@ function Show-Doctor {
 
     Write-Output "Database"
     try {
-        $database = Join-Path (Read-AppEnvironment $Context).LibraryPath "db.sqlite"
-        if (Test-Path -LiteralPath $database -PathType Leaf) { Write-Output "  Database: OK" }
-        else { Write-Output ("  Database: MISSING - " + $database) }
+        $environment = Read-AppEnvironment $Context
+        $database = Join-Path $environment.LibraryPath "db.sqlite"
+        if (-not $version) { Write-Output "  Database: UNAVAILABLE" }
+        else {
+            $status = Get-AppStatusData -Context $Context -Environment $environment -Version $version
+            if ($status.Database -eq "missing") { Write-Output ("  Database: MISSING - " + $database) }
+            elseif ($status.Database -eq "ok" -and $null -ne $status.Items) { Write-Output ("  Database: OK ({0} items)" -f $status.Items) }
+            else { Write-Output "  Database: UNAVAILABLE" }
+        }
     } catch { Write-Output ("  Database: ERROR - " + $_.Exception.Message) }
 
     Write-Output "Generation"
@@ -153,8 +165,15 @@ function Show-Doctor {
         else { Write-Output ("  Command shim: MISSING - " + $shim) }
     } catch { Write-Output ("  Command shim: ERROR - " + $_.Exception.Message) }
     try {
-        $pathEntries = @($env:Path -split [IO.Path]::PathSeparator)
-        if ($pathEntries -contains $Context.BinDir) { Write-Output "  User PATH: OK" }
+        $userPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
+        $binDir = [IO.Path]::GetFullPath($Context.BinDir).TrimEnd('\')
+        $pathEntries = @($userPath -split [IO.Path]::PathSeparator | ForEach-Object {
+            $entry = $_.Trim().Trim('"')
+            if ($entry) {
+                try { [IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($entry)).TrimEnd('\') } catch {}
+            }
+        })
+        if (@($pathEntries | Where-Object { [string]::Equals($_, $binDir, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0) { Write-Output "  User PATH: OK" }
         else { Write-Output ("  User PATH: MISSING - " + $Context.BinDir) }
     } catch { Write-Output ("  User PATH: ERROR - " + $_.Exception.Message) }
     try {
