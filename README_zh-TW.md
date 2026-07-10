@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.5-beta)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.10)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 <p align="center">
@@ -32,7 +32,7 @@ Image Prompt Library 就是為這件事而做：把分散在聊天紀錄、資�
 
 你可以用 demo 快速找靈感、看 prompt 結構、複製公開 sample prompt，或者比較不同寫法對出圖效果的影響。GitHub Pages demo 是靜態唯讀版本；新增、編輯、私人 library 管理和圖片生成，都在本地安裝版使用。
 
-目前公開 beta：[`v0.7.5-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.5-beta)。這個 patch 令 generation history 檢視更安全：job API response 會遮蔽原始 input-image data；同時改善 Filters、Config、gallery cards 和 detail modal 的 keyboard / focus 行為。
+目前 stable release：[`v0.7.10`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.10)。版本包括 structured search 與 sorting、batch reference management、cleanup tools、versioned install/update/rollback、較清晰的首次使用流程，以及 optional local generation 的 OAuth session recovery hardening。
 
 ## 快速開始
 
@@ -145,4 +145,4 @@ Privacy model：
 
 ## Project status
 
-這是 public beta。Core browsing、search、本地 add/edit、可選本地 generation、versioned install、update/rollback，以及唯讀 online demo 現時已可使用。後續工作包括 service/update hardening、management-mode cleanup tools、search/sort polish、batch image editing、import-flow polish，以及更深入的 mobile Explore gestures。
+Local-first library、versioned install/update/rollback workflow、唯讀 online demo，以及 optional ChatGPT / Codex OAuth generation 都已進入 stable 並可正常使用。如果上游 OAuth 或 generation service 有變，會以 maintenance release 跟進相容性。後續工作集中於 service/update resilience、import-review polish、batch image editing，以及更深入的 mobile Explore gestures。

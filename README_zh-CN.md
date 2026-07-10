@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.5-beta)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.10)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 <p align="center">
@@ -32,7 +32,7 @@ Image Prompt Library 就是为这件事而做：把分散在聊天记录、文�
 
 你可以用 demo 快速找灵感、看 prompt 结构、复制公开 sample prompt，或者比较不同 prompt 写法对出图效果的影响。GitHub Pages demo 是静态只读版本；新增、编辑、私人 library 管理和图片生成，都在本地安装版使用。
 
-当前公开 beta：[`v0.7.5-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.5-beta)。这个 patch 让 generation history 查看更安全：job API response 会隐藏原始 input-image data；同时改善 Filters、Config、gallery cards 和 detail modal 的 keyboard / focus 行为。
+当前 stable release：[`v0.7.10`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.10)。版本包括 structured search 与 sorting、batch reference management、cleanup tools、versioned install/update/rollback、更清晰的首次使用流程，以及 optional local generation 的 OAuth session recovery hardening。
 
 ## 快速开始
 
@@ -145,4 +145,4 @@ Privacy model：
 
 ## Project status
 
-这是 public beta。Core browsing、search、本地 add/edit、可选本地 generation、versioned install、update/rollback，以及只读 online demo 当前已可使用。后续工作包括 service/update hardening、management-mode cleanup tools、search/sort polish、batch image editing、import-flow polish，以及更深入的 mobile Explore gestures。
+Local-first library、versioned install/update/rollback workflow、只读 online demo，以及 optional ChatGPT / Codex OAuth generation 都已进入 stable 并可正常使用。如果上游 OAuth 或 generation service 发生变化，会通过 maintenance release 跟进兼容性。后续工作集中于 service/update resilience、import-review polish、batch image editing，以及更深入的 mobile Explore gestures。

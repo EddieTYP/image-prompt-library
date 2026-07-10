@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.8-beta)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.10)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 <p align="center">
@@ -33,7 +33,7 @@ Use the online demo as a visual prompt catalogue: search for ideas, inspect prom
 
 If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate new images through ChatGPT / Codex OAuth while keeping your SQLite database and image files on your own computer.
 
-Current public beta: [`v0.7.8-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.8-beta). The current beta includes power-user library management with structured search filters, visible sorting, batch reference actions, local cleanup preview/apply tools, and desktop and mobile layout polish; it also hardens local generation and adds a calmer first-run local experience: empty-library guidance, Local Setup details in Config, `image-prompt-library status`, clearer `doctor` output, Windows Git Bash installer compatibility, and mobile onboarding controls that do not cover first-run content.
+Current stable release: [`v0.7.10`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.10). It includes structured search and sorting, batch reference management, cleanup tools, versioned install/update/rollback, a calmer first-run experience, and hardened OAuth session recovery for optional local generation.
 
 ## Quick start
 
@@ -157,4 +157,4 @@ Privacy model:
 
 ## Project status
 
-This is a public beta. Core browsing, structured search and sort, local add/edit, batch reference management, local cleanup tools, optional local generation, versioned installs, update/rollback, and the read-only online demo are available today. Remaining work includes service/update hardening, generation hardening, install/onboarding polish, import-flow polish, batch image editing, and deeper mobile Explore gestures.
+The local-first library, versioned install/update/rollback workflow, read-only online demo, and optional ChatGPT / Codex OAuth generation are stable and available today. If the upstream OAuth or generation service changes, compatibility updates will be handled as maintenance releases. Current follow-up work focuses on service/update resilience, import-review polish, batch image editing, and deeper mobile Explore gestures.
