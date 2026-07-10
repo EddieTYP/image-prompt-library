@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.7-beta)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.8-beta)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 <p align="center">
@@ -33,7 +33,7 @@ Use the online demo as a visual prompt catalogue: search for ideas, inspect prom
 
 If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate new images through ChatGPT / Codex OAuth while keeping your SQLite database and image files on your own computer.
 
-Current public beta: [`v0.7.7-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.7-beta). The current beta includes power-user library management with structured search filters, visible sorting, batch reference actions, local cleanup preview/apply tools, and desktop and mobile layout polish; this patch also hardens local generation with clearer provider readiness, safer stale-job recovery, live ChatGPT / Codex OAuth QA, and compact desktop/mobile generation controls.
+Current public beta: [`v0.7.8-beta`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.8-beta). The current beta includes power-user library management with structured search filters, visible sorting, batch reference actions, local cleanup preview/apply tools, and desktop and mobile layout polish; it also hardens local generation and adds a calmer first-run local experience: empty-library guidance, Local Setup details in Config, `image-prompt-library status`, clearer `doctor` output, Windows Git Bash installer compatibility, and mobile onboarding controls that do not cover first-run content.
 
 ## Quick start
 

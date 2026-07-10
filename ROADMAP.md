@@ -2,7 +2,7 @@
 
 ## Current public beta direction
 
-Image Prompt Library is a public beta local-first prompt/image manager. The current release is `v0.7.7-beta`. The application code remains AGPL-3.0-or-later, and commercial licenses are available for organizations that need terms outside the AGPL.
+Image Prompt Library is a public beta local-first prompt/image manager. The current release is `v0.7.8-beta`. The application code remains AGPL-3.0-or-later, and commercial licenses are available for organizations that need terms outside the AGPL.
 
 The public GitHub Pages demo is a static, read-only catalogue of public prompt/image references. Local installs are where users manage private libraries, add/edit content, and optionally generate images through local ChatGPT / Codex OAuth.
 
@@ -16,7 +16,6 @@ Available today:
 
 Near-term priorities:
 
-- Polish install/onboarding docs and first-run diagnostics so local setup is clearer for new users.
 - Harden service/update behavior, especially managed-service restart behavior after app updates.
 - Add management-mode cleanup for generated/reference image records.
 - Improve batch image editing and import-review polish.
