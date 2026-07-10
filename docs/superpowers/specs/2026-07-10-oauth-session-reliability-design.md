@@ -16,8 +16,8 @@ The existing provider status contract already supports `ready`, `login_required`
 
 ### Single-Owner Refresh
 
-- Store a refresh lock named `<auth-file>.refresh.lock` beside the app-owned OAuth credential file.
-- Acquire the lock with an atomic filesystem operation that works on supported local platforms without a new dependency.
+- Store a regular refresh-lock file named `<auth-file>.refresh.lock` beside the app-owned OAuth credential file.
+- Acquire an OS-managed exclusive advisory lock on that file: `msvcrt` on Windows and `fcntl` on macOS/Linux. Use only the Python standard library.
 - The lock owner must reread the credential file after acquisition. If another caller refreshed before the lock was acquired, return the fresh token pair without calling the OAuth endpoint again.
 - The lock owner refreshes only when the reread access token is still near expiry.
 - Keep the existing atomic credential-file replacement for successful refreshes.
@@ -30,11 +30,11 @@ The existing provider status contract already supports `ready`, `login_required`
 - Waiting must be bounded. A caller must not wait indefinitely for a crashed service or abandoned lock.
 - If waiting expires, raise a retryable temporary-availability error, not a credential-loss error.
 
-### Stale Lock Recovery
+### Crash Recovery
 
-- Treat a lock at least 30 seconds old as stale. The existing OAuth request timeout is 15 seconds; the remaining 15 seconds are the safety margin.
-- Remove only this explicitly named OAuth refresh lock after confirming it is stale, then allow one acquisition retry.
-- Do not remove a lock that is still within the allowed refresh window.
+- Do not use lock age, marker files, stale-lock deletion, or lock-directory cleanup.
+- The operating system releases the advisory lock when its owning process exits or crashes.
+- A caller that cannot obtain the lock within the bounded wait period returns a retryable temporary-availability error.
 
 ### Provider Status And User Experience
 
@@ -59,7 +59,7 @@ The existing provider status contract already supports `ready`, `login_required`
 
 `backend/services/openai_codex_native.py` remains the only owner of credential read, refresh, and status classification behavior.
 
-Use a small private lock helper adjacent to `CodexNativeAuthStore`; do not create a general-purpose locking subsystem. The helper owns acquire, bounded wait, stale detection, release, and context cleanup for one auth-store path.
+Use a small private lock helper adjacent to `CodexNativeAuthStore`; do not create a general-purpose locking subsystem. The helper owns cross-platform exclusive acquire, bounded wait, release, and file-descriptor cleanup for one auth-store path.
 
 Keep `read_tokens()` as the shared entry point for provider status and generation. This ensures every caller follows the same single-owner refresh behavior.
 
@@ -87,7 +87,7 @@ Do not add a modal, global spinner, new settings, or a foreground token-renewal 
 
 - Two independent auth-store callers sharing one credential path trigger exactly one refresh request and both receive the resulting access token.
 - A caller that acquires the lock after another refresh rereads the new token and does not issue a second refresh request.
-- A stale named refresh lock is recovered once; a fresh lock is never removed.
+- A process that holds the advisory lock can exit, after which a new caller acquires the lock and refreshes normally.
 - Lock release occurs after refresh success and after refresh failure.
 - Credential rejection maps to `auth_error`; timeout, network, upstream 5xx, and lock wait expiry map to `unavailable`.
 - Temporary failures keep the credential file and redact all secrets from returned status/error payloads.

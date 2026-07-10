@@ -4,14 +4,14 @@
 
 **Goal:** Make normal ChatGPT / Codex OAuth renewal invisible by serializing refreshes and preserving login state for temporary provider outages.
 
-**Architecture:** Keep all behavior in `CodexNativeAuthStore`. A private lock directory beside the auth file gives one caller refresh ownership; waiters reread the atomically replaced token file. Existing Config and generation UI consume `authenticated`, `status`, and `message`, so no new controls are needed.
+**Architecture:** Keep all behavior in `CodexNativeAuthStore`. A private OS-advisory lock file beside the auth file gives one caller refresh ownership; waiters reread the atomically replaced token file. Existing Config and generation UI consume `authenticated`, `status`, and `message`, so no new controls are needed.
 
 **Tech Stack:** Python 3.10+, `pathlib`, `os`, `time`, `httpx`, FastAPI, pytest.
 
 ## Global Constraints
 
 - No dependency, provider, queue rewrite, automatic paid-generation retry, account system, or public-demo generation.
-- Name the lock `<auth-file>.refresh.lock`; poll every 100ms for at most 20s; consider only a 30s-old lock stale.
+- Name the regular lock file `<auth-file>.refresh.lock`; poll every 100ms for at most 20s; use OS-managed exclusive advisory locks with `msvcrt` on Windows and `fcntl` on macOS/Linux.
 - Keep atomic credential writes and redact tokens, lock paths, and upstream secrets.
 - OAuth 400/401/403 and malformed credentials map to `auth_error`; network, timeout, upstream 5xx, and lock expiry map to `unavailable`.
 - Temporary errors preserve stored credentials and must not offer reconnect as the normal remedy.
@@ -25,7 +25,7 @@
 
 **Interfaces:**
 - Consumes: `CodexNativeAuthStore(path)`, `read_tokens(http_client)`, `status()`.
-- Produces: coverage for one-owner refresh, stale-lock recovery, and status classification.
+- Produces: coverage for one-owner refresh, OS crash release, and status classification.
 
 - [ ] **Step 1: Write failing concurrency tests**
 
@@ -37,7 +37,7 @@ assert first_result["access_token"] == refreshed_access_token
 assert second_result["access_token"] == refreshed_access_token
 ```
 
-Create `auth_path.with_name(f"{auth_path.name}.refresh.lock")`, age it past 30 seconds with `os.utime`, and assert recovery. Create a fresh lock with the wait limit monkeypatched to `0` and assert it is not removed.
+Start a helper process that acquires the real advisory lock, then terminate that process without an application-level release. Assert a subsequent caller can acquire the lock and refresh. Also hold the real lock while monkeypatching the wait limit to `0` and assert `read_tokens()` raises the temporary error without deleting the lock file.
 
 - [ ] **Step 2: Verify the new tests fail**
 
@@ -67,7 +67,7 @@ Assert rejected refresh returns `auth_error` and neither payload contains the re
 
 **Interfaces:**
 - Consumes: `_token_expires_soon()`, atomic `save_tokens()`, `CodexNativeAuthError`.
-- Produces: `CodexNativeTemporaryError`, lock helpers, coordinated `read_tokens()`, and temporary-unavailable provider status.
+- Produces: `CodexNativeTemporaryError`, cross-platform OS lock helpers, coordinated `read_tokens()`, and temporary-unavailable provider status.
 
 - [ ] **Step 1: Implement one private lock helper**
 
@@ -76,10 +76,9 @@ Add module-private constants:
 ```python
 AUTH_REFRESH_LOCK_POLL_SECONDS = 0.1
 AUTH_REFRESH_LOCK_WAIT_SECONDS = 20.0
-AUTH_REFRESH_LOCK_STALE_SECONDS = 30.0
 ```
 
-Add `_refresh_lock_path(auth_path)` returning `auth_path.with_name(f"{auth_path.name}.refresh.lock")`. Use `mkdir()` to acquire, `rmdir()` to release, and `stat().st_mtime` for stale age. A caller removes only that stale named lock and retries once.
+Add `_refresh_lock_path(auth_path)` returning `auth_path.with_name(f"{auth_path.name}.refresh.lock")`. Open that regular file with the standard library, acquire an exclusive nonblocking advisory lock using `msvcrt` on Windows and `fcntl` on macOS/Linux, and retry acquire on the polling interval until the wait limit expires. Always unlock and close the owned file descriptor in `finally`; never delete a held lock file or infer ownership from age.
 
 - [ ] **Step 2: Coordinate `read_tokens()`**
 
