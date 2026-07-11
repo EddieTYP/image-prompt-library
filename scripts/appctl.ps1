@@ -59,8 +59,96 @@ function Read-ServerRecord {
     param($Context)
     $path = Join-Path $Context.RunDir "server.json"
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
-    try { return Get-Content -LiteralPath $path -Raw | ConvertFrom-Json }
-    catch { throw "The runtime record is malformed: $path" }
+    try {
+        $record = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        if (-not $record -or $record -is [Array]) { throw "invalid structure" }
+        foreach ($name in @("pid", "process_start_time_utc", "process_start_time_utc_ticks", "process_executable_path", "version", "app_root", "host", "port", "stdout_log", "stderr_log", "created_at")) {
+            if (-not $record.PSObject.Properties[$name]) { throw "missing field" }
+        }
+        if (-not (Test-JsonInteger -Value $record.pid -Minimum 1 -Maximum ([int]::MaxValue))) { throw "invalid pid" }
+        if (-not (Test-JsonInteger -Value $record.process_start_time_utc_ticks -Minimum 1 -Maximum ([long]::MaxValue))) { throw "invalid ticks" }
+        if (-not (Test-JsonInteger -Value $record.port -Minimum 1 -Maximum 65535)) { throw "invalid port" }
+        foreach ($name in @("process_start_time_utc", "process_executable_path", "version", "app_root", "host", "stdout_log", "stderr_log", "created_at")) {
+            if ($record.$name -isnot [string] -or -not $record.$name.Trim()) { throw "invalid string field" }
+        }
+        if (-not (Test-UtcTimestamp -Value $record.process_start_time_utc)) { throw "invalid process timestamp" }
+        if (-not (Test-UtcTimestamp -Value $record.created_at)) { throw "invalid creation timestamp" }
+        $startTime = [DateTime]::ParseExact($record.process_start_time_utc, "o", [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind)
+        if ($startTime.Ticks -ne [long]$record.process_start_time_utc_ticks) { throw "inconsistent process timestamp" }
+        if (-not (Test-BindHost -HostName $record.host)) { throw "invalid host" }
+        return $record
+    } catch {
+        throw "The runtime record is malformed and was retained: $path"
+    }
+}
+
+function Test-JsonInteger {
+    param($Value, [long]$Minimum, [long]$Maximum)
+    if ($Value -isnot [int] -and $Value -isnot [long]) { return $false }
+    return [long]$Value -ge $Minimum -and [long]$Value -le $Maximum
+}
+
+function Test-UtcTimestamp {
+    param($Value)
+    if ($Value -isnot [string] -or -not $Value) { return $false }
+    $parsed = [DateTime]::MinValue
+    return [DateTime]::TryParseExact($Value, "o", [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::RoundtripKind, [ref]$parsed) -and $parsed.Kind -eq [DateTimeKind]::Utc
+}
+
+function Test-BindHost {
+    param([string]$HostName)
+    if (-not $HostName -or $HostName.Length -gt 253 -or $HostName.StartsWith("[") -or $HostName.EndsWith("]")) { return $false }
+    $address = $null
+    if ([Net.IPAddress]::TryParse($HostName, [ref]$address)) { return $true }
+    if ($HostName -notmatch '^[A-Za-z0-9.-]+$') { return $false }
+    $dnsName = $HostName.TrimEnd('.')
+    if (-not $dnsName) { return $false }
+    foreach ($label in $dnsName.Split('.')) {
+        if ($label.Length -lt 1 -or $label.Length -gt 63 -or $label -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$') { return $false }
+    }
+    return $true
+}
+
+function Get-ProbeHost {
+    param([string]$HostName)
+    if ($HostName -in @("0.0.0.0", "::")) { return "127.0.0.1" }
+    return $HostName
+}
+
+function Get-AppUrl {
+    param([string]$HostName, [int]$Port)
+    if (-not (Test-BindHost -HostName $HostName) -or $Port -lt 1 -or $Port -gt 65535) { throw "The app endpoint is invalid." }
+    $HostName = Get-ProbeHost -HostName $HostName
+    $urlHost = if ($HostName.Contains(":")) { "[" + $HostName.Replace("%", "%25") + "]" } else { $HostName }
+    return "http://{0}:{1}/" -f $urlHost, $Port
+}
+
+function Write-ServerRecordAtomically {
+    param($Context, $Record)
+    $path = Join-Path $Context.RunDir "server.json"
+    $temporaryPath = Join-Path $Context.RunDir ("server.json.{0}.tmp" -f [Guid]::NewGuid().ToString("N"))
+    try {
+        $encoding = New-Object Text.UTF8Encoding($false)
+        [IO.File]::WriteAllText($temporaryPath, ($Record | ConvertTo-Json), $encoding)
+        [IO.File]::Move($temporaryPath, $path)
+    } finally {
+        if ([IO.File]::Exists($temporaryPath)) { [IO.File]::Delete($temporaryPath) }
+    }
+}
+
+function Enter-StartLock {
+    param($Context)
+    New-Item -ItemType Directory -Force -Path $Context.RunDir | Out-Null
+    $path = Join-Path $Context.RunDir "start.lock"
+    $deadline = [DateTime]::UtcNow.AddSeconds(60)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        try {
+            return [IO.File]::Open($path, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        } catch [IO.IOException] {
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    throw "Another start operation did not finish within 60 seconds."
 }
 
 function Get-RecordedProcess {
@@ -75,23 +163,49 @@ function Get-OwnedProcess {
     if (-not $Record -or -not $Record.PSObject.Properties["pid"] -or -not $Record.PSObject.Properties["process_start_time_utc_ticks"] -or -not $Record.PSObject.Properties["process_executable_path"]) { return $null }
     $process = Get-RecordedProcess $Record
     if (-not $process) { return $null }
-    try {
-        $ticks = $process.StartTime.ToUniversalTime().Ticks
-        $path = $process.Path
-        $recordedTicks = [int64]$Record.process_start_time_utc_ticks
-    } catch {
-        return $null
-    }
-    if ($ticks -ne $recordedTicks) { return $null }
-    if (-not [string]::Equals($path, [string]$Record.process_executable_path, [StringComparison]::OrdinalIgnoreCase)) { return $null }
+    if (-not (Test-ProcessIdentity -Process $process -Record $Record)) { return $null }
     return $process
+}
+
+function Test-ProcessIdentity {
+    param($Process, $Record)
+    try {
+        $Process.Refresh()
+        if ($Process.HasExited) { return $false }
+        $ticks = $Process.StartTime.ToUniversalTime().Ticks
+        $path = $Process.Path
+    } catch { return $false }
+    return $ticks -eq [long]$Record.process_start_time_utc_ticks -and [string]::Equals($path, [string]$Record.process_executable_path, [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Test-ProcessExited {
+    param($Process)
+    try {
+        $Process.Refresh()
+        return $Process.HasExited
+    } catch [InvalidOperationException] {
+        return $true
+    } catch {
+        return $false
+    }
+}
+
+function Stop-VerifiedProcess {
+    param($Process)
+    if (Test-ProcessExited -Process $Process) { return $true }
+    try { $Process.Kill() }
+    catch {
+        if (Test-ProcessExited -Process $Process) { return $true }
+        return $false
+    }
+    try { $Process.WaitForExit(10000) | Out-Null } catch {}
+    return Test-ProcessExited -Process $Process
 }
 
 function Test-AppHealth {
     param([string]$HostName, [int]$Port, [string]$ExpectedVersion)
-    $probeHost = if ($HostName -in @("0.0.0.0", "::")) { "127.0.0.1" } else { $HostName }
     try {
-        $healthUri = ("http://{0}:{1}" -f $probeHost, $Port) + "/api/health"
+        $healthUri = (Get-AppUrl -HostName $HostName -Port $Port) + "api/health"
         $health = Invoke-RestMethod -Uri $healthUri -TimeoutSec 2
         return $health.ok -eq $true -and [string]$health.version -eq $ExpectedVersion
     } catch {
@@ -101,7 +215,7 @@ function Test-AppHealth {
 
 function Test-PortInUse {
     param([string]$HostName, [int]$Port)
-    $probeHost = if ($HostName -in @("0.0.0.0", "::")) { "127.0.0.1" } else { $HostName }
+    $probeHost = Get-ProbeHost -HostName $HostName
     $client = New-Object Net.Sockets.TcpClient
     try {
         $result = $client.BeginConnect($probeHost, $Port, $null, $null)
@@ -112,24 +226,23 @@ function Test-PortInUse {
     finally { $client.Close() }
 }
 
-function Get-ServerRuntimeState {
+function Get-ServerRuntimeData {
     param($Context)
     try { $record = Read-ServerRecord $Context }
-    catch { return "stale runtime record" }
-    if (-not $record) { return "stopped" }
+    catch { return [pscustomobject]@{ State = "stale runtime record"; Record = $null } }
+    if (-not $record) { return [pscustomobject]@{ State = "stopped"; Record = $null } }
 
     $process = Get-OwnedProcess $record
-    if (-not $process) { return "stale runtime record" }
-    if (-not $record.PSObject.Properties["host"] -or -not $record.PSObject.Properties["port"] -or -not $record.PSObject.Properties["version"]) { return "stale runtime record" }
-    try {
-        if (Test-AppHealth -HostName ([string]$record.host) -Port ([int]$record.port) -ExpectedVersion ([string]$record.version)) { return "running" }
-    } catch {}
-    return "unhealthy"
+    if (-not $process) { return [pscustomobject]@{ State = "stale runtime record"; Record = $record } }
+    if (Test-AppHealth -HostName $record.host -Port $record.port -ExpectedVersion $record.version) {
+        return [pscustomobject]@{ State = "running"; Record = $record }
+    }
+    return [pscustomobject]@{ State = "unhealthy"; Record = $record }
 }
 
 function Get-AppStatusData {
     param($Context, $Environment, $Version)
-    $runtime = Get-ServerRuntimeState $Context
+    $runtime = Get-ServerRuntimeData $Context
     $statusScript = @'
 import json, sqlite3, sys
 from pathlib import Path
@@ -160,17 +273,17 @@ except Exception:
 print(json.dumps(payload))
 '@
     if (-not (Test-Path -LiteralPath $Version.Python -PathType Leaf)) {
-        return [pscustomobject]@{ Items = $null; Database = "unavailable"; Generation = "unavailable"; Runtime = $runtime }
+        return [pscustomobject]@{ Items = $null; Database = "unavailable"; Generation = "unavailable"; Runtime = $runtime.State; Record = $runtime.Record }
     }
     $output = & $Version.Python @("-c", $statusScript, $Environment.LibraryPath) 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $output) {
-        return [pscustomobject]@{ Items = $null; Database = "unavailable"; Generation = "unavailable"; Runtime = $runtime }
+        return [pscustomobject]@{ Items = $null; Database = "unavailable"; Generation = "unavailable"; Runtime = $runtime.State; Record = $runtime.Record }
     }
     try {
         $payload = $output | ConvertFrom-Json
-        return [pscustomobject]@{ Items = $payload.items; Database = $payload.database; Generation = $payload.generation; Runtime = $runtime }
+        return [pscustomobject]@{ Items = $payload.items; Database = $payload.database; Generation = $payload.generation; Runtime = $runtime.State; Record = $runtime.Record }
     } catch {
-        return [pscustomobject]@{ Items = $null; Database = "unavailable"; Generation = "unavailable"; Runtime = $runtime }
+        return [pscustomobject]@{ Items = $null; Database = "unavailable"; Generation = "unavailable"; Runtime = $runtime.State; Record = $runtime.Record }
     }
 }
 
@@ -182,7 +295,12 @@ function Show-Status {
     Write-Output "Image Prompt Library status"
     Write-Output ("Version: " + $version.Version)
     Write-Output ("Library: " + $environment.LibraryPath)
-    Write-Output ("URL: http://{0}:{1}/" -f $environment.Host, $environment.Port)
+    $url = if ($status.Runtime -eq "running" -and $status.Record) {
+        Get-AppUrl -HostName $status.Record.host -Port $status.Record.port
+    } else {
+        Get-AppUrl -HostName $environment.Host -Port $environment.Port
+    }
+    Write-Output ("URL: " + $url)
     Write-Output ("App: " + $status.Runtime)
     Write-Output ("Items: " + $(if ($null -eq $status.Items) { "unavailable" } else { $status.Items }))
     Write-Output ("Generation: " + $status.Generation)
@@ -286,83 +404,133 @@ function Start-App {
     try { $port = [int]$portText }
     catch { throw "Port must be an integer from 1 to 65535." }
     if ($port -lt 1 -or $port -gt 65535) { throw "Port must be an integer from 1 to 65535." }
+    if (-not (Test-BindHost -HostName $hostName)) { throw "Host must be a single valid DNS name or IP address." }
 
-    $version = Get-CurrentVersion $Context
-    try { $record = Read-ServerRecord $Context }
-    catch { throw "Cannot start with a malformed runtime record. Run image-prompt-library doctor." }
-    if ($record) {
-        if (-not $record.PSObject.Properties["pid"]) { throw "The runtime record is incomplete. Run image-prompt-library doctor." }
-        $ownedProcess = Get-OwnedProcess $record
-        if ($ownedProcess) {
-            try {
-                $isHealthy = Test-AppHealth -HostName ([string]$record.host) -Port ([int]$record.port) -ExpectedVersion ([string]$record.version)
-            } catch { $isHealthy = $false }
-            if ($isHealthy) {
-                $existingUrl = "http://{0}:{1}/" -f $record.host, $record.port
-                Write-Output ("Image Prompt Library is already running at " + $existingUrl)
-                if (-not $noBrowser) { Start-Process $existingUrl }
-                return
+    $startLock = Enter-StartLock -Context $Context
+    try {
+        $version = Get-CurrentVersion $Context
+        try { $record = Read-ServerRecord $Context }
+        catch { throw "Cannot start with a malformed runtime record. Run image-prompt-library doctor." }
+        if ($record) {
+            $ownedProcess = Get-OwnedProcess $record
+            if ($ownedProcess) {
+                if (Test-AppHealth -HostName $record.host -Port $record.port -ExpectedVersion $record.version) {
+                    $existingUrl = Get-AppUrl -HostName $record.host -Port $record.port
+                    Write-Output ("Image Prompt Library is already running at " + $existingUrl)
+                    if (-not $noBrowser) {
+                        try { Start-Process $existingUrl }
+                        catch { Write-Warning "The app is running, but its URL could not be opened automatically." }
+                    }
+                    return
+                }
+                throw "The managed app process is unhealthy; it was not replaced. Run image-prompt-library stop before starting again."
             }
-            throw "The managed app process is unhealthy; it was not replaced. Run image-prompt-library stop before starting again."
-        } else {
             $recordedProcess = Get-RecordedProcess $record
             if ($recordedProcess) { throw "The runtime record conflicts with a live process. Run image-prompt-library doctor." }
             Remove-Item -LiteralPath (Join-Path $Context.RunDir "server.json") -Force
         }
-    }
-    if (Test-PortInUse -HostName $hostName -Port $port) {
-        throw "Port $port is already in use by a process not managed by this install. Try image-prompt-library start --port <next-port>."
-    }
-
-    $env:IMAGE_PROMPT_LIBRARY_PATH = [IO.Path]::GetFullPath($settings.LibraryPath)
-    $env:BACKEND_HOST = $hostName
-    $env:BACKEND_PORT = [string]$port
-    New-Item -ItemType Directory -Force -Path $Context.RunDir, $Context.LogDir | Out-Null
-    $outLog = Join-Path $Context.LogDir "app.out.log"
-    $errLog = Join-Path $Context.LogDir "app.err.log"
-    $previousOut = Join-Path $Context.LogDir "app.previous.out.log"
-    $previousErr = Join-Path $Context.LogDir "app.previous.err.log"
-    if (Test-Path -LiteralPath $outLog) { Move-Item -LiteralPath $outLog -Destination $previousOut -Force }
-    if (Test-Path -LiteralPath $errLog) { Move-Item -LiteralPath $errLog -Destination $previousErr -Force }
-
-    $arguments = @("-m", "uvicorn", "backend.main:app", "--host", $hostName, "--port", [string]$port)
-    $process = Start-Process -FilePath $version.Python -ArgumentList $arguments -WorkingDirectory $version.Root -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru
-    $process.Refresh()
-    try {
-        $startTime = $process.StartTime.ToUniversalTime()
-        $executablePath = $process.Path
-    } catch {
-        throw "The app process identity could not be read. See logs in $($Context.LogDir)."
-    }
-    $record = [pscustomobject][ordered]@{
-        pid = $process.Id
-        process_start_time_utc = $startTime.ToString("o")
-        process_start_time_utc_ticks = $startTime.Ticks
-        process_executable_path = $executablePath
-        version = $version.Version
-        app_root = $version.Root
-        host = $hostName
-        port = $port
-        stdout_log = $outLog
-        stderr_log = $errLog
-        created_at = [DateTime]::UtcNow.ToString("o")
-    }
-    $deadline = [DateTime]::UtcNow.AddSeconds(30)
-    while ([DateTime]::UtcNow -lt $deadline) {
-        if (Test-AppHealth -HostName $hostName -Port $port -ExpectedVersion $version.Version) {
-            $record | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $Context.RunDir "server.json") -Encoding UTF8
-            $url = "http://{0}:{1}/" -f $hostName, $port
-            Write-Output ("Image Prompt Library is running at " + $url)
-            if (-not $noBrowser) { Start-Process $url }
-            return
+        if (Test-PortInUse -HostName $hostName -Port $port) {
+            throw "Port $port is already in use by a process not managed by this install. Try image-prompt-library start --port <next-port>."
         }
-        $process.Refresh()
-        if ($process.HasExited) { break }
-        Start-Sleep -Milliseconds 250
+
+        $env:IMAGE_PROMPT_LIBRARY_PATH = [IO.Path]::GetFullPath($settings.LibraryPath)
+        $env:BACKEND_HOST = $hostName
+        $env:BACKEND_PORT = [string]$port
+        New-Item -ItemType Directory -Force -Path $Context.LogDir | Out-Null
+        $outLog = Join-Path $Context.LogDir "app.out.log"
+        $errLog = Join-Path $Context.LogDir "app.err.log"
+        $previousOut = Join-Path $Context.LogDir "app.previous.out.log"
+        $previousErr = Join-Path $Context.LogDir "app.previous.err.log"
+        if (Test-Path -LiteralPath $outLog) { Move-Item -LiteralPath $outLog -Destination $previousOut -Force }
+        if (Test-Path -LiteralPath $errLog) { Move-Item -LiteralPath $errLog -Destination $previousErr -Force }
+
+        $arguments = @("-m", "uvicorn", "backend.main:app", "--host", $hostName, "--port", [string]$port)
+        $process = $null
+        $record = $null
+        try {
+            $process = Start-Process -FilePath $version.Python -ArgumentList $arguments -WorkingDirectory $version.Root -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru
+            $process.Refresh()
+            try {
+                $startTime = $process.StartTime.ToUniversalTime()
+            } catch {
+                throw "The app process identity could not be read. See logs in $($Context.LogDir)."
+            }
+            $executablePath = [IO.Path]::GetFullPath($version.Python)
+            $record = [pscustomobject][ordered]@{
+                pid = $process.Id
+                process_start_time_utc = $startTime.ToString("o")
+                process_start_time_utc_ticks = $startTime.Ticks
+                process_executable_path = $executablePath
+                version = $version.Version
+                app_root = $version.Root
+                host = $hostName
+                port = $port
+                stdout_log = $outLog
+                stderr_log = $errLog
+                created_at = [DateTime]::UtcNow.ToString("o")
+            }
+            try {
+                if (-not [string]::Equals($process.Path, $executablePath, [StringComparison]::OrdinalIgnoreCase)) {
+                    throw "The launched app executable did not match the selected version."
+                }
+            } catch {
+                throw "The app process executable identity could not be verified. See logs in $($Context.LogDir)."
+            }
+            $deadline = [DateTime]::UtcNow.AddSeconds(30)
+            while ([DateTime]::UtcNow -lt $deadline) {
+                if (Test-AppHealth -HostName $hostName -Port $port -ExpectedVersion $version.Version) {
+                    if (-not (Test-ProcessIdentity -Process $process -Record $record)) {
+                        throw "The launched app process identity changed before publication."
+                    }
+                    Write-ServerRecordAtomically -Context $Context -Record $record
+                    $url = Get-AppUrl -HostName $hostName -Port $port
+                    Write-Output ("Image Prompt Library is running at " + $url)
+                    if (-not $noBrowser) {
+                        try { Start-Process $url }
+                        catch { Write-Warning "The app is running, but its URL could not be opened automatically." }
+                    }
+                    return
+                }
+                if (Test-ProcessExited -Process $process) { break }
+                Start-Sleep -Milliseconds 250
+            }
+            throw "The app did not become healthy. See logs in $($Context.LogDir)."
+        } catch {
+            $failure = $_.Exception.Message
+            if ($process -and -not (Test-ProcessExited -Process $process)) {
+                $stopped = Stop-VerifiedProcess -Process $process
+                if (-not $stopped) {
+                    if (-not $record) {
+                        try {
+                            $process.Refresh()
+                            $startTime = $process.StartTime.ToUniversalTime()
+                            $record = [pscustomobject][ordered]@{
+                                pid = $process.Id
+                                process_start_time_utc = $startTime.ToString("o")
+                                process_start_time_utc_ticks = $startTime.Ticks
+                                process_executable_path = $process.Path
+                                version = $version.Version
+                                app_root = $version.Root
+                                host = $hostName
+                                port = $port
+                                stdout_log = $outLog
+                                stderr_log = $errLog
+                                created_at = [DateTime]::UtcNow.ToString("o")
+                            }
+                        } catch {}
+                    }
+                    if ($record) {
+                        Write-ServerRecordAtomically -Context $Context -Record $record
+                        throw "$failure Cleanup could not confirm exit; the ownership record was retained for safe recovery."
+                    }
+                    throw "$failure Cleanup could not confirm exit, and the launched process identity could not be retained. PID: $($process.Id)."
+                }
+            }
+            throw $failure
+        }
+    } finally {
+        $startLock.Dispose()
     }
-    $ownedProcess = Get-OwnedProcess $record
-    if ($ownedProcess) { Stop-Process -Id $ownedProcess.Id }
-    throw "The app did not become healthy. See logs in $($Context.LogDir)."
 }
 
 function Stop-App {
@@ -381,9 +549,7 @@ function Stop-App {
         Write-Output "Image Prompt Library is stopped."
         return
     }
-    Stop-Process -Id $process.Id
-    $process.WaitForExit(10000) | Out-Null
-    if (Get-Process -Id $process.Id -ErrorAction SilentlyContinue) { throw "The app process did not stop; the runtime record was retained." }
+    if (-not (Stop-VerifiedProcess -Process $process)) { throw "The app process did not stop; the runtime record was retained." }
     Remove-Item -LiteralPath (Join-Path $Context.RunDir "server.json") -Force
     Write-Output "Image Prompt Library is stopped."
 }
@@ -393,15 +559,20 @@ function Show-Usage {
 }
 
 try {
-    $command = if ($CommandArgs.Count) { $CommandArgs[0].ToLowerInvariant() } else { "help" }
-    $rest = if ($CommandArgs.Count -gt 1) { @($CommandArgs[1..($CommandArgs.Count - 1)]) } else { @() }
+    $argumentCount = @($CommandArgs).Count
+    $command = if ($argumentCount) { $CommandArgs[0].ToLowerInvariant() } else { "help" }
+    $rest = @()
+    if ($argumentCount -gt 1) { $rest = @($CommandArgs[1..($argumentCount - 1)]) }
     $context = Get-InstallContext
     switch ($command) {
         "version" { (Get-CurrentVersion $context).Version }
         "status" { Show-Status -Context $context }
         "doctor" { Show-Doctor -Context $context }
         "start" { Start-App -Context $context -Arguments $rest }
-        "stop" { Stop-App -Context $context }
+        "stop" {
+            if (@($rest).Count) { throw "Stop does not accept arguments." }
+            Stop-App -Context $context
+        }
         "help" { Show-Usage }
         default { [Console]::Error.WriteLine("Unknown command: $command"); Show-Usage; exit 2 }
     }
