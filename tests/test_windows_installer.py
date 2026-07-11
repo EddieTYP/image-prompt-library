@@ -56,6 +56,19 @@ def run_powershell(script: str) -> subprocess.CompletedProcess[str]:
     )
 
 
+def run_installer_function(script: str) -> subprocess.CompletedProcess[str]:
+    installer = powershell_literal(ROOT / "scripts" / "install.ps1")
+    return run_powershell(
+        f"""
+$source = [IO.File]::ReadAllText({installer})
+$entryPoint = $source.LastIndexOf('try {{')
+if ($entryPoint -lt 0) {{ throw 'Installer entry point was not found.' }}
+Invoke-Expression $source.Substring(0, $entryPoint)
+{script}
+"""
+    )
+
+
 def test_windows_runtime_setup_is_local_and_never_installs_python():
     path = ROOT / "scripts" / "setup-runtime.ps1"
     assert path.is_file()
@@ -593,18 +606,86 @@ def test_windows_installer_rejects_overlapping_app_and_library_paths():
     assert "The app prefix and private library must not contain each other." in script
 
 
-def test_windows_installer_hardens_identity_publication_and_cleanup_boundaries():
+def test_windows_installer_hardens_identity_and_cleanup_boundaries():
     script = read("scripts/install.ps1")
 
     assert "Get-FileHash" not in script
-    assert "Assert-GitHubAssetUri" in script
-    assert "Enter-InstallLock" in script
-    assert "Publish-AtomicBytes" in script
-    assert "[IO.File]::Replace" in script
     assert "$Path.tmp" not in script
-    assert "Remove-ValidatedTree" in script
-    assert "ReparsePoint" in script
     assert "-Recurse" not in script
+
+
+def test_windows_installer_rejects_github_release_assets_on_nondefault_port():
+    asset_names = (
+        "image-prompt-library-v1.2.3.tar.gz",
+        "image-prompt-library-v1.2.3.tar.gz.sha256",
+        "image-prompt-library-v1.2.3.manifest.json",
+    )
+    assets = ",".join(
+        "[pscustomobject]@{ name = '"
+        + name
+        + "'; browser_download_url = 'https://github.com:444/EddieTYP/image-prompt-library/releases/download/v1.2.3/"
+        + name
+        + "' }"
+        for name in asset_names
+    )
+
+    result = run_installer_function(
+        f"New-ReleaseSpec -Tag 'v1.2.3' -BaseUrl '' -Assets @({assets})"
+    )
+
+    assert result.returncode == 1
+    assert "release download origin" in result.stderr.lower()
+
+
+@pytest.mark.parametrize(
+    "pointer_value",
+    ["v1.2.3.", "v1.2.3 ", "v1.2.3.backup.", "v1.2.3.backup "],
+)
+def test_windows_installer_generated_shim_rejects_windows_version_aliases(
+    tmp_path: Path, pointer_value: str
+):
+    release_dir = tmp_path / "release"
+    prefix = tmp_path / "prefix"
+    write_test_release(release_dir)
+    installed = run_installer(release_dir, prefix, tmp_path / "library")
+    assert installed.returncode == 0, installed.stderr
+    (prefix / "app" / "current-version").write_text(pointer_value + "\n", encoding="ascii")
+
+    result = subprocess.run(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-File",
+            str(prefix / "bin" / "image-prompt-library.ps1"),
+            "status",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 1
+    assert "current version pointer is invalid" in result.stderr.lower()
+
+
+def test_windows_installer_rejects_drive_root_containing_prefix(tmp_path: Path):
+    drive_root = Path(tmp_path.anchor)
+
+    result = run_installer(tmp_path / "missing", tmp_path / "prefix", drive_root)
+
+    assert result.returncode == 1
+    assert "must not contain each other" in result.stderr.lower()
+
+
+def test_windows_installer_rejects_unc_root_containing_prefix():
+    result = run_installer_function(
+        "Assert-DisjointPaths -AppPrefix '\\\\server\\share\\prefix' -PrivateLibrary '\\\\server\\share\\'"
+    )
+
+    assert result.returncode == 1
+    assert "must not contain each other" in result.stderr.lower()
 
 
 @pytest.mark.parametrize(
@@ -616,6 +697,7 @@ def test_windows_installer_hardens_identity_publication_and_cleanup_boundaries()
         "trailing-dot.",
         "trailing-space ",
         "other-root/VERSION",
+        "VERSION",
         "Version",
         "backend",
     ],
@@ -677,6 +759,70 @@ def test_windows_installer_rolls_back_late_publication_and_start_failure(tmp_pat
     assert not (app / "versions" / "v1.2.3.backup").exists()
 
 
+def test_windows_installer_restores_published_state_when_target_cleanup_fails(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    write_test_release(release_dir, locked_start_failure=True)
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    app = prefix / "app"
+    old_target = app / "versions" / "v1.0.0"
+    old_target.mkdir(parents=True)
+    (old_target / "keep.txt").write_text("old runtime", encoding="ascii")
+    (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    (app / "previous-version").write_text("v0.9.0\n", encoding="ascii")
+    prefix.mkdir(exist_ok=True)
+    (prefix / ".env").write_text("old env\n", encoding="ascii")
+    (prefix / "bin").mkdir()
+    (prefix / "bin" / "image-prompt-library.ps1").write_text("old ps1\n", encoding="ascii")
+    (prefix / "bin" / "image-prompt-library.cmd").write_text("old cmd\n", encoding="ascii")
+
+    result = run_installer(release_dir, prefix, library, no_start=False)
+
+    assert result.returncode == 1
+    assert "intentional locked start failure" in result.stderr
+    assert "Rollback failed" in result.stderr
+    assert (app / "current-version").read_text(encoding="ascii") == "v1.0.0\n"
+    assert (app / "previous-version").read_text(encoding="ascii") == "v0.9.0\n"
+    assert (prefix / ".env").read_text(encoding="ascii") == "old env\n"
+    assert (prefix / "bin" / "image-prompt-library.ps1").read_text(encoding="ascii") == "old ps1\n"
+    assert (prefix / "bin" / "image-prompt-library.cmd").read_text(encoding="ascii") == "old cmd\n"
+
+
+def test_windows_installer_does_not_rollback_after_backup_cleanup_failure(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    write_test_release(release_dir, lock_backup_during_setup=True)
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    app = prefix / "app"
+    replaced_target = app / "versions" / "v1.2.3"
+    replaced_target.mkdir(parents=True)
+    locked_file = replaced_target / "locked.txt"
+    locked_file.write_text("locked old target", encoding="ascii")
+    (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    result = run_installer(release_dir, prefix, library)
+
+    assert result.returncode == 0, result.stderr
+    assert (app / "current-version").read_text(encoding="ascii").strip() == "v1.2.3"
+    assert (replaced_target / "setup-called.txt").is_file()
+    assert (app / "versions" / "v1.2.3.backup" / "locked.txt").is_file()
+
+
+def test_windows_installer_same_version_reinstall_preserves_previous_pointer(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_test_release(release_dir)
+    first = run_installer(release_dir, prefix, library)
+    assert first.returncode == 0, first.stderr
+    previous = prefix / "app" / "previous-version"
+    previous.write_text("v1.0.0\n", encoding="ascii")
+
+    second = run_installer(release_dir, prefix, library)
+
+    assert second.returncode == 0, second.stderr
+    assert previous.read_text(encoding="ascii") == "v1.0.0\n"
+
+
 def test_windows_installer_preserves_user_path_text_when_appending(tmp_path: Path):
     release_dir = tmp_path / "release"
     prefix = tmp_path / "prefix"
@@ -708,6 +854,39 @@ try {{
     assert payload["path"] == f"Alpha;;Beta;;{(prefix / 'bin').resolve()}"
 
 
+def test_windows_installer_preserves_malformed_user_path_entries(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_test_release(release_dir)
+    installer = powershell_literal(ROOT / "scripts" / "install.ps1")
+    release = powershell_literal(release_dir)
+    prefix_literal = powershell_literal(prefix)
+    library_literal = powershell_literal(library)
+    python_literal = powershell_literal(shutil.which("python.exe") or shutil.which("python") or "python")
+    quoted_noncanonical_target = prefix / "other" / ".." / "bin"
+    original_text = f'Alpha;;"{quoted_noncanonical_target}";bad|entry;'
+    script = f"""
+$original = [Environment]::GetEnvironmentVariable("Path", "User")
+try {{
+    [Environment]::SetEnvironmentVariable("Path", {powershell_literal(original_text)}, "User")
+    & powershell.exe -NoProfile -File {installer} -Version v1.2.3 -Prefix {prefix_literal} -LibraryPath {library_literal} -ReleaseBaseUrl {release} -PythonExe {python_literal} -NoStart
+    $code = $LASTEXITCODE
+    $after = [Environment]::GetEnvironmentVariable("Path", "User")
+    [pscustomobject]@{{ code = $code; path = $after }} | ConvertTo-Json -Compress
+}} finally {{
+    [Environment]::SetEnvironmentVariable("Path", $original, "User")
+}}
+"""
+
+    result = run_powershell(script)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["code"] == 0
+    assert payload["path"] == original_text
+
+
 def write_test_release(
     release_dir: Path,
     version: str = "v1.2.3",
@@ -718,6 +897,9 @@ def write_test_release(
     manifest_sha: str | None = None,
     checksum_sha: str | None = None,
     start_failure: bool = False,
+    locked_start_failure: bool = False,
+    lock_backup_during_setup: bool = False,
+    setup_delay_ms: int = 0,
 ) -> None:
     release_dir.mkdir(parents=True)
     artifact_name = f"image-prompt-library-{version}.tar.gz"
@@ -728,15 +910,26 @@ def write_test_release(
         "backend/main.py": "app = None\n",
         "frontend/dist/index.html": "<!doctype html>\n",
         "scripts/appctl.ps1": (
-            "if ($args -contains 'start') { throw 'intentional start failure' }\n"
-            if start_failure
-            else "Write-Output ($args -join ' ')\n"
+            "$global:testLock = [IO.File]::Open((Join-Path $PSScriptRoot 'locked.bin'), 'OpenOrCreate', 'ReadWrite', 'None')\n"
+            "if ($args -contains 'start') { throw 'intentional locked start failure' }\n"
+            if locked_start_failure
+            else (
+                "if ($args -contains 'start') { throw 'intentional start failure' }\n"
+                if start_failure
+                else "Write-Output ($args -join ' ')\n"
+            )
         ),
         "scripts/install.ps1": "# packaged installer\n",
         "scripts/install-sample-data.ps1": "# packaged sample installer\n",
         "scripts/setup-runtime.ps1": (
             "param([string]$AppRoot,[string]$PythonExe,[string[]]$PythonPrefixArgs=@())\n"
             "Set-Content -LiteralPath (Join-Path $AppRoot 'setup-called.txt') -Value $AppRoot -Encoding ASCII\n"
+            + (
+                "$global:testBackupLock = [IO.File]::Open((Join-Path ($AppRoot + '.backup') 'locked.txt'), 'Open', 'Read', 'None')\n"
+                if lock_backup_during_setup
+                else ""
+            )
+            + (f"Start-Sleep -Milliseconds {setup_delay_ms}\n" if setup_delay_ms else "")
         ),
     }
     with tarfile.open(artifact, "w:gz") as archive:
@@ -827,6 +1020,65 @@ def run_installer(
     )
 
 
+def test_windows_installer_serializes_concurrent_publication(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_test_release(release_dir, setup_delay_ms=750)
+    arguments = [
+        powershell_executable(),
+        "-NoProfile",
+        "-File",
+        str(ROOT / "scripts" / "install.ps1"),
+        "-Version",
+        "v1.2.3",
+        "-Prefix",
+        str(prefix),
+        "-LibraryPath",
+        str(library),
+        "-ReleaseBaseUrl",
+        str(release_dir),
+        "-PythonExe",
+        shutil.which("python.exe") or shutil.which("python") or "python",
+        "-NoStart",
+        "-SkipPath",
+    ]
+    processes = [
+        subprocess.Popen(arguments, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        for _ in range(2)
+    ]
+
+    results = [process.communicate(timeout=30) + (process.returncode,) for process in processes]
+
+    assert [result[2] for result in results] == [0, 0], results
+    assert (prefix / "app" / "current-version").read_text(encoding="ascii").strip() == "v1.2.3"
+    assert (prefix / "app" / "versions" / "v1.2.3" / "setup-called.txt").is_file()
+    assert not any(path.name.endswith((".tmp", ".tmp.bak")) for path in prefix.rglob("*"))
+
+
+def test_windows_installer_cleanup_does_not_follow_junction(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("keep", encoding="ascii")
+    junction = prefix / "cleanup-target"
+    junction.parent.mkdir()
+    created = run_powershell(
+        f"New-Item -ItemType Junction -Path {powershell_literal(junction)} -Target {powershell_literal(outside)} -ErrorAction Stop | Out-Null"
+    )
+    if created.returncode != 0:
+        pytest.skip(f"Windows junction creation unavailable: {created.stderr.strip()}")
+
+    result = run_installer_function(
+        f"Remove-ValidatedTree -Target {powershell_literal(junction)} -AppPrefix {powershell_literal(prefix)}"
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not junction.exists()
+    assert sentinel.read_text(encoding="ascii") == "keep"
+
+
 def test_windows_installer_places_runtime_then_publishes_shim_and_pointers(tmp_path: Path):
     release_dir = tmp_path / "release files"
     prefix = tmp_path / "app prefix"
@@ -895,6 +1147,7 @@ def test_windows_installer_rejects_legacy_release_without_native_capability(tmp_
     [
         ("file", "/absolute.txt"),
         ("file", "C:/drive-qualified.txt"),
+        ("file", "//server/share/unc.txt"),
         ("file", "../escaped.txt"),
         ("symlink", "linked.txt"),
         ("hardlink", "hard-linked.txt"),

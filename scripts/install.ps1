@@ -57,10 +57,8 @@ function Assert-DisjointPaths {
     param([string]$AppPrefix, [string]$PrivateLibrary)
     $app = Get-NormalizedPath -Path $AppPrefix
     $library = Get-NormalizedPath -Path $PrivateLibrary
-    $comparison = [StringComparison]::OrdinalIgnoreCase
-    if ($app.Equals($library, $comparison) -or
-        $app.StartsWith($library + "\", $comparison) -or
-        $library.StartsWith($app + "\", $comparison)) {
+    if ((Test-PathWithinOrEqual -Path $app -Parent $library) -or
+        (Test-PathWithinOrEqual -Path $library -Parent $app)) {
         throw "The app prefix and private library must not contain each other."
     }
 }
@@ -73,13 +71,22 @@ function Get-NormalizedPath {
     return $full
 }
 
+function Test-PathWithinOrEqual {
+    param([string]$Path, [string]$Parent)
+    $target = Get-NormalizedPath -Path $Path
+    $container = Get-NormalizedPath -Path $Parent
+    $comparison = [StringComparison]::OrdinalIgnoreCase
+    if ($target.Equals($container, $comparison)) { return $true }
+    $containerPrefix = if ($container.EndsWith('\')) { $container } else { $container + '\' }
+    return $target.StartsWith($containerPrefix, $comparison)
+}
+
 function Assert-ManagedPath {
     param([string]$Path, [string]$AppPrefix)
     $target = Get-NormalizedPath -Path $Path
     $prefix = Get-NormalizedPath -Path $AppPrefix
-    $comparison = [StringComparison]::OrdinalIgnoreCase
-    $prefixWithSeparator = if ($prefix.EndsWith('\')) { $prefix } else { $prefix + '\' }
-    if ($target.Equals($prefix, $comparison) -or -not $target.StartsWith($prefixWithSeparator, $comparison)) {
+    if ($target.Equals($prefix, [StringComparison]::OrdinalIgnoreCase) -or
+        -not (Test-PathWithinOrEqual -Path $target -Parent $prefix)) {
         throw "Installer cleanup path is outside the configured prefix."
     }
     return $target
@@ -134,7 +141,11 @@ function Remove-ValidatedTree {
     if (-not (Test-Path -LiteralPath $validated)) { return }
     $item = Get-Item -LiteralPath $validated -Force
     if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-        Remove-Item -LiteralPath $validated -Force
+        if ($item.PSIsContainer) {
+            [IO.Directory]::Delete($validated, $false)
+        } else {
+            [IO.File]::Delete($validated)
+        }
         return
     }
     if ($item.PSIsContainer) {
@@ -229,6 +240,7 @@ function Assert-GitHubAssetUri {
     $expectedPath = "/$Repo/releases/download/"
     if (-not [Uri]::TryCreate($Uri, [UriKind]::Absolute, [ref]$parsed) -or
         $parsed.Scheme -ne 'https' -or
+        -not $parsed.IsDefaultPort -or
         -not $parsed.Host.Equals('github.com', [StringComparison]::OrdinalIgnoreCase) -or
         -not $parsed.AbsolutePath.StartsWith($expectedPath, [StringComparison]::OrdinalIgnoreCase)) {
         throw "GitHub release assets must use the configured repository HTTPS release download origin."
@@ -347,7 +359,7 @@ function Read-CompatibleManifest {
 }
 
 function Confirm-ArtifactChecksum {
-    param([string]$ArtifactPath, [string]$ChecksumPath, [object]$Manifest)
+    param([string]$ChecksumPath, [object]$Manifest)
     $lines = @(Get-Content -LiteralPath $ChecksumPath | Where-Object { $_.Trim() })
     if ($lines.Count -ne 1 -or $lines[0] -notmatch '^([0-9a-fA-F]{64})(?:\s+.*)?$') {
         throw "Checksum file must contain exactly one leading SHA256 value."
@@ -480,9 +492,12 @@ $ErrorActionPreference = "Stop"
 $prefix = Split-Path -Parent $PSScriptRoot
 $pointer = Join-Path $prefix "app\current-version"
 if (-not (Test-Path -LiteralPath $pointer -PathType Leaf)) { throw "Image Prompt Library is not installed." }
-$version = (Get-Content -LiteralPath $pointer -Raw).Trim()
-if ($version -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or $version -match '(?i)\.backup$' -or $version.Split('.')[0] -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$') { throw "The current version pointer is invalid." }
-$controller = Join-Path $prefix "app\versions\$version\scripts\appctl.ps1"
+$version = (Get-Content -LiteralPath $pointer -Raw).TrimEnd("`r", "`n")
+if ($version -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or $version.EndsWith('.') -or $version.EndsWith(' ') -or $version -match '(?i)\.backup$' -or $version.Split('.')[0] -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$') { throw "The current version pointer is invalid." }
+$versionsRoot = [IO.Path]::GetFullPath((Join-Path $prefix "app\versions"))
+$controller = [IO.Path]::GetFullPath((Join-Path $versionsRoot "$version\scripts\appctl.ps1"))
+$versionsPrefix = if ($versionsRoot.EndsWith('\')) { $versionsRoot } else { $versionsRoot + '\' }
+if (-not $controller.StartsWith($versionsPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw "The current version pointer is invalid." }
 if (-not (Test-Path -LiteralPath $controller -PathType Leaf)) { throw "The current Image Prompt Library version is incomplete." }
 & $controller @CommandArgs
 $code = $LASTEXITCODE
@@ -503,15 +518,29 @@ function Add-UserPathEntry {
     $normalized = Get-NormalizedPath -Path $BinPath
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
     $parts = if ($null -eq $userPath) { @() } else { @($userPath -split ';') }
-    $present = @($parts | Where-Object { $_ -and (Get-NormalizedPath -Path $_.Trim()).Equals($normalized, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+    $present = @($parts | Where-Object { Test-PathEntryMatch -Entry $_ -NormalizedPath $normalized }).Count -gt 0
     if (-not $present) {
         $newUserPath = if ([string]::IsNullOrEmpty($userPath)) { $normalized } else { $userPath + ';' + $normalized }
         [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
     }
     $currentPath = $env:Path
     $currentParts = if ($null -eq $currentPath) { @() } else { @($currentPath -split ';') }
-    $currentPresent = @($currentParts | Where-Object { $_ -and (Get-NormalizedPath -Path $_.Trim()).Equals($normalized, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+    $currentPresent = @($currentParts | Where-Object { Test-PathEntryMatch -Entry $_ -NormalizedPath $normalized }).Count -gt 0
     if (-not $currentPresent) { $env:Path = if ([string]::IsNullOrEmpty($currentPath)) { $normalized } else { $currentPath + ';' + $normalized } }
+}
+
+function Test-PathEntryMatch {
+    param([AllowEmptyString()][string]$Entry, [string]$NormalizedPath)
+    if ([string]::IsNullOrWhiteSpace($Entry)) { return $false }
+    $candidate = $Entry.Trim()
+    if ($candidate.Length -ge 2 -and $candidate[0] -eq '"' -and $candidate[$candidate.Length - 1] -eq '"') {
+        $candidate = $candidate.Substring(1, $candidate.Length - 2)
+    }
+    try {
+        return (Get-NormalizedPath -Path $candidate).Equals($NormalizedPath, [StringComparison]::OrdinalIgnoreCase)
+    } catch {
+        return $false
+    }
 }
 
 function Write-AppEnvironment {
@@ -550,6 +579,7 @@ function Invoke-Install {
     $finalTarget = $null
     $backupCreated = $false
     $targetPublished = $false
+    $installCommitted = $false
     $stateCaptured = $false
     $oldUserPath = $null
     $oldProcessPath = $env:Path
@@ -593,7 +623,7 @@ function Invoke-Install {
             $manifest = Read-CompatibleManifest -Release $release -ManifestPath $manifestPath
             Invoke-Download -Uri $release.ArtifactUri -Destination $artifactPath
             Invoke-Download -Uri $release.ChecksumUri -Destination $checksumPath
-            Confirm-ArtifactChecksum -ArtifactPath $artifactPath -ChecksumPath $checksumPath -Manifest $manifest
+            Confirm-ArtifactChecksum -ChecksumPath $checksumPath -Manifest $manifest
 
             New-Item -ItemType Directory -Path $versionsPath -Force | Out-Null
             $staging = Join-Path $versionsPath ('.staging-' + [Guid]::NewGuid().ToString('N'))
@@ -622,11 +652,18 @@ function Invoke-Install {
         Write-AppEnvironment -Path $environmentPath -PrivateLibrary $normalizedLibrary -AppPrefix $normalizedPrefix
         Write-CommandShim -BinPath $binPath
         if (-not $SkipPath) { Add-UserPathEntry -BinPath $binPath }
-        Write-VersionPointer -Path $previousPointer -Value $currentVersion -AppPrefix $normalizedPrefix
-        Write-VersionPointer -Path $currentPointer -Value $release.Version -AppPrefix $normalizedPrefix
+        if ($targetPublished -and $currentVersion -ne $release.Version) {
+            Write-VersionPointer -Path $previousPointer -Value $currentVersion -AppPrefix $normalizedPrefix
+            Write-VersionPointer -Path $currentPointer -Value $release.Version -AppPrefix $normalizedPrefix
+        }
         Start-InstalledVersion -VersionRoot $finalTarget
+        $installCommitted = $true
         if ($backupCreated -and (Test-Path -LiteralPath $backupTarget)) {
-            Remove-ValidatedTree -Target $backupTarget -AppPrefix $normalizedPrefix
+            try {
+                Remove-ValidatedTree -Target $backupTarget -AppPrefix $normalizedPrefix
+            } catch {
+                Write-Warning "Installed successfully, but the previous target backup could not be removed: $($_.Exception.Message)"
+            }
         }
         if ($targetPublished) {
             Write-Output "Installed Image Prompt Library $($release.Version)."
@@ -635,29 +672,40 @@ function Invoke-Install {
         }
     } catch {
         $installFailure = $_
-        $rollbackFailure = $null
-        try {
-            if ($targetPublished -and (Test-Path -LiteralPath $finalTarget)) {
-                Remove-ValidatedTree -Target $finalTarget -AppPrefix $normalizedPrefix
+        if ($installCommitted) { throw $installFailure }
+        $rollbackErrors = New-Object Collections.Generic.List[string]
+        $rollbackSteps = @()
+        if ($stateCaptured) {
+            $rollbackSteps += @(
+                [pscustomobject]@{ Name = 'environment'; Action = { Restore-FileState -Path $environmentPath -State $publishedState.Environment -AppPrefix $normalizedPrefix } },
+                [pscustomobject]@{ Name = 'PowerShell shim'; Action = { Restore-FileState -Path (Join-Path $binPath 'image-prompt-library.ps1') -State $publishedState.PowerShellShim -AppPrefix $normalizedPrefix } },
+                [pscustomobject]@{ Name = 'cmd shim'; Action = { Restore-FileState -Path (Join-Path $binPath 'image-prompt-library.cmd') -State $publishedState.CmdShim -AppPrefix $normalizedPrefix } },
+                [pscustomobject]@{ Name = 'current pointer'; Action = { Restore-FileState -Path $currentPointer -State $publishedState.CurrentPointer -AppPrefix $normalizedPrefix } },
+                [pscustomobject]@{ Name = 'previous pointer'; Action = { Restore-FileState -Path $previousPointer -State $publishedState.PreviousPointer -AppPrefix $normalizedPrefix } }
+            )
+            if (-not $SkipPath) {
+                $rollbackSteps += @(
+                    [pscustomobject]@{ Name = 'user PATH'; Action = { [Environment]::SetEnvironmentVariable('Path', $oldUserPath, 'User') } },
+                    [pscustomobject]@{ Name = 'process PATH'; Action = { $env:Path = $oldProcessPath } }
+                )
             }
-            if ($backupCreated -and (Test-Path -LiteralPath $backupTarget)) {
-                Move-Item -LiteralPath $backupTarget -Destination $finalTarget
-            }
-            if ($stateCaptured) {
-                Restore-FileState -Path $environmentPath -State $publishedState.Environment -AppPrefix $normalizedPrefix
-                Restore-FileState -Path (Join-Path $binPath 'image-prompt-library.ps1') -State $publishedState.PowerShellShim -AppPrefix $normalizedPrefix
-                Restore-FileState -Path (Join-Path $binPath 'image-prompt-library.cmd') -State $publishedState.CmdShim -AppPrefix $normalizedPrefix
-                Restore-FileState -Path $currentPointer -State $publishedState.CurrentPointer -AppPrefix $normalizedPrefix
-                Restore-FileState -Path $previousPointer -State $publishedState.PreviousPointer -AppPrefix $normalizedPrefix
-                if (-not $SkipPath) {
-                    [Environment]::SetEnvironmentVariable('Path', $oldUserPath, 'User')
-                    $env:Path = $oldProcessPath
-                }
-            }
-        } catch {
-            $rollbackFailure = $_.Exception.Message
         }
-        if ($rollbackFailure) { throw "Install failed: $($installFailure.Exception.Message) Rollback failed: $rollbackFailure" }
+        if ($targetPublished -and (Test-Path -LiteralPath $finalTarget)) {
+            $rollbackSteps += [pscustomobject]@{ Name = 'failed target'; Action = { Remove-ValidatedTree -Target $finalTarget -AppPrefix $normalizedPrefix } }
+        }
+        if ($backupCreated -and (Test-Path -LiteralPath $backupTarget)) {
+            $rollbackSteps += [pscustomobject]@{ Name = 'target backup'; Action = { Move-Item -LiteralPath $backupTarget -Destination $finalTarget } }
+        }
+        foreach ($step in $rollbackSteps) {
+            try {
+                & $step.Action
+            } catch {
+                $rollbackErrors.Add("$($step.Name): $($_.Exception.Message)")
+            }
+        }
+        if ($rollbackErrors.Count -gt 0) {
+            throw "Install failed: $($installFailure.Exception.Message) Rollback failed: $($rollbackErrors -join '; ')"
+        }
         throw $installFailure
     } finally {
         if ($staging -and (Test-Path -LiteralPath $staging)) {
