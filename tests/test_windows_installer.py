@@ -1103,6 +1103,7 @@ def test_windows_appctl_uninstall_rejects_duplicate_and_unknown_options(tmp_path
     "target_kind",
     ["root", "home", "equal", "prefix_contains_library", "library_contains_prefix"],
 )
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows path semantics")
 def test_windows_appctl_uninstall_rejects_unsafe_targets_before_mutation(tmp_path: Path, target_kind: str):
     library = tmp_path / "library"
     if target_kind == "root":
@@ -3055,6 +3056,7 @@ def test_windows_installer_rejects_root_targets_symmetrically(
     assert "unsafe root" in result.stderr.lower()
 
 
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows SUBST")
 def test_windows_installer_and_uninstall_reject_physical_profile_alias(tmp_path: Path):
     stand_in_root = tmp_path / "stand-in-root"
     profile = stand_in_root / "profile"
@@ -3096,6 +3098,7 @@ catch {{ $_.Exception.Message }}
     assert "user profile" in uninstaller.stdout.lower()
 
 
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows SUBST")
 def test_windows_installer_physical_identity_resolves_subst_alias(tmp_path: Path):
     target = tmp_path / "subst target"
     target.mkdir()
@@ -3136,6 +3139,7 @@ def test_windows_installer_and_controller_lock_on_physical_prefix_identity():
     assert "Get-PhysicalPathIdentity" in appctl_lock
 
 
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows 8.3 aliases")
 def test_windows_installer_physical_identity_resolves_8dot3_alias_when_available(tmp_path: Path):
     target = tmp_path / "long physical identity directory"
     target.mkdir()
