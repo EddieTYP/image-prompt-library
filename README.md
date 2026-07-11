@@ -37,14 +37,26 @@ Current stable release: [`v0.7.10`](https://github.com/EddieTYP/image-prompt-lib
 
 ## Quick start
 
-Normal release installs require **Python 3.10+** and `curl`. They do **not** require Node.js.
+### Windows (v0.8.0+)
+
+Native Windows support begins with v0.8.0. The current stable release remains v0.7.10, so do not use this native path with v0.7.10. Windows 10/11, PowerShell 5.1+, and **Python 3.10+** are required; the installer does not install Python.
+
+```powershell
+irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.ps1 | iex
+```
+
+A successful install starts the app in the background and opens your browser. Stop it with `image-prompt-library stop`; see the [installation guide](docs/INSTALLATION.md) for updates, rollback, diagnostics, private-data locations, and the inspect-first install path.
+
+### macOS, Linux, and WSL
+
+Normal release installs require **Python 3.10+** and `curl`. They do **not** require Node.js. Windows users can also use this Unix path through WSL 2.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash
 image-prompt-library start
 ```
 
-`image-prompt-library start` runs the local server in the current terminal. Keep it open, then visit <http://127.0.0.1:8000/> in your browser. Press `Ctrl-C` in that terminal to stop the server.
+`image-prompt-library start` runs the Unix/WSL local server in the current terminal. Keep it open, then visit <http://127.0.0.1:8000/> in your browser. Press `Ctrl-C` in that terminal to stop the server.
 
 A fresh local library starts empty. Use `+ Add` in the app to create your first private prompt card, or import an optional starter sample pack if you want demo references first:
 

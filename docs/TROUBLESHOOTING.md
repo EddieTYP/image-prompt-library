@@ -1,5 +1,46 @@
 # Troubleshooting
 
+## Windows: Python is missing or too old
+
+Native Windows support begins with v0.8.0 and requires Python 3.10+. The installer does not install Python. Install a supported version from <https://www.python.org/downloads/windows/>, open a new PowerShell window, then run the installer again.
+
+## Windows: `image-prompt-library` is not found
+
+The installer adds `%LOCALAPPDATA%\ImagePromptLibrary\bin` to your user PATH. Close PowerShell, open a new window, and try the command again. If it is still unavailable, run the installed controller directly:
+
+```powershell
+& "$env:LOCALAPPDATA\ImagePromptLibrary\bin\image-prompt-library.ps1" status
+```
+
+Use `image-prompt-library doctor` to check the user PATH and selected version.
+
+## Windows: the port is occupied
+
+Do not stop unrelated processes. Start this install on an unused port instead:
+
+```powershell
+image-prompt-library start --port 8001
+```
+
+## Windows: stale runtime record or startup failure
+
+Run:
+
+```powershell
+image-prompt-library doctor
+image-prompt-library status
+```
+
+`doctor` distinguishes a stale runtime record from a live managed process. Do not delete a PID record while its matching process is live, and do not kill all Python processes. For startup or health failures, inspect `%LOCALAPPDATA%\ImagePromptLibrary\logs\app.err.log` and `app.out.log`; the preceding attempt is retained as `app.previous.err.log` and `app.previous.out.log`.
+
+## Windows: update recovery or rollback
+
+An interrupted update restores the previous version and runtime when possible. Check the selected version and health with `image-prompt-library version` and `image-prompt-library status`, then use `image-prompt-library rollback` if you need the previously installed version.
+
+## Windows: uninstall and private data
+
+`image-prompt-library uninstall` preserves `%USERPROFILE%\ImagePromptLibrary`. Use `--delete-library` only when you intentionally want to remove private prompts and images too.
+
 ## `./scripts/start.sh` cannot find Python dependencies
 
 Run setup first:

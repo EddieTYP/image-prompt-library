@@ -2884,3 +2884,30 @@ try {{ Invoke-Install }} catch {{ $failure = $_.Exception.Message }}
     assert (app / "previous-version").read_text(encoding="ascii") == "v0.9.0\n"
     commands = (old_target / "scripts" / "commands.log").read_text(encoding="ascii").splitlines()
     assert "start --host 127.0.0.6 --port 4789 --no-browser" in commands
+
+
+def test_public_docs_explain_native_windows_without_installing_python():
+    readmes = [read("README.md"), read("README_zh-TW.md"), read("README_zh-CN.md")]
+    installation = read("docs/INSTALLATION.md")
+    troubleshooting = read("docs/TROUBLESHOOTING.md")
+    roadmap = read("ROADMAP.md")
+    release = read("docs/releases/v0.8.0.md")
+    for document in readmes:
+        assert "scripts/install.ps1" in document
+        assert "Python 3.10+" in document
+        assert "v0.8.0" in document
+    assert "The installer does not install Python" in installation
+    assert "image-prompt-library stop" in installation
+    assert "app.previous.err.log" in troubleshooting
+    assert "Native Windows PowerShell scripts or a Docker Compose" not in roadmap
+    assert "Add search/sort polish before larger batch workflows" not in roadmap
+    assert "Add stronger token refresh locking" not in roadmap
+    assert "Generic URL plus X/Threads import" in roadmap
+    assert "Native Windows Quick Start" in release
+    assert "v0.7.10" in read("README.md")
+
+
+def test_public_docs_do_not_claim_legacy_release_is_windows_native():
+    installation = read("docs/INSTALLATION.md")
+    assert "Native Windows support begins with v0.8.0" in installation
+    assert "v0.7.10 supports native Windows" not in installation

@@ -191,6 +191,15 @@ def test_public_install_helper_files_exist_and_document_local_data():
     backup_script = (ROOT / "scripts" / "backup.sh").read_text()
     smoke_script = (ROOT / "scripts" / "smoke-test.sh").read_text()
 
+    for windows_script in (
+        "scripts/appctl.ps1",
+        "scripts/install.ps1",
+        "scripts/install-sample-data.ps1",
+        "scripts/setup-runtime.ps1",
+    ):
+        assert (ROOT / windows_script).is_file()
+    assert "install.ps1" in (ROOT / "docs" / "INSTALLATION.md").read_text()
+
     assert "IMAGE_PROMPT_LIBRARY_PATH=./library" in env_example
     assert "BACKEND_HOST=127.0.0.1" in env_example
     assert "BACKEND_PORT=8000" in env_example

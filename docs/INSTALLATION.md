@@ -2,9 +2,100 @@
 
 This guide keeps operational details out of the main README.
 
+## Native Windows PowerShell (v0.8.0+)
+
+Native Windows support begins with v0.8.0. The current stable release is v0.7.10 and does not provide this native PowerShell quick-start path.
+
+### Prerequisites
+
+- Windows 10 or 11
+- Windows PowerShell 5.1 or newer
+- Python 3.10+ available through `py -3` or `python`
+
+The installer does not install Python. If Python is missing or too old, install a current version from <https://www.python.org/downloads/windows/> and run the installer again. No administrator access, Git, Node.js, WSL, or machine-wide PATH changes are required.
+
+### Install
+
+In PowerShell, run:
+
+```powershell
+irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.ps1 | iex
+```
+
+The installer downloads a release only when its manifest advertises the `windows-powershell-v1` capability, verifies the release checksum before extraction, creates a version-local Python runtime, starts the app in the background, and opens the browser.
+
+To inspect the script before running it:
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.ps1 -OutFile .\install.ps1
+notepad .\install.ps1
+.\install.ps1
+```
+
+To choose a released version, use the downloaded script:
+
+```powershell
+.\install.ps1 -Version v0.8.0
+```
+
+### Layout and private data
+
+Replaceable app code, shims, logs, and runtime metadata live under:
+
+```text
+%LOCALAPPDATA%\ImagePromptLibrary
+```
+
+Your private library defaults to:
+
+```text
+%USERPROFILE%\ImagePromptLibrary
+```
+
+The private library is separate from versioned app code, so updates and rollbacks do not replace its SQLite database or images.
+
+### Lifecycle, diagnostics, and logs
+
+```powershell
+image-prompt-library status
+image-prompt-library doctor
+image-prompt-library stop
+image-prompt-library start
+```
+
+`start` runs in the background and opens the browser. `status` reports the selected version, library, URL, app state, item count, and generation state. `doctor` checks the version pointer, runtime, user PATH, logs, database, and provider state.
+
+The current logs are `%LOCALAPPDATA%\ImagePromptLibrary\logs\app.out.log` and `app.err.log`. The previous startup logs are `app.previous.out.log` and `app.previous.err.log` in the same directory.
+
+### Update, rollback, sample data, and uninstall
+
+```powershell
+image-prompt-library update
+image-prompt-library update --version v0.8.0
+image-prompt-library rollback
+image-prompt-library sample-data en
+image-prompt-library sample-data zh_hans
+image-prompt-library sample-data zh_hant awesome-gpt-image-2
+image-prompt-library uninstall
+```
+
+An update switches version pointers transactionally and restores the prior version and runtime if the new target cannot start. `rollback` selects the previous installed version. Default uninstall removes only the app state and preserves `%USERPROFILE%\ImagePromptLibrary`; use `image-prompt-library uninstall --delete-library` only to remove the private library too, and add `--yes` for non-interactive use.
+
+## Unix and WSL 2
+
+macOS and Linux use the Bash installer below. Windows users who prefer Linux tooling can use the same path through **WSL 2**.
+
+If the server starts in WSL but the Windows browser cannot open `http://127.0.0.1:8000/`, stop the server with Ctrl-C and run:
+
+```bash
+image-prompt-library start --host 0.0.0.0
+```
+
+Then open <http://localhost:8000/>. Binding to `0.0.0.0` can expose the app outside WSL, so use it only on a trusted machine/network.
+
 ## Requirements
 
-For normal release installs:
+For normal Unix/WSL release installs:
 
 - Python 3.10+
 - `curl` or a browser to download the installer
@@ -16,20 +107,6 @@ For source/development installs:
 - npm
 
 Normal release installs do not require Node.js because tagged release assets include the built frontend.
-
-## Platform support
-
-- macOS and Linux are the primary supported local-install targets today.
-- Windows can run the app stack through **WSL 2** using the same commands as Linux.
-- Native Windows PowerShell/CMD is not a supported quick-start path yet because the current helper scripts are Bash scripts and assume Unix-style virtualenv paths such as `.venv/bin/activate`. Native Windows support should use equivalent PowerShell scripts or a Docker/Compose path in a future pass.
-
-If the server starts in WSL but your Windows browser cannot open `http://127.0.0.1:8000/`, stop the server with Ctrl-C and run:
-
-```bash
-image-prompt-library start --host 0.0.0.0
-```
-
-Then open <http://localhost:8000/>. Binding to `0.0.0.0` can expose the app outside WSL, so use it only on a trusted machine/network.
 
 ## Install the latest release
 
