@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import json
@@ -7,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 import time
 import warnings
@@ -14,6 +16,7 @@ import zipfile
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +24,126 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def test_native_windows_smoke_and_ci_contract():
+    smoke_path = ROOT / "tests" / "windows-installer-smoke.ps1"
+    assert smoke_path.is_file()
+    smoke = smoke_path.read_text(encoding="ascii")
+    for required in (
+        "v0.8.0-test-a",
+        "v0.8.0-test-b",
+        "v0.8.0-test-broken",
+        "missing-python.exe",
+        "Automatic recovery restored",
+        "process_start_time_utc_ticks",
+        "Private library preserved at",
+    ):
+        assert required in smoke
+
+    workflow = read(".github/workflows/ci.yml")
+    assert re.search(r"(?m)^  windows-installer:\s*$", workflow)
+    windows_job = workflow.split("  windows-installer:", 1)[1]
+    assert "runs-on: windows-latest" in windows_job
+    assert "actions/checkout@v5" in windows_job
+    assert "actions/setup-python@v6" in windows_job
+    assert "python-version: '3.11'" in windows_job
+    assert "cache: pip" in windows_job
+    assert "actions/setup-node@v5" in windows_job
+    assert "node-version: 24" in windows_job
+    assert "cache: npm" in windows_job
+    assert "python -m pip install -e '.[dev]'" in windows_job
+    assert "npm install" in windows_job
+    assert "npm run build" in windows_job
+    assert "tests/test_windows_installer.py" in windows_job
+    assert "tests/windows-installer-smoke.ps1" in windows_job
+
+
+def test_native_windows_smoke_embeds_a_loadable_sample_png():
+    smoke = (ROOT / "tests" / "windows-installer-smoke.ps1").read_text(encoding="ascii")
+    encoded = re.search(r'FromBase64String\("([A-Za-z0-9+/=]+)"\)', smoke)
+    assert encoded
+    with Image.open(io.BytesIO(base64.b64decode(encoded.group(1)))) as image:
+        image.load()
+
+
+def test_native_windows_smoke_capture_does_not_wait_for_detached_descendants(
+    tmp_path: Path,
+):
+    child = tmp_path / "start-detached.ps1"
+    child.write_text(
+        "$processPath = $env:Path\n"
+        "[Environment]::SetEnvironmentVariable('PATH', $null, 'Process')\n"
+        "[Environment]::SetEnvironmentVariable('Path', $processPath, 'Process')\n"
+        "$outLog = Join-Path $PSScriptRoot 'child.out.log'\n"
+        "$errLog = Join-Path $PSScriptRoot 'child.err.log'\n"
+        "$sleeper = Start-Process powershell.exe -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Seconds 5') -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru\n"
+        "[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'sleeper.pid'), [string]$sleeper.Id)\n"
+        "Write-Output 'done'\n",
+        encoding="ascii",
+    )
+    result_path = tmp_path / "result.json"
+    smoke = powershell_literal(ROOT / "tests" / "windows-installer-smoke.ps1")
+    script = f"""
+$source = [IO.File]::ReadAllText({smoke})
+$functionStart = $source.IndexOf('function Invoke-IsolatedPowerShell')
+$functionEnd = $source.IndexOf('function Assert-Succeeded')
+if ($functionStart -lt 0 -or $functionEnd -lt 0) {{ throw 'Smoke process helper was not found.' }}
+$repoRoot = {powershell_literal(ROOT)}
+$workRoot = {powershell_literal(tmp_path / 'capture-root')}
+New-Item -ItemType Directory -Path $workRoot | Out-Null
+Invoke-Expression $source.Substring($functionStart, $functionEnd - $functionStart)
+$stopwatch = [Diagnostics.Stopwatch]::StartNew()
+$result = Invoke-IsolatedPowerShell -ScriptPath {powershell_literal(child)}
+$stopwatch.Stop()
+$sleeperId = [int][IO.File]::ReadAllText({powershell_literal(tmp_path / 'sleeper.pid')})
+$sleeper = Get-Process -Id $sleeperId -ErrorAction SilentlyContinue
+if ($sleeper) {{ Stop-Process -Id $sleeperId -Force; Wait-Process -Id $sleeperId -ErrorAction SilentlyContinue }}
+[IO.File]::WriteAllText({powershell_literal(result_path)}, ([pscustomobject]@{{ ExitCode = $result.ExitCode; Output = $result.Output; ElapsedMilliseconds = $stopwatch.ElapsedMilliseconds }} | ConvertTo-Json -Compress))
+"""
+
+    result = run_powershell(script)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result_path.read_text())
+    assert payload["ExitCode"] == 0
+    assert payload["Output"] == "done"
+    assert payload["ElapsedMilliseconds"] < 3000
+
+
+def test_native_windows_smoke_preserves_switch_like_argument_arrays(tmp_path: Path):
+    child = tmp_path / "echo-arguments.ps1"
+    child.write_text(
+        "param([Parameter(ValueFromRemainingArguments=$true)][string[]]$CommandArgs)\n"
+        "ConvertTo-Json -InputObject ([object[]]@($CommandArgs)) -Compress\n",
+        encoding="ascii",
+    )
+    smoke = powershell_literal(ROOT / "tests" / "windows-installer-smoke.ps1")
+    script = f"""
+$source = [IO.File]::ReadAllText({smoke})
+$functionStart = $source.IndexOf('function Invoke-IsolatedPowerShell')
+$functionEnd = $source.IndexOf('function Assert-Succeeded')
+if ($functionStart -lt 0 -or $functionEnd -lt 0) {{ throw 'Smoke process helper was not found.' }}
+$repoRoot = {powershell_literal(ROOT)}
+$workRoot = {powershell_literal(tmp_path / 'capture-root')}
+New-Item -ItemType Directory -Path $workRoot | Out-Null
+Invoke-Expression $source.Substring($functionStart, $functionEnd - $functionStart)
+$result = Invoke-IsolatedPowerShell -ScriptPath {powershell_literal(child)} -Arguments @('update', '--version', 'v2.0.0', '-ReleaseBaseUrl', 'release with spaces')
+$result | ConvertTo-Json -Compress
+"""
+
+    result = run_powershell(script)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["ExitCode"] == 0
+    assert json.loads(payload["Output"]) == [
+        "update",
+        "--version",
+        "v2.0.0",
+        "-ReleaseBaseUrl",
+        "release with spaces",
+    ]
 
 
 def powershell_executable() -> str:
@@ -209,7 +332,7 @@ def test_windows_runtime_setup_is_local_and_never_installs_python():
     assert 'Test-PythonCandidate -Exe $venvPython -PrefixArgs @()' in script
     assert 'Existing .venv Python is unsupported; remove .venv and rerun setup.' in script
     assert '@("-m", "venv", (Join-Path $AppRoot ".venv"))' in script
-    assert '-Args @("-m", "pip", "install", $AppRoot)' in script
+    assert '-Arguments @("-m", "pip", "install", $AppRoot)' in script
     assert "import backend.main, uvicorn" in script
     assert "image-prompt-library-runtime-probe-" in script
     assert "IMAGE_PROMPT_LIBRARY_PATH" in script
@@ -218,6 +341,82 @@ def test_windows_runtime_setup_is_local_and_never_installs_python():
     assert "npm" not in script.lower()
     assert "node" not in script.lower()
     assert "Start-Process" not in script
+
+
+def test_windows_runtime_setup_forwards_checked_argument_arrays():
+    setup_runtime = powershell_literal(ROOT / "scripts" / "setup-runtime.ps1")
+    python = powershell_literal(Path(sys.executable))
+    result = run_powershell(
+        f"""
+$source = [IO.File]::ReadAllText({setup_runtime})
+$functionStart = $source.IndexOf('function Invoke-PythonChecked')
+$entryPoint = $source.IndexOf('$AppRoot = [IO.Path]::GetFullPath')
+if ($functionStart -lt 0 -or $entryPoint -lt 0) {{ throw 'Runtime setup function was not found.' }}
+Invoke-Expression $source.Substring($functionStart, $entryPoint - $functionStart)
+Invoke-PythonChecked -Exe {python} -Arguments @('-c', 'import json,sys; print(json.dumps(sys.argv[1:]))', 'alpha', 'beta gamma') -FailureMessage 'forwarding failed'
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(result.stdout.strip()) == ["alpha", "beta gamma"]
+
+
+def test_real_release_package_extracts_with_hardened_windows_installer(tmp_path: Path):
+    version = "v9.9.11-test"
+    git_bash = next(
+        (
+            candidate
+            for candidate in (
+                Path(r"C:\Program Files\Git\bin\bash.exe"),
+                Path(r"C:\Program Files\Git\usr\bin\bash.exe"),
+            )
+            if candidate.is_file()
+        ),
+        None,
+    )
+    if git_bash is None:
+        pytest.skip("Git Bash is required for the real release package regression")
+    bash_root = f"/{ROOT.drive[0].lower()}{ROOT.as_posix()[2:]}"
+    python_path = Path(sys.executable)
+    bash_python = f"/{python_path.drive[0].lower()}{python_path.as_posix()[2:]}"
+    packaged = subprocess.run(
+        [
+            git_bash,
+            "-lc",
+            f"python3() {{ '{bash_python}' \"$@\"; }}; export -f python3; cd '{bash_root}' && scripts/package-release.sh '{version}' --skip-build",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=120,
+    )
+    assert packaged.returncode == 0, packaged.stdout + packaged.stderr
+
+    artifact = ROOT / "dist-release" / f"image-prompt-library-{version}.tar.gz"
+    manifest = json.loads(
+        (ROOT / "dist-release" / f"image-prompt-library-{version}.manifest.json").read_text()
+    )
+    with tarfile.open(artifact, "r:gz") as archive:
+        names = [member.name for member in archive.getmembers()]
+    assert "." not in names
+    assert not any(name.startswith("./") for name in names)
+
+    destination = tmp_path / "extracted"
+    python = powershell_literal(Path(sys.executable))
+    result = run_installer_function(
+        f"""
+$python = [pscustomobject]@{{ Exe = {python}; PrefixArgs = @() }}
+Expand-SafeTar -ArtifactPath {powershell_literal(artifact)} -Destination {powershell_literal(destination)} -ExpectedSha '{manifest['sha256']}' -Python $python
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (destination / "VERSION").read_text(encoding="ascii").strip() == version
+    assert (destination / "sample-data" / "manifests").is_dir()
+    assert (destination / "LICENSE").is_file()
 
 
 def test_windows_release_sources_are_ascii():
@@ -303,6 +502,30 @@ def test_windows_appctl_doctor_uses_user_path_and_status_database_data():
     assert "Test-Path" not in database_section
 
 
+def test_windows_appctl_status_python_script_runs_under_windows_powershell(
+    tmp_path: Path,
+):
+    library = tmp_path / "library with spaces"
+    library.mkdir()
+    result = run_appctl_function(
+        f"""
+function Get-ServerRuntimeData {{
+    param($Context)
+    return [pscustomobject]@{{ State = 'stopped'; Record = $null }}
+}}
+$context = [pscustomobject]@{{}}
+$environment = [pscustomobject]@{{ LibraryPath = {powershell_literal(library)} }}
+$version = [pscustomobject]@{{ Python = {powershell_literal(Path(sys.executable))} }}
+Get-AppStatusData -Context $context -Environment $environment -Version $version | ConvertTo-Json -Compress
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["Database"] == "missing"
+    assert payload["Items"] is None
+
+
 def test_windows_appctl_records_exact_process_identity_before_stop():
     script = read("scripts/appctl.ps1")
     for name in ("Read-ServerRecord", "Get-OwnedProcess", "Test-AppHealth", "Test-PortInUse", "Start-App", "Stop-App"):
@@ -323,6 +546,30 @@ def test_windows_appctl_records_exact_process_identity_before_stop():
     assert ".SafeHandle" in script
     assert "DangerousAddRef" in script
     assert "DangerousRelease" in script
+
+
+def test_windows_appctl_waits_for_started_process_path_before_identity_check():
+    expected = r"C:\App\venv\Scripts\python.exe"
+    result = run_appctl_function(
+        f"""
+$script:pathReads = 0
+$process = New-Object psobject
+$process | Add-Member -MemberType ScriptMethod -Name Refresh -Value {{}}
+$process | Add-Member -MemberType ScriptProperty -Name StartTime -Value {{ [DateTime]::UtcNow }}
+$process | Add-Member -MemberType ScriptProperty -Name Path -Value {{
+    $script:pathReads++
+    if ($script:pathReads -eq 1) {{ return $null }}
+    return {powershell_literal(expected)}
+}}
+$process | Add-Member -MemberType ScriptProperty -Name HasExited -Value {{ $false }}
+$identity = Get-StartedProcessIdentity -Process $process -ExpectedPath {powershell_literal(expected)} -TimeoutMilliseconds 500
+[pscustomobject]@{{ Path = $identity.Path; Reads = $script:pathReads }} | ConvertTo-Json -Compress
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload == {"Path": expected, "Reads": 2}
 
 
 def test_windows_appctl_stop_uses_retained_handle_for_disposable_child(tmp_path: Path):
@@ -1114,7 +1361,12 @@ def test_windows_appctl_retains_safe_handle_through_identity_and_termination():
     assert "DangerousRelease" in script.split("function Close-ProcessLease", 1)[1].split("function ", 1)[0]
     assert owned_section.index("New-ProcessLease") < owned_section.index("Test-ProcessIdentity")
     assert "$Lease.Process.Kill()" in script
-    assert start_section.index("New-ProcessLease -Process $process") < start_section.index("$processLease.Process.StartTime")
+    assert start_section.index("New-ProcessLease -Process $process") < start_section.index(
+        "Get-StartedProcessIdentity -Process $processLease.Process"
+    )
+    assert "$Process.StartTime.ToUniversalTime()" in script.split(
+        "function Get-StartedProcessIdentity", 1
+    )[1].split("function ", 1)[0]
     assert start_section.index("Stop-VerifiedProcess -Lease $processLease") < start_section.rindex("Close-ProcessLease -Lease $processLease")
     assert stop_section.index("Stop-VerifiedProcess") < stop_section.index("Close-ProcessLease")
     assert "Get-Process" not in script.split("function Stop-VerifiedProcess", 1)[1].split("function ", 1)[0]
@@ -1311,6 +1563,100 @@ def test_windows_installer_generated_shim_rejects_windows_version_aliases(
 
     assert result.returncode == 1
     assert "current version pointer is invalid" in result.stderr.lower()
+
+
+def test_windows_installer_generated_shim_handles_power_shell_only_success(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    scripts = prefix / "app" / "versions" / "v1.0.0" / "scripts"
+    scripts.mkdir(parents=True)
+    (prefix / "app" / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    (scripts / "appctl.ps1").write_text(
+        "param([Parameter(ValueFromRemainingArguments=$true)][string[]]$CommandArgs)\n"
+        "Write-Output ($CommandArgs -join ',')\n",
+        encoding="ascii",
+    )
+    generated = run_installer_function(
+        f"Write-CommandShim -BinPath {powershell_literal(prefix / 'bin')}"
+    )
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+
+    result = subprocess.run(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(prefix / "bin" / "image-prompt-library.ps1"),
+            "version",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "version"
+
+
+def test_windows_installer_generated_shim_does_not_leak_handled_native_exit(
+    tmp_path: Path,
+):
+    prefix = tmp_path / "prefix"
+    scripts = prefix / "app" / "versions" / "v1.0.0" / "scripts"
+    scripts.mkdir(parents=True)
+    (prefix / "app" / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    (scripts / "appctl.ps1").write_text(
+        "param([Parameter(ValueFromRemainingArguments=$true)][string[]]$CommandArgs)\n"
+        "if ($CommandArgs -contains 'fail') { exit 2 }\n"
+        "& $env:ComSpec /d /c exit 7\n"
+        "Write-Output ($CommandArgs -join ',')\n",
+        encoding="ascii",
+    )
+    generated = run_installer_function(
+        f"Write-CommandShim -BinPath {powershell_literal(prefix / 'bin')}"
+    )
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+
+    result = subprocess.run(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(prefix / "bin" / "image-prompt-library.ps1"),
+            "status",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "status"
+
+    failed = subprocess.run(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(prefix / "bin" / "image-prompt-library.ps1"),
+            "fail",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    assert failed.returncode == 2, failed.stdout + failed.stderr
 
 
 def test_windows_installer_rejects_drive_root_containing_prefix(tmp_path: Path):
@@ -1968,7 +2314,9 @@ def test_windows_appctl_update_invokes_installer_with_exact_context(
     prefix.mkdir(exist_ok=True)
     (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
     (scripts / "install.ps1").write_text(
-        "$args | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $env:IMAGE_PROMPT_LIBRARY_PREFIX 'update-args.json') -Encoding UTF8\n"
+        "[CmdletBinding()]\n"
+        "param([string]$Version,[string]$Prefix,[string]$LibraryPath,[string]$ReleaseBaseUrl,[string]$PythonExe='',[string[]]$PythonPrefixArgs=@(),[switch]$NoStart,[switch]$SkipPath,[switch]$NoBrowser)\n"
+        "[ordered]@{ Version=$Version; Prefix=$Prefix; LibraryPath=$LibraryPath; ReleaseBaseUrl=$ReleaseBaseUrl } | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $env:IMAGE_PROMPT_LIBRARY_PREFIX 'update-args.json') -Encoding UTF8\n"
         "$global:LASTEXITCODE = 0\n",
         encoding="ascii",
     )
@@ -1977,16 +2325,48 @@ def test_windows_appctl_update_invokes_installer_with_exact_context(
     result = run_appctl(prefix, "update", "--version", "v2.0.0")
 
     assert result.returncode == 0, result.stderr
-    assert json.loads((prefix / "update-args.json").read_text(encoding="utf-8-sig")) == [
-        "-Version",
-        "v2.0.0",
-        "-Prefix",
-        str(prefix),
-        "-LibraryPath",
-        str(library),
-        "-ReleaseBaseUrl",
-        str(release),
-    ]
+    assert json.loads((prefix / "update-args.json").read_text(encoding="utf-8-sig")) == {
+        "Version": "v2.0.0",
+        "Prefix": str(prefix),
+        "LibraryPath": str(library),
+        "ReleaseBaseUrl": str(release),
+    }
+
+
+def test_windows_installer_controller_start_does_not_wait_for_detached_app(
+    tmp_path: Path,
+):
+    version_root = tmp_path / "version"
+    scripts = version_root / "scripts"
+    scripts.mkdir(parents=True)
+    pid_path = tmp_path / "sleeper.pid"
+    (scripts / "appctl.ps1").write_text(
+        "$processPath = $env:Path\n"
+        "[Environment]::SetEnvironmentVariable('PATH', $null, 'Process')\n"
+        "[Environment]::SetEnvironmentVariable('Path', $processPath, 'Process')\n"
+        "$outLog = Join-Path $PSScriptRoot 'child.out.log'\n"
+        "$errLog = Join-Path $PSScriptRoot 'child.err.log'\n"
+        "$sleeper = Start-Process powershell.exe -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Seconds 5') -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru\n"
+        f"[IO.File]::WriteAllText({powershell_literal(pid_path)}, [string]$sleeper.Id)\n"
+        "Write-Output 'started'\n",
+        encoding="ascii",
+    )
+    result = run_installer_function(
+        f"""
+$stopwatch = [Diagnostics.Stopwatch]::StartNew()
+$controllerResult = Invoke-Controller -VersionRoot {powershell_literal(version_root)} -Arguments @('start')
+$stopwatch.Stop()
+$sleeperId = [int][IO.File]::ReadAllText({powershell_literal(pid_path)})
+$sleeper = Get-Process -Id $sleeperId -ErrorAction SilentlyContinue
+if ($sleeper) {{ Stop-Process -Id $sleeperId -Force; Wait-Process -Id $sleeperId -ErrorAction SilentlyContinue }}
+[pscustomobject]@{{ ExitCode = $controllerResult.ExitCode; ElapsedMilliseconds = $stopwatch.ElapsedMilliseconds }} | ConvertTo-Json -Compress
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["ExitCode"] == 0
+    assert payload["ElapsedMilliseconds"] < 3000
 
 
 def test_windows_appctl_rollback_command_preserves_stopped_state(tmp_path: Path):
