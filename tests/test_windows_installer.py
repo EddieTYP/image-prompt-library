@@ -2774,7 +2774,11 @@ def test_windows_cmd_uninstall_retires_old_generation_before_concurrent_start_an
         "    return $mutex\n}\n\nfunction Exit-PrefixTransactionLock",
         "    if ($env:IMAGE_PROMPT_LIBRARY_TEST_LOCK_HELD_SIGNAL) {\n"
         "        [IO.File]::WriteAllText($env:IMAGE_PROMPT_LIBRARY_TEST_LOCK_HELD_SIGNAL, 'ready', [Text.Encoding]::ASCII)\n"
-        "        Start-Sleep -Milliseconds ([int]$env:IMAGE_PROMPT_LIBRARY_TEST_LOCK_HOLD_MS)\n"
+        "        $deadline = [DateTime]::UtcNow.AddSeconds(15)\n"
+        "        while (-not [IO.File]::Exists($env:IMAGE_PROMPT_LIBRARY_TEST_LOCK_RELEASE) -and [DateTime]::UtcNow -lt $deadline) {\n"
+        "            Start-Sleep -Milliseconds 10\n"
+        "        }\n"
+        "        if (-not [IO.File]::Exists($env:IMAGE_PROMPT_LIBRARY_TEST_LOCK_RELEASE)) { throw 'test lock barrier timed out' }\n"
         "    }\n"
         "    return $mutex\n}\n\nfunction Exit-PrefixTransactionLock",
         1,
@@ -2794,10 +2798,13 @@ def test_windows_cmd_uninstall_retires_old_generation_before_concurrent_start_an
     environment = os.environ.copy()
     environment["PATH"] = str(prefix / "bin") + os.pathsep + environment["PATH"]
     uninstall_lock_signal = tmp_path / "uninstall-holds-lock"
+    uninstall_lock_release = tmp_path / "release-uninstall-lock"
     environment["IMAGE_PROMPT_LIBRARY_TEST_LOCK_HELD_SIGNAL"] = str(
         uninstall_lock_signal
     )
-    environment["IMAGE_PROMPT_LIBRARY_TEST_LOCK_HOLD_MS"] = "5000"
+    environment["IMAGE_PROMPT_LIBRARY_TEST_LOCK_RELEASE"] = str(
+        uninstall_lock_release
+    )
     uninstall = subprocess.Popen(
         [
             powershell_executable(),
@@ -2822,7 +2829,7 @@ def test_windows_cmd_uninstall_retires_old_generation_before_concurrent_start_an
     stale_signal = tmp_path / "stale-start-at-lock"
     stale_environment = environment.copy()
     stale_environment.pop("IMAGE_PROMPT_LIBRARY_TEST_LOCK_HELD_SIGNAL")
-    stale_environment.pop("IMAGE_PROMPT_LIBRARY_TEST_LOCK_HOLD_MS")
+    stale_environment.pop("IMAGE_PROMPT_LIBRARY_TEST_LOCK_RELEASE")
     stale_environment["IMAGE_PROMPT_LIBRARY_TEST_LOCK_SIGNAL"] = str(stale_signal)
     stale_start = subprocess.Popen(
         [
@@ -2878,7 +2885,7 @@ def test_windows_cmd_uninstall_retires_old_generation_before_concurrent_start_an
         stderr=subprocess.PIPE,
         text=True,
     )
-    deadline = time.monotonic() + 4
+    deadline = time.monotonic() + 10
     while (
         (not stale_signal.exists() or not install_signal.exists())
         and time.monotonic() < deadline
@@ -2887,6 +2894,7 @@ def test_windows_cmd_uninstall_retires_old_generation_before_concurrent_start_an
     assert stale_signal.exists(), "stale start did not reach the held transaction lock"
     assert install_signal.exists(), "reinstall did not reach the held transaction lock"
     assert uninstall.poll() is None, "uninstall released its lock before both contenders arrived"
+    uninstall_lock_release.write_text("release\n", encoding="ascii")
     marker = prefix / "bin" / ".retired-generation"
     deadline = time.monotonic() + 10
     while not marker.exists() and time.monotonic() < deadline:
