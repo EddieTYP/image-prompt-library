@@ -1367,8 +1367,8 @@ function Invoke-UninstallInternal {
     $options = Get-UninstallOptions -Arguments $Arguments
     Assert-UninstallTargetNotReparse -Path $Context.Prefix -Name "App prefix" | Out-Null
     $environment = Read-AppEnvironment -Context $Context
+    Assert-UninstallTargetNotReparse -Path $environment.LibraryPath -Name "Private library" | Out-Null
     $targets = Assert-UninstallTargets -Context $Context -Environment $environment
-    Assert-UninstallTargetNotReparse -Path $targets.Library -Name "Private library" | Out-Null
     $workingDirectory = Get-UninstallWorkingDirectory -Targets $targets
     if ($options.DeleteLibrary -and -not $options.Yes) {
         $confirmation = Read-Host "Type DELETE to remove the private library"
@@ -1421,12 +1421,12 @@ function Invoke-Uninstall {
         $prefix.Equals($profile, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Uninstall app prefix is unsafe."
     }
+    Assert-UninstallTargetNotReparse -Path $prefix -Name "App prefix" | Out-Null
     $prefixIdentity = Get-PhysicalPathIdentity -Path $prefix
     $profileIdentity = Get-UninstallUserProfilePhysicalIdentity
     if (Test-UninstallPathWithinOrEqual -Path $profileIdentity -Parent $prefixIdentity) {
         throw "Uninstall app prefix is unsafe."
     }
-    Assert-UninstallTargetNotReparse -Path $prefix -Name "App prefix" | Out-Null
     $transactionLock = Enter-PrefixTransactionLock -Context $Context
     try {
         Invoke-UninstallInternal -Context $Context -Arguments $Arguments
