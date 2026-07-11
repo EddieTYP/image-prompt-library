@@ -479,6 +479,35 @@ def write_uninstall_layout(prefix: Path, library: Path) -> None:
     (library / "private.txt").write_text("keep\n", encoding="ascii")
 
 
+def create_dangling_directory_link(link: Path, target: Path) -> None:
+    target.mkdir()
+    result = run_powershell(
+        f"""
+New-Item -ItemType Junction -Path {powershell_literal(link)} -Target {powershell_literal(target)} -ErrorAction Stop | Out-Null
+[IO.Directory]::Delete({powershell_literal(target)}, $false)
+$attributes = [IO.File]::GetAttributes({powershell_literal(link)})
+if (($attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) {{ throw 'Dangling link entry was not retained.' }}
+"""
+    )
+    if result.returncode != 0:
+        pytest.skip(f"Windows dangling junction creation unavailable: {result.stderr.strip()}")
+
+
+def assert_windows_reparse_entry(path: Path) -> None:
+    result = run_powershell(
+        f"$attributes = [IO.File]::GetAttributes({powershell_literal(path)}); if (($attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) {{ exit 1 }}"
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_windows_appctl_reparse_preflight_inspects_entry_without_test_path_gate():
+    script = read("scripts/appctl.ps1")
+    section = script.split("function Assert-UninstallTargetNotReparse", 1)[1].split("function ", 1)[0]
+
+    assert "[IO.File]::GetAttributes" in section
+    assert "Test-Path" not in section
+
+
 def test_windows_appctl_uninstall_preserves_private_library_by_default_with_spaces(tmp_path: Path):
     prefix = tmp_path / "app prefix"
     library = tmp_path / "private library"
@@ -515,6 +544,21 @@ def test_windows_appctl_uninstall_deletes_private_library_with_yes(tmp_path: Pat
     assert result.returncode == 0, result.stderr
     assert not prefix.exists()
     assert not library.exists()
+
+
+def test_windows_appctl_uninstall_preserves_normally_missing_private_library(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    (prefix / "bin").mkdir(parents=True)
+    (prefix / "bin" / "image-prompt-library.ps1").write_text("shim\n", encoding="ascii")
+    library = tmp_path / "missing-library"
+    (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
+
+    result = run_appctl(prefix, "uninstall")
+
+    assert result.returncode == 0, result.stderr
+    assert not prefix.exists()
+    assert not library.exists()
+    assert f"Private library preserved at {library.resolve()}" in result.stdout
 
 
 def test_windows_appctl_uninstall_refusal_leaves_app_and_library_unchanged(tmp_path: Path):
@@ -649,6 +693,54 @@ def test_windows_appctl_uninstall_rejects_library_junction_before_mutation(tmp_p
     assert not (prefix / "run").exists()
     assert library.exists()
     assert sentinel.read_text(encoding="ascii") == "keep\n"
+
+
+def test_windows_appctl_uninstall_rejects_dangling_prefix_reparse_without_mutation(tmp_path: Path):
+    prefix = tmp_path / "dangling-prefix"
+    outside = tmp_path / "missing-prefix-target"
+    create_dangling_directory_link(prefix, outside)
+    local_sentinel = tmp_path / "local-sentinel.txt"
+    local_sentinel.write_text("keep\n", encoding="ascii")
+    library = tmp_path / "library"
+    library.mkdir()
+    private = library / "private.txt"
+    private.write_text("keep\n", encoding="ascii")
+
+    result = run_appctl(
+        prefix,
+        "uninstall",
+        environment_overrides={"IMAGE_PROMPT_LIBRARY_PATH": str(library)},
+    )
+
+    assert result.returncode == 1
+    assert "reparse" in result.stderr.lower()
+    assert_windows_reparse_entry(prefix)
+    assert not outside.exists()
+    assert local_sentinel.read_text(encoding="ascii") == "keep\n"
+    assert private.read_text(encoding="ascii") == "keep\n"
+
+
+def test_windows_appctl_uninstall_rejects_dangling_library_reparse_without_mutation(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    (prefix / "bin").mkdir(parents=True)
+    shim = prefix / "bin" / "image-prompt-library.ps1"
+    shim.write_text("shim\n", encoding="ascii")
+    library = tmp_path / "dangling-library"
+    outside = tmp_path / "missing-library-target"
+    create_dangling_directory_link(library, outside)
+    (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
+    local_sentinel = tmp_path / "local-sentinel.txt"
+    local_sentinel.write_text("keep\n", encoding="ascii")
+
+    result = run_appctl(prefix, "uninstall", "--delete-library", "--yes")
+
+    assert result.returncode == 1
+    assert "reparse" in result.stderr.lower()
+    assert shim.read_text(encoding="ascii") == "shim\n"
+    assert not (prefix / "run").exists()
+    assert_windows_reparse_entry(library)
+    assert not outside.exists()
+    assert local_sentinel.read_text(encoding="ascii") == "keep\n"
 
 
 def test_windows_appctl_uninstall_safe_working_directory_failure_is_nonmutating(tmp_path: Path):

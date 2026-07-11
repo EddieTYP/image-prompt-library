@@ -888,9 +888,16 @@ function Assert-UninstallTargets {
 function Assert-UninstallTargetNotReparse {
     param([string]$Path, [string]$Name)
     $normalized = Get-NormalizedUninstallPath -Path $Path
-    if (-not (Test-Path -LiteralPath $normalized)) { return $normalized }
-    $item = Get-Item -LiteralPath $normalized -Force
-    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+    try {
+        $attributes = [IO.File]::GetAttributes($normalized)
+    } catch {
+        $cause = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
+        if ($cause -is [IO.FileNotFoundException] -or $cause -is [IO.DirectoryNotFoundException]) {
+            return $normalized
+        }
+        throw
+    }
+    if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
         throw "$Name uninstall target must not be a reparse point."
     }
     return $normalized
