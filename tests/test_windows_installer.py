@@ -30,13 +30,21 @@ def powershell_executable() -> str:
     return powershell
 
 
-def run_appctl(prefix: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
+def run_appctl(
+    prefix: Path,
+    *arguments: str,
+    input_text: str | None = None,
+    environment_overrides: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     environment = os.environ.copy()
     environment["IMAGE_PROMPT_LIBRARY_PREFIX"] = str(prefix)
+    if environment_overrides:
+        environment.update(environment_overrides)
     return subprocess.run(
         [powershell_executable(), "-NoProfile", "-File", str(ROOT / "scripts" / "appctl.ps1"), *arguments],
         cwd=ROOT,
         env=environment,
+        input=input_text,
         capture_output=True,
         text=True,
         check=False,
@@ -460,6 +468,257 @@ def test_windows_appctl_rejects_stop_arguments(tmp_path: Path):
 
     assert result.returncode == 1
     assert "stop does not accept arguments" in result.stderr.lower()
+
+
+def write_uninstall_layout(prefix: Path, library: Path) -> None:
+    (prefix / "bin").mkdir(parents=True)
+    (prefix / "bin" / "image-prompt-library.ps1").write_text("shim\n", encoding="ascii")
+    (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
+    library.mkdir(parents=True)
+    (library / "private.txt").write_text("keep\n", encoding="ascii")
+
+
+def test_windows_appctl_uninstall_preserves_private_library_by_default_with_spaces(tmp_path: Path):
+    prefix = tmp_path / "app prefix"
+    library = tmp_path / "private library"
+    write_uninstall_layout(prefix, library)
+
+    result = run_appctl(prefix, "uninstall")
+
+    assert result.returncode == 0, result.stderr
+    assert not prefix.exists()
+    assert (library / "private.txt").read_text(encoding="ascii") == "keep\n"
+    assert f"Private library preserved at {library.resolve()}" in result.stdout
+    assert result.stdout.index("Private library preserved at") < result.stdout.index("uninstalled")
+
+
+def test_windows_appctl_uninstall_deletes_private_library_after_exact_confirmation(tmp_path: Path):
+    prefix = tmp_path / "app prefix"
+    library = tmp_path / "private library"
+    write_uninstall_layout(prefix, library)
+
+    result = run_appctl(prefix, "uninstall", "--delete-library", input_text="DELETE\n")
+
+    assert result.returncode == 0, result.stderr
+    assert not prefix.exists()
+    assert not library.exists()
+
+
+def test_windows_appctl_uninstall_refusal_leaves_app_and_library_unchanged(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_uninstall_layout(prefix, library)
+
+    result = run_appctl(prefix, "uninstall", "--delete-library", input_text="delete\n")
+
+    assert result.returncode == 0, result.stderr
+    assert "cancelled" in result.stdout.lower()
+    assert (prefix / "bin" / "image-prompt-library.ps1").is_file()
+    assert (library / "private.txt").is_file()
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ("--delete-library", "--delete-library"),
+        ("--yes", "--yes"),
+        ("--unknown",),
+        ("--delete-library", "--unknown"),
+    ],
+)
+def test_windows_appctl_uninstall_rejects_duplicate_and_unknown_options(tmp_path: Path, arguments: tuple[str, ...]):
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_uninstall_layout(prefix, library)
+
+    result = run_appctl(prefix, "uninstall", *arguments)
+
+    assert result.returncode == 1
+    assert (prefix / "bin" / "image-prompt-library.ps1").is_file()
+    assert (library / "private.txt").is_file()
+
+
+@pytest.mark.parametrize("target_kind", ["root", "home", "overlap"])
+def test_windows_appctl_uninstall_rejects_unsafe_targets_before_mutation(tmp_path: Path, target_kind: str):
+    library = tmp_path / "library"
+    if target_kind == "root":
+        prefix = Path(tmp_path.anchor)
+    elif target_kind == "home":
+        prefix = Path(os.environ["USERPROFILE"])
+    else:
+        prefix = tmp_path / "prefix"
+        library = prefix / "library"
+        write_uninstall_layout(prefix, library)
+
+    result = run_appctl(
+        prefix,
+        "uninstall",
+        environment_overrides={"IMAGE_PROMPT_LIBRARY_PATH": str(library)},
+    )
+
+    assert result.returncode == 1
+    if target_kind == "overlap":
+        assert "must not contain each other" in result.stderr.lower()
+    else:
+        assert "uninstall" in result.stderr.lower()
+    if target_kind == "overlap":
+        assert (prefix / "bin" / "image-prompt-library.ps1").is_file()
+        assert (library / "private.txt").is_file()
+
+
+def test_windows_appctl_uninstall_removes_only_matching_user_path_entry(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_uninstall_layout(prefix, library)
+    appctl = powershell_literal(ROOT / "scripts" / "appctl.ps1")
+    unmatched = tmp_path / "other" / ".." / "other-bin"
+    original_text = f'Alpha;;"{unmatched}";bad|entry;"{prefix / "bin"}";'
+    script = f"""
+$original = [Environment]::GetEnvironmentVariable("Path", "User")
+try {{
+    [Environment]::SetEnvironmentVariable("Path", {powershell_literal(original_text)}, "User")
+    $env:IMAGE_PROMPT_LIBRARY_PREFIX = {powershell_literal(prefix)}
+    $env:IMAGE_PROMPT_LIBRARY_PATH = {powershell_literal(library)}
+    & powershell.exe -NoProfile -File {appctl} uninstall
+    $code = $LASTEXITCODE
+    $after = [Environment]::GetEnvironmentVariable("Path", "User")
+    [pscustomobject]@{{ code = $code; path = $after }} | ConvertTo-Json -Compress
+}} finally {{
+    [Environment]::SetEnvironmentVariable("Path", $original, "User")
+}}
+"""
+
+    result = run_powershell(script)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload == {"code": 0, "path": f'Alpha;;"{unmatched}";bad|entry;'}
+
+
+def test_windows_appctl_uninstall_stops_an_owned_runtime_before_removing_app(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_uninstall_layout(prefix, library)
+    appctl = powershell_literal(ROOT / "scripts" / "appctl.ps1")
+    script = f"""
+$env:IMAGE_PROMPT_LIBRARY_PREFIX = {powershell_literal(prefix)}
+$env:IMAGE_PROMPT_LIBRARY_PATH = {powershell_literal(library)}
+$child = $null
+try {{
+    $child = Start-Process -FilePath (Join-Path $PSHOME "powershell.exe") -ArgumentList @("-NoProfile", "-Command", "Start-Sleep -Seconds 120") -WindowStyle Hidden -PassThru
+    $child.Refresh()
+    $startTime = $child.StartTime.ToUniversalTime()
+    $record = [pscustomobject][ordered]@{{
+        pid = $child.Id
+        process_start_time_utc = $startTime.ToString("o")
+        process_start_time_utc_ticks = $startTime.Ticks
+        process_executable_path = $child.Path
+        version = "test"
+        app_root = {powershell_literal(prefix)}
+        host = "127.0.0.1"
+        port = 65534
+        stdout_log = {powershell_literal(prefix / "out.log")}
+        stderr_log = {powershell_literal(prefix / "err.log")}
+        created_at = [DateTime]::UtcNow.ToString("o")
+    }}
+    New-Item -ItemType Directory -Path {powershell_literal(prefix / "run")} -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path {powershell_literal(prefix / "run")} "server.json"), ($record | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+    & powershell.exe -NoProfile -File {appctl} uninstall
+    $code = $LASTEXITCODE
+    $child.Refresh()
+    [pscustomobject]@{{ code = $code; exited = $child.HasExited; app_exists = [IO.Directory]::Exists({powershell_literal(prefix)}); library_exists = [IO.Directory]::Exists({powershell_literal(library)}) }} | ConvertTo-Json -Compress
+}} finally {{
+    if ($child) {{
+        $child.Refresh()
+        if (-not $child.HasExited) {{ $child.Kill(); $child.WaitForExit(5000) | Out-Null }}
+        $child.Dispose()
+    }}
+}}
+"""
+
+    result = run_powershell(script)
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.strip().splitlines()[-1]) == {
+        "code": 0,
+        "exited": True,
+        "app_exists": False,
+        "library_exists": True,
+    }
+
+
+def test_windows_appctl_uninstall_retains_conflicting_runtime_and_targets(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_uninstall_layout(prefix, library)
+    appctl = powershell_literal(ROOT / "scripts" / "appctl.ps1")
+    script = f"""
+$env:IMAGE_PROMPT_LIBRARY_PREFIX = {powershell_literal(prefix)}
+$env:IMAGE_PROMPT_LIBRARY_PATH = {powershell_literal(library)}
+$child = $null
+try {{
+    $child = Start-Process -FilePath (Join-Path $PSHOME "powershell.exe") -ArgumentList @("-NoProfile", "-Command", "Start-Sleep -Seconds 120") -WindowStyle Hidden -PassThru
+    $child.Refresh()
+    $wrongStartTime = $child.StartTime.ToUniversalTime().AddTicks(1)
+    $record = [pscustomobject][ordered]@{{
+        pid = $child.Id
+        process_start_time_utc = $wrongStartTime.ToString("o")
+        process_start_time_utc_ticks = $wrongStartTime.Ticks
+        process_executable_path = $child.Path
+        version = "test"
+        app_root = {powershell_literal(prefix)}
+        host = "127.0.0.1"
+        port = 65534
+        stdout_log = {powershell_literal(prefix / "out.log")}
+        stderr_log = {powershell_literal(prefix / "err.log")}
+        created_at = [DateTime]::UtcNow.ToString("o")
+    }}
+    New-Item -ItemType Directory -Path {powershell_literal(prefix / "run")} -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path {powershell_literal(prefix / "run")} "server.json"), ($record | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
+    & powershell.exe -NoProfile -File {appctl} uninstall
+    $code = $LASTEXITCODE
+    $child.Refresh()
+    [pscustomobject]@{{ code = $code; child_alive = -not $child.HasExited; app_exists = [IO.Directory]::Exists({powershell_literal(prefix)}); library_exists = [IO.Directory]::Exists({powershell_literal(library)}) }} | ConvertTo-Json -Compress
+}} finally {{
+    if ($child) {{
+        $child.Refresh()
+        if (-not $child.HasExited) {{ $child.Kill(); $child.WaitForExit(5000) | Out-Null }}
+        $child.Dispose()
+    }}
+}}
+"""
+
+    result = run_powershell(script)
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.strip().splitlines()[-1]) == {
+        "code": 1,
+        "child_alive": True,
+        "app_exists": True,
+        "library_exists": True,
+    }
+
+
+def test_windows_appctl_uninstall_does_not_follow_junction(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_uninstall_layout(prefix, library)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("keep", encoding="ascii")
+    junction = prefix / "junction"
+    created = run_powershell(
+        f"New-Item -ItemType Junction -Path {powershell_literal(junction)} -Target {powershell_literal(outside)} -ErrorAction Stop | Out-Null"
+    )
+    if created.returncode != 0:
+        pytest.skip(f"Windows junction creation unavailable: {created.stderr.strip()}")
+
+    result = run_appctl(prefix, "uninstall")
+
+    assert result.returncode == 0, result.stderr
+    assert not prefix.exists()
+    assert sentinel.read_text(encoding="ascii") == "keep"
 
 
 def test_windows_appctl_stop_waits_for_lifecycle_lock(tmp_path: Path):

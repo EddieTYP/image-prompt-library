@@ -840,8 +840,186 @@ function Install-SampleData {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
+function Get-NormalizedUninstallPath {
+    param([AllowEmptyString()][string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { throw "Uninstall target paths must not be empty." }
+    try {
+        $full = [IO.Path]::GetFullPath($Path)
+        $root = [IO.Path]::GetPathRoot($full)
+    } catch {
+        throw "Uninstall target path is invalid: $Path"
+    }
+    if (-not $root) { throw "Uninstall target path is invalid: $Path" }
+    if ($full.Length -gt $root.Length) { $full = $full.TrimEnd('\') }
+    return $full
+}
+
+function Test-UninstallPathWithinOrEqual {
+    param([string]$Path, [string]$Parent)
+    $target = Get-NormalizedUninstallPath -Path $Path
+    $container = Get-NormalizedUninstallPath -Path $Parent
+    if ($target.Equals($container, [StringComparison]::OrdinalIgnoreCase)) { return $true }
+    $containerPrefix = if ($container.EndsWith('\')) { $container } else { $container + '\' }
+    return $target.StartsWith($containerPrefix, [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Assert-UninstallTargets {
+    param($Context, $Environment)
+    $prefix = Get-NormalizedUninstallPath -Path $Context.Prefix
+    $library = Get-NormalizedUninstallPath -Path $Environment.LibraryPath
+    foreach ($target in @($prefix, $library)) {
+        if ($target.Equals([IO.Path]::GetPathRoot($target), [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Uninstall target paths must not be filesystem roots."
+        }
+    }
+    $userProfile = Get-NormalizedUninstallPath -Path $env:USERPROFILE
+    foreach ($target in @($prefix, $library)) {
+        if (Test-UninstallPathWithinOrEqual -Path $userProfile -Parent $target) {
+            throw "Uninstall target paths must not contain the user profile."
+        }
+    }
+    if ((Test-UninstallPathWithinOrEqual -Path $prefix -Parent $library) -or
+        (Test-UninstallPathWithinOrEqual -Path $library -Parent $prefix)) {
+        throw "The app prefix and private library must not contain each other."
+    }
+    return [pscustomobject]@{ Prefix = $prefix; Library = $library; BinDir = Join-Path $prefix "bin" }
+}
+
+function Test-UninstallPathEntryMatch {
+    param([AllowEmptyString()][string]$Entry, [string]$NormalizedPath)
+    if ([string]::IsNullOrWhiteSpace($Entry)) { return $false }
+    $candidate = $Entry.Trim()
+    if ($candidate.Length -ge 2 -and $candidate[0] -eq '"' -and $candidate[$candidate.Length - 1] -eq '"') {
+        $candidate = $candidate.Substring(1, $candidate.Length - 2)
+    }
+    try {
+        return (Get-NormalizedUninstallPath -Path $candidate).Equals($NormalizedPath, [StringComparison]::OrdinalIgnoreCase)
+    } catch {
+        return $false
+    }
+}
+
+function Remove-UserPathEntry {
+    param([string]$BinDir)
+    $normalized = Get-NormalizedUninstallPath -Path $BinDir
+    $userPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
+    if ($null -eq $userPath) { return }
+    $kept = New-Object Collections.Generic.List[string]
+    $removed = $false
+    foreach ($entry in @($userPath -split ';')) {
+        if (Test-UninstallPathEntryMatch -Entry $entry -NormalizedPath $normalized) {
+            $removed = $true
+        } else {
+            $kept.Add($entry)
+        }
+    }
+    if ($removed) {
+        [Environment]::SetEnvironmentVariable("Path", ($kept -join ';'), [EnvironmentVariableTarget]::User)
+    }
+}
+
+function Remove-UninstallTree {
+    param([string]$Target, [string]$Root)
+    $validated = Get-NormalizedUninstallPath -Path $Target
+    if (-not (Test-UninstallPathWithinOrEqual -Path $validated -Parent $Root)) {
+        throw "Uninstall cleanup path is outside the configured target."
+    }
+    if (-not (Test-Path -LiteralPath $validated)) { return }
+    $item = Get-Item -LiteralPath $validated -Force
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        if ($item.PSIsContainer) {
+            [IO.Directory]::Delete($validated, $false)
+        } else {
+            [IO.File]::Delete($validated)
+        }
+        return
+    }
+    if ($item.PSIsContainer) {
+        foreach ($child in @(Get-ChildItem -LiteralPath $validated -Force)) {
+            Remove-UninstallTree -Target $child.FullName -Root $Root
+        }
+        [IO.Directory]::Delete($validated, $false)
+    } else {
+        [IO.File]::Delete($validated)
+    }
+}
+
+function Remove-ExactUninstallTree {
+    param([string]$Target, [string]$ExpectedTarget)
+    $validated = Get-NormalizedUninstallPath -Path $Target
+    $expected = Get-NormalizedUninstallPath -Path $ExpectedTarget
+    if (-not $validated.Equals($expected, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Uninstall cleanup target did not match the validated target."
+    }
+    Remove-UninstallTree -Target $validated -Root $expected
+}
+
+function Get-UninstallOptions {
+    param([string[]]$Arguments)
+    $deleteLibrary = $false
+    $yes = $false
+    foreach ($argument in @($Arguments)) {
+        switch -CaseSensitive ($argument) {
+            "--delete-library" {
+                if ($deleteLibrary) { throw "Uninstall option was specified more than once: --delete-library" }
+                $deleteLibrary = $true
+            }
+            "--yes" {
+                if ($yes) { throw "Uninstall option was specified more than once: --yes" }
+                $yes = $true
+            }
+            default { throw "Uninstall accepts only --delete-library and --yes." }
+        }
+    }
+    return [pscustomobject]@{ DeleteLibrary = $deleteLibrary; Yes = $yes }
+}
+
+function Set-UninstallWorkingDirectory {
+    param($Targets)
+    $systemRoot = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($env:SystemRoot))
+    if (-not $systemRoot) { throw "A safe working directory could not be determined for uninstall." }
+    foreach ($target in @($Targets.Prefix, $Targets.Library)) {
+        if (Test-UninstallPathWithinOrEqual -Path $systemRoot -Parent $target) {
+            throw "A safe working directory could not be determined for uninstall."
+        }
+    }
+    Set-Location -LiteralPath $systemRoot
+}
+
+function Invoke-Uninstall {
+    param($Context, [string[]]$Arguments)
+    $options = Get-UninstallOptions -Arguments $Arguments
+    $environment = Read-AppEnvironment -Context $Context
+    $targets = Assert-UninstallTargets -Context $Context -Environment $environment
+    if ($options.DeleteLibrary -and -not $options.Yes) {
+        $confirmation = Read-Host "Type DELETE to remove the private library"
+        if ($confirmation -cne "DELETE") {
+            Write-Output "Uninstall cancelled."
+            return
+        }
+    }
+    Stop-App -Context $Context
+    Remove-UserPathEntry -BinDir $targets.BinDir
+    if (-not $options.DeleteLibrary) {
+        Write-Output "Private library preserved at $($targets.Library)"
+    }
+    Set-UninstallWorkingDirectory -Targets $targets
+    Remove-ExactUninstallTree -Target $targets.Prefix -ExpectedTarget $targets.Prefix
+    if ($options.DeleteLibrary) {
+        try {
+            Remove-ExactUninstallTree -Target $targets.Library -ExpectedTarget $targets.Library
+        } catch {
+            Write-Output "Application removed at $($targets.Prefix)."
+            throw "Application removal succeeded, but private library removal failed: $($_.Exception.Message)"
+        }
+        Write-Output "Image Prompt Library and private library uninstalled."
+    } else {
+        Write-Output "Image Prompt Library uninstalled."
+    }
+}
+
 function Show-Usage {
-    Write-Output "Usage: image-prompt-library <version|status|doctor|start|stop|update|rollback|sample-data>"
+    Write-Output "Usage: image-prompt-library <version|status|doctor|start|stop|update|rollback|sample-data|uninstall>"
 }
 
 try {
@@ -861,6 +1039,7 @@ try {
         }
         "update" { Update-App -Context $context -Arguments $rest }
         "sample-data" { Install-SampleData -Context $context -Arguments $rest }
+        "uninstall" { Invoke-Uninstall -Context $context -Arguments $rest }
         "rollback" {
             if (@($rest).Count) { throw "Rollback does not accept arguments." }
             Rollback-App -Context $context
