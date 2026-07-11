@@ -8,8 +8,10 @@ Starting HEAD: `d63d815`
 
 Status: `PASS WITH CONCERNS`
 
-All eight final-review findings were addressed. Unrelated pre-existing SDD
-reports and QA logs were not staged or modified by this work.
+This report records the targeted fixes and verification performed for the
+review findings received to date. It does not claim that further independent
+review cannot identify additional issues. Unrelated pre-existing SDD reports
+and QA logs were not staged or modified by this work.
 
 ## Fixes
 
@@ -21,9 +23,10 @@ reports and QA logs were not staged or modified by this work.
    command under Restricted policy.
 2. Transaction serialization: install/update, start, stop, rollback, and
    uninstall share one named per-prefix mutex. Internal start/stop helpers are
-   non-reentrant. Owned runtime state must be healthy and match selected
-   version, app root, and executable. Deterministic race tests cover public
-   mutation waiting.
+   non-reentrant. A live runtime must match the selected version, app root, and
+   executable; health is required only when `start` reuses it. Update and
+   rollback can stop and recover an unhealthy but identity-owned runtime.
+   Deterministic race tests cover public mutation waiting.
 3. Rollback validation: stopped rollback validates the target `VERSION`,
    controller, expected payload, and version-local Python before pointer
    mutation. Doctor validates the previous pointer and target.
@@ -45,10 +48,29 @@ reports and QA logs were not staged or modified by this work.
    `curl` prerequisites are under Unix/WSL; interruption recovery is explicitly
    qualified as non-durable.
 
-Public-shim uninstall uses a loaded deferred helper because a Windows batch
-file cannot synchronously delete itself and still return a reliable exit code.
-The helper handshakes before return, acquires the same prefix mutex, waits for
-the controller to exit, rechecks target safety, and then removes the prefix.
+Public-shim uninstall retires the old install generation while the original
+prefix mutex is held. The active CMD bin remains only as a generation-marked
+residual until CMD exits; the helper then reacquires the same physical-prefix
+mutex and removes that residual only when its marker still matches. A
+concurrent reinstall clears the old marker while holding the mutex, so deferred
+cleanup cannot delete the new generation. Cleanup failures retain the
+tombstone and write explicit failure evidence instead of claiming completed
+deletion.
+
+## Follow-up Release-Blocker Fixes
+
+- Prefix locks and prefix/library disjointness now use final physical path
+  identity, including practical SUBST coverage. Drive roots and the user
+  profile root are rejected for either managed target.
+- Release downloads follow redirects manually, validate every next location,
+  retain bytes only after a successful validated response, and reject remote
+  UNC `file:` sources.
+- CMD uninstall/start/reinstall overlap and deferred-helper failure are covered
+  behaviorally. The 8.3 identity test skips deterministically when short names
+  are disabled on the test volume.
+- The QA note now distinguishes warning suppression and LF normalization used
+  only for disposable browser packaging setup from the later clean committed-
+  tree Restricted-policy smoke that superseded them for installer validation.
 
 ## TDD Evidence
 
@@ -60,6 +82,10 @@ the controller to exit, rechecks target safety, and then removes the prefix.
   self-deletion exit-code handling before reaching its final PASS.
 - Final strict-mode regression set: RED through the selected gate; GREEN
   `8 passed` after fileless controller-path handling was corrected.
+- Follow-up deferred-uninstall set: GREEN `3 passed in 13.45s`, covering CMD
+  self-removal, retained helper-failure evidence, and concurrent CMD
+  uninstall/start/reinstall. Final parser, selected-suite, and real-smoke gates
+  are delegated to the parent final-review run.
 
 ## Verification
 

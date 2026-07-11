@@ -98,6 +98,12 @@ healthy. This setup avoided changing committed frontend evidence and did not
 use OAuth data; the Restricted-policy installer and command handoff were
 verified separately by the native behavioral smoke.
 
+During browser-QA setup, expected warning output was temporarily suppressed and
+a disposable packager checkout was LF-normalized so local packaging could run
+on Windows. Those setup workarounds were not counted as installer validation.
+The later clean Restricted-policy behavioral smoke from the committed tree
+superseded them for installer and command-path evidence.
+
 ## Residual Risks And Pending Work
 
 - Unsigned PowerShell bootstrap remains subject to SmartScreen and local
