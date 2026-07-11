@@ -220,6 +220,16 @@ def test_windows_runtime_setup_is_local_and_never_installs_python():
     assert "Start-Process" not in script
 
 
+def test_windows_release_sources_are_ascii():
+    for relative_path in (
+        "scripts/appctl.ps1",
+        "scripts/install.ps1",
+        "scripts/install-sample-data.ps1",
+        "scripts/setup-runtime.ps1",
+    ):
+        (ROOT / relative_path).read_bytes().decode("ascii")
+
+
 def test_windows_appctl_loads_known_config_and_exposes_diagnostics():
     path = ROOT / "scripts" / "appctl.ps1"
     assert path.is_file()
