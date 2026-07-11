@@ -9,6 +9,8 @@ import shutil
 import subprocess
 import tarfile
 import time
+import warnings
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -82,6 +84,61 @@ if ($entryPoint -lt 0) {{ throw 'Controller entry point was not found.' }}
 Invoke-Expression $source.Substring(0, $entryPoint)
 {script}
 """
+    )
+
+
+def run_sample_data_installer(
+    language: str,
+    package: str,
+    app_root: Path,
+    library: Path,
+    environment: dict[str, str],
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-File",
+            str(ROOT / "scripts" / "install-sample-data.ps1"),
+            "-Language",
+            language,
+            "-Package",
+            package,
+            "-AppRoot",
+            str(app_root),
+            "-LibraryPath",
+            str(library),
+        ],
+        cwd=ROOT,
+        env={**os.environ, **environment},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+
+def write_sample_zip(path: Path, members: list[tuple[str, str]]) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with zipfile.ZipFile(path, "w") as archive:
+            for kind, name in members:
+                info = zipfile.ZipInfo(name)
+                if kind == "directory":
+                    info.external_attr = 0o40755 << 16
+                    archive.writestr(info, b"")
+                elif kind == "symlink":
+                    info.create_system = 3
+                    info.external_attr = 0o120777 << 16
+                    archive.writestr(info, "target")
+                else:
+                    archive.writestr(info, b"sample")
+
+
+def write_empty_sample_manifest(path: Path) -> None:
+    path.write_text(
+        json.dumps({"schema_version": 2, "language": "en", "collections": [], "items": []}),
+        encoding="utf-8",
     )
 
 
@@ -1470,6 +1527,129 @@ try {{ Rollback-App -Context $context }} catch {{ $failure = $_.Exception.Messag
     assert payload["current"] == "v0.9.0"
     assert payload["previous"] == "v0.9.0"
     assert payload["starts"] == ["v1.0.0|--host 127.0.0.8 --port 4678 --no-browser"]
+
+
+def test_windows_sample_data_uses_same_handle_pinned_hash_and_safe_zip_extraction():
+    path = ROOT / "scripts" / "install-sample-data.ps1"
+    assert path.is_file()
+    script = path.read_text(encoding="utf-8")
+    assert "gpt-image-2-skill" in script
+    assert "awesome-gpt-image-2" in script
+    assert "8a458f6c8c96079f40fbc46c689e7de0bd2eb464ee7f800f94f3ca60131d5035" in script
+    assert "153714b7611524d7b98b4b0452baa86c8d05053477bb670b731953e8d26a8c9c" in script
+    assert "hashlib.sha256" in script
+    assert "zipfile.ZipFile" in script
+    assert "archive.extractall" not in script
+    assert "Get-FileHash" not in script
+    assert "backend.services.import_sample_bundle" in script
+    assert '"sample-data"' in read("scripts/appctl.ps1")
+
+
+@pytest.mark.parametrize(
+    "unsafe_member",
+    [
+        ("file", "/absolute.txt"),
+        ("file", "C:/drive-qualified.txt"),
+        ("file", "//server/share/unc.txt"),
+        ("file", "../escaped.txt"),
+        ("file", "folder:stream.txt"),
+        ("file", "CON.txt"),
+        ("file", "trailing-dot."),
+        ("file", "trailing-space "),
+        ("file", "duplicate.txt"),
+        ("file", "DUPLICATE.TXT"),
+        ("file", "parent"),
+        ("file", "parent/child.txt"),
+        ("symlink", "linked.txt"),
+    ],
+)
+def test_windows_sample_data_rejects_hostile_zip_members_before_import(
+    tmp_path: Path, unsafe_member: tuple[str, str]
+):
+    zip_path = tmp_path / "hostile.zip"
+    manifest = tmp_path / "manifest.json"
+    work_dir = tmp_path / "work"
+    write_empty_sample_manifest(manifest)
+    write_sample_zip(zip_path, [unsafe_member])
+    if unsafe_member[1] in {"duplicate.txt", "DUPLICATE.TXT", "parent", "parent/child.txt"}:
+        first = "duplicate.txt" if "DUPLICATE" in unsafe_member[1].upper() else "parent"
+        write_sample_zip(zip_path, [("file", first), unsafe_member])
+    digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+
+    result = run_sample_data_installer(
+        "en",
+        "gpt-image-2-skill",
+        ROOT,
+        tmp_path / "library",
+        {
+            "SAMPLE_DATA_MANIFEST": str(manifest),
+            "SAMPLE_DATA_IMAGE_ZIP": str(zip_path),
+            "SAMPLE_DATA_IMAGE_ZIP_SHA256": digest,
+            "SAMPLE_DATA_WORK_DIR": str(work_dir),
+        },
+    )
+
+    assert result.returncode == 1, result.stderr
+    assert "refusing unsafe zip member" in result.stderr.lower()
+    assert not (tmp_path / "escaped.txt").exists()
+    assert not list(work_dir.glob(".staging-*"))
+
+
+def test_windows_sample_data_imports_a_safe_zip_and_cleans_its_staging_directory(tmp_path: Path):
+    zip_path = tmp_path / "safe.zip"
+    manifest = tmp_path / "manifest.json"
+    work_dir = tmp_path / "work"
+    library = tmp_path / "library"
+    write_empty_sample_manifest(manifest)
+    write_sample_zip(zip_path, [("directory", "images/"), ("file", "images/placeholder.txt")])
+    digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+
+    result = run_sample_data_installer(
+        "en",
+        "gpt-image-2-skill",
+        ROOT,
+        library,
+        {
+            "SAMPLE_DATA_MANIFEST": str(manifest),
+            "SAMPLE_DATA_IMAGE_ZIP": str(zip_path),
+            "SAMPLE_DATA_IMAGE_ZIP_SHA256": digest,
+            "SAMPLE_DATA_WORK_DIR": str(work_dir),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Imported 0 items and 0 images" in result.stdout
+    assert not list(work_dir.glob(".staging-*"))
+
+
+def test_windows_appctl_sample_data_invokes_current_installer_with_exact_context(tmp_path: Path):
+    prefix = tmp_path / "prefix with spaces"
+    library = tmp_path / "library with spaces"
+    current = prefix / "app" / "versions" / "v1.0.0"
+    scripts = current / "scripts"
+    scripts.mkdir(parents=True)
+    (prefix / "app" / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    prefix.mkdir(exist_ok=True)
+    (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
+    (scripts / "install-sample-data.ps1").write_text(
+        "$args | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $env:IMAGE_PROMPT_LIBRARY_PREFIX 'sample-data-args.json') -Encoding UTF8\n"
+        "$global:LASTEXITCODE = 0\n",
+        encoding="ascii",
+    )
+
+    result = run_appctl(prefix, "sample-data", "zh_hant", "awesome-gpt-image-2")
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads((prefix / "sample-data-args.json").read_text(encoding="utf-8-sig")) == [
+        "-Language",
+        "zh_hant",
+        "-Package",
+        "awesome-gpt-image-2",
+        "-AppRoot",
+        str(current),
+        "-LibraryPath",
+        str(library),
+    ]
 
 
 def test_windows_installer_pointer_failure_restores_both_and_restarts_old_runtime(tmp_path: Path):

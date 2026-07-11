@@ -820,8 +820,23 @@ function Update-App {
     if ($LASTEXITCODE -ne 0) { throw "Update failed." }
 }
 
+function Install-SampleData {
+    param($Context, [string[]]$Arguments)
+    if (@($Arguments).Count -lt 1 -or @($Arguments).Count -gt 2 -or -not $Arguments[0]) {
+        throw "Sample-data requires <en|zh_hans|zh_hant> and accepts optional [gpt-image-2-skill|awesome-gpt-image-2]."
+    }
+    $language = $Arguments[0]
+    $package = if (@($Arguments).Count -eq 2) { $Arguments[1] } else { "gpt-image-2-skill" }
+    $current = Get-CurrentVersion $Context
+    $installer = Join-Path $current.Root "scripts\install-sample-data.ps1"
+    if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "The current Image Prompt Library version is incomplete." }
+    $environment = Read-AppEnvironment -Context $Context
+    & $installer -Language $language -Package $package -AppRoot $current.Root -LibraryPath $environment.LibraryPath
+    if ($LASTEXITCODE -ne 0) { throw "Sample data installation failed." }
+}
+
 function Show-Usage {
-    Write-Output "Usage: image-prompt-library <version|status|doctor|start|stop|update|rollback>"
+    Write-Output "Usage: image-prompt-library <version|status|doctor|start|stop|update|rollback|sample-data>"
 }
 
 try {
@@ -840,6 +855,7 @@ try {
             Stop-App -Context $context
         }
         "update" { Update-App -Context $context -Arguments $rest }
+        "sample-data" { Install-SampleData -Context $context -Arguments $rest }
         "rollback" {
             if (@($rest).Count) { throw "Rollback does not accept arguments." }
             Rollback-App -Context $context
