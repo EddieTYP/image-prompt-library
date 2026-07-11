@@ -885,6 +885,17 @@ function Assert-UninstallTargets {
     return [pscustomobject]@{ Prefix = $prefix; Library = $library; BinDir = Join-Path $prefix "bin" }
 }
 
+function Assert-UninstallTargetNotReparse {
+    param([string]$Path, [string]$Name)
+    $normalized = Get-NormalizedUninstallPath -Path $Path
+    if (-not (Test-Path -LiteralPath $normalized)) { return $normalized }
+    $item = Get-Item -LiteralPath $normalized -Force
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "$Name uninstall target must not be a reparse point."
+    }
+    return $normalized
+}
+
 function Test-UninstallPathEntryMatch {
     param([AllowEmptyString()][string]$Entry, [string]$NormalizedPath)
     if ([string]::IsNullOrWhiteSpace($Entry)) { return $false }
@@ -974,23 +985,28 @@ function Get-UninstallOptions {
     return [pscustomobject]@{ DeleteLibrary = $deleteLibrary; Yes = $yes }
 }
 
-function Set-UninstallWorkingDirectory {
+function Get-UninstallWorkingDirectory {
     param($Targets)
     $systemRoot = [IO.Path]::GetPathRoot([IO.Path]::GetFullPath($env:SystemRoot))
-    if (-not $systemRoot) { throw "A safe working directory could not be determined for uninstall." }
+    if (-not $systemRoot -or -not (Test-Path -LiteralPath $systemRoot -PathType Container)) {
+        throw "A safe working directory could not be determined for uninstall."
+    }
     foreach ($target in @($Targets.Prefix, $Targets.Library)) {
         if (Test-UninstallPathWithinOrEqual -Path $systemRoot -Parent $target) {
             throw "A safe working directory could not be determined for uninstall."
         }
     }
-    Set-Location -LiteralPath $systemRoot
+    return $systemRoot
 }
 
 function Invoke-Uninstall {
     param($Context, [string[]]$Arguments)
     $options = Get-UninstallOptions -Arguments $Arguments
+    Assert-UninstallTargetNotReparse -Path $Context.Prefix -Name "App prefix" | Out-Null
     $environment = Read-AppEnvironment -Context $Context
     $targets = Assert-UninstallTargets -Context $Context -Environment $environment
+    Assert-UninstallTargetNotReparse -Path $targets.Library -Name "Private library" | Out-Null
+    $workingDirectory = Get-UninstallWorkingDirectory -Targets $targets
     if ($options.DeleteLibrary -and -not $options.Yes) {
         $confirmation = Read-Host "Type DELETE to remove the private library"
         if ($confirmation -cne "DELETE") {
@@ -998,12 +1014,13 @@ function Invoke-Uninstall {
             return
         }
     }
+    Set-Location -LiteralPath $workingDirectory
+    [Environment]::CurrentDirectory = $workingDirectory
     Stop-App -Context $Context
     Remove-UserPathEntry -BinDir $targets.BinDir
     if (-not $options.DeleteLibrary) {
         Write-Output "Private library preserved at $($targets.Library)"
     }
-    Set-UninstallWorkingDirectory -Targets $targets
     Remove-ExactUninstallTree -Target $targets.Prefix -ExpectedTarget $targets.Prefix
     if ($options.DeleteLibrary) {
         try {

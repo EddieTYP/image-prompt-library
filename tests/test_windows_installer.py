@@ -35,6 +35,7 @@ def run_appctl(
     *arguments: str,
     input_text: str | None = None,
     environment_overrides: dict[str, str] | None = None,
+    cwd: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     environment = os.environ.copy()
     environment["IMAGE_PROMPT_LIBRARY_PREFIX"] = str(prefix)
@@ -42,7 +43,7 @@ def run_appctl(
         environment.update(environment_overrides)
     return subprocess.run(
         [powershell_executable(), "-NoProfile", "-File", str(ROOT / "scripts" / "appctl.ps1"), *arguments],
-        cwd=ROOT,
+        cwd=cwd or ROOT,
         env=environment,
         input=input_text,
         capture_output=True,
@@ -474,7 +475,7 @@ def write_uninstall_layout(prefix: Path, library: Path) -> None:
     (prefix / "bin").mkdir(parents=True)
     (prefix / "bin" / "image-prompt-library.ps1").write_text("shim\n", encoding="ascii")
     (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
-    library.mkdir(parents=True)
+    library.mkdir(parents=True, exist_ok=True)
     (library / "private.txt").write_text("keep\n", encoding="ascii")
 
 
@@ -498,6 +499,18 @@ def test_windows_appctl_uninstall_deletes_private_library_after_exact_confirmati
     write_uninstall_layout(prefix, library)
 
     result = run_appctl(prefix, "uninstall", "--delete-library", input_text="DELETE\n")
+
+    assert result.returncode == 0, result.stderr
+    assert not prefix.exists()
+    assert not library.exists()
+
+
+def test_windows_appctl_uninstall_deletes_private_library_with_yes(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_uninstall_layout(prefix, library)
+
+    result = run_appctl(prefix, "uninstall", "--delete-library", "--yes")
 
     assert result.returncode == 0, result.stderr
     assert not prefix.exists()
@@ -538,17 +551,32 @@ def test_windows_appctl_uninstall_rejects_duplicate_and_unknown_options(tmp_path
     assert (library / "private.txt").is_file()
 
 
-@pytest.mark.parametrize("target_kind", ["root", "home", "overlap"])
+@pytest.mark.parametrize(
+    "target_kind",
+    ["root", "home", "equal", "prefix_contains_library", "library_contains_prefix"],
+)
 def test_windows_appctl_uninstall_rejects_unsafe_targets_before_mutation(tmp_path: Path, target_kind: str):
     library = tmp_path / "library"
     if target_kind == "root":
         prefix = Path(tmp_path.anchor)
     elif target_kind == "home":
         prefix = Path(os.environ["USERPROFILE"])
-    else:
+    elif target_kind == "equal":
+        prefix = tmp_path / "target"
+        library = prefix
+        write_uninstall_layout(prefix, library)
+    elif target_kind == "prefix_contains_library":
         prefix = tmp_path / "prefix"
         library = prefix / "library"
         write_uninstall_layout(prefix, library)
+    else:
+        library = tmp_path / "library"
+        prefix = library / "prefix"
+        write_uninstall_layout(prefix, library)
+
+    if target_kind in {"root", "home"}:
+        library.mkdir()
+        (library / "private.txt").write_text("keep\n", encoding="ascii")
 
     result = run_appctl(
         prefix,
@@ -557,13 +585,146 @@ def test_windows_appctl_uninstall_rejects_unsafe_targets_before_mutation(tmp_pat
     )
 
     assert result.returncode == 1
-    if target_kind == "overlap":
+    if target_kind not in {"root", "home"}:
         assert "must not contain each other" in result.stderr.lower()
     else:
         assert "uninstall" in result.stderr.lower()
-    if target_kind == "overlap":
+    assert (library / "private.txt").read_text(encoding="ascii") == "keep\n"
+    if target_kind not in {"root", "home"}:
         assert (prefix / "bin" / "image-prompt-library.ps1").is_file()
-        assert (library / "private.txt").is_file()
+        assert not (prefix / "run").exists()
+
+
+def test_windows_appctl_uninstall_rejects_prefix_junction_before_read_or_write(tmp_path: Path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("keep\n", encoding="ascii")
+    prefix = tmp_path / "prefix-junction"
+    created = run_powershell(
+        f"New-Item -ItemType Junction -Path {powershell_literal(prefix)} -Target {powershell_literal(outside)} -ErrorAction Stop | Out-Null"
+    )
+    if created.returncode != 0:
+        pytest.skip(f"Windows junction creation unavailable: {created.stderr.strip()}")
+    library = tmp_path / "library"
+    library.mkdir()
+    (library / "private.txt").write_text("keep\n", encoding="ascii")
+
+    result = run_appctl(
+        prefix,
+        "uninstall",
+        environment_overrides={"IMAGE_PROMPT_LIBRARY_PATH": str(library)},
+    )
+
+    assert result.returncode == 1
+    assert "reparse" in result.stderr.lower()
+    assert prefix.exists()
+    assert sentinel.read_text(encoding="ascii") == "keep\n"
+    assert not (outside / "run").exists()
+    assert (library / "private.txt").is_file()
+
+
+def test_windows_appctl_uninstall_rejects_library_junction_before_mutation(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    (prefix / "bin").mkdir(parents=True)
+    shim = prefix / "bin" / "image-prompt-library.ps1"
+    shim.write_text("shim\n", encoding="ascii")
+    outside = tmp_path / "outside-library"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("keep\n", encoding="ascii")
+    library = tmp_path / "library-junction"
+    created = run_powershell(
+        f"New-Item -ItemType Junction -Path {powershell_literal(library)} -Target {powershell_literal(outside)} -ErrorAction Stop | Out-Null"
+    )
+    if created.returncode != 0:
+        pytest.skip(f"Windows junction creation unavailable: {created.stderr.strip()}")
+    (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
+
+    result = run_appctl(prefix, "uninstall", "--delete-library", "--yes")
+
+    assert result.returncode == 1
+    assert "reparse" in result.stderr.lower()
+    assert shim.read_text(encoding="ascii") == "shim\n"
+    assert not (prefix / "run").exists()
+    assert library.exists()
+    assert sentinel.read_text(encoding="ascii") == "keep\n"
+
+
+def test_windows_appctl_uninstall_safe_working_directory_failure_is_nonmutating(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_uninstall_layout(prefix, library)
+    appctl = powershell_literal(ROOT / "scripts" / "appctl.ps1")
+    original_text = f"Keep;{prefix / 'bin'};Tail"
+    path_state = tmp_path / "path-state.txt"
+    script = f"""
+$original = [Environment]::GetEnvironmentVariable("Path", "User")
+try {{
+    [Environment]::SetEnvironmentVariable("Path", {powershell_literal(original_text)}, "User")
+    $env:IMAGE_PROMPT_LIBRARY_PREFIX = {powershell_literal(prefix)}
+    $env:IMAGE_PROMPT_LIBRARY_PATH = {powershell_literal(library)}
+    $env:SystemRoot = "Z:\\missing-system-root"
+    & {appctl} uninstall
+}} finally {{
+    $after = [Environment]::GetEnvironmentVariable("Path", "User")
+    [IO.File]::WriteAllText({powershell_literal(path_state)}, $after, [Text.Encoding]::UTF8)
+    [Environment]::SetEnvironmentVariable("Path", $original, "User")
+}}
+"""
+
+    result = run_powershell(script)
+
+    assert result.returncode == 1
+    assert path_state.read_text(encoding="utf-8-sig") == original_text
+    assert not (prefix / "run").exists()
+    assert (prefix / "bin" / "image-prompt-library.ps1").is_file()
+    assert (library / "private.txt").is_file()
+
+
+def test_windows_appctl_uninstall_reports_partial_library_delete_failure(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_uninstall_layout(prefix, library)
+    appctl = powershell_literal(ROOT / "scripts" / "appctl.ps1")
+    script = f"""
+$env:IMAGE_PROMPT_LIBRARY_PREFIX = {powershell_literal(prefix)}
+$env:IMAGE_PROMPT_LIBRARY_PATH = {powershell_literal(library)}
+$lock = [IO.File]::Open({powershell_literal(library / "private.txt")}, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+try {{
+    & powershell.exe -NoProfile -File {appctl} uninstall --delete-library --yes
+    $code = $LASTEXITCODE
+    [pscustomobject]@{{ code = $code; app_exists = [IO.Directory]::Exists({powershell_literal(prefix)}); library_exists = [IO.Directory]::Exists({powershell_literal(library)}); private_exists = [IO.File]::Exists({powershell_literal(library / "private.txt")}) }} | ConvertTo-Json -Compress
+}} finally {{
+    $lock.Dispose()
+}}
+"""
+
+    result = run_powershell(script)
+
+    assert result.returncode == 0
+    assert json.loads(result.stdout.strip().splitlines()[-1]) == {
+        "code": 1,
+        "app_exists": False,
+        "library_exists": True,
+        "private_exists": True,
+    }
+    assert f"Application removed at {prefix.resolve()}." in result.stdout
+    assert "application removal succeeded, but private library removal failed" in result.stderr.lower()
+
+
+def test_windows_appctl_uninstall_works_when_invoked_inside_prefix(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_uninstall_layout(prefix, library)
+    working_directory = prefix / "app" / "nested"
+    working_directory.mkdir(parents=True)
+
+    result = run_appctl(prefix, "uninstall", cwd=working_directory)
+
+    assert result.returncode == 0, result.stderr
+    assert not prefix.exists()
+    assert (library / "private.txt").is_file()
 
 
 def test_windows_appctl_uninstall_removes_only_matching_user_path_entry(tmp_path: Path):
