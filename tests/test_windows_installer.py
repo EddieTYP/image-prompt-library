@@ -387,6 +387,28 @@ def write_empty_sample_manifest(path: Path) -> None:
     )
 
 
+@pytest.fixture(scope="module")
+def sample_data_app_root(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    app_root = tmp_path_factory.mktemp("sample-data-app")
+    created = subprocess.run(
+        [sys.executable, "-m", "venv", "--without-pip", str(app_root / ".venv")],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    assert created.returncode == 0, created.stdout + created.stderr
+    import_paths = list(
+        dict.fromkeys(
+            [str(ROOT), *(path for path in sys.path if path and Path(path).is_dir())]
+        )
+    )
+    (app_root / ".venv" / "Lib" / "site-packages" / "test-runtime.pth").write_text(
+        "\n".join(import_paths) + "\n", encoding="utf-8"
+    )
+    return app_root
+
+
 def write_sample_data_appctl_install(prefix: Path, library: Path, child_script: str) -> Path:
     current = prefix / "app" / "versions" / "v1.0.0"
     scripts = current / "scripts"
@@ -3626,8 +3648,9 @@ def test_windows_sample_data_uses_same_handle_pinned_hash_and_safe_zip_extractio
         ("fifo", "special-unix-entry"),
     ],
 )
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows PowerShell")
 def test_windows_sample_data_rejects_hostile_zip_members_before_import(
-    tmp_path: Path, unsafe_member: tuple[str, str]
+    tmp_path: Path, sample_data_app_root: Path, unsafe_member: tuple[str, str]
 ):
     zip_path = tmp_path / "hostile.zip"
     manifest = tmp_path / "manifest.json"
@@ -3641,7 +3664,7 @@ def test_windows_sample_data_rejects_hostile_zip_members_before_import(
     result = run_sample_data_installer(
         "en",
         "gpt-image-2-skill",
-        ROOT,
+        sample_data_app_root,
         tmp_path / "library",
         {
             "SAMPLE_DATA_MANIFEST": str(manifest),
@@ -3664,8 +3687,9 @@ def test_windows_sample_data_rejects_hostile_zip_members_before_import(
         [("file", "parent/child.txt"), ("file", "parent")],
     ],
 )
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows PowerShell")
 def test_windows_sample_data_rejects_file_directory_collisions_in_both_orders(
-    tmp_path: Path, members: list[tuple[str, str]]
+    tmp_path: Path, sample_data_app_root: Path, members: list[tuple[str, str]]
 ):
     zip_path = tmp_path / "collision.zip"
     manifest = tmp_path / "manifest.json"
@@ -3676,7 +3700,7 @@ def test_windows_sample_data_rejects_file_directory_collisions_in_both_orders(
     result = run_sample_data_installer(
         "en",
         "gpt-image-2-skill",
-        ROOT,
+        sample_data_app_root,
         tmp_path / "library",
         {
             "SAMPLE_DATA_MANIFEST": str(manifest),
@@ -3691,7 +3715,10 @@ def test_windows_sample_data_rejects_file_directory_collisions_in_both_orders(
     assert not list(work_dir.glob(".staging-*"))
 
 
-def test_windows_sample_data_accepts_safe_backslash_member_paths(tmp_path: Path):
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows PowerShell")
+def test_windows_sample_data_accepts_safe_backslash_member_paths(
+    tmp_path: Path, sample_data_app_root: Path
+):
     zip_path = tmp_path / "backslash.zip"
     manifest = tmp_path / "manifest.json"
     work_dir = tmp_path / "work"
@@ -3701,7 +3728,7 @@ def test_windows_sample_data_accepts_safe_backslash_member_paths(tmp_path: Path)
     result = run_sample_data_installer(
         "en",
         "gpt-image-2-skill",
-        ROOT,
+        sample_data_app_root,
         tmp_path / "library",
         {
             "SAMPLE_DATA_MANIFEST": str(manifest),
@@ -3738,7 +3765,10 @@ try {{ Invoke-DownloadWithRetry -Uri 'https://example.invalid/sample.zip' -Desti
     assert "failed after 3 attempts" in payload["failure"].lower()
 
 
-def test_windows_sample_data_imports_a_safe_zip_and_cleans_its_staging_directory(tmp_path: Path):
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows PowerShell")
+def test_windows_sample_data_imports_a_safe_zip_and_cleans_its_staging_directory(
+    tmp_path: Path, sample_data_app_root: Path
+):
     zip_path = tmp_path / "safe.zip"
     manifest = tmp_path / "manifest.json"
     work_dir = tmp_path / "work"
@@ -3750,7 +3780,7 @@ def test_windows_sample_data_imports_a_safe_zip_and_cleans_its_staging_directory
     result = run_sample_data_installer(
         "en",
         "gpt-image-2-skill",
-        ROOT,
+        sample_data_app_root,
         library,
         {
             "SAMPLE_DATA_MANIFEST": str(manifest),
