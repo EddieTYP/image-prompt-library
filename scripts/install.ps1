@@ -594,6 +594,7 @@ $controller = [IO.Path]::GetFullPath((Join-Path $versionsRoot "$version\scripts\
 $versionsPrefix = if ($versionsRoot.EndsWith('\')) { $versionsRoot } else { $versionsRoot + '\' }
 if (-not $controller.StartsWith($versionsPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw "The current version pointer is invalid." }
 if (-not (Test-Path -LiteralPath $controller -PathType Leaf)) { throw "The current Image Prompt Library version is incomplete." }
+$global:LASTEXITCODE = 0
 & $controller @CommandArgs
 $code = $LASTEXITCODE
 if ($null -eq $code) { $code = 0 }
