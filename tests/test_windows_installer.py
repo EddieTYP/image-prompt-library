@@ -2760,7 +2760,26 @@ def test_windows_cmd_uninstall_retires_old_generation_before_concurrent_start_an
     release_dir = tmp_path / "release"
     scripts = prefix / "app" / "versions" / "v0.9.0" / "scripts"
     scripts.mkdir(parents=True)
-    shutil.copyfile(ROOT / "scripts" / "appctl.ps1", scripts / "appctl.ps1")
+    controller_path = scripts / "appctl.ps1"
+    controller = read("scripts/appctl.ps1")
+    controller = controller.replace(
+        "function Enter-PrefixTransactionLock {\n    param($Context)\n",
+        "function Enter-PrefixTransactionLock {\n"
+        "    param($Context)\n"
+        "    if ($env:IMAGE_PROMPT_LIBRARY_TEST_LOCK_SIGNAL) {\n"
+        "        [IO.File]::WriteAllText($env:IMAGE_PROMPT_LIBRARY_TEST_LOCK_SIGNAL, 'ready', [Text.Encoding]::ASCII)\n"
+        "    }\n",
+        1,
+    ).replace(
+        "    return $mutex\n}\n\nfunction Exit-PrefixTransactionLock",
+        "    if ($env:IMAGE_PROMPT_LIBRARY_TEST_LOCK_HELD_SIGNAL) {\n"
+        "        [IO.File]::WriteAllText($env:IMAGE_PROMPT_LIBRARY_TEST_LOCK_HELD_SIGNAL, 'ready', [Text.Encoding]::ASCII)\n"
+        "        Start-Sleep -Milliseconds ([int]$env:IMAGE_PROMPT_LIBRARY_TEST_LOCK_HOLD_MS)\n"
+        "    }\n"
+        "    return $mutex\n}\n\nfunction Exit-PrefixTransactionLock",
+        1,
+    )
+    controller_path.write_text(controller, encoding="ascii")
     (prefix / "app" / "current-version").write_text("v0.9.0\n", encoding="ascii")
     library.mkdir()
     (library / "sentinel.txt").write_text("keep\n", encoding="ascii")
@@ -2774,6 +2793,11 @@ def test_windows_cmd_uninstall_retires_old_generation_before_concurrent_start_an
     write_test_release(release_dir)
     environment = os.environ.copy()
     environment["PATH"] = str(prefix / "bin") + os.pathsep + environment["PATH"]
+    uninstall_lock_signal = tmp_path / "uninstall-holds-lock"
+    environment["IMAGE_PROMPT_LIBRARY_TEST_LOCK_HELD_SIGNAL"] = str(
+        uninstall_lock_signal
+    )
+    environment["IMAGE_PROMPT_LIBRARY_TEST_LOCK_HOLD_MS"] = "5000"
     uninstall = subprocess.Popen(
         [
             powershell_executable(),
@@ -2789,14 +2813,17 @@ def test_windows_cmd_uninstall_retires_old_generation_before_concurrent_start_an
         stderr=subprocess.PIPE,
         text=True,
     )
-    marker = prefix / "bin" / ".retired-generation"
     deadline = time.monotonic() + 10
-    while not marker.exists() and time.monotonic() < deadline:
+    while not uninstall_lock_signal.exists() and time.monotonic() < deadline:
         time.sleep(0.005)
-    assert marker.exists(), "CMD uninstall did not publish its retired-generation marker"
-    assert not (prefix / "app").exists(), "CMD uninstall did not retire the old generation"
-    assert uninstall.poll() is None, "retirement was not observable before helper handoff returned"
+    assert uninstall_lock_signal.exists(), "uninstall did not acquire the transaction lock"
+    assert uninstall.poll() is None, "uninstall exited before the overlap barrier"
 
+    stale_signal = tmp_path / "stale-start-at-lock"
+    stale_environment = environment.copy()
+    stale_environment.pop("IMAGE_PROMPT_LIBRARY_TEST_LOCK_HELD_SIGNAL")
+    stale_environment.pop("IMAGE_PROMPT_LIBRARY_TEST_LOCK_HOLD_MS")
+    stale_environment["IMAGE_PROMPT_LIBRARY_TEST_LOCK_SIGNAL"] = str(stale_signal)
     stale_start = subprocess.Popen(
         [
             powershell_executable(),
@@ -2807,17 +2834,31 @@ def test_windows_cmd_uninstall_retires_old_generation_before_concurrent_start_an
             "image-prompt-library start --no-browser",
         ],
         cwd=ROOT,
-        env=environment,
+        env=stale_environment,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
+    install_signal = tmp_path / "reinstall-at-lock"
+    instrumented_installer = tmp_path / "install.ps1"
+    installer = read("scripts/install.ps1").replace(
+        "function Enter-InstallLock {\n    param([string]$AppPrefix)\n",
+        "function Enter-InstallLock {\n"
+        "    param([string]$AppPrefix)\n"
+        "    if ($env:IMAGE_PROMPT_LIBRARY_TEST_LOCK_SIGNAL) {\n"
+        "        [IO.File]::WriteAllText($env:IMAGE_PROMPT_LIBRARY_TEST_LOCK_SIGNAL, 'ready', [Text.Encoding]::ASCII)\n"
+        "    }\n",
+        1,
+    )
+    instrumented_installer.write_text(installer, encoding="ascii")
+    reinstall_environment = os.environ.copy()
+    reinstall_environment["IMAGE_PROMPT_LIBRARY_TEST_LOCK_SIGNAL"] = str(install_signal)
     reinstall_process = subprocess.Popen(
         [
             powershell_executable(),
             "-NoProfile",
             "-File",
-            str(ROOT / "scripts" / "install.ps1"),
+            str(instrumented_installer),
             "-Version",
             "v1.2.3",
             "-Prefix",
@@ -2832,10 +2873,26 @@ def test_windows_cmd_uninstall_retires_old_generation_before_concurrent_start_an
             "-SkipPath",
         ],
         cwd=ROOT,
+        env=reinstall_environment,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
+    deadline = time.monotonic() + 4
+    while (
+        (not stale_signal.exists() or not install_signal.exists())
+        and time.monotonic() < deadline
+    ):
+        time.sleep(0.005)
+    assert stale_signal.exists(), "stale start did not reach the held transaction lock"
+    assert install_signal.exists(), "reinstall did not reach the held transaction lock"
+    assert uninstall.poll() is None, "uninstall released its lock before both contenders arrived"
+    marker = prefix / "bin" / ".retired-generation"
+    deadline = time.monotonic() + 10
+    while not marker.exists() and time.monotonic() < deadline:
+        time.sleep(0.005)
+    assert marker.exists(), "CMD uninstall did not publish its retired-generation marker"
+    assert not (prefix / "app").exists(), "CMD uninstall did not retire the old generation"
     stale_stdout, stale_stderr = stale_start.communicate(timeout=30)
     reinstall_stdout, reinstall_stderr = reinstall_process.communicate(timeout=30)
     stdout, stderr = uninstall.communicate(timeout=30)
