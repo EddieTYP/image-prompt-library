@@ -733,6 +733,7 @@ def test_windows_installer_rolls_back_late_publication_and_start_failure(tmp_pat
     library = tmp_path / "library"
     old_target = prefix / "app" / "versions" / "v1.0.0"
     old_target.mkdir(parents=True)
+    write_running_test_controller(old_target)
     (old_target / "keep.txt").write_text("old runtime", encoding="ascii")
     app = prefix / "app"
     (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
@@ -761,12 +762,13 @@ def test_windows_installer_rolls_back_late_publication_and_start_failure(tmp_pat
 
 def test_windows_installer_restores_published_state_when_target_cleanup_fails(tmp_path: Path):
     release_dir = tmp_path / "release"
-    write_test_release(release_dir, locked_start_failure=True)
+    write_test_release(release_dir, locked_start_failure=True, lock_backup_during_setup=True)
     prefix = tmp_path / "prefix"
     library = tmp_path / "library"
     app = prefix / "app"
     old_target = app / "versions" / "v1.0.0"
     old_target.mkdir(parents=True)
+    write_running_test_controller(old_target)
     (old_target / "keep.txt").write_text("old runtime", encoding="ascii")
     (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
     (app / "previous-version").write_text("v0.9.0\n", encoding="ascii")
@@ -775,6 +777,9 @@ def test_windows_installer_restores_published_state_when_target_cleanup_fails(tm
     (prefix / "bin").mkdir()
     (prefix / "bin" / "image-prompt-library.ps1").write_text("old ps1\n", encoding="ascii")
     (prefix / "bin" / "image-prompt-library.cmd").write_text("old cmd\n", encoding="ascii")
+    replaced_target = app / "versions" / "v1.2.3"
+    replaced_target.mkdir()
+    (replaced_target / "locked.txt").write_text("locked old target", encoding="ascii")
 
     result = run_installer(release_dir, prefix, library, no_start=False)
 
@@ -798,6 +803,9 @@ def test_windows_installer_does_not_rollback_after_backup_cleanup_failure(tmp_pa
     replaced_target.mkdir(parents=True)
     locked_file = replaced_target / "locked.txt"
     locked_file.write_text("locked old target", encoding="ascii")
+    old_target = app / "versions" / "v1.0.0"
+    old_target.mkdir()
+    write_stopped_test_controller(old_target)
     (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
     result = run_installer(release_dir, prefix, library)
 
@@ -975,6 +983,26 @@ def write_test_release(
     )
     (release_dir / f"{artifact_name}.sha256").write_text(
         f"{checksum_sha or calculated_sha}  {artifact_name}\n", encoding="ascii"
+    )
+
+
+def write_stopped_test_controller(version_root: Path) -> None:
+    controller = version_root / "scripts" / "appctl.ps1"
+    controller.parent.mkdir(exist_ok=True)
+    controller.write_text(
+        "if ($args -contains 'internal-owned-runtime') { Write-Output '{\"running\":false,\"host\":null,\"port\":null}'; exit 0 }\n"
+        "Write-Output ($args -join ' ')\n",
+        encoding="ascii",
+    )
+
+
+def write_running_test_controller(version_root: Path) -> None:
+    controller = version_root / "scripts" / "appctl.ps1"
+    controller.parent.mkdir(exist_ok=True)
+    controller.write_text(
+        "if ($args -contains 'internal-owned-runtime') { Write-Output '{\"running\":true,\"host\":\"127.0.0.1\",\"port\":8000}'; exit 0 }\n"
+        "Write-Output ($args -join ' ')\n",
+        encoding="ascii",
     )
 
 
@@ -1236,3 +1264,19 @@ Write-Output 'INTERACTIVE-SHELL-RETAINED'
     assert piped.returncode == 0
     assert "INTERACTIVE-SHELL-RETAINED" in piped.stdout
     assert "must not contain each other" in piped.stderr.lower()
+
+
+def test_windows_update_and_rollback_are_transactional():
+    installer = read("scripts/install.ps1")
+    appctl = read("scripts/appctl.ps1")
+    assert "Get-CurrentPointerState" in installer
+    assert "Restore-PointerState" in installer
+    assert "Invoke-Controller" in installer
+    assert "Automatic recovery restored" in installer
+    assert "--no-browser" in installer
+    assert "function Get-OwnedRuntimeState" in appctl
+    assert '"internal-owned-runtime"' in appctl
+    assert "function Switch-VersionTransactional" in appctl
+    assert '"update"' in appctl
+    assert '"rollback"' in appctl
+    assert "No previous version is available for rollback." in appctl

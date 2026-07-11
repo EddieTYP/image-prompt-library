@@ -204,6 +204,28 @@ function Get-OwnedProcess {
     return $lease
 }
 
+function Get-OwnedRuntimeState {
+    param($Context)
+    $record = Read-ServerRecord -Context $Context
+    if (-not $record) {
+        return [pscustomobject]@{ running = $false; host = $null; port = $null }
+    }
+    $lease = Get-OwnedProcess $record
+    if (-not $lease) {
+        $recordedProcess = Get-RecordedProcess $record
+        if ($recordedProcess) {
+            $recordedProcess.Dispose()
+            throw "The recorded PID belongs to a different process; refusing lifecycle changes."
+        }
+        return [pscustomobject]@{ running = $false; host = $null; port = $null }
+    }
+    try {
+        return [pscustomobject]@{ running = $true; host = [string]$record.host; port = [int]$record.port }
+    } finally {
+        Close-ProcessLease -Lease $lease
+    }
+}
+
 function New-ProcessLease {
     param($Process)
     $safeHandle = $null
@@ -654,8 +676,94 @@ function Stop-App {
     }
 }
 
+function Write-VersionPointerAtomic {
+    param([string]$Path, [AllowEmptyString()][string]$Value)
+    if (-not $Value) {
+        if (Test-Path -LiteralPath $Path) {
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Cannot remove non-file version pointer: $Path" }
+            [IO.File]::Delete($Path)
+        }
+        return
+    }
+    $directory = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Path))
+    New-Item -ItemType Directory -Force -Path $directory | Out-Null
+    $temporary = Join-Path $directory ('.' + [IO.Path]::GetFileName($Path) + '.' + [Guid]::NewGuid().ToString('N') + '.tmp')
+    $backup = $temporary + '.bak'
+    try {
+        [IO.File]::WriteAllBytes($temporary, [Text.Encoding]::ASCII.GetBytes($Value + [Environment]::NewLine))
+        if (Test-Path -LiteralPath $Path) {
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Cannot atomically replace non-file $Path." }
+            [IO.File]::Replace($temporary, $Path, $backup)
+        } else {
+            [IO.File]::Move($temporary, $Path)
+        }
+    } finally {
+        if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }
+        if ([IO.File]::Exists($backup)) { [IO.File]::Delete($backup) }
+    }
+}
+
+function Switch-VersionTransactional {
+    param($Context, [string]$TargetVersion)
+    $current = Get-CurrentVersion $Context
+    if (-not $TargetVersion -or $TargetVersion -in @('.', '..') -or $TargetVersion -match '[\\/]') {
+        throw "The previous version pointer is invalid."
+    }
+    $versionsRoot = [IO.Path]::GetFullPath((Join-Path $Context.AppDir "versions"))
+    $targetRoot = [IO.Path]::GetFullPath((Join-Path $versionsRoot $TargetVersion))
+    if (-not $targetRoot.StartsWith($versionsRoot + "\\", [StringComparison]::OrdinalIgnoreCase)) {
+        throw "The previous version pointer is invalid."
+    }
+    if (-not (Test-Path -LiteralPath $targetRoot -PathType Container)) { throw "Previous version directory is missing: $targetRoot" }
+    $runtime = Get-OwnedRuntimeState -Context $Context
+    if ($runtime.running) { Stop-App -Context $Context }
+    Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "current-version") -Value $TargetVersion
+    Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "previous-version") -Value $current.Version
+    if ($runtime.running) {
+        $restartArgs = @("--host", $runtime.host, "--port", [string]$runtime.port, "--no-browser")
+        try {
+            Start-App -Context $Context -Arguments $restartArgs
+        } catch {
+            Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "current-version") -Value $current.Version
+            Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "previous-version") -Value $TargetVersion
+            Start-App -Context $Context -Arguments $restartArgs
+            throw "Rollback target failed health checks; restored $($current.Version)."
+        }
+    }
+}
+
+function Rollback-App {
+    param($Context)
+    $pointer = Join-Path $Context.AppDir "previous-version"
+    if (-not (Test-Path -LiteralPath $pointer -PathType Leaf)) { throw "No previous version is available for rollback." }
+    $previous = (Get-Content -LiteralPath $pointer -Raw).Trim()
+    if (-not $previous) { throw "No previous version is available for rollback." }
+    Switch-VersionTransactional -Context $Context -TargetVersion $previous
+}
+
+function Update-App {
+    param($Context, [string[]]$Arguments)
+    $version = "latest"
+    if (@($Arguments).Count) {
+        if (@($Arguments).Count -ne 2 -or $Arguments[0] -ne "--version" -or -not $Arguments[1]) {
+            throw "Update accepts only optional --version <tag>."
+        }
+        $version = $Arguments[1]
+    }
+    $current = Get-CurrentVersion $Context
+    $installer = Join-Path $current.Root "scripts\install.ps1"
+    if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "The current Image Prompt Library version is incomplete." }
+    $environment = Read-AppEnvironment -Context $Context
+    $installArgs = @("-Version", $version, "-Prefix", $Context.Prefix, "-LibraryPath", $environment.LibraryPath)
+    if ($env:IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL) {
+        $installArgs += @("-ReleaseBaseUrl", $env:IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL)
+    }
+    & $installer @installArgs
+    if ($LASTEXITCODE -ne 0) { throw "Update failed." }
+}
+
 function Show-Usage {
-    Write-Output "Usage: image-prompt-library <version|status|doctor|start|stop>"
+    Write-Output "Usage: image-prompt-library <version|status|doctor|start|stop|update|rollback>"
 }
 
 try {
@@ -673,6 +781,12 @@ try {
             if (@($rest).Count) { throw "Stop does not accept arguments." }
             Stop-App -Context $context
         }
+        "update" { Update-App -Context $context -Arguments $rest }
+        "rollback" {
+            if (@($rest).Count) { throw "Rollback does not accept arguments." }
+            Rollback-App -Context $context
+        }
+        "internal-owned-runtime" { Get-OwnedRuntimeState -Context $context | ConvertTo-Json -Compress }
         "help" { Show-Usage }
         default { [Console]::Error.WriteLine("Unknown command: $command"); Show-Usage; exit 2 }
     }

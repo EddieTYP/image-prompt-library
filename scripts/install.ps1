@@ -479,6 +479,33 @@ function Write-VersionPointer {
     Publish-AtomicText -Path $Path -Value $Value
 }
 
+function Get-CurrentPointerState {
+    param([string]$AppDir)
+    $currentPath = Join-Path $AppDir "current-version"
+    $previousPath = Join-Path $AppDir "previous-version"
+    $current = if (Test-Path -LiteralPath $currentPath -PathType Leaf) { (Get-Content -LiteralPath $currentPath -Raw).Trim() } else { "" }
+    $previous = if (Test-Path -LiteralPath $previousPath -PathType Leaf) { (Get-Content -LiteralPath $previousPath -Raw).Trim() } else { "" }
+    foreach ($value in @($current, $previous)) {
+        if ($value -and -not (Test-VersionToken -Value $value)) { throw "A version pointer is invalid." }
+    }
+    return [pscustomobject]@{ Current = $current; Previous = $previous }
+}
+
+function Restore-PointerState {
+    param([string]$AppDir, $State, [string]$AppPrefix)
+    Write-VersionPointer -Path (Join-Path $AppDir "current-version") -Value $State.Current -AppPrefix $AppPrefix
+    Write-VersionPointer -Path (Join-Path $AppDir "previous-version") -Value $State.Previous -AppPrefix $AppPrefix
+}
+
+function Invoke-Controller {
+    param([string]$VersionRoot, [string[]]$Arguments)
+    $controller = Join-Path $VersionRoot "scripts\appctl.ps1"
+    if (-not (Test-Path -LiteralPath $controller -PathType Leaf)) { throw "The current Image Prompt Library version is incomplete." }
+    $processArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $controller) + $Arguments
+    $output = & powershell.exe @processArgs 2>&1
+    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = @($output) }
+}
+
 function Write-CommandShim {
     param([string]$BinPath)
     if (-not (Test-Path -LiteralPath $BinPath -PathType Container)) {
@@ -581,6 +608,7 @@ function Invoke-Install {
     $targetPublished = $false
     $installCommitted = $false
     $stateCaptured = $false
+    $oldPointerState = $null
     $oldUserPath = $null
     $oldProcessPath = $env:Path
     try {
@@ -653,10 +681,56 @@ function Invoke-Install {
         Write-CommandShim -BinPath $binPath
         if (-not $SkipPath) { Add-UserPathEntry -BinPath $binPath }
         if ($targetPublished -and $currentVersion -ne $release.Version) {
-            Write-VersionPointer -Path $previousPointer -Value $currentVersion -AppPrefix $normalizedPrefix
+            $oldPointerState = Get-CurrentPointerState -AppDir $appPath
+            $oldRuntime = [pscustomobject]@{ running = $false; host = $null; port = $null }
+            $oldVersionRoot = $null
+            if ($oldPointerState.Current) {
+                $oldVersionRoot = Join-Path $versionsPath $oldPointerState.Current
+                $runtimeResult = Invoke-Controller -VersionRoot $oldVersionRoot -Arguments @("internal-owned-runtime")
+                if ($runtimeResult.ExitCode -ne 0) {
+                    throw "Could not determine whether the current version is running: $($runtimeResult.Output -join [Environment]::NewLine)"
+                }
+                try {
+                    $oldRuntime = ($runtimeResult.Output -join [Environment]::NewLine) | ConvertFrom-Json
+                    if ($null -eq $oldRuntime.running -or ($oldRuntime.running -and ($null -eq $oldRuntime.host -or $null -eq $oldRuntime.port))) {
+                        throw "invalid runtime state"
+                    }
+                } catch {
+                    throw "The current version returned an invalid runtime state."
+                }
+                if ($oldRuntime.running) {
+                    $stopResult = Invoke-Controller -VersionRoot $oldVersionRoot -Arguments @("stop")
+                    if ($stopResult.ExitCode -ne 0) {
+                        throw "Could not stop the current version before updating: $($stopResult.Output -join [Environment]::NewLine)"
+                    }
+                    Write-Output $stopResult.Output
+                }
+            }
+            Write-VersionPointer -Path $previousPointer -Value $oldPointerState.Current -AppPrefix $normalizedPrefix
             Write-VersionPointer -Path $currentPointer -Value $release.Version -AppPrefix $normalizedPrefix
+            if ($oldPointerState.Current -and $oldRuntime.running -and -not $NoStart) {
+                $restartArguments = @("start", "--host", [string]$oldRuntime.host, "--port", [string]$oldRuntime.port, "--no-browser")
+                $targetStartResult = Invoke-Controller -VersionRoot $finalTarget -Arguments $restartArguments
+                if ($targetStartResult.ExitCode -eq 0) {
+                    Write-Output $targetStartResult.Output
+                } else {
+                    $targetStopResult = Invoke-Controller -VersionRoot $finalTarget -Arguments @("stop")
+                    Restore-PointerState -AppDir $appPath -State $oldPointerState -AppPrefix $normalizedPrefix
+                    $recoveryResult = Invoke-Controller -VersionRoot $oldVersionRoot -Arguments $restartArguments
+                    Write-Output "Automatic recovery restored $($oldPointerState.Current)."
+                    $currentLogs = Join-Path $normalizedPrefix "logs\app.out.log"
+                    $previousLogs = Join-Path $normalizedPrefix "logs\app.previous.out.log"
+                    if ($recoveryResult.ExitCode -eq 0) {
+                        Write-Output $recoveryResult.Output
+                        throw "Update failed after target start failure. Current logs: $currentLogs. Previous logs: $previousLogs."
+                    }
+                    throw "Update failed; pointers were restored but manual recovery is required. Target controller output: $($targetStartResult.Output -join [Environment]::NewLine) Target stop output: $($targetStopResult.Output -join [Environment]::NewLine) Previous controller output: $($recoveryResult.Output -join [Environment]::NewLine) Current logs: $currentLogs. Previous logs: $previousLogs."
+                }
+            }
         }
-        Start-InstalledVersion -VersionRoot $finalTarget
+        if (-not ($targetPublished -and $currentVersion -ne $release.Version -and $oldPointerState -and $oldPointerState.Current)) {
+            Start-InstalledVersion -VersionRoot $finalTarget
+        }
         $installCommitted = $true
         if ($backupCreated -and (Test-Path -LiteralPath $backupTarget)) {
             try {
