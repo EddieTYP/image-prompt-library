@@ -292,9 +292,8 @@ def test_public_repo_hygiene_files_exist():
     assert "Local-first" in contributing
     assert "Run tests" in contributing
     assert "Current stable direction" in roadmap
-    assert "Historical public-alpha checklist" in roadmap
-    assert "commercial licenses" in roadmap.lower()
-    assert "runtime data" in roadmap
+    assert "commercial licensing" in roadmap.lower()
+    assert "provider state" in roadmap
     assert "Reporting a vulnerability" in security
     assert "127.0.0.1" in security
     assert "do not expose the app directly to the public internet" in security

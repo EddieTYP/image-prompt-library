@@ -278,7 +278,7 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     assert "backend/" in listing
     assert "frontend/dist/index.html" in listing
     with tarfile.open(tarball_path, "r:gz") as archive:
-        index_html = archive.extractfile("./frontend/dist/index.html").read().decode("utf-8")
+        index_html = archive.extractfile("frontend/dist/index.html").read().decode("utf-8")
     assert '/image-prompt-library/assets/' not in index_html
     assert '/assets/' in index_html
     assert "frontend/dist/assets/" in listing
