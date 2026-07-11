@@ -1,6 +1,6 @@
 # Native Windows Quick Start QA
 
-Status: `LOCAL QA PASS - PR CI PENDING`
+Status: `PASS WITH CONCERNS`
 
 ## Environment
 
@@ -16,13 +16,14 @@ Status: `LOCAL QA PASS - PR CI PENDING`
 - PASS: Windows PowerShell parsed all five required files with `0` errors:
   `scripts/setup-runtime.ps1`, `scripts/appctl.ps1`, `scripts/install.ps1`,
   `scripts/install-sample-data.ps1`, and `tests/windows-installer-smoke.ps1`.
-- PASS: cache-disabled selected pytest command covering
+- PASS: the final cache-disabled selected pytest command covering
   `tests/test_windows_installer.py`, `tests/test_installer_release.py`, and
-  `tests/test_public_mvp.py` reported `185 passed, 1 warning in 237.27s`.
+  `tests/test_public_mvp.py` reported `215 passed, 1 warning in 280.52s`.
   The warning was the known Starlette/httpx `TestClient` deprecation.
-- PASS: `npm run build` transformed `1,751` modules; Vite reported `built in
-  941ms`.
-- PASS: the external-network native smoke exited `0` in `225.2s` and ended
+- NOT RERUN: `npm run build` was not repeated during final-review fixes because
+  no frontend source, dependency, or build input changed. The earlier committed
+  QA baseline remains `1,751` modules and `built in 941ms`.
+- PASS: the final external-network native smoke exited `0` in `241.2s` and ended
   with the exact success line `Native Windows installer smoke passed.`
 - PASS: `git diff --check` completed without whitespace errors. Existing CRLF
   conversion notices were limited to unrelated dirty files.
@@ -30,6 +31,11 @@ Status: `LOCAL QA PASS - PR CI PENDING`
 ## Native Smoke Coverage
 
 The successful smoke exercised and asserted all of the following:
+
+- Installation from a `Restricted` parent PowerShell through the documented
+  explicit Bypass `-File` path, followed by bare `image-prompt-library`
+  commands under `Restricted`; the public command resolved to `.cmd`, and the
+  differently named internal PowerShell delegate remained private.
 
 - Update moved the current pointer to the target version, retained the previous
   pointer, and became healthy at the target version.
@@ -44,9 +50,10 @@ The successful smoke exercised and asserted all of the following:
   while retaining the private-library sentinel. Delete-library uninstall then
   removed both the prefix and the private library with no PATH residue.
 
-The earlier local PyPI access block was an environment limitation and was
-resolved for the successful external-network smoke; it is not a final QA
-failure.
+The initial sandbox smoke was blocked from PyPI by the managed network policy.
+The identical command was rerun with external-network permission and passed;
+this environment workaround is disclosed as a concern rather than hidden as a
+final QA failure.
 
 ## Desktop Browser QA
 
@@ -85,11 +92,20 @@ audit verified zero owned artifacts:
 - QA-generated private-library sentinel path: `0` after preservation was
   recorded and final cleanup was requested.
 
+Browser QA used a locally packaged test release and the already built
+`frontend/dist` output, then attached the browser after the local service was
+healthy. This setup avoided changing committed frontend evidence and did not
+use OAuth data; the Restricted-policy installer and command handoff were
+verified separately by the native behavioral smoke.
+
 ## Residual Risks And Pending Work
 
 - Unsigned PowerShell bootstrap remains subject to SmartScreen and local
   execution-policy behavior.
 - GitHub and PyPI availability remain external release-install dependencies.
+- Handled update failures recover transactionally, but there is no durable
+  write-ahead crash journal for OS or power loss; `doctor` and manual retry or
+  rollback may still be required after an interruption.
 - Post-release real-asset QA remains pending Task 12.
-- Whole-branch final review and GitHub Ubuntu plus Windows CI remain pending.
+- GitHub Ubuntu plus Windows CI remain pending.
 - No release, tag, or merge is included in this milestone.
