@@ -479,7 +479,7 @@ function Show-Doctor {
 }
 
 function Start-App {
-    param($Context, [string[]]$Arguments)
+    param($Context, [string[]]$Arguments, $VersionOverride = $null)
     $settings = Read-AppEnvironment -Context $Context
     $hostName = $settings.Host
     $portText = [string]$settings.Port
@@ -507,7 +507,7 @@ function Start-App {
 
     $lifecycleLock = Enter-LifecycleLock -Context $Context
     try {
-        $version = Get-CurrentVersion $Context
+        $version = if ($VersionOverride) { $VersionOverride } else { Get-CurrentVersion $Context }
         try { $record = Read-ServerRecord $Context }
         catch { throw "Cannot start with a malformed runtime record. Run image-prompt-library doctor." }
         if ($record) {
@@ -730,7 +730,7 @@ function Restore-VersionPointerState {
 }
 
 function Restore-VersionSwitch {
-    param($Context, $PointerState, $Runtime, [string[]]$RestartArguments)
+    param($Context, $PointerState, $Runtime, $OldVersion, [string[]]$RestartArguments)
     $errors = New-Object Collections.Generic.List[string]
     $output = New-Object Collections.Generic.List[object]
     try {
@@ -740,7 +740,7 @@ function Restore-VersionSwitch {
     }
     if ($Runtime.running) {
         try {
-            foreach ($line in @(Start-App -Context $Context -Arguments $RestartArguments 2>&1)) { $output.Add($line) }
+            foreach ($line in @(Start-App -Context $Context -Arguments $RestartArguments -VersionOverride $OldVersion 2>&1)) { $output.Add($line) }
         } catch {
             $errors.Add("old-version restart: $($_.Exception.Message)")
         }
@@ -769,7 +769,7 @@ function Switch-VersionTransactional {
         Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "previous-version") -Value $current.Version
     } catch {
         $pointerFailure = $_.Exception.Message
-        $recovery = Restore-VersionSwitch -Context $Context -PointerState $pointerState -Runtime $runtime -RestartArguments $restartArgs
+        $recovery = Restore-VersionSwitch -Context $Context -PointerState $pointerState -Runtime $runtime -OldVersion $current -RestartArguments $restartArgs
         foreach ($line in $recovery.Output) { Write-Output $line }
         if ($recovery.Errors.Count) {
             throw "Version pointer switch failed: $pointerFailure Recovery failed: $($recovery.Errors -join '; ')"
@@ -780,7 +780,7 @@ function Switch-VersionTransactional {
         try {
             Start-App -Context $Context -Arguments $restartArgs
         } catch {
-            $recovery = Restore-VersionSwitch -Context $Context -PointerState $pointerState -Runtime $runtime -RestartArguments $restartArgs
+            $recovery = Restore-VersionSwitch -Context $Context -PointerState $pointerState -Runtime $runtime -OldVersion $current -RestartArguments $restartArgs
             foreach ($line in $recovery.Output) { Write-Output $line }
             if ($recovery.Errors.Count) {
                 throw "Rollback target failed health checks. Recovery failed: $($recovery.Errors -join '; ')"

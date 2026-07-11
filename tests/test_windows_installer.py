@@ -1323,7 +1323,7 @@ def test_windows_installer_stopped_update_preserves_stopped_state(tmp_path: Path
     result = run_installer(release_dir, prefix, library, no_start=False)
 
     assert result.returncode == 0, result.stderr
-    assert "start --host" not in result.stdout
+    assert all(not line.startswith("start") for line in result.stdout.splitlines())
     assert (app / "current-version").read_text(encoding="ascii") == "v1.2.3\n"
     assert (app / "previous-version").read_text(encoding="ascii") == "v1.0.0\n"
 
@@ -1392,9 +1392,10 @@ $script:startLines = New-Object Collections.Generic.List[string]
 function Get-OwnedRuntimeState {{ [pscustomobject]@{{ running = $true; host = '127.0.0.7'; port = 4567 }} }}
 function Stop-App {{ param($Context) }}
 function Start-App {{
-    param($Context, [string[]]$Arguments)
-    $script:startLines.Add(($Arguments -join ' '))
-    if ((Get-Content -LiteralPath (Join-Path $Context.AppDir 'current-version') -Raw).Trim() -eq 'v0.9.0') {{ throw 'forced target start failure' }}
+    param($Context, [string[]]$Arguments, $VersionOverride = $null)
+    $resolvedVersion = if ($VersionOverride) {{ $VersionOverride.Version }} else {{ (Get-Content -LiteralPath (Join-Path $Context.AppDir 'current-version') -Raw).Trim() }}
+    $script:startLines.Add($resolvedVersion + '|' + ($Arguments -join ' '))
+    if ($resolvedVersion -eq 'v0.9.0') {{ throw 'forced target start failure' }}
 }}
 $failure = ''
 try {{ Rollback-App -Context $context }} catch {{ $failure = $_.Exception.Message }}
@@ -1414,8 +1415,8 @@ try {{ Rollback-App -Context $context }} catch {{ $failure = $_.Exception.Messag
     assert payload["current"] == "v1.0.0"
     assert payload["previous"] == "v0.9.0"
     assert payload["starts"] == [
-        "--host 127.0.0.7 --port 4567 --no-browser",
-        "--host 127.0.0.7 --port 4567 --no-browser",
+        "v0.9.0|--host 127.0.0.7 --port 4567 --no-browser",
+        "v1.0.0|--host 127.0.0.7 --port 4567 --no-browser",
     ]
 
 
@@ -1434,7 +1435,11 @@ $script:writeCalls = 0
 $script:startLines = New-Object Collections.Generic.List[string]
 function Get-OwnedRuntimeState {{ [pscustomobject]@{{ running = $true; host = '127.0.0.8'; port = 4678 }} }}
 function Stop-App {{ param($Context) }}
-function Start-App {{ param($Context, [string[]]$Arguments); $script:startLines.Add(($Arguments -join ' ')) }}
+function Start-App {{
+    param($Context, [string[]]$Arguments, $VersionOverride = $null)
+    $resolvedVersion = if ($VersionOverride) {{ $VersionOverride.Version }} else {{ (Get-Content -LiteralPath (Join-Path $Context.AppDir 'current-version') -Raw).Trim() }}
+    $script:startLines.Add($resolvedVersion + '|' + ($Arguments -join ' '))
+}}
 function Write-VersionPointerAtomic {{
     param([string]$Path, [AllowEmptyString()][string]$Value)
     $script:writeCalls++
@@ -1449,6 +1454,7 @@ try {{ Rollback-App -Context $context }} catch {{ $failure = $_.Exception.Messag
     failure = $failure
     write_calls = $script:writeCalls
     previous = (Get-Content -LiteralPath (Join-Path $context.AppDir 'previous-version') -Raw).Trim()
+    current = (Get-Content -LiteralPath (Join-Path $context.AppDir 'current-version') -Raw).Trim()
     starts = @($script:startLines)
 }} | ConvertTo-Json -Compress
 """
@@ -1461,8 +1467,9 @@ try {{ Rollback-App -Context $context }} catch {{ $failure = $_.Exception.Messag
     assert "forced current restoration failure" in payload["failure"]
     assert "forced previous restoration failure" in payload["failure"]
     assert payload["write_calls"] == 4
+    assert payload["current"] == "v0.9.0"
     assert payload["previous"] == "v0.9.0"
-    assert payload["starts"] == ["--host 127.0.0.8 --port 4678 --no-browser"]
+    assert payload["starts"] == ["v1.0.0|--host 127.0.0.8 --port 4678 --no-browser"]
 
 
 def test_windows_installer_pointer_failure_restores_both_and_restarts_old_runtime(tmp_path: Path):
