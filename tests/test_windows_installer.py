@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 import os
 import re
 import shutil
 import subprocess
+import tarfile
 import time
 from pathlib import Path
 
@@ -545,3 +548,304 @@ Show-Status -Context ([pscustomobject]@{{}})
     assert result.returncode == 0, result.stderr
     assert "URL: http://127.0.0.1:9000/" in result.stdout
     assert "URL: http://[::1]:8123/" not in result.stdout
+
+
+def test_windows_installer_requires_python_and_a_capable_verified_release():
+    path = ROOT / "scripts" / "install.ps1"
+    assert path.is_file()
+    script = path.read_text(encoding="utf-8")
+    for name in (
+        "Find-SupportedPython",
+        "Invoke-Download",
+        "Resolve-Release",
+        "Read-CompatibleManifest",
+        "Confirm-ArtifactChecksum",
+        "Expand-SafeTar",
+        "Write-VersionPointer",
+        "Write-CommandShim",
+        "Add-UserPathEntry",
+    ):
+        assert f"function {name}" in script
+    assert "windows-powershell-v1" in script
+    assert "Get-FileHash" in script
+    assert "process_start_time_utc_ticks" not in script
+    assert "tarfile" in script
+    assert "member.issym()" in script
+    assert "member.islnk()" in script
+    assert "https://www.python.org/downloads/windows/" in script
+    assert "current-version" in script
+    assert "previous-version" in script
+    assert "image-prompt-library.cmd" in script
+    assert "image-prompt-library.ps1" in script
+    assert not re.search(r"(?i)winget\s+install", script)
+    assert "New-ScheduledTask" not in script
+    assert "Start-Service" not in script
+    assert "Set-ExecutionPolicy" not in script
+    assert "-Verb RunAs" not in script
+    assert '"Machine"' not in script
+    assert '"User"' in script
+
+
+def test_windows_installer_rejects_overlapping_app_and_library_paths():
+    script = read("scripts/install.ps1")
+    assert "Assert-DisjointPaths" in script
+    assert "The app prefix and private library must not contain each other." in script
+
+
+def write_test_release(
+    release_dir: Path,
+    version: str = "v1.2.3",
+    *,
+    capabilities: tuple[str, ...] = ("windows-powershell-v1",),
+    unsafe_member: tuple[str, bytes | str] | None = None,
+    manifest_sha: str | None = None,
+    checksum_sha: str | None = None,
+) -> None:
+    release_dir.mkdir(parents=True)
+    artifact_name = f"image-prompt-library-{version}.tar.gz"
+    artifact = release_dir / artifact_name
+    files = {
+        "VERSION": version,
+        "pyproject.toml": "[project]\nname='image-prompt-library'\nversion='1.2.3'\n",
+        "backend/main.py": "app = None\n",
+        "frontend/dist/index.html": "<!doctype html>\n",
+        "scripts/appctl.ps1": "Write-Output ($args -join ' ')\n",
+        "scripts/install.ps1": "# packaged installer\n",
+        "scripts/install-sample-data.ps1": "# packaged sample installer\n",
+        "scripts/setup-runtime.ps1": (
+            "param([string]$AppRoot,[string]$PythonExe,[string[]]$PythonPrefixArgs=@())\n"
+            "Set-Content -LiteralPath (Join-Path $AppRoot 'setup-called.txt') -Value $AppRoot -Encoding ASCII\n"
+        ),
+    }
+    with tarfile.open(artifact, "w:gz") as archive:
+        for name, content in files.items():
+            source = release_dir / "payload" / Path(name)
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text(content, encoding="ascii")
+            archive.add(source, arcname=name)
+        if unsafe_member:
+            kind, name = unsafe_member
+            member = tarfile.TarInfo(str(name))
+            if kind in {"symlink", "hardlink"}:
+                member.type = tarfile.SYMTYPE if kind == "symlink" else tarfile.LNKTYPE
+                member.linkname = "VERSION"
+                archive.addfile(member)
+            elif kind == "fifo":
+                member.type = tarfile.FIFOTYPE
+                archive.addfile(member)
+            else:
+                data = b"unsafe"
+                member.size = len(data)
+                archive.addfile(member, io.BytesIO(data))
+
+    calculated_sha = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    manifest = {
+        "name": "image-prompt-library",
+        "version": version,
+        "artifact": artifact_name,
+        "capabilities": list(capabilities),
+        "sha256": manifest_sha or calculated_sha,
+    }
+    (release_dir / f"image-prompt-library-{version}.manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    (release_dir / f"{artifact_name}.sha256").write_text(
+        f"{checksum_sha or calculated_sha}  {artifact_name}\n", encoding="ascii"
+    )
+
+
+def run_installer(
+    release_dir: Path,
+    prefix: Path,
+    library: Path,
+    version: str = "v1.2.3",
+    *,
+    environment: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    if environment:
+        env.update(environment)
+    return subprocess.run(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-File",
+            str(ROOT / "scripts" / "install.ps1"),
+            "-Version",
+            version,
+            "-Prefix",
+            str(prefix),
+            "-LibraryPath",
+            str(library),
+            "-ReleaseBaseUrl",
+            str(release_dir),
+            "-PythonExe",
+            shutil.which("python.exe") or shutil.which("python") or "python",
+            "-NoStart",
+            "-SkipPath",
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+
+def test_windows_installer_places_runtime_then_publishes_shim_and_pointers(tmp_path: Path):
+    release_dir = tmp_path / "release files"
+    prefix = tmp_path / "app prefix"
+    library = tmp_path / "private library"
+    write_test_release(release_dir)
+
+    result = run_installer(
+        release_dir,
+        prefix,
+        library,
+        environment={"BACKEND_HOST": "localhost", "BACKEND_PORT": "8123"},
+    )
+
+    assert result.returncode == 0, result.stderr
+    final = prefix / "app" / "versions" / "v1.2.3"
+    assert (final / "setup-called.txt").read_text(encoding="ascii").strip() == str(final)
+    assert (prefix / "app" / "current-version").read_text(encoding="ascii").strip() == "v1.2.3"
+    assert not (prefix / "app" / "previous-version").exists()
+    assert (prefix / "bin" / "image-prompt-library.ps1").is_file()
+    assert (prefix / "bin" / "image-prompt-library.cmd").is_file()
+    assert not any(path.name.startswith(".staging-") for path in final.parent.iterdir())
+    assert (prefix / ".env").read_text(encoding="ascii").splitlines() == [
+        f"IMAGE_PROMPT_LIBRARY_PATH={library.resolve()}",
+        "BACKEND_HOST=localhost",
+        "BACKEND_PORT=8123",
+        f"BACKUP_DIR={(prefix / 'backups').resolve()}",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("manifest_sha", "checksum_sha"),
+    [
+        ("0" * 64, None),
+        (None, "f" * 64),
+        ("a" * 64, "a" * 64),
+    ],
+)
+def test_windows_installer_requires_three_way_checksum_agreement(
+    tmp_path: Path, manifest_sha: str | None, checksum_sha: str | None
+):
+    release_dir = tmp_path / "release"
+    write_test_release(release_dir, manifest_sha=manifest_sha, checksum_sha=checksum_sha)
+
+    result = run_installer(release_dir, tmp_path / "prefix", tmp_path / "library")
+
+    assert result.returncode == 1
+    assert "checksum" in result.stderr.lower()
+    assert not (tmp_path / "prefix" / "app" / "versions" / "v1.2.3").exists()
+
+
+def test_windows_installer_rejects_legacy_release_without_native_capability(tmp_path: Path):
+    release_dir = tmp_path / "legacy release"
+    write_test_release(release_dir, version="v0.7.10", capabilities=())
+
+    result = run_installer(
+        release_dir, tmp_path / "prefix", tmp_path / "library", version="v0.7.10"
+    )
+
+    assert result.returncode == 1
+    assert "windows-powershell-v1" in result.stderr
+    assert not (tmp_path / "prefix" / "app" / "versions" / "v0.7.10").exists()
+
+
+@pytest.mark.parametrize(
+    "unsafe_member",
+    [
+        ("file", "/absolute.txt"),
+        ("file", "C:/drive-qualified.txt"),
+        ("file", "../escaped.txt"),
+        ("symlink", "linked.txt"),
+        ("hardlink", "hard-linked.txt"),
+        ("fifo", "reparse-like"),
+        ("file", ".venv/Scripts/python.exe"),
+    ],
+)
+def test_windows_installer_rejects_unsafe_archive_members(
+    tmp_path: Path, unsafe_member: tuple[str, str]
+):
+    release_dir = tmp_path / "release"
+    write_test_release(release_dir, unsafe_member=unsafe_member)
+    prefix = tmp_path / "prefix"
+
+    result = run_installer(release_dir, prefix, tmp_path / "library")
+
+    assert result.returncode == 1
+    assert "refusing" in result.stderr.lower()
+    assert not (tmp_path / "escaped.txt").exists()
+    assert not (prefix / "app" / "versions" / "v1.2.3").exists()
+
+
+def test_windows_installer_restores_existing_target_when_runtime_setup_fails(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    write_test_release(release_dir)
+    failing_setup = release_dir / "payload" / "scripts" / "setup-runtime.ps1"
+    failing_setup.write_text("throw 'intentional setup failure'\n", encoding="ascii")
+    artifact = release_dir / "image-prompt-library-v1.2.3.tar.gz"
+    with tarfile.open(artifact, "w:gz") as archive:
+        for source in (release_dir / "payload").rglob("*"):
+            if source.is_file():
+                archive.add(source, arcname=source.relative_to(release_dir / "payload").as_posix())
+    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    manifest_path = release_dir / "image-prompt-library-v1.2.3.manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["sha256"] = digest
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (release_dir / "image-prompt-library-v1.2.3.tar.gz.sha256").write_text(
+        f"{digest}  image-prompt-library-v1.2.3.tar.gz\n", encoding="ascii"
+    )
+    prefix = tmp_path / "prefix"
+    stale_target = prefix / "app" / "versions" / "v1.2.3"
+    stale_target.mkdir(parents=True)
+    (stale_target / "keep.txt").write_text("original", encoding="ascii")
+    pointer = prefix / "app" / "current-version"
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    pointer.write_text("v1.0.0\n", encoding="ascii")
+
+    result = run_installer(release_dir, prefix, tmp_path / "library")
+
+    assert result.returncode == 1
+    assert "intentional setup failure" in result.stderr
+    assert (stale_target / "keep.txt").read_text(encoding="ascii") == "original"
+    assert pointer.read_text(encoding="ascii").strip() == "v1.0.0"
+    assert not (prefix / "app" / "versions" / "v1.2.3.backup").exists()
+
+
+def test_windows_installer_direct_errors_nonzero_but_irm_iex_style_returns(tmp_path: Path):
+    shared = tmp_path / "same root"
+    direct = subprocess.run(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-File",
+            str(ROOT / "scripts" / "install.ps1"),
+            "-Prefix",
+            str(shared),
+            "-LibraryPath",
+            str(shared),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    piped_script = f"""
+$env:LOCALAPPDATA = {powershell_literal(shared.parent)}
+$env:USERPROFILE = {powershell_literal(shared.parent)}
+Invoke-Expression ([IO.File]::ReadAllText({powershell_literal(ROOT / 'scripts' / 'install.ps1')}))
+Write-Output 'INTERACTIVE-SHELL-RETAINED'
+"""
+    piped = run_powershell(piped_script)
+
+    assert direct.returncode == 1
+    assert "must not contain each other" in direct.stderr.lower()
+    assert piped.returncode == 0
+    assert "INTERACTIVE-SHELL-RETAINED" in piped.stdout
+    assert "must not contain each other" in piped.stderr.lower()
