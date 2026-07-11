@@ -147,6 +147,12 @@ function Get-PhysicalPathIdentity {
     return (Get-NormalizedPath -Path $physical)
 }
 
+function Get-UserProfilePhysicalIdentity {
+    $profile = Get-NormalizedPath -Path $env:USERPROFILE
+    $parent = Get-PhysicalPathIdentity -Path ([IO.Path]::GetDirectoryName($profile))
+    return (Get-NormalizedPath -Path (Join-Path $parent ([IO.Path]::GetFileName($profile))))
+}
+
 function Assert-SafeInstallTarget {
     param([string]$Path, [string]$Name)
     $normalized = Get-NormalizedPath -Path $Path
@@ -157,7 +163,9 @@ function Assert-SafeInstallTarget {
         throw "$Name must not be an unsafe root path."
     }
     $identity = Get-PhysicalPathIdentity -Path $Path
-    if ($identity.Equals([IO.Path]::GetPathRoot($identity), [StringComparison]::OrdinalIgnoreCase)) {
+    $profileIdentity = Get-UserProfilePhysicalIdentity
+    if ($identity.Equals([IO.Path]::GetPathRoot($identity), [StringComparison]::OrdinalIgnoreCase) -or
+        $identity.Equals($profileIdentity, [StringComparison]::OrdinalIgnoreCase)) {
         throw "$Name must not be an unsafe root path."
     }
     return $identity
@@ -329,10 +337,6 @@ function Invoke-Download {
     if (-not (Test-Path -LiteralPath $parent -PathType Container)) {
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
     }
-    if (Test-Path -LiteralPath $Uri -PathType Leaf) {
-        Copy-Item -LiteralPath $Uri -Destination $Destination -Force
-        return
-    }
     $parsed = Assert-ReleaseSource -Source $Uri
     if ($parsed.IsFile) {
         Copy-Item -LiteralPath $parsed.LocalPath -Destination $Destination -Force
@@ -379,6 +383,10 @@ function Invoke-Download {
 
 function Assert-ReleaseSource {
     param([string]$Source)
+    $isUncLiteral = $Source.StartsWith('\\?\UNC\', [StringComparison]::OrdinalIgnoreCase) -or
+        ($Source.StartsWith('\\', [StringComparison]::Ordinal) -and
+            -not $Source.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase))
+    if ($isUncLiteral) { throw "Remote file release assets are not allowed." }
     if (Test-Path -LiteralPath $Source -PathType Leaf) { return [Uri]::new([IO.Path]::GetFullPath($Source)) }
     $parsed = $null
     if (-not [Uri]::TryCreate($Source, [UriKind]::Absolute, [ref]$parsed)) {
@@ -825,11 +833,12 @@ param([Parameter(ValueFromRemainingArguments=$true)][string[]]$CommandArgs)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 if ($env:IMAGE_PROMPT_LIBRARY_CMD_SHIM -eq "1") {
+    $delegate = Get-Process -Id $PID -ErrorAction Stop
     try {
-        $parent = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $PID) -ErrorAction Stop
-        $env:IMAGE_PROMPT_LIBRARY_CMD_PARENT_PID = [string]$parent.ParentProcessId
-    } catch {
-        $env:IMAGE_PROMPT_LIBRARY_CMD_PARENT_PID = [string]$PID
+        $env:IMAGE_PROMPT_LIBRARY_CMD_DELEGATE_PID = [string]$PID
+        $env:IMAGE_PROMPT_LIBRARY_CMD_DELEGATE_START_TICKS = [string]$delegate.StartTime.ToUniversalTime().Ticks
+    } finally {
+        $delegate.Dispose()
     }
 }
 $prefix = Split-Path -Parent $PSScriptRoot

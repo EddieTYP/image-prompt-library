@@ -278,6 +278,12 @@ function Get-PhysicalPathIdentity {
     return (Get-NormalizedTransactionPath -Path $physical)
 }
 
+function Get-UninstallUserProfilePhysicalIdentity {
+    $profile = Get-NormalizedTransactionPath -Path $env:USERPROFILE
+    $parent = Get-PhysicalPathIdentity -Path ([IO.Path]::GetDirectoryName($profile))
+    return (Get-NormalizedTransactionPath -Path (Join-Path $parent ([IO.Path]::GetFileName($profile))))
+}
+
 function Enter-PrefixTransactionLock {
     param($Context)
     $bytes = [Text.Encoding]::UTF8.GetBytes((Get-PhysicalPathIdentity -Path $Context.Prefix).ToUpperInvariant())
@@ -1059,9 +1065,10 @@ function Assert-UninstallTargets {
             throw "Uninstall target paths must not be filesystem roots."
         }
     }
-    $userProfile = Get-NormalizedUninstallPath -Path $env:USERPROFILE
+    $userProfile = Get-UninstallUserProfilePhysicalIdentity
     foreach ($target in @($prefix, $library)) {
-        if (Test-UninstallPathWithinOrEqual -Path $userProfile -Parent $target) {
+        $targetIdentity = Get-PhysicalPathIdentity -Path $target
+        if (Test-UninstallPathWithinOrEqual -Path $userProfile -Parent $targetIdentity) {
             throw "Uninstall target paths must not contain the user profile."
         }
     }
@@ -1260,17 +1267,29 @@ function Move-PrefixToUninstallTombstone {
     }
 }
 
+function Test-ProcessStartIdentity {
+    param([int]$ProcessId, [long]$StartTimeUtcTicks)
+    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if (-not $process) { return $false }
+    try { return $process.StartTime.ToUniversalTime().Ticks -eq $StartTimeUtcTicks }
+    catch { return $false }
+    finally { $process.Dispose() }
+}
+
 function Start-DeferredPrefixRemoval {
-    param($Context, $Retired)
-    $cleanupParentPid = $PID
-    if ($env:IMAGE_PROMPT_LIBRARY_CMD_PARENT_PID -match '^\d+$') {
-        $cleanupParentPid = [int]$env:IMAGE_PROMPT_LIBRARY_CMD_PARENT_PID
+    param($Context, $Retired, [int]$ReadyTimeoutMilliseconds = 5000)
+    if ($env:IMAGE_PROMPT_LIBRARY_CMD_DELEGATE_PID -notmatch '^\d+$' -or
+        $env:IMAGE_PROMPT_LIBRARY_CMD_DELEGATE_START_TICKS -notmatch '^\d+$') {
+        throw "Deferred uninstall requires the delegate process identity."
     }
+    $delegatePid = [int]$env:IMAGE_PROMPT_LIBRARY_CMD_DELEGATE_PID
+    $delegateStartTicks = [long]$env:IMAGE_PROMPT_LIBRARY_CMD_DELEGATE_START_TICKS
     $readyPath = Join-Path ([IO.Path]::GetTempPath()) ("image-prompt-library-uninstall-" + [Guid]::NewGuid().ToString("N") + ".ready")
     $arguments = @(
         "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $Retired.Controller,
         "internal-delete-prefix", "--tombstone", $Retired.Tombstone, "--ready", $readyPath,
-        "--parent-pid", [string]$cleanupParentPid, "--failure", $Retired.Failure, "--token", $Retired.Token
+        "--delegate-pid", [string]$delegatePid, "--delegate-start-ticks", [string]$delegateStartTicks,
+        "--failure", $Retired.Failure, "--token", $Retired.Token
     )
     $quoted = @($arguments | ForEach-Object { '"' + $_.Replace('"', '\"') + '"' })
     $oldPrefix = [Environment]::GetEnvironmentVariable("IMAGE_PROMPT_LIBRARY_PREFIX", [EnvironmentVariableTarget]::Process)
@@ -1280,7 +1299,7 @@ function Start-DeferredPrefixRemoval {
     } finally {
         [Environment]::SetEnvironmentVariable("IMAGE_PROMPT_LIBRARY_PREFIX", $oldPrefix, [EnvironmentVariableTarget]::Process)
     }
-    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($ReadyTimeoutMilliseconds)
     while ([DateTime]::UtcNow -lt $deadline) {
         if ([IO.File]::Exists($readyPath)) {
             [IO.File]::Delete($readyPath)
@@ -1293,15 +1312,17 @@ function Start-DeferredPrefixRemoval {
 
 function Invoke-DeferredPrefixRemoval {
     param($Context, [string[]]$Arguments)
-    if (@($Arguments).Count -ne 10 -or $Arguments[0] -ne "--tombstone" -or $Arguments[2] -ne "--ready" -or
-        $Arguments[4] -ne "--parent-pid" -or $Arguments[6] -ne "--failure" -or $Arguments[8] -ne "--token") {
+    if (@($Arguments).Count -ne 12 -or $Arguments[0] -ne "--tombstone" -or $Arguments[2] -ne "--ready" -or
+        $Arguments[4] -ne "--delegate-pid" -or $Arguments[6] -ne "--delegate-start-ticks" -or
+        $Arguments[8] -ne "--failure" -or $Arguments[10] -ne "--token") {
         throw "Internal prefix cleanup arguments are invalid."
     }
     $tombstone = Get-NormalizedUninstallPath -Path $Arguments[1]
     $readyPath = [IO.Path]::GetFullPath($Arguments[3])
-    $parentPid = [int]$Arguments[5]
-    $failurePath = [IO.Path]::GetFullPath($Arguments[7])
-    $token = [string]$Arguments[9]
+    $delegatePid = [int]$Arguments[5]
+    $delegateStartTicks = [long]$Arguments[7]
+    $failurePath = [IO.Path]::GetFullPath($Arguments[9])
+    $token = [string]$Arguments[11]
     $prefix = Get-NormalizedUninstallPath -Path $Context.Prefix
     $parent = Get-UninstallTombstoneParent -Prefix $prefix
     $expectedPattern = '^\.' + [regex]::Escape([IO.Path]::GetFileName($prefix)) + '\.uninstall-[a-f0-9]{32}$'
@@ -1315,11 +1336,11 @@ function Invoke-DeferredPrefixRemoval {
         Assert-UninstallTargetNotReparse -Path $tombstone -Name "Retired app prefix" | Out-Null
         [IO.File]::WriteAllText($readyPath, "ready", [Text.Encoding]::ASCII)
         $deadline = [DateTime]::UtcNow.AddSeconds(15)
-        while ([DateTime]::UtcNow -lt $deadline -and (Get-Process -Id $parentPid -ErrorAction SilentlyContinue)) {
+        while ([DateTime]::UtcNow -lt $deadline -and (Test-ProcessStartIdentity -ProcessId $delegatePid -StartTimeUtcTicks $delegateStartTicks)) {
             Start-Sleep -Milliseconds 50
         }
-        if (Get-Process -Id $parentPid -ErrorAction SilentlyContinue) {
-            throw "The uninstalling controller did not exit before deferred cleanup."
+        if (Test-ProcessStartIdentity -ProcessId $delegatePid -StartTimeUtcTicks $delegateStartTicks) {
+            throw "The uninstall delegate did not exit before deferred cleanup."
         }
         $transactionLock = Enter-PrefixTransactionLock -Context $Context
         try {
@@ -1395,8 +1416,14 @@ function Invoke-UninstallInternal {
 function Invoke-Uninstall {
     param($Context, [string[]]$Arguments)
     $prefix = Get-NormalizedUninstallPath -Path $Context.Prefix
+    $profile = Get-NormalizedUninstallPath -Path $env:USERPROFILE
     if ($prefix.Equals([IO.Path]::GetPathRoot($prefix), [StringComparison]::OrdinalIgnoreCase) -or
-        $prefix.Equals((Get-NormalizedUninstallPath -Path $env:USERPROFILE), [StringComparison]::OrdinalIgnoreCase)) {
+        $prefix.Equals($profile, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Uninstall app prefix is unsafe."
+    }
+    $prefixIdentity = Get-PhysicalPathIdentity -Path $prefix
+    $profileIdentity = Get-UninstallUserProfilePhysicalIdentity
+    if (Test-UninstallPathWithinOrEqual -Path $profileIdentity -Parent $prefixIdentity) {
         throw "Uninstall app prefix is unsafe."
     }
     Assert-UninstallTargetNotReparse -Path $prefix -Name "App prefix" | Out-Null

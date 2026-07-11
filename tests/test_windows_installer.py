@@ -1833,6 +1833,20 @@ def test_windows_installer_rejects_remote_unc_file_release_source():
     assert "remote file" in result.stderr.lower()
 
 
+def test_windows_installer_rejects_unc_literal_before_local_existence_probe():
+    result = run_installer_function(
+        r"""
+function Test-Path { throw 'UNC source reached local existence probe' }
+try { Assert-ReleaseSource -Source '\\server\share\existing-release.tar.gz' }
+catch { $_.Exception.Message }
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "remote file" in result.stdout.lower()
+    assert "existence probe" not in result.stdout.lower()
+
+
 def test_windows_installer_revalidates_each_redirect_before_retaining_download(tmp_path: Path):
     requested: list[str] = []
 
@@ -2090,7 +2104,8 @@ function Remove-ExactUninstallTree {{ throw 'forced tombstone cleanup failure' }
 try {{
     Invoke-DeferredPrefixRemoval -Context $context -Arguments @(
         '--tombstone', {powershell_literal(tombstone)}, '--ready', {powershell_literal(ready)},
-        '--parent-pid', '999999', '--failure', {powershell_literal(failure)}, '--token', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        '--delegate-pid', '999999', '--delegate-start-ticks', '1',
+        '--failure', {powershell_literal(failure)}, '--token', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
     )
 }} catch {{}}
 [pscustomobject]@{{ Tombstone = (Test-Path -LiteralPath {powershell_literal(tombstone)}); Failure = [IO.File]::ReadAllText({powershell_literal(failure)}) }} | ConvertTo-Json -Compress
@@ -2101,6 +2116,102 @@ try {{
     payload = json.loads(result.stdout.strip().splitlines()[-1])
     assert payload["Tombstone"] is True
     assert "forced tombstone cleanup failure" in payload["Failure"]
+
+
+@pytest.mark.parametrize("failure_kind", ["launch", "readiness"])
+def test_windows_appctl_deferred_cleanup_helper_start_failure_is_reported(
+    tmp_path: Path, failure_kind: str
+):
+    retired = tmp_path / "retired"
+    retired.mkdir()
+    script = f"""
+$context = [pscustomobject]@{{ Prefix = {powershell_literal(tmp_path / 'prefix')} }}
+$retired = [pscustomobject]@{{
+    Controller = {powershell_literal(retired / 'appctl.ps1')}
+    Tombstone = {powershell_literal(retired)}
+    Failure = {powershell_literal(str(retired) + '.failed.txt')}
+    Token = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+}}
+$env:IMAGE_PROMPT_LIBRARY_CMD_DELEGATE_PID = [string]$PID
+$env:IMAGE_PROMPT_LIBRARY_CMD_DELEGATE_START_TICKS = [string](Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks
+"""
+    if failure_kind == "launch":
+        script += "function Start-Process { throw 'forced helper launch failure' }\n"
+    else:
+        script += "function Start-Process {}\n"
+    script += """
+try {
+    Start-DeferredPrefixRemoval -Context $context -Retired $retired -ReadyTimeoutMilliseconds 20
+    'unexpected success'
+} catch {
+    $_.Exception.Message
+}
+"""
+
+    started = time.monotonic()
+    result = run_appctl_function(script)
+    elapsed = time.monotonic() - started
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    expected = "forced helper launch failure" if failure_kind == "launch" else "did not start"
+    assert expected in result.stdout.lower()
+    assert elapsed < 1, f"helper readiness timeout ignored the focused test bound ({elapsed:.2f}s)"
+
+
+def test_windows_generated_delegate_publishes_its_own_reuse_safe_identity():
+    installer = read("scripts/install.ps1")
+    shim = installer.split("$powerShellShim = @'", 1)[1].split("'@", 1)[0]
+
+    assert "IMAGE_PROMPT_LIBRARY_CMD_DELEGATE_PID" in shim
+    assert "IMAGE_PROMPT_LIBRARY_CMD_DELEGATE_START_TICKS" in shim
+    assert "Get-CimInstance" not in shim
+    assert "IMAGE_PROMPT_LIBRARY_CMD_PARENT_PID" not in shim
+
+
+def test_windows_cmd_uninstall_cleanup_completes_while_invoking_cmd_stays_alive(tmp_path: Path):
+    prefix = tmp_path / "persistent-cmd" / "prefix"
+    scripts = prefix / "app" / "versions" / "v1.0.0" / "scripts"
+    scripts.mkdir(parents=True)
+    (prefix / "app" / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    shutil.copyfile(ROOT / "scripts" / "appctl.ps1", scripts / "appctl.ps1")
+    library = tmp_path / "library"
+    library.mkdir()
+    (library / "sentinel.txt").write_text("keep\n", encoding="ascii")
+    (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
+    generated = run_installer_function(
+        f"Write-CommandShim -BinPath {powershell_literal(prefix / 'bin')}"
+    )
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+    environment = os.environ.copy()
+    environment["PATH"] = str(prefix / "bin") + os.pathsep + environment["PATH"]
+    command_done = tmp_path / "command-done.txt"
+    shell = subprocess.Popen(
+        ["cmd.exe", "/d", "/q", "/k"],
+        cwd=ROOT,
+        env=environment,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    try:
+        assert shell.stdin is not None
+        shell.stdin.write(f'image-prompt-library uninstall & echo done>"{command_done}"\n')
+        shell.stdin.flush()
+        deadline = time.monotonic() + 10
+        while not command_done.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert command_done.exists(), "persistent cmd did not finish the uninstall command"
+        assert shell.poll() is None, "persistent cmd exited unexpectedly"
+        deadline = time.monotonic() + 10
+        while prefix.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert not prefix.exists(), "cleanup waited for persistent cmd.exe instead of the delegate"
+    finally:
+        if shell.poll() is None and shell.stdin is not None:
+            shell.stdin.write("exit\n")
+            shell.stdin.flush()
+        shell.communicate(timeout=10)
 
 
 def test_windows_installer_generated_shim_does_not_leak_handled_native_exit(
@@ -2686,7 +2797,7 @@ def test_windows_cmd_uninstall_retires_old_generation_before_concurrent_start_an
     assert not (prefix / "app").exists(), "CMD uninstall did not retire the old generation"
     assert uninstall.poll() is None, "retirement was not observable before helper handoff returned"
 
-    stale_start = subprocess.run(
+    stale_start = subprocess.Popen(
         [
             powershell_executable(),
             "-NoProfile",
@@ -2697,17 +2808,41 @@ def test_windows_cmd_uninstall_retires_old_generation_before_concurrent_start_an
         ],
         cwd=ROOT,
         env=environment,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        check=False,
-        timeout=30,
     )
-    reinstall = run_installer(release_dir, prefix, library)
+    reinstall_process = subprocess.Popen(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-File",
+            str(ROOT / "scripts" / "install.ps1"),
+            "-Version",
+            "v1.2.3",
+            "-Prefix",
+            str(prefix),
+            "-LibraryPath",
+            str(library),
+            "-ReleaseBaseUrl",
+            str(release_dir),
+            "-PythonExe",
+            shutil.which("python.exe") or shutil.which("python") or "python",
+            "-NoStart",
+            "-SkipPath",
+        ],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stale_stdout, stale_stderr = stale_start.communicate(timeout=30)
+    reinstall_stdout, reinstall_stderr = reinstall_process.communicate(timeout=30)
     stdout, stderr = uninstall.communicate(timeout=30)
 
     assert uninstall.returncode == 0, stdout + stderr
-    assert stale_start.returncode != 0, stale_start.stdout + stale_start.stderr
-    assert reinstall.returncode == 0, reinstall.stdout + reinstall.stderr
+    assert stale_start.returncode != 0, stale_stdout + stale_stderr
+    assert reinstall_process.returncode == 0, reinstall_stdout + reinstall_stderr
     assert (prefix / "app" / "current-version").read_text(encoding="ascii").strip() == "v1.2.3"
     assert (library / "sentinel.txt").read_text(encoding="ascii") == "keep\n"
     deadline = time.monotonic() + 10
@@ -2853,6 +2988,47 @@ def test_windows_installer_rejects_root_targets_symmetrically(
 
     assert result.returncode == 1
     assert "unsafe root" in result.stderr.lower()
+
+
+def test_windows_installer_and_uninstall_reject_physical_profile_alias(tmp_path: Path):
+    stand_in_root = tmp_path / "stand-in-root"
+    profile = stand_in_root / "profile"
+    library = stand_in_root / "library"
+    profile.mkdir(parents=True)
+    library.mkdir()
+    drive = "Z:"
+    created = subprocess.run(
+        ["subst", drive, str(stand_in_root)], capture_output=True, text=True, check=False
+    )
+    if created.returncode != 0:
+        pytest.skip(f"SUBST is unavailable: {created.stderr.strip()}")
+    alias = Path(drive + "\\") / "profile"
+    try:
+        installer = run_installer_function(
+            f"""
+function Get-UserProfilePhysicalIdentity {{ Get-PhysicalPathIdentity -Path {powershell_literal(profile)} }}
+try {{ Assert-SafeInstallTarget -Path {powershell_literal(alias)} -Name 'App prefix' | Out-Null; 'accepted' }}
+catch {{ $_.Exception.Message }}
+"""
+        )
+        uninstaller = run_appctl_function(
+            f"""
+function Get-UninstallUserProfilePhysicalIdentity {{ Get-PhysicalPathIdentity -Path {powershell_literal(profile)} }}
+$context = [pscustomobject]@{{ Prefix = {powershell_literal(alias)} }}
+$environment = [pscustomobject]@{{ LibraryPath = {powershell_literal(library)} }}
+try {{ Assert-UninstallTargets -Context $context -Environment $environment | Out-Null; 'accepted' }}
+catch {{ $_.Exception.Message }}
+"""
+        )
+    finally:
+        subprocess.run(["subst", drive, "/d"], capture_output=True, check=False)
+
+    assert installer.returncode == 0, installer.stdout + installer.stderr
+    assert uninstaller.returncode == 0, uninstaller.stdout + uninstaller.stderr
+    assert "accepted" not in installer.stdout
+    assert "unsafe root" in installer.stdout.lower()
+    assert "accepted" not in uninstaller.stdout
+    assert "user profile" in uninstaller.stdout.lower()
 
 
 def test_windows_installer_physical_identity_resolves_subst_alias(tmp_path: Path):
