@@ -396,7 +396,13 @@ expected_files = {
     "scripts/install-sample-data.ps1",
     "scripts/setup-runtime.ps1",
 }
-expected_roots = {entry.split("/", 1)[0] for entry in expected_files}
+expected_roots = {entry.split("/", 1)[0] for entry in expected_files} | {
+    "license",
+    "notice",
+    "readme.md",
+    "sample-data",
+    "security.md",
+}
 
 with open(archive_path, "rb") as artifact_file:
     digest = hashlib.sha256()

@@ -106,7 +106,17 @@ rm -f \
 rm -f "$RELEASE_DIR/$ARTIFACT" "$RELEASE_DIR/$CHECKSUM_FILE" "$RELEASE_DIR/$MANIFEST"
 (
   cd "$STAGING"
-  tar -czf "../../$ARTIFACT" .
+  tar -czf "../../$ARTIFACT" \
+    VERSION \
+    backend \
+    frontend \
+    LICENSE \
+    NOTICE \
+    pyproject.toml \
+    README.md \
+    sample-data \
+    scripts \
+    SECURITY.md
 )
 
 if command -v sha256sum >/dev/null 2>&1; then

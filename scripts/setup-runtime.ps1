@@ -38,8 +38,8 @@ function Find-SupportedPython {
 }
 
 function Invoke-PythonChecked {
-    param([string]$Exe, [string[]]$Args, [string]$FailureMessage)
-    & $Exe @Args
+    param([string]$Exe, [string[]]$Arguments, [string]$FailureMessage)
+    & $Exe @Arguments
     if ($LASTEXITCODE -ne 0) { throw $FailureMessage }
 }
 
@@ -52,18 +52,18 @@ $python = Find-SupportedPython
 $venvPython = Join-Path $AppRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
     $venvArgs = @($python.PrefixArgs) + @("-m", "venv", (Join-Path $AppRoot ".venv"))
-    Invoke-PythonChecked -Exe $python.Exe -Args $venvArgs -FailureMessage "Could not create the version-local Python environment."
+    Invoke-PythonChecked -Exe $python.Exe -Arguments $venvArgs -FailureMessage "Could not create the version-local Python environment."
 } elseif (-not (Test-PythonCandidate -Exe $venvPython -PrefixArgs @())) {
     throw "Existing .venv Python is unsupported; remove .venv and rerun setup."
 }
 
-Invoke-PythonChecked -Exe $venvPython -Args @("-m", "pip", "install", "--upgrade", "pip") -FailureMessage "Could not prepare pip in the version-local environment."
-Invoke-PythonChecked -Exe $venvPython -Args @("-m", "pip", "install", $AppRoot) -FailureMessage "Could not install Image Prompt Library into the version-local environment."
+Invoke-PythonChecked -Exe $venvPython -Arguments @("-m", "pip", "install", "--upgrade", "pip") -FailureMessage "Could not prepare pip in the version-local environment."
+Invoke-PythonChecked -Exe $venvPython -Arguments @("-m", "pip", "install", $AppRoot) -FailureMessage "Could not install Image Prompt Library into the version-local environment."
 $probeLibrary = Join-Path ([IO.Path]::GetTempPath()) ("image-prompt-library-runtime-probe-" + [Guid]::NewGuid().ToString("N"))
 $incomingLibrary = $env:IMAGE_PROMPT_LIBRARY_PATH
 try {
     $env:IMAGE_PROMPT_LIBRARY_PATH = $probeLibrary
-    Invoke-PythonChecked -Exe $venvPython -Args @("-c", "import backend.main, uvicorn") -FailureMessage "The installed runtime could not import Image Prompt Library."
+    Invoke-PythonChecked -Exe $venvPython -Arguments @("-c", "import backend.main, uvicorn") -FailureMessage "The installed runtime could not import Image Prompt Library."
 } finally {
     if ($null -eq $incomingLibrary) { Remove-Item Env:IMAGE_PROMPT_LIBRARY_PATH -ErrorAction SilentlyContinue }
     else { $env:IMAGE_PROMPT_LIBRARY_PATH = $incomingLibrary }
