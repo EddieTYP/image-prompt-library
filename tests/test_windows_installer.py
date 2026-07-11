@@ -2078,7 +2078,7 @@ def test_windows_installer_cmd_preserves_success_when_uninstall_deletes_its_pref
 def test_windows_appctl_deferred_cleanup_failure_is_recorded_and_retains_tombstone(
     tmp_path: Path,
 ):
-    prefix = tmp_path / "prefix"
+    prefix = tmp_path / "nested" / "prefix"
     tombstone = tmp_path / (".prefix.uninstall-" + "a" * 32)
     tombstone.mkdir()
     ready = tmp_path / "ready.txt"
@@ -2106,7 +2106,7 @@ try {{
 def test_windows_installer_generated_shim_does_not_leak_handled_native_exit(
     tmp_path: Path,
 ):
-    prefix = tmp_path / "prefix"
+    prefix = tmp_path / "install" / "prefix"
     scripts = prefix / "app" / "versions" / "v1.0.0" / "scripts"
     scripts.mkdir(parents=True)
     (prefix / "app" / "current-version").write_text("v1.0.0\n", encoding="ascii")

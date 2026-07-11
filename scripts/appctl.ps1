@@ -1200,6 +1200,17 @@ function Get-UninstallWorkingDirectory {
     return $systemRoot
 }
 
+function Get-UninstallTombstoneParent {
+    param([string]$Prefix)
+    $parent = [IO.Path]::GetDirectoryName((Get-NormalizedUninstallPath -Path $Prefix))
+    $grandparent = if ($parent) { [IO.Path]::GetDirectoryName($parent) } else { $null }
+    if ($grandparent -and
+        [IO.Path]::GetPathRoot($grandparent).Equals([IO.Path]::GetPathRoot($parent), [StringComparison]::OrdinalIgnoreCase)) {
+        return $grandparent
+    }
+    return $parent
+}
+
 function Move-PrefixToUninstallTombstone {
     param($Context, [string]$ExpectedPrefix)
     if (-not $script:ControllerPath) { throw "Deferred uninstall requires a file-based controller." }
@@ -1212,7 +1223,7 @@ function Move-PrefixToUninstallTombstone {
     if (-not (Test-UninstallPathWithinOrEqual -Path $controller -Parent $prefix)) {
         throw "Deferred uninstall controller is outside this install."
     }
-    $parent = [IO.Path]::GetDirectoryName($prefix)
+    $parent = Get-UninstallTombstoneParent -Prefix $prefix
     $leaf = [IO.Path]::GetFileName($prefix)
     $tombstone = Join-Path $parent ("." + $leaf + ".uninstall-" + [Guid]::NewGuid().ToString("N"))
     if ([IO.Directory]::Exists($tombstone) -or [IO.File]::Exists($tombstone)) {
@@ -1292,7 +1303,7 @@ function Invoke-DeferredPrefixRemoval {
     $failurePath = [IO.Path]::GetFullPath($Arguments[7])
     $token = [string]$Arguments[9]
     $prefix = Get-NormalizedUninstallPath -Path $Context.Prefix
-    $parent = [IO.Path]::GetDirectoryName($prefix)
+    $parent = Get-UninstallTombstoneParent -Prefix $prefix
     $expectedPattern = '^\.' + [regex]::Escape([IO.Path]::GetFileName($prefix)) + '\.uninstall-[a-f0-9]{32}$'
     if (-not [IO.Path]::GetDirectoryName($tombstone).Equals($parent, [StringComparison]::OrdinalIgnoreCase) -or
         [IO.Path]::GetFileName($tombstone) -notmatch $expectedPattern -or
