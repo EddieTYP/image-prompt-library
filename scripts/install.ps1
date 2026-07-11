@@ -55,8 +55,8 @@ function Find-SupportedPython {
 
 function Assert-DisjointPaths {
     param([string]$AppPrefix, [string]$PrivateLibrary)
-    $app = [IO.Path]::GetFullPath($AppPrefix).TrimEnd('\')
-    $library = [IO.Path]::GetFullPath($PrivateLibrary).TrimEnd('\')
+    $app = Get-NormalizedPath -Path $AppPrefix
+    $library = Get-NormalizedPath -Path $PrivateLibrary
     $comparison = [StringComparison]::OrdinalIgnoreCase
     if ($app.Equals($library, $comparison) -or
         $app.StartsWith($library + "\", $comparison) -or
@@ -65,9 +65,127 @@ function Assert-DisjointPaths {
     }
 }
 
+function Get-NormalizedPath {
+    param([string]$Path)
+    $full = [IO.Path]::GetFullPath($Path)
+    $root = [IO.Path]::GetPathRoot($full)
+    if ($full.Length -gt $root.Length) { $full = $full.TrimEnd('\') }
+    return $full
+}
+
+function Assert-ManagedPath {
+    param([string]$Path, [string]$AppPrefix)
+    $target = Get-NormalizedPath -Path $Path
+    $prefix = Get-NormalizedPath -Path $AppPrefix
+    $comparison = [StringComparison]::OrdinalIgnoreCase
+    $prefixWithSeparator = if ($prefix.EndsWith('\')) { $prefix } else { $prefix + '\' }
+    if ($target.Equals($prefix, $comparison) -or -not $target.StartsWith($prefixWithSeparator, $comparison)) {
+        throw "Installer cleanup path is outside the configured prefix."
+    }
+    return $target
+}
+
+function Test-WindowsPathComponent {
+    param([string]$Value)
+    if (-not $Value -or $Value.EndsWith('.') -or $Value.EndsWith(' ') -or $Value.Contains(':')) { return $false }
+    $base = $Value.Split('.')[0]
+    return $base -notmatch '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$'
+}
+
 function Test-VersionToken {
     param([string]$Value)
-    return $Value -notin @(".", "..") -and $Value -match '^[A-Za-z0-9][A-Za-z0-9._-]*$'
+    return $Value -match '^[A-Za-z0-9][A-Za-z0-9._-]*$' -and
+        $Value -notmatch '(?i)\.backup$' -and
+        (Test-WindowsPathComponent -Value $Value)
+}
+
+function Enter-InstallLock {
+    param([string]$AppPrefix)
+    $bytes = [Text.Encoding]::UTF8.GetBytes((Get-NormalizedPath -Path $AppPrefix).ToUpperInvariant())
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        $name = "ImagePromptLibrary.Install." + (($sha256.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '')
+    } finally {
+        $sha256.Dispose()
+    }
+    $mutex = New-Object Threading.Mutex($false, $name)
+    try {
+        if (-not $mutex.WaitOne([TimeSpan]::FromMinutes(2))) {
+            throw "Another Image Prompt Library installer is already running for this prefix."
+        }
+    } catch [Threading.AbandonedMutexException] {
+    } catch {
+        $mutex.Dispose()
+        throw
+    }
+    return $mutex
+}
+
+function Exit-InstallLock {
+    param([Threading.Mutex]$Mutex)
+    if ($Mutex) {
+        try { $Mutex.ReleaseMutex() } finally { $Mutex.Dispose() }
+    }
+}
+
+function Remove-ValidatedTree {
+    param([string]$Target, [string]$AppPrefix)
+    $validated = Assert-ManagedPath -Path $Target -AppPrefix $AppPrefix
+    if (-not (Test-Path -LiteralPath $validated)) { return }
+    $item = Get-Item -LiteralPath $validated -Force
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        Remove-Item -LiteralPath $validated -Force
+        return
+    }
+    if ($item.PSIsContainer) {
+        foreach ($child in @(Get-ChildItem -LiteralPath $validated -Force)) {
+            Remove-ValidatedTree -Target $child.FullName -AppPrefix $AppPrefix
+        }
+    }
+    Remove-Item -LiteralPath $validated -Force
+}
+
+function Publish-AtomicBytes {
+    param([string]$Path, [byte[]]$Bytes)
+    $directory = [IO.Path]::GetDirectoryName((Get-NormalizedPath -Path $Path))
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) {
+        New-Item -ItemType Directory -Path $directory -Force | Out-Null
+    }
+    $temporary = Join-Path $directory ('.' + [IO.Path]::GetFileName($Path) + '.' + [Guid]::NewGuid().ToString('N') + '.tmp')
+    $replacementBackup = $temporary + '.bak'
+    try {
+        [IO.File]::WriteAllBytes($temporary, $Bytes)
+        if (Test-Path -LiteralPath $Path) {
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Cannot atomically replace non-file $Path." }
+            [IO.File]::Replace($temporary, $Path, $replacementBackup)
+        } else {
+            [IO.File]::Move($temporary, $Path)
+        }
+    } finally {
+        if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary -Force }
+        if (Test-Path -LiteralPath $replacementBackup) { Remove-Item -LiteralPath $replacementBackup -Force }
+    }
+}
+
+function Publish-AtomicText {
+    param([string]$Path, [AllowEmptyString()][string]$Value)
+    Publish-AtomicBytes -Path $Path -Bytes ([Text.Encoding]::ASCII.GetBytes($Value + [Environment]::NewLine))
+}
+
+function Get-FileState {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return [pscustomobject]@{ Exists = $false; Bytes = $null } }
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Expected a file at $Path." }
+    return [pscustomobject]@{ Exists = $true; Bytes = [IO.File]::ReadAllBytes($Path) }
+}
+
+function Restore-FileState {
+    param([string]$Path, [object]$State, [string]$AppPrefix)
+    if ($State.Exists) {
+        Publish-AtomicBytes -Path $Path -Bytes $State.Bytes
+    } elseif (Test-Path -LiteralPath $Path) {
+        Remove-ValidatedTree -Target $Path -AppPrefix $AppPrefix
+    }
 }
 
 function Invoke-Download {
@@ -105,6 +223,18 @@ function Get-ApiJson {
     return $response.Content | ConvertFrom-Json
 }
 
+function Assert-GitHubAssetUri {
+    param([string]$Uri)
+    $parsed = $null
+    $expectedPath = "/$Repo/releases/download/"
+    if (-not [Uri]::TryCreate($Uri, [UriKind]::Absolute, [ref]$parsed) -or
+        $parsed.Scheme -ne 'https' -or
+        -not $parsed.Host.Equals('github.com', [StringComparison]::OrdinalIgnoreCase) -or
+        -not $parsed.AbsolutePath.StartsWith($expectedPath, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "GitHub release assets must use the configured repository HTTPS release download origin."
+    }
+}
+
 function New-ReleaseSpec {
     param([string]$Tag, [string]$BaseUrl, [object[]]$Assets = @())
     if (-not (Test-VersionToken -Value $Tag)) { throw "Release version is invalid: $Tag" }
@@ -122,6 +252,7 @@ function New-ReleaseSpec {
         $artifactUri = $locations[$artifact]
         $checksumUri = $locations[$checksum]
         $manifestUri = $locations[$manifest]
+        foreach ($uri in @($artifactUri, $checksumUri, $manifestUri)) { Assert-GitHubAssetUri -Uri $uri }
     } elseif (Test-Path -LiteralPath $BaseUrl -PathType Container) {
         $artifactUri = Join-Path $BaseUrl $artifact
         $checksumUri = Join-Path $BaseUrl $checksum
@@ -226,44 +357,79 @@ function Confirm-ArtifactChecksum {
     if (-not $checksumSha.Equals($manifestSha, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Checksum file SHA256 does not match the release manifest."
     }
-    $calculatedSha = (Get-FileHash -LiteralPath $ArtifactPath -Algorithm SHA256).Hash
-    if (-not $calculatedSha.Equals($manifestSha, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Calculated artifact checksum does not match the verified release metadata."
-    }
 }
 
 function Expand-SafeTar {
-    param([string]$ArtifactPath, [string]$Destination, [object]$Python)
+    param([string]$ArtifactPath, [string]$Destination, [object]$Python, [string]$ExpectedSha)
     $extractor = Join-Path ([IO.Path]::GetTempPath()) ("image-prompt-library-extractor-" + [Guid]::NewGuid().ToString("N") + ".py")
     $source = @'
 from pathlib import Path
-import sys, tarfile
+import hashlib
+import re
+import sys
+import tarfile
 
 archive_path = Path(sys.argv[1])
 destination = Path(sys.argv[2]).resolve()
+expected_sha = sys.argv[3].lower()
 destination.mkdir(parents=True, exist_ok=True)
-with tarfile.open(archive_path, "r:gz") as archive:
-    members = archive.getmembers()
-    for member in members:
-        member_path = Path(member.name)
-        if member_path.is_absolute() or member_path.drive or ".." in member_path.parts:
-            raise SystemExit(f"Refusing unsafe archive member: {member.name}")
-        if any(part.lower() == ".venv" for part in member_path.parts):
-            raise SystemExit(f"Refusing staged Python environment: {member.name}")
-        if member.issym() or member.islnk() or member.isdev():
-            raise SystemExit(f"Refusing unsupported archive member: {member.name}")
-        if not (member.isfile() or member.isdir()):
-            raise SystemExit(f"Refusing unsupported archive member: {member.name}")
-        target = (destination / member_path).resolve()
-        try:
-            target.relative_to(destination)
-        except ValueError as exc:
-            raise SystemExit(f"Refusing unsafe archive member: {member.name}") from exc
-    archive.extractall(destination, members=members)
+reserved = {"CON", "PRN", "AUX", "NUL", *(f"COM{number}" for number in range(1, 10)), *(f"LPT{number}" for number in range(1, 10))}
+expected_files = {
+    "version",
+    "pyproject.toml",
+    "backend/main.py",
+    "frontend/dist/index.html",
+    "scripts/appctl.ps1",
+    "scripts/install.ps1",
+    "scripts/install-sample-data.ps1",
+    "scripts/setup-runtime.ps1",
+}
+expected_roots = {entry.split("/", 1)[0] for entry in expected_files}
+
+with open(archive_path, "rb") as artifact_file:
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: artifact_file.read(1024 * 1024), b""):
+        digest.update(chunk)
+    if digest.hexdigest().lower() != expected_sha:
+        raise SystemExit("Calculated artifact checksum does not match the verified release metadata.")
+    artifact_file.seek(0)
+    with tarfile.open(fileobj=artifact_file, mode="r:gz") as archive:
+        members = archive.getmembers()
+        destinations = {}
+        file_destinations = set()
+        for member in members:
+            raw_name = member.name.replace("\\", "/")
+            if not raw_name or raw_name.startswith("/") or raw_name.startswith("//") or re.match(r"^[A-Za-z]:", raw_name):
+                raise SystemExit(f"Refusing unsafe archive member: {member.name}")
+            parts = raw_name.split("/")
+            if any(not part or part in {".", ".."} or ":" in part or part.endswith((".", " ")) for part in parts):
+                raise SystemExit(f"Refusing unsafe archive member: {member.name}")
+            if any(part.split(".", 1)[0].upper() in reserved for part in parts):
+                raise SystemExit(f"Refusing unsafe archive member: {member.name}")
+            canonical_parts = tuple(part.casefold() for part in parts)
+            if any(part == ".venv" for part in canonical_parts):
+                raise SystemExit(f"Refusing staged Python environment: {member.name}")
+            if member.issym() or member.islnk() or member.isdev():
+                raise SystemExit(f"Refusing unsupported archive member: {member.name}")
+            if not (member.isfile() or member.isdir()):
+                raise SystemExit(f"Refusing unsupported archive member: {member.name}")
+            if canonical_parts[0] not in expected_roots:
+                raise SystemExit(f"Refusing ambiguous payload root: {member.name}")
+            kind = "file" if member.isfile() else "directory"
+            if canonical_parts in destinations or any(parent in file_destinations for parent in (canonical_parts[:index] for index in range(1, len(canonical_parts)))):
+                raise SystemExit(f"Refusing ambiguous archive member: {member.name}")
+            if kind == "file" and any(existing[:len(canonical_parts)] == canonical_parts for existing in destinations):
+                raise SystemExit(f"Refusing file-directory conflict: {member.name}")
+            destinations[canonical_parts] = kind
+            if kind == "file":
+                file_destinations.add(canonical_parts)
+        if not expected_files.issubset({"/".join(path) for path, kind in destinations.items() if kind == "file"}):
+            raise SystemExit("Refusing payload without the required application files.")
+        archive.extractall(destination, members=members)
 '@
     try {
         [IO.File]::WriteAllText($extractor, $source, (New-Object Text.UTF8Encoding($false)))
-        $arguments = @($Python.PrefixArgs) + @($extractor, $ArtifactPath, $Destination)
+        $arguments = @($Python.PrefixArgs) + @($extractor, $ArtifactPath, $Destination, $ExpectedSha)
         & $Python.Exe @arguments
         if ($LASTEXITCODE -ne 0) { throw "Safe archive extraction failed." }
     } finally {
@@ -293,14 +459,12 @@ function Assert-VersionPayload {
 }
 
 function Write-VersionPointer {
-    param([string]$Path, [AllowEmptyString()][string]$Value)
+    param([string]$Path, [AllowEmptyString()][string]$Value, [string]$AppPrefix)
     if (-not $Value) {
-        if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Force }
+        if (Test-Path -LiteralPath $Path) { Remove-ValidatedTree -Target $Path -AppPrefix $AppPrefix }
         return
     }
-    $temporary = "$Path.tmp"
-    Set-Content -LiteralPath $temporary -Value $Value -Encoding ASCII
-    Move-Item -LiteralPath $temporary -Destination $Path -Force
+    Publish-AtomicText -Path $Path -Value $Value
 }
 
 function Write-CommandShim {
@@ -317,7 +481,7 @@ $prefix = Split-Path -Parent $PSScriptRoot
 $pointer = Join-Path $prefix "app\current-version"
 if (-not (Test-Path -LiteralPath $pointer -PathType Leaf)) { throw "Image Prompt Library is not installed." }
 $version = (Get-Content -LiteralPath $pointer -Raw).Trim()
-if ($version -in @(".", "..") -or $version -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$') { throw "The current version pointer is invalid." }
+if ($version -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]*$' -or $version -match '(?i)\.backup$' -or $version.Split('.')[0] -match '^(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$') { throw "The current version pointer is invalid." }
 $controller = Join-Path $prefix "app\versions\$version\scripts\appctl.ps1"
 if (-not (Test-Path -LiteralPath $controller -PathType Leaf)) { throw "The current Image Prompt Library version is incomplete." }
 & $controller @CommandArgs
@@ -330,23 +494,24 @@ exit $code
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0image-prompt-library.ps1" %*
 exit /b %ERRORLEVEL%
 '@
-    Set-Content -LiteralPath (Join-Path $BinPath "image-prompt-library.ps1") -Value $powerShellShim -Encoding ASCII
-    Set-Content -LiteralPath (Join-Path $BinPath "image-prompt-library.cmd") -Value $cmdShim -Encoding ASCII
+    Publish-AtomicText -Path (Join-Path $BinPath "image-prompt-library.ps1") -Value $powerShellShim
+    Publish-AtomicText -Path (Join-Path $BinPath "image-prompt-library.cmd") -Value $cmdShim
 }
 
 function Add-UserPathEntry {
     param([string]$BinPath)
-    $normalized = [IO.Path]::GetFullPath($BinPath).TrimEnd('\')
+    $normalized = Get-NormalizedPath -Path $BinPath
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    $parts = @($userPath -split ";" | Where-Object { $_ })
-    $present = @($parts | Where-Object { $_.Trim().TrimEnd('\').Equals($normalized, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+    $parts = if ($null -eq $userPath) { @() } else { @($userPath -split ';') }
+    $present = @($parts | Where-Object { $_ -and (Get-NormalizedPath -Path $_.Trim()).Equals($normalized, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
     if (-not $present) {
-        $newUserPath = (@($parts) + @($normalized)) -join ";"
+        $newUserPath = if ([string]::IsNullOrEmpty($userPath)) { $normalized } else { $userPath + ';' + $normalized }
         [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
     }
-    $currentParts = @($env:Path -split ";" | Where-Object { $_ })
-    $currentPresent = @($currentParts | Where-Object { $_.Trim().TrimEnd('\').Equals($normalized, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
-    if (-not $currentPresent) { $env:Path = (@($currentParts) + @($normalized)) -join ";" }
+    $currentPath = $env:Path
+    $currentParts = if ($null -eq $currentPath) { @() } else { @($currentPath -split ';') }
+    $currentPresent = @($currentParts | Where-Object { $_ -and (Get-NormalizedPath -Path $_.Trim()).Equals($normalized, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0
+    if (-not $currentPresent) { $env:Path = if ([string]::IsNullOrEmpty($currentPath)) { $normalized } else { $currentPath + ';' + $normalized } }
 }
 
 function Write-AppEnvironment {
@@ -360,7 +525,7 @@ function Write-AppEnvironment {
         "BACKEND_PORT=$port",
         "BACKUP_DIR=$(Join-Path $AppPrefix 'backups')"
     )
-    Set-Content -LiteralPath $Path -Value $lines -Encoding ASCII
+    Publish-AtomicText -Path $Path -Value ($lines -join [Environment]::NewLine)
 }
 
 function Start-InstalledVersion {
@@ -374,88 +539,132 @@ function Start-InstalledVersion {
 }
 
 function Invoke-Install {
-    $normalizedPrefix = [IO.Path]::GetFullPath($Prefix).TrimEnd('\')
-    $normalizedLibrary = [IO.Path]::GetFullPath($LibraryPath).TrimEnd('\')
+    $normalizedPrefix = Get-NormalizedPath -Path $Prefix
+    $normalizedLibrary = Get-NormalizedPath -Path $LibraryPath
+    if ($Version -ne 'latest' -and -not (Test-VersionToken -Value $Version)) { throw "Release version is invalid: $Version" }
     Assert-DisjointPaths -AppPrefix $normalizedPrefix -PrivateLibrary $normalizedLibrary
     $python = Find-SupportedPython
-    $release = Resolve-Release
+    $installLock = Enter-InstallLock -AppPrefix $normalizedPrefix
+    $staging = $null
+    $backupTarget = $null
+    $finalTarget = $null
+    $backupCreated = $false
+    $targetPublished = $false
+    $stateCaptured = $false
+    $oldUserPath = $null
+    $oldProcessPath = $env:Path
+    try {
+        $release = Resolve-Release
+        $appPath = Join-Path $normalizedPrefix 'app'
+        $versionsPath = Join-Path $appPath 'versions'
+        $downloadsPath = Join-Path (Join-Path $appPath 'downloads') $release.Version
+        $currentPointer = Join-Path $appPath 'current-version'
+        $previousPointer = Join-Path $appPath 'previous-version'
+        $finalTarget = Join-Path $versionsPath $release.Version
+        $backupTarget = Join-Path $versionsPath ($release.Version + '.backup')
+        $binPath = Join-Path $normalizedPrefix 'bin'
+        $environmentPath = Join-Path $normalizedPrefix '.env'
+        $backupPath = Join-Path $normalizedPrefix 'backups'
+        foreach ($path in @($appPath, $versionsPath, $downloadsPath, $currentPointer, $previousPointer, $finalTarget, $backupTarget, $binPath, $environmentPath, $backupPath)) {
+            Assert-ManagedPath -Path $path -AppPrefix $normalizedPrefix | Out-Null
+        }
+        $currentVersion = ''
+        if (Test-Path -LiteralPath $currentPointer -PathType Leaf) {
+            $currentVersion = (Get-Content -LiteralPath $currentPointer -Raw).Trim()
+            if ($currentVersion -and -not (Test-VersionToken -Value $currentVersion)) { throw 'The current version pointer is invalid.' }
+        }
 
-    $appPath = Join-Path $normalizedPrefix "app"
-    $versionsPath = Join-Path $appPath "versions"
-    $downloadsPath = Join-Path (Join-Path $appPath "downloads") $release.Version
-    $currentPointer = Join-Path $appPath "current-version"
-    $previousPointer = Join-Path $appPath "previous-version"
-    $finalTarget = Join-Path $versionsPath $release.Version
-    $binPath = Join-Path $normalizedPrefix "bin"
-    $currentVersion = ""
-    if (Test-Path -LiteralPath $currentPointer -PathType Leaf) {
-        $currentVersion = (Get-Content -LiteralPath $currentPointer -Raw).Trim()
-    }
+        $publishedState = [pscustomobject]@{
+            Environment = Get-FileState -Path $environmentPath
+            PowerShellShim = Get-FileState -Path (Join-Path $binPath 'image-prompt-library.ps1')
+            CmdShim = Get-FileState -Path (Join-Path $binPath 'image-prompt-library.cmd')
+            CurrentPointer = Get-FileState -Path $currentPointer
+            PreviousPointer = Get-FileState -Path $previousPointer
+        }
+        $oldUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        $stateCaptured = $true
 
-    if ($currentVersion -eq $release.Version -and (Test-Path -LiteralPath $finalTarget -PathType Container)) {
-        Write-AppEnvironment -Path (Join-Path $normalizedPrefix ".env") -PrivateLibrary $normalizedLibrary -AppPrefix $normalizedPrefix
+        if ($currentVersion -ne $release.Version -or -not (Test-Path -LiteralPath $finalTarget -PathType Container)) {
+            New-Item -ItemType Directory -Path $downloadsPath -Force | Out-Null
+            $manifestPath = Join-Path $downloadsPath $release.Manifest
+            $artifactPath = Join-Path $downloadsPath $release.Artifact
+            $checksumPath = Join-Path $downloadsPath $release.Checksum
+            Invoke-Download -Uri $release.ManifestUri -Destination $manifestPath
+            $manifest = Read-CompatibleManifest -Release $release -ManifestPath $manifestPath
+            Invoke-Download -Uri $release.ArtifactUri -Destination $artifactPath
+            Invoke-Download -Uri $release.ChecksumUri -Destination $checksumPath
+            Confirm-ArtifactChecksum -ArtifactPath $artifactPath -ChecksumPath $checksumPath -Manifest $manifest
+
+            New-Item -ItemType Directory -Path $versionsPath -Force | Out-Null
+            $staging = Join-Path $versionsPath ('.staging-' + [Guid]::NewGuid().ToString('N'))
+            Assert-ManagedPath -Path $staging -AppPrefix $normalizedPrefix | Out-Null
+            Expand-SafeTar -ArtifactPath $artifactPath -Destination $staging -Python $python -ExpectedSha ([string]$manifest.sha256)
+            Assert-VersionPayload -Root $staging -ExpectedVersion $release.Version
+            if (Test-Path -LiteralPath $finalTarget) {
+                if (Test-Path -LiteralPath $backupTarget) { throw "A previous backup exists at $backupTarget." }
+                Move-Item -LiteralPath $finalTarget -Destination $backupTarget
+                $backupCreated = $true
+            }
+            Move-Item -LiteralPath $staging -Destination $finalTarget
+            $staging = $null
+            $targetPublished = $true
+            $setup = Join-Path $finalTarget 'scripts\setup-runtime.ps1'
+            & $setup -AppRoot $finalTarget -PythonExe $python.Exe -PythonPrefixArgs $python.PrefixArgs
+            if (-not $?) { throw 'Runtime setup failed.' }
+        }
+
+        if (-not (Test-Path -LiteralPath $normalizedLibrary -PathType Container)) {
+            New-Item -ItemType Directory -Path $normalizedLibrary -Force | Out-Null
+        }
+        if (-not (Test-Path -LiteralPath $backupPath -PathType Container)) {
+            New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
+        }
+        Write-AppEnvironment -Path $environmentPath -PrivateLibrary $normalizedLibrary -AppPrefix $normalizedPrefix
         Write-CommandShim -BinPath $binPath
         if (-not $SkipPath) { Add-UserPathEntry -BinPath $binPath }
+        Write-VersionPointer -Path $previousPointer -Value $currentVersion -AppPrefix $normalizedPrefix
+        Write-VersionPointer -Path $currentPointer -Value $release.Version -AppPrefix $normalizedPrefix
         Start-InstalledVersion -VersionRoot $finalTarget
-        Write-Output "Image Prompt Library $($release.Version) is already installed."
-        return
-    }
-
-    New-Item -ItemType Directory -Path $downloadsPath -Force | Out-Null
-    $manifestPath = Join-Path $downloadsPath $release.Manifest
-    $artifactPath = Join-Path $downloadsPath $release.Artifact
-    $checksumPath = Join-Path $downloadsPath $release.Checksum
-    Invoke-Download -Uri $release.ManifestUri -Destination $manifestPath
-    $manifest = Read-CompatibleManifest -Release $release -ManifestPath $manifestPath
-    Invoke-Download -Uri $release.ArtifactUri -Destination $artifactPath
-    Invoke-Download -Uri $release.ChecksumUri -Destination $checksumPath
-    Confirm-ArtifactChecksum -ArtifactPath $artifactPath -ChecksumPath $checksumPath -Manifest $manifest
-
-    New-Item -ItemType Directory -Path $versionsPath -Force | Out-Null
-    $staging = Join-Path $versionsPath (".staging-" + [Guid]::NewGuid().ToString("N"))
-    $backupTarget = Join-Path $versionsPath ($release.Version + ".backup")
-    $backupCreated = $false
-    try {
-        Expand-SafeTar -ArtifactPath $artifactPath -Destination $staging -Python $python
-        Assert-VersionPayload -Root $staging -ExpectedVersion $release.Version
-        if (Test-Path -LiteralPath $finalTarget) {
-            if (Test-Path -LiteralPath $backupTarget) { Remove-Item -LiteralPath $backupTarget -Recurse -Force }
-            Move-Item -LiteralPath $finalTarget -Destination $backupTarget
-            $backupCreated = $true
+        if ($backupCreated -and (Test-Path -LiteralPath $backupTarget)) {
+            Remove-ValidatedTree -Target $backupTarget -AppPrefix $normalizedPrefix
         }
-        Move-Item -LiteralPath $staging -Destination $finalTarget
+        if ($targetPublished) {
+            Write-Output "Installed Image Prompt Library $($release.Version)."
+        } else {
+            Write-Output "Image Prompt Library $($release.Version) is already installed."
+        }
+    } catch {
+        $installFailure = $_
+        $rollbackFailure = $null
         try {
-            $setup = Join-Path $finalTarget "scripts\setup-runtime.ps1"
-            & $setup -AppRoot $finalTarget -PythonExe $python.Exe -PythonPrefixArgs $python.PrefixArgs
-            if (-not $?) { throw "Runtime setup failed." }
-        } catch {
-            if (Test-Path -LiteralPath $finalTarget) { Remove-Item -LiteralPath $finalTarget -Recurse -Force }
+            if ($targetPublished -and (Test-Path -LiteralPath $finalTarget)) {
+                Remove-ValidatedTree -Target $finalTarget -AppPrefix $normalizedPrefix
+            }
             if ($backupCreated -and (Test-Path -LiteralPath $backupTarget)) {
                 Move-Item -LiteralPath $backupTarget -Destination $finalTarget
             }
-            throw
+            if ($stateCaptured) {
+                Restore-FileState -Path $environmentPath -State $publishedState.Environment -AppPrefix $normalizedPrefix
+                Restore-FileState -Path (Join-Path $binPath 'image-prompt-library.ps1') -State $publishedState.PowerShellShim -AppPrefix $normalizedPrefix
+                Restore-FileState -Path (Join-Path $binPath 'image-prompt-library.cmd') -State $publishedState.CmdShim -AppPrefix $normalizedPrefix
+                Restore-FileState -Path $currentPointer -State $publishedState.CurrentPointer -AppPrefix $normalizedPrefix
+                Restore-FileState -Path $previousPointer -State $publishedState.PreviousPointer -AppPrefix $normalizedPrefix
+                if (-not $SkipPath) {
+                    [Environment]::SetEnvironmentVariable('Path', $oldUserPath, 'User')
+                    $env:Path = $oldProcessPath
+                }
+            }
+        } catch {
+            $rollbackFailure = $_.Exception.Message
         }
-        if ($backupCreated -and (Test-Path -LiteralPath $backupTarget)) {
-            Remove-Item -LiteralPath $backupTarget -Recurse -Force
-        }
+        if ($rollbackFailure) { throw "Install failed: $($installFailure.Exception.Message) Rollback failed: $rollbackFailure" }
+        throw $installFailure
     } finally {
-        if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force }
+        if ($staging -and (Test-Path -LiteralPath $staging)) {
+            Remove-ValidatedTree -Target $staging -AppPrefix $normalizedPrefix
+        }
+        Exit-InstallLock -Mutex $installLock
     }
-
-    if (-not (Test-Path -LiteralPath $normalizedLibrary -PathType Container)) {
-        New-Item -ItemType Directory -Path $normalizedLibrary -Force | Out-Null
-    }
-    $backupPath = Join-Path $normalizedPrefix "backups"
-    if (-not (Test-Path -LiteralPath $backupPath -PathType Container)) {
-        New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
-    }
-    Write-AppEnvironment -Path (Join-Path $normalizedPrefix ".env") -PrivateLibrary $normalizedLibrary -AppPrefix $normalizedPrefix
-    Write-CommandShim -BinPath $binPath
-    if (-not $SkipPath) { Add-UserPathEntry -BinPath $binPath }
-    Write-VersionPointer -Path $previousPointer -Value $currentVersion
-    Write-VersionPointer -Path $currentPointer -Value $release.Version
-    Start-InstalledVersion -VersionRoot $finalTarget
-    Write-Output "Installed Image Prompt Library $($release.Version)."
 }
 
 try {

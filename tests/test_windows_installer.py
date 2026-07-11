@@ -567,7 +567,8 @@ def test_windows_installer_requires_python_and_a_capable_verified_release():
     ):
         assert f"function {name}" in script
     assert "windows-powershell-v1" in script
-    assert "Get-FileHash" in script
+    assert "hashlib.sha256" in script
+    assert "fileobj=artifact_file" in script
     assert "process_start_time_utc_ticks" not in script
     assert "tarfile" in script
     assert "member.issym()" in script
@@ -592,14 +593,131 @@ def test_windows_installer_rejects_overlapping_app_and_library_paths():
     assert "The app prefix and private library must not contain each other." in script
 
 
+def test_windows_installer_hardens_identity_publication_and_cleanup_boundaries():
+    script = read("scripts/install.ps1")
+
+    assert "Get-FileHash" not in script
+    assert "Assert-GitHubAssetUri" in script
+    assert "Enter-InstallLock" in script
+    assert "Publish-AtomicBytes" in script
+    assert "[IO.File]::Replace" in script
+    assert "$Path.tmp" not in script
+    assert "Remove-ValidatedTree" in script
+    assert "ReparsePoint" in script
+    assert "-Recurse" not in script
+
+
+@pytest.mark.parametrize(
+    "unsafe_name",
+    [
+        "CON",
+        "CON.txt",
+        "folder:stream.txt",
+        "trailing-dot.",
+        "trailing-space ",
+        "other-root/VERSION",
+        "Version",
+        "backend",
+    ],
+)
+def test_windows_installer_rejects_ambiguous_windows_archive_names(
+    tmp_path: Path, unsafe_name: str
+):
+    release_dir = tmp_path / "release"
+    write_test_release(release_dir, extra_members=(("file", unsafe_name),))
+
+    result = run_installer(release_dir, tmp_path / "prefix", tmp_path / "library")
+
+    assert result.returncode == 1
+    assert "refusing" in result.stderr.lower()
+    assert not (tmp_path / "prefix" / "app" / "versions" / "v1.2.3").exists()
+
+
+@pytest.mark.parametrize("version", ["CON", "con.txt", "v1.2.3.", "v1.2.3.backup"])
+def test_windows_installer_rejects_canonical_version_aliases(tmp_path: Path, version: str):
+    result = run_installer(
+        tmp_path / "missing release", tmp_path / "prefix", tmp_path / "library", version=version
+    )
+
+    assert result.returncode == 1
+    assert "release version is invalid" in result.stderr.lower()
+    assert not (tmp_path / "prefix").exists()
+
+
+def test_windows_installer_rolls_back_late_publication_and_start_failure(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    write_test_release(release_dir, start_failure=True)
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    old_target = prefix / "app" / "versions" / "v1.0.0"
+    old_target.mkdir(parents=True)
+    (old_target / "keep.txt").write_text("old runtime", encoding="ascii")
+    app = prefix / "app"
+    (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    (app / "previous-version").write_text("v0.9.0\n", encoding="ascii")
+    prefix.mkdir(exist_ok=True)
+    (prefix / ".env").write_text("old env\n", encoding="ascii")
+    (prefix / "bin").mkdir()
+    (prefix / "bin" / "image-prompt-library.ps1").write_text("old ps1\n", encoding="ascii")
+    (prefix / "bin" / "image-prompt-library.cmd").write_text("old cmd\n", encoding="ascii")
+
+    result = run_installer(
+        release_dir, prefix, library, no_start=False
+    )
+
+    assert result.returncode == 1
+    assert "intentional start failure" in result.stderr
+    assert (old_target / "keep.txt").read_text(encoding="ascii") == "old runtime"
+    assert (app / "current-version").read_text(encoding="ascii") == "v1.0.0\n"
+    assert (app / "previous-version").read_text(encoding="ascii") == "v0.9.0\n"
+    assert (prefix / ".env").read_text(encoding="ascii") == "old env\n"
+    assert (prefix / "bin" / "image-prompt-library.ps1").read_text(encoding="ascii") == "old ps1\n"
+    assert (prefix / "bin" / "image-prompt-library.cmd").read_text(encoding="ascii") == "old cmd\n"
+    assert not (app / "versions" / "v1.2.3").exists()
+    assert not (app / "versions" / "v1.2.3.backup").exists()
+
+
+def test_windows_installer_preserves_user_path_text_when_appending(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_test_release(release_dir)
+    installer = powershell_literal(ROOT / "scripts" / "install.ps1")
+    release = powershell_literal(release_dir)
+    prefix_literal = powershell_literal(prefix)
+    library_literal = powershell_literal(library)
+    python_literal = powershell_literal(shutil.which("python.exe") or shutil.which("python") or "python")
+    script = f"""
+$original = [Environment]::GetEnvironmentVariable("Path", "User")
+try {{
+    [Environment]::SetEnvironmentVariable("Path", "Alpha;;Beta;", "User")
+    & powershell.exe -NoProfile -File {installer} -Version v1.2.3 -Prefix {prefix_literal} -LibraryPath {library_literal} -ReleaseBaseUrl {release} -PythonExe {python_literal} -NoStart
+    $code = $LASTEXITCODE
+    $after = [Environment]::GetEnvironmentVariable("Path", "User")
+    [pscustomobject]@{{ code = $code; path = $after }} | ConvertTo-Json -Compress
+}} finally {{
+    [Environment]::SetEnvironmentVariable("Path", $original, "User")
+}}
+"""
+
+    result = run_powershell(script)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["code"] == 0
+    assert payload["path"] == f"Alpha;;Beta;;{(prefix / 'bin').resolve()}"
+
+
 def write_test_release(
     release_dir: Path,
     version: str = "v1.2.3",
     *,
     capabilities: tuple[str, ...] = ("windows-powershell-v1",),
     unsafe_member: tuple[str, bytes | str] | None = None,
+    extra_members: tuple[tuple[str, str], ...] = (),
     manifest_sha: str | None = None,
     checksum_sha: str | None = None,
+    start_failure: bool = False,
 ) -> None:
     release_dir.mkdir(parents=True)
     artifact_name = f"image-prompt-library-{version}.tar.gz"
@@ -609,7 +727,11 @@ def write_test_release(
         "pyproject.toml": "[project]\nname='image-prompt-library'\nversion='1.2.3'\n",
         "backend/main.py": "app = None\n",
         "frontend/dist/index.html": "<!doctype html>\n",
-        "scripts/appctl.ps1": "Write-Output ($args -join ' ')\n",
+        "scripts/appctl.ps1": (
+            "if ($args -contains 'start') { throw 'intentional start failure' }\n"
+            if start_failure
+            else "Write-Output ($args -join ' ')\n"
+        ),
         "scripts/install.ps1": "# packaged installer\n",
         "scripts/install-sample-data.ps1": "# packaged sample installer\n",
         "scripts/setup-runtime.ps1": (
@@ -637,6 +759,15 @@ def write_test_release(
                 data = b"unsafe"
                 member.size = len(data)
                 archive.addfile(member, io.BytesIO(data))
+        for kind, name in extra_members:
+            member = tarfile.TarInfo(str(name))
+            if kind == "directory":
+                member.type = tarfile.DIRTYPE
+                archive.addfile(member)
+            else:
+                data = b"extra"
+                member.size = len(data)
+                archive.addfile(member, io.BytesIO(data))
 
     calculated_sha = hashlib.sha256(artifact.read_bytes()).hexdigest()
     manifest = {
@@ -661,12 +792,12 @@ def run_installer(
     version: str = "v1.2.3",
     *,
     environment: dict[str, str] | None = None,
+    no_start: bool = True,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     if environment:
         env.update(environment)
-    return subprocess.run(
-        [
+    arguments = [
             powershell_executable(),
             "-NoProfile",
             "-File",
@@ -681,9 +812,12 @@ def run_installer(
             str(release_dir),
             "-PythonExe",
             shutil.which("python.exe") or shutil.which("python") or "python",
-            "-NoStart",
-            "-SkipPath",
-        ],
+        ]
+    if no_start:
+        arguments.append("-NoStart")
+    arguments.append("-SkipPath")
+    return subprocess.run(
+        arguments,
         cwd=ROOT,
         env=env,
         capture_output=True,
