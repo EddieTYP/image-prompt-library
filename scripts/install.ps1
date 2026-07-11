@@ -513,6 +513,68 @@ function Restore-PointerState {
     if ($errors.Count) { throw "Pointer restoration failed: $($errors -join '; ')" }
 }
 
+function Initialize-ImmediateProcessRunner {
+    if ("ImagePromptLibraryImmediateProcessRunner" -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Diagnostics;
+using System.Text;
+using System.Threading;
+
+public sealed class ImagePromptLibraryImmediateProcessResult
+{
+    public int ExitCode { get; set; }
+    public string Stdout { get; set; }
+    public string Stderr { get; set; }
+}
+
+public static class ImagePromptLibraryImmediateProcessRunner
+{
+    public static ImagePromptLibraryImmediateProcessResult Run(string fileName, string arguments, string workingDirectory)
+    {
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
+        var stdoutLock = new object();
+        var stderrLock = new object();
+        using (var process = new Process())
+        {
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = fileName,
+                Arguments = arguments,
+                WorkingDirectory = workingDirectory,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            process.OutputDataReceived += delegate(object sender, DataReceivedEventArgs eventArgs)
+            {
+                if (eventArgs.Data != null) lock (stdoutLock) stdout.AppendLine(eventArgs.Data);
+            };
+            process.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs eventArgs)
+            {
+                if (eventArgs.Data != null) lock (stderrLock) stderr.AppendLine(eventArgs.Data);
+            };
+            if (!process.Start()) throw new InvalidOperationException("Could not start the child process.");
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            if (!process.WaitForExit(Int32.MaxValue)) throw new TimeoutException("The child process did not exit.");
+            var exitCode = process.ExitCode;
+            Thread.Sleep(50);
+            try { process.CancelOutputRead(); } catch (InvalidOperationException) { }
+            try { process.CancelErrorRead(); } catch (InvalidOperationException) { }
+            string output;
+            string error;
+            lock (stdoutLock) output = stdout.ToString().TrimEnd();
+            lock (stderrLock) error = stderr.ToString().TrimEnd();
+            return new ImagePromptLibraryImmediateProcessResult { ExitCode = exitCode, Stdout = output, Stderr = error };
+        }
+    }
+}
+'@
+}
+
 function Invoke-Controller {
     param([string]$VersionRoot, [string[]]$Arguments)
     $controller = Join-Path $VersionRoot "scripts\appctl.ps1"
@@ -522,41 +584,11 @@ function Invoke-Controller {
     try {
         $ErrorActionPreference = "Continue"
         if (@($Arguments).Count -gt 0 -and $Arguments[0] -eq "start") {
+            Initialize-ImmediateProcessRunner
             $quotedArgs = @($processArgs | ForEach-Object { '"' + $_.Replace('"', '\"') + '"' })
-            $prefix = [IO.Path]::GetDirectoryName([IO.Path]::GetDirectoryName([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($VersionRoot))))
-            $logDir = Join-Path $prefix "logs"
-            New-Item -ItemType Directory -Path $logDir -Force | Out-Null
-            $stdoutPath = Join-Path $logDir "controller.out.log"
-            $stderrPath = Join-Path $logDir "controller.err.log"
-            $command = '""powershell.exe" ' + ($quotedArgs -join " ") + ' 1>"' + $stdoutPath + '" 2>"' + $stderrPath + '""'
-            $startInfo = New-Object Diagnostics.ProcessStartInfo
-            $startInfo.FileName = $env:ComSpec
-            $startInfo.Arguments = "/d /s /c $command"
-            $startInfo.WorkingDirectory = $VersionRoot
-            $startInfo.UseShellExecute = $false
-            $startInfo.CreateNoWindow = $true
-            $process = New-Object Diagnostics.Process
-            $process.StartInfo = $startInfo
-            try {
-                if (-not $process.Start()) { throw "Could not start the version controller." }
-                $process.WaitForExit()
-                $exitCode = $process.ExitCode
-            } finally {
-                $process.Dispose()
-            }
-            $output = @()
-            foreach ($path in @($stdoutPath, $stderrPath)) {
-                if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
-                $stream = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
-                $reader = New-Object IO.StreamReader($stream, [Text.Encoding]::UTF8, $true)
-                try {
-                    $text = $reader.ReadToEnd().TrimEnd()
-                    if ($text) { $output += $text }
-                } finally {
-                    $reader.Dispose()
-                    $stream.Dispose()
-                }
-            }
+            $result = [ImagePromptLibraryImmediateProcessRunner]::Run("powershell.exe", ($quotedArgs -join " "), $VersionRoot)
+            $exitCode = $result.ExitCode
+            $output = @($result.Stdout, $result.Stderr) | Where-Object { $_ }
         } else {
             $output = & powershell.exe @processArgs 2>&1
             $exitCode = $LASTEXITCODE
