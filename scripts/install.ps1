@@ -521,8 +521,46 @@ function Invoke-Controller {
     $oldErrorActionPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = "Continue"
-        $output = & powershell.exe @processArgs 2>&1
-        $exitCode = $LASTEXITCODE
+        if (@($Arguments).Count -gt 0 -and $Arguments[0] -eq "start") {
+            $quotedArgs = @($processArgs | ForEach-Object { '"' + $_.Replace('"', '\"') + '"' })
+            $prefix = [IO.Path]::GetDirectoryName([IO.Path]::GetDirectoryName([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($VersionRoot))))
+            $logDir = Join-Path $prefix "logs"
+            New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+            $stdoutPath = Join-Path $logDir "controller.out.log"
+            $stderrPath = Join-Path $logDir "controller.err.log"
+            $command = '""powershell.exe" ' + ($quotedArgs -join " ") + ' 1>"' + $stdoutPath + '" 2>"' + $stderrPath + '""'
+            $startInfo = New-Object Diagnostics.ProcessStartInfo
+            $startInfo.FileName = $env:ComSpec
+            $startInfo.Arguments = "/d /s /c $command"
+            $startInfo.WorkingDirectory = $VersionRoot
+            $startInfo.UseShellExecute = $false
+            $startInfo.CreateNoWindow = $true
+            $process = New-Object Diagnostics.Process
+            $process.StartInfo = $startInfo
+            try {
+                if (-not $process.Start()) { throw "Could not start the version controller." }
+                $process.WaitForExit()
+                $exitCode = $process.ExitCode
+            } finally {
+                $process.Dispose()
+            }
+            $output = @()
+            foreach ($path in @($stdoutPath, $stderrPath)) {
+                if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
+                $stream = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+                $reader = New-Object IO.StreamReader($stream, [Text.Encoding]::UTF8, $true)
+                try {
+                    $text = $reader.ReadToEnd().TrimEnd()
+                    if ($text) { $output += $text }
+                } finally {
+                    $reader.Dispose()
+                    $stream.Dispose()
+                }
+            }
+        } else {
+            $output = & powershell.exe @processArgs 2>&1
+            $exitCode = $LASTEXITCODE
+        }
     } finally {
         $ErrorActionPreference = $oldErrorActionPreference
     }
@@ -594,11 +632,8 @@ $controller = [IO.Path]::GetFullPath((Join-Path $versionsRoot "$version\scripts\
 $versionsPrefix = if ($versionsRoot.EndsWith('\')) { $versionsRoot } else { $versionsRoot + '\' }
 if (-not $controller.StartsWith($versionsPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw "The current version pointer is invalid." }
 if (-not (Test-Path -LiteralPath $controller -PathType Leaf)) { throw "The current Image Prompt Library version is incomplete." }
-$global:LASTEXITCODE = 0
-& $controller @CommandArgs
-$code = $LASTEXITCODE
-if ($null -eq $code) { $code = 0 }
-exit $code
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File $controller @CommandArgs
+exit $LASTEXITCODE
 '@
     $cmdShim = @'
 @echo off

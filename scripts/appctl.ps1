@@ -321,6 +321,29 @@ function Test-PortInUse {
     finally { $client.Close() }
 }
 
+function Get-StartedProcessIdentity {
+    param($Process, [string]$ExpectedPath, [int]$TimeoutMilliseconds = 2000)
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMilliseconds)
+    do {
+        $startTime = $null
+        $actualPath = $null
+        try {
+            $Process.Refresh()
+            $startTime = $Process.StartTime.ToUniversalTime()
+            $actualPath = $Process.Path
+        } catch {}
+        if ($startTime -and $actualPath) {
+            if (-not [string]::Equals($actualPath, $ExpectedPath, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "The launched app executable did not match the selected version. Expected $ExpectedPath, got $actualPath."
+            }
+            return [pscustomobject]@{ StartTime = $startTime; Path = $actualPath }
+        }
+        try { if ($Process.HasExited) { break } } catch { break }
+        Start-Sleep -Milliseconds 25
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "The app process identity could not be read. See logs for details."
+}
+
 function Get-ServerRuntimeData {
     param($Context)
     try { $record = Read-ServerRecord $Context }
@@ -374,7 +397,9 @@ print(json.dumps(payload))
     if (-not (Test-Path -LiteralPath $Version.Python -PathType Leaf)) {
         return [pscustomobject]@{ Items = $null; Database = "unavailable"; Generation = "unavailable"; Runtime = $runtime.State; Record = $runtime.Record }
     }
-    $output = & $Version.Python @("-c", $statusScript, $Environment.LibraryPath) 2>$null
+    $statusPayload = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($statusScript))
+    $statusLauncher = "import base64;exec(compile(base64.b64decode('$statusPayload'),'status','exec'))"
+    $output = & $Version.Python @("-c", $statusLauncher, $Environment.LibraryPath) 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $output) {
         return [pscustomobject]@{ Items = $null; Database = "unavailable"; Generation = "unavailable"; Runtime = $runtime.State; Record = $runtime.Record }
     }
@@ -559,17 +584,10 @@ function Start-App {
         try {
             $process = Start-Process -FilePath $version.Python -ArgumentList $arguments -WorkingDirectory $version.Root -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru
             $processLease = New-ProcessLease -Process $process
-            $processLease.Process.Refresh()
-            try {
-                $startTime = $processLease.Process.StartTime.ToUniversalTime()
-                $actualExecutablePath = $processLease.Process.Path
-            } catch {
-                throw "The app process identity could not be read. See logs in $($Context.LogDir)."
-            }
             $executablePath = [IO.Path]::GetFullPath($version.Python)
-            if (-not [string]::Equals($actualExecutablePath, $executablePath, [StringComparison]::OrdinalIgnoreCase)) {
-                throw "The launched app executable did not match the selected version."
-            }
+            $identity = Get-StartedProcessIdentity -Process $processLease.Process -ExpectedPath $executablePath
+            $startTime = $identity.StartTime
+            $actualExecutablePath = $identity.Path
             $record = [pscustomobject][ordered]@{
                 pid = $processLease.Process.Id
                 process_start_time_utc = $startTime.ToString("o")
@@ -812,11 +830,15 @@ function Update-App {
     $installer = Join-Path $current.Root "scripts\install.ps1"
     if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "The current Image Prompt Library version is incomplete." }
     $environment = Read-AppEnvironment -Context $Context
-    $installArgs = @("-Version", $version, "-Prefix", $Context.Prefix, "-LibraryPath", $environment.LibraryPath)
-    if ($env:IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL) {
-        $installArgs += @("-ReleaseBaseUrl", $env:IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL)
+    $installParameters = @{
+        Version = $version
+        Prefix = $Context.Prefix
+        LibraryPath = $environment.LibraryPath
     }
-    & $installer @installArgs
+    if ($env:IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL) {
+        $installParameters.ReleaseBaseUrl = $env:IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL
+    }
+    & $installer @installParameters
     if ($LASTEXITCODE -ne 0) { throw "Update failed." }
 }
 
