@@ -118,6 +118,36 @@ def run_sample_data_installer(
     )
 
 
+def run_sample_data_command(*arguments: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-File",
+            str(ROOT / "scripts" / "install-sample-data.ps1"),
+            *arguments,
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+
+def run_sample_data_installer_function(script: str) -> subprocess.CompletedProcess[str]:
+    installer = powershell_literal(ROOT / "scripts" / "install-sample-data.ps1")
+    probe = powershell_literal("\n" + script)
+    return run_powershell(
+        f"""
+$source = [IO.File]::ReadAllText({installer})
+$entryPoint = $source.LastIndexOf('try {{')
+if ($entryPoint -lt 0) {{ throw 'Sample-data installer entry point was not found.' }}
+Invoke-Expression ($source.Substring(0, $entryPoint) + {probe})
+"""
+    )
+
+
 def write_sample_zip(path: Path, members: list[tuple[str, str]]) -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
@@ -131,6 +161,13 @@ def write_sample_zip(path: Path, members: list[tuple[str, str]]) -> None:
                     info.create_system = 3
                     info.external_attr = 0o120777 << 16
                     archive.writestr(info, "target")
+                elif kind == "fifo":
+                    info.create_system = 3
+                    info.external_attr = 0o010644 << 16
+                    archive.writestr(info, b"")
+                elif kind == "reparse":
+                    info.external_attr = 0x400
+                    archive.writestr(info, b"target")
                 else:
                     archive.writestr(info, b"sample")
 
@@ -140,6 +177,17 @@ def write_empty_sample_manifest(path: Path) -> None:
         json.dumps({"schema_version": 2, "language": "en", "collections": [], "items": []}),
         encoding="utf-8",
     )
+
+
+def write_sample_data_appctl_install(prefix: Path, library: Path, child_script: str) -> Path:
+    current = prefix / "app" / "versions" / "v1.0.0"
+    scripts = current / "scripts"
+    scripts.mkdir(parents=True)
+    (prefix / "app" / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    prefix.mkdir(exist_ok=True)
+    (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
+    (scripts / "install-sample-data.ps1").write_text(child_script, encoding="ascii")
+    return current
 
 
 def test_windows_runtime_setup_is_local_and_never_installs_python():
@@ -1552,15 +1600,16 @@ def test_windows_sample_data_uses_same_handle_pinned_hash_and_safe_zip_extractio
         ("file", "C:/drive-qualified.txt"),
         ("file", "//server/share/unc.txt"),
         ("file", "../escaped.txt"),
+        ("file", "folder\\..\\escaped.txt"),
         ("file", "folder:stream.txt"),
         ("file", "CON.txt"),
         ("file", "trailing-dot."),
         ("file", "trailing-space "),
         ("file", "duplicate.txt"),
         ("file", "DUPLICATE.TXT"),
-        ("file", "parent"),
-        ("file", "parent/child.txt"),
         ("symlink", "linked.txt"),
+        ("reparse", "reparse-like.txt"),
+        ("fifo", "special-unix-entry"),
     ],
 )
 def test_windows_sample_data_rejects_hostile_zip_members_before_import(
@@ -1571,9 +1620,8 @@ def test_windows_sample_data_rejects_hostile_zip_members_before_import(
     work_dir = tmp_path / "work"
     write_empty_sample_manifest(manifest)
     write_sample_zip(zip_path, [unsafe_member])
-    if unsafe_member[1] in {"duplicate.txt", "DUPLICATE.TXT", "parent", "parent/child.txt"}:
-        first = "duplicate.txt" if "DUPLICATE" in unsafe_member[1].upper() else "parent"
-        write_sample_zip(zip_path, [("file", first), unsafe_member])
+    if unsafe_member[1] in {"duplicate.txt", "DUPLICATE.TXT"}:
+        write_sample_zip(zip_path, [("file", "duplicate.txt"), unsafe_member])
     digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
 
     result = run_sample_data_installer(
@@ -1593,6 +1641,87 @@ def test_windows_sample_data_rejects_hostile_zip_members_before_import(
     assert "refusing unsafe zip member" in result.stderr.lower()
     assert not (tmp_path / "escaped.txt").exists()
     assert not list(work_dir.glob(".staging-*"))
+
+
+@pytest.mark.parametrize(
+    "members",
+    [
+        [("file", "parent"), ("file", "parent/child.txt")],
+        [("file", "parent/child.txt"), ("file", "parent")],
+    ],
+)
+def test_windows_sample_data_rejects_file_directory_collisions_in_both_orders(
+    tmp_path: Path, members: list[tuple[str, str]]
+):
+    zip_path = tmp_path / "collision.zip"
+    manifest = tmp_path / "manifest.json"
+    work_dir = tmp_path / "work"
+    write_empty_sample_manifest(manifest)
+    write_sample_zip(zip_path, members)
+
+    result = run_sample_data_installer(
+        "en",
+        "gpt-image-2-skill",
+        ROOT,
+        tmp_path / "library",
+        {
+            "SAMPLE_DATA_MANIFEST": str(manifest),
+            "SAMPLE_DATA_IMAGE_ZIP": str(zip_path),
+            "SAMPLE_DATA_IMAGE_ZIP_SHA256": hashlib.sha256(zip_path.read_bytes()).hexdigest(),
+            "SAMPLE_DATA_WORK_DIR": str(work_dir),
+        },
+    )
+
+    assert result.returncode == 1
+    assert "refusing unsafe zip member" in result.stderr.lower()
+    assert not list(work_dir.glob(".staging-*"))
+
+
+def test_windows_sample_data_accepts_safe_backslash_member_paths(tmp_path: Path):
+    zip_path = tmp_path / "backslash.zip"
+    manifest = tmp_path / "manifest.json"
+    work_dir = tmp_path / "work"
+    write_empty_sample_manifest(manifest)
+    write_sample_zip(zip_path, [("file", "images\\placeholder.txt")])
+
+    result = run_sample_data_installer(
+        "en",
+        "gpt-image-2-skill",
+        ROOT,
+        tmp_path / "library",
+        {
+            "SAMPLE_DATA_MANIFEST": str(manifest),
+            "SAMPLE_DATA_IMAGE_ZIP": str(zip_path),
+            "SAMPLE_DATA_IMAGE_ZIP_SHA256": hashlib.sha256(zip_path.read_bytes()).hexdigest(),
+            "SAMPLE_DATA_WORK_DIR": str(work_dir),
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not list(work_dir.glob(".staging-*"))
+
+
+def test_windows_sample_data_download_stops_after_three_attempts(tmp_path: Path):
+    destination = tmp_path / "sample.zip"
+    result = run_sample_data_installer_function(
+        f"""
+$script:attempts = 0
+function Invoke-WebRequest {{
+    param([switch]$UseBasicParsing, [string]$Uri, [string]$OutFile)
+    $script:attempts++
+    throw 'forced download failure'
+}}
+function Start-Sleep {{ param([int]$Seconds) }}
+$failure = ''
+try {{ Invoke-DownloadWithRetry -Uri 'https://example.invalid/sample.zip' -Destination {powershell_literal(destination)} }} catch {{ $failure = $_.Exception.Message }}
+[pscustomobject]@{{ attempts = $script:attempts; failure = $failure }} | ConvertTo-Json -Compress
+"""
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["attempts"] == 3, payload
+    assert "failed after 3 attempts" in payload["failure"].lower()
 
 
 def test_windows_sample_data_imports_a_safe_zip_and_cleans_its_staging_directory(tmp_path: Path):
@@ -1625,16 +1754,11 @@ def test_windows_sample_data_imports_a_safe_zip_and_cleans_its_staging_directory
 def test_windows_appctl_sample_data_invokes_current_installer_with_exact_context(tmp_path: Path):
     prefix = tmp_path / "prefix with spaces"
     library = tmp_path / "library with spaces"
-    current = prefix / "app" / "versions" / "v1.0.0"
-    scripts = current / "scripts"
-    scripts.mkdir(parents=True)
-    (prefix / "app" / "current-version").write_text("v1.0.0\n", encoding="ascii")
-    prefix.mkdir(exist_ok=True)
-    (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
-    (scripts / "install-sample-data.ps1").write_text(
+    current = write_sample_data_appctl_install(
+        prefix,
+        library,
         "$args | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $env:IMAGE_PROMPT_LIBRARY_PREFIX 'sample-data-args.json') -Encoding UTF8\n"
         "$global:LASTEXITCODE = 0\n",
-        encoding="ascii",
     )
 
     result = run_appctl(prefix, "sample-data", "zh_hant", "awesome-gpt-image-2")
@@ -1650,6 +1774,61 @@ def test_windows_appctl_sample_data_invokes_current_installer_with_exact_context
         "-LibraryPath",
         str(library),
     ]
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        (),
+        ("invalid",),
+        ("en", "invalid"),
+        ("en", "gpt-image-2-skill", "extra"),
+    ],
+)
+def test_windows_appctl_sample_data_rejects_invalid_missing_and_extra_arguments(
+    tmp_path: Path, arguments: tuple[str, ...]
+):
+    prefix = tmp_path / "prefix"
+    marker = prefix / "child-called.txt"
+    write_sample_data_appctl_install(
+        prefix,
+        tmp_path / "library",
+        f"Set-Content -LiteralPath {powershell_literal(marker)} -Value called\n$global:LASTEXITCODE = 0\n",
+    )
+
+    result = run_appctl(prefix, "sample-data", *arguments)
+
+    assert result.returncode == 1
+    assert not marker.exists()
+
+
+def test_windows_appctl_sample_data_preserves_child_exit_code(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    write_sample_data_appctl_install(
+        prefix,
+        tmp_path / "library",
+        "[Console]::Error.WriteLine('forced child failure')\nexit 7\n",
+    )
+
+    result = run_appctl(prefix, "sample-data", "en")
+
+    assert result.returncode == 7
+    assert "forced child failure" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        (),
+        ("-Language", "invalid"),
+        ("-Language", "en", "-Package", "invalid"),
+        ("-Language", "en", "-Package", "awesome-gpt-image-2"),
+    ],
+)
+def test_windows_sample_data_direct_invalid_usage_exits_two(arguments: tuple[str, ...]):
+    result = run_sample_data_command(*arguments)
+
+    assert result.returncode == 2
 
 
 def test_windows_installer_pointer_failure_restores_both_and_restarts_old_runtime(tmp_path: Path):

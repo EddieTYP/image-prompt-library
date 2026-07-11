@@ -827,12 +827,17 @@ function Install-SampleData {
     }
     $language = $Arguments[0]
     $package = if (@($Arguments).Count -eq 2) { $Arguments[1] } else { "gpt-image-2-skill" }
+    if ($language -notin @("en", "zh_hans", "zh_hant")) { throw "Unsupported sample language: $language" }
+    if ($package -notin @("gpt-image-2-skill", "awesome-gpt-image-2")) { throw "Unsupported sample package: $package" }
+    if ($package -eq "awesome-gpt-image-2" -and $language -ne "zh_hant") {
+        throw "awesome-gpt-image-2 sample package currently ships zh_hant manifests only"
+    }
     $current = Get-CurrentVersion $Context
     $installer = Join-Path $current.Root "scripts\install-sample-data.ps1"
     if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "The current Image Prompt Library version is incomplete." }
     $environment = Read-AppEnvironment -Context $Context
     & $installer -Language $language -Package $package -AppRoot $current.Root -LibraryPath $environment.LibraryPath
-    if ($LASTEXITCODE -ne 0) { throw "Sample data installation failed." }
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
 function Show-Usage {

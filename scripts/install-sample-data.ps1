@@ -1,13 +1,21 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)][string]$Language,
+    [string]$Language,
     [string]$Package = "gpt-image-2-skill",
-    [string]$AppRoot = (Split-Path -Parent $PSScriptRoot),
+    [string]$AppRoot,
     [string]$LibraryPath
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$script:ScriptRoot = $PSScriptRoot
+
+function Throw-SampleDataUsageError {
+    param([string]$Message)
+    $exception = New-Object ArgumentException $Message
+    $exception.Data["SampleDataExitCode"] = 2
+    throw $exception
+}
 
 function Remove-SampleTree {
     param([string]$Target)
@@ -128,12 +136,17 @@ with open(archive_path, "rb") as archive_file:
 }
 
 function Invoke-SampleDataInstall {
-    if ($Language -notin @("en", "zh_hans", "zh_hant")) { throw "Unsupported sample language: $Language" }
-    if ($Package -notin @("gpt-image-2-skill", "awesome-gpt-image-2")) { throw "Unsupported sample package: $Package" }
+    if (-not $Language) { Throw-SampleDataUsageError -Message "Usage: install-sample-data.ps1 <en|zh_hans|zh_hant> [gpt-image-2-skill|awesome-gpt-image-2]" }
+    if ($Language -notin @("en", "zh_hans", "zh_hant")) { Throw-SampleDataUsageError -Message "Unsupported sample language: $Language" }
+    if ($Package -notin @("gpt-image-2-skill", "awesome-gpt-image-2")) { Throw-SampleDataUsageError -Message "Unsupported sample package: $Package" }
     if ($Package -eq "awesome-gpt-image-2" -and $Language -ne "zh_hant") {
-        throw "awesome-gpt-image-2 sample package currently ships zh_hant manifests only"
+        Throw-SampleDataUsageError -Message "awesome-gpt-image-2 sample package currently ships zh_hant manifests only"
     }
 
+    if (-not $AppRoot) {
+        if (-not $script:ScriptRoot) { throw "Cannot determine the Image Prompt Library application root." }
+        $AppRoot = Split-Path -Parent $script:ScriptRoot
+    }
     $normalizedAppRoot = [IO.Path]::GetFullPath($AppRoot)
     if (-not $LibraryPath) {
         $LibraryPath = if ($env:IMAGE_PROMPT_LIBRARY_PATH) { $env:IMAGE_PROMPT_LIBRARY_PATH } else { Join-Path $normalizedAppRoot "library" }
@@ -201,5 +214,6 @@ try {
     Invoke-SampleDataInstall
 } catch {
     [Console]::Error.WriteLine("ERROR: " + $_.Exception.Message)
-    exit 1
+    $exitCode = if ($_.Exception.Data["SampleDataExitCode"]) { [int]$_.Exception.Data["SampleDataExitCode"] } else { 1 }
+    exit $exitCode
 }
