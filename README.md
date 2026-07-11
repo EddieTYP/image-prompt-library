@@ -47,6 +47,8 @@ irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts
 
 A successful install starts the app in the background and opens your browser. Stop it with `image-prompt-library stop`; see the [installation guide](docs/INSTALLATION.md) for updates, rollback, diagnostics, private-data locations, and the inspect-first install path.
 
+The installed bare command is a `.cmd` shim and remains usable from Windows PowerShell under the `Restricted` execution policy; its internal PowerShell delegate is launched with an explicit per-command bypass.
+
 ### macOS, Linux, and WSL
 
 Normal release installs require **Python 3.10+** and `curl`. They do **not** require Node.js. Windows users can also use this Unix path through WSL 2.

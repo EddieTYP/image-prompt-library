@@ -43,6 +43,9 @@ def test_native_windows_smoke_and_ci_contract():
         "LastWriteTimeUtc.Ticks",
         "Failed-launch previous error log was empty.",
         "Failed-launch previous error log was not fresh.",
+        '"Restricted"',
+        "image-prompt-library-delegate.ps1",
+        "Legacy same-basename PowerShell shim must be absent.",
     ):
         assert required in smoke
 
@@ -169,7 +172,8 @@ $workName = 'image-prompt-library-smoke-' + [Guid]::NewGuid().ToString('N')
 $workRoot = Join-Path $tempRoot $workName
 $prefix = Join-Path $workRoot 'App Prefix'
 New-Item -ItemType Directory -Path (Join-Path $prefix 'bin') -Force | Out-Null
-New-Item -ItemType File -Path (Join-Path $prefix 'bin\\image-prompt-library.ps1') | Out-Null
+New-Item -ItemType File -Path (Join-Path $prefix 'bin\\image-prompt-library-delegate.ps1') | Out-Null
+New-Item -ItemType File -Path (Join-Path $prefix 'bin\\image-prompt-library.cmd') | Out-Null
 $originalUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
 $originalProcessPath = $env:Path
 $originalReleaseBase = [Environment]::GetEnvironmentVariable('IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL', 'Process')
@@ -237,6 +241,8 @@ def run_appctl(
         input=input_text,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
 
@@ -651,6 +657,47 @@ def test_windows_appctl_records_exact_process_identity_before_stop():
     assert "DangerousRelease" in script
 
 
+def test_windows_appctl_failed_start_message_lists_current_and_previous_logs():
+    result = run_appctl_function(
+        "$context = [pscustomobject]@{ LogDir = 'C:\\safe logs' }; Get-StartFailureLogMessage -Context $context"
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    for name in (
+        "app.out.log",
+        "app.err.log",
+        "app.previous.out.log",
+        "app.previous.err.log",
+    ):
+        assert name in result.stdout
+
+
+def test_windows_child_scripts_always_use_bypass_file_launches():
+    installer = read("scripts/install.ps1")
+    controller = read("scripts/appctl.ps1")
+
+    setup_call = installer.split("$setup =", 1)[1].split("if (-not $?)", 1)[0]
+    initial_start = installer.split("function Start-InstalledVersion", 1)[1].split(
+        "function Invoke-Install", 1
+    )[0]
+    update_call = controller.split("function Update-App", 1)[1].split(
+        "function Install-SampleData", 1
+    )[0]
+    sample_call = controller.split("function Install-SampleData", 1)[1].split(
+        "function Get-NormalizedUninstallPath", 1
+    )[0]
+    assert "Invoke-Controller" in initial_start
+    controller_launch = installer.split("function Invoke-Controller", 1)[1].split(
+        "function Invoke-UpdateRecovery", 1
+    )[0]
+    for section in (setup_call, controller_launch, update_call, sample_call):
+        assert "powershell.exe" in section
+        assert "-NoProfile" in section
+        assert "-ExecutionPolicy" in section
+        assert "Bypass" in section
+        assert "-File" in section
+
+
 def test_windows_appctl_waits_for_started_process_path_before_identity_check():
     expected = r"C:\App\venv\Scripts\python.exe"
     result = run_appctl_function(
@@ -673,6 +720,63 @@ $identity = Get-StartedProcessIdentity -Process $process -ExpectedPath {powershe
     assert result.returncode == 0, result.stdout + result.stderr
     payload = json.loads(result.stdout.strip().splitlines()[-1])
     assert payload == {"Path": expected, "Reads": 2}
+
+
+@pytest.mark.parametrize("health", [True, False])
+def test_windows_appctl_owned_runtime_requires_selected_identity_and_health(health: bool):
+    result = run_appctl_function(
+        f"""
+$context = [pscustomobject]@{{}}
+$version = [pscustomobject]@{{ Version = 'v2'; Root = 'C:\\app\\v2'; Python = 'C:\\app\\v2\\python.exe' }}
+function Read-ServerRecord {{
+    [pscustomobject]@{{
+        pid = 1; process_start_time_utc_ticks = 1; process_executable_path = 'C:\\app\\v1\\python.exe'
+        version = 'v1'; app_root = 'C:\\app\\v1'; host = '127.0.0.1'; port = 8000
+    }}
+}}
+function Get-OwnedProcess {{ [pscustomobject]@{{}} }}
+function Close-ProcessLease {{}}
+function Test-AppHealth {{ return ${str(health).lower()} }}
+try {{
+    Get-OwnedRuntimeState -Context $context -Version $version | Out-Null
+    'accepted'
+}} catch {{
+    $_.Exception.Message
+}}
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "accepted" not in result.stdout
+    assert "selected version" in result.stdout.lower()
+
+
+def test_windows_appctl_owned_runtime_rejects_unhealthy_matching_record():
+    result = run_appctl_function(
+        r"""
+$context = [pscustomobject]@{}
+$version = [pscustomobject]@{ Version = 'v2'; Root = 'C:\app\v2'; Python = 'C:\app\v2\python.exe' }
+function Read-ServerRecord {
+    [pscustomobject]@{
+        pid = 1; process_start_time_utc_ticks = 1; process_executable_path = 'C:\app\v2\python.exe'
+        version = 'v2'; app_root = 'C:\app\v2'; host = '127.0.0.1'; port = 8000
+    }
+}
+function Get-OwnedProcess { [pscustomobject]@{} }
+function Close-ProcessLease {}
+function Test-AppHealth { return $false }
+try {
+    Get-OwnedRuntimeState -Context $context -Version $version | Out-Null
+    'accepted'
+} catch {
+    $_.Exception.Message
+}
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "accepted" not in result.stdout
+    assert "healthy" in result.stdout.lower()
 
 
 def test_windows_appctl_stop_uses_retained_handle_for_disposable_child(tmp_path: Path):
@@ -702,7 +806,7 @@ try {{
         created_at = [DateTime]::UtcNow.ToString("o")
     }}
     [IO.File]::WriteAllText((Join-Path {run_dir_literal} "server.json"), ($record | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
-    Stop-App -Context ([pscustomobject]@{{ RunDir = {run_dir_literal} }})
+    Stop-AppInternal -Context ([pscustomobject]@{{ RunDir = {run_dir_literal} }})
     $child.Refresh()
     [pscustomobject]@{{ exited = $child.HasExited; record_exists = [IO.File]::Exists((Join-Path {run_dir_literal} "server.json")) }} | ConvertTo-Json -Compress
 }} finally {{
@@ -750,7 +854,7 @@ try {{
     $recordPath = Join-Path {run_dir_literal} "server.json"
     [IO.File]::WriteAllText($recordPath, ($record | ConvertTo-Json), (New-Object Text.UTF8Encoding($false)))
     $conflict = $false
-    try {{ Stop-App -Context ([pscustomobject]@{{ RunDir = {run_dir_literal} }}) }}
+    try {{ Stop-AppInternal -Context ([pscustomobject]@{{ RunDir = {run_dir_literal} }}) }}
     catch {{ $conflict = $_.Exception.Message -like "*conflicts with a live process*" }}
     $child.Refresh()
     [pscustomobject]@{{ conflict = $conflict; child_alive = -not $child.HasExited; record_exists = [IO.File]::Exists($recordPath) }} | ConvertTo-Json -Compress
@@ -833,7 +937,7 @@ def test_windows_appctl_rejects_stop_arguments(tmp_path: Path):
 
 def write_uninstall_layout(prefix: Path, library: Path) -> None:
     (prefix / "bin").mkdir(parents=True)
-    (prefix / "bin" / "image-prompt-library.ps1").write_text("shim\n", encoding="ascii")
+    (prefix / "bin" / "image-prompt-library-delegate.ps1").write_text("shim\n", encoding="ascii")
     (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
     library.mkdir(parents=True, exist_ok=True)
     (library / "private.txt").write_text("keep\n", encoding="ascii")
@@ -909,7 +1013,7 @@ def test_windows_appctl_uninstall_deletes_private_library_with_yes(tmp_path: Pat
 def test_windows_appctl_uninstall_preserves_normally_missing_private_library(tmp_path: Path):
     prefix = tmp_path / "prefix"
     (prefix / "bin").mkdir(parents=True)
-    (prefix / "bin" / "image-prompt-library.ps1").write_text("shim\n", encoding="ascii")
+    (prefix / "bin" / "image-prompt-library-delegate.ps1").write_text("shim\n", encoding="ascii")
     library = tmp_path / "missing-library"
     (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
 
@@ -930,7 +1034,7 @@ def test_windows_appctl_uninstall_refusal_leaves_app_and_library_unchanged(tmp_p
 
     assert result.returncode == 0, result.stderr
     assert "cancelled" in result.stdout.lower()
-    assert (prefix / "bin" / "image-prompt-library.ps1").is_file()
+    assert (prefix / "bin" / "image-prompt-library-delegate.ps1").is_file()
     assert (library / "private.txt").is_file()
 
 
@@ -951,7 +1055,7 @@ def test_windows_appctl_uninstall_rejects_duplicate_and_unknown_options(tmp_path
     result = run_appctl(prefix, "uninstall", *arguments)
 
     assert result.returncode == 1
-    assert (prefix / "bin" / "image-prompt-library.ps1").is_file()
+    assert (prefix / "bin" / "image-prompt-library-delegate.ps1").is_file()
     assert (library / "private.txt").is_file()
 
 
@@ -995,7 +1099,7 @@ def test_windows_appctl_uninstall_rejects_unsafe_targets_before_mutation(tmp_pat
         assert "uninstall" in result.stderr.lower()
     assert (library / "private.txt").read_text(encoding="ascii") == "keep\n"
     if target_kind not in {"root", "home"}:
-        assert (prefix / "bin" / "image-prompt-library.ps1").is_file()
+        assert (prefix / "bin" / "image-prompt-library-delegate.ps1").is_file()
         assert not (prefix / "run").exists()
 
 
@@ -1028,10 +1132,35 @@ def test_windows_appctl_uninstall_rejects_prefix_junction_before_read_or_write(t
     assert (library / "private.txt").is_file()
 
 
+def test_windows_appctl_uninstall_rejects_prefix_reparse_ancestor_before_mutation(
+    tmp_path: Path,
+):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    alias = tmp_path / "alias"
+    created = run_powershell(
+        f"New-Item -ItemType Junction -Path {powershell_literal(alias)} -Target {powershell_literal(outside)} -ErrorAction Stop | Out-Null"
+    )
+    if created.returncode != 0:
+        pytest.skip(f"Windows junction creation unavailable: {created.stderr.strip()}")
+    prefix = alias / "prefix"
+    library = tmp_path / "library"
+    write_uninstall_layout(prefix, library)
+    sentinel = prefix / "sentinel.txt"
+    sentinel.write_text("keep\n", encoding="ascii")
+
+    result = run_appctl(prefix, "uninstall", "--yes")
+
+    assert result.returncode == 1
+    assert "reparse" in result.stderr.lower()
+    assert sentinel.read_text(encoding="ascii") == "keep\n"
+    assert (library / "private.txt").is_file()
+
+
 def test_windows_appctl_uninstall_rejects_library_junction_before_mutation(tmp_path: Path):
     prefix = tmp_path / "prefix"
     (prefix / "bin").mkdir(parents=True)
-    shim = prefix / "bin" / "image-prompt-library.ps1"
+    shim = prefix / "bin" / "image-prompt-library-delegate.ps1"
     shim.write_text("shim\n", encoding="ascii")
     outside = tmp_path / "outside-library"
     outside.mkdir()
@@ -1083,7 +1212,7 @@ def test_windows_appctl_uninstall_rejects_dangling_prefix_reparse_without_mutati
 def test_windows_appctl_uninstall_rejects_dangling_library_reparse_without_mutation(tmp_path: Path):
     prefix = tmp_path / "prefix"
     (prefix / "bin").mkdir(parents=True)
-    shim = prefix / "bin" / "image-prompt-library.ps1"
+    shim = prefix / "bin" / "image-prompt-library-delegate.ps1"
     shim.write_text("shim\n", encoding="ascii")
     library = tmp_path / "dangling-library"
     outside = tmp_path / "missing-library-target"
@@ -1130,7 +1259,7 @@ try {{
     assert result.returncode == 1
     assert path_state.read_text(encoding="utf-8-sig") == original_text
     assert not (prefix / "run").exists()
-    assert (prefix / "bin" / "image-prompt-library.ps1").is_file()
+    assert (prefix / "bin" / "image-prompt-library-delegate.ps1").is_file()
     assert (library / "private.txt").is_file()
 
 
@@ -1334,18 +1463,17 @@ def test_windows_appctl_uninstall_does_not_follow_junction(tmp_path: Path):
     assert sentinel.read_text(encoding="ascii") == "keep"
 
 
-def test_windows_appctl_stop_waits_for_lifecycle_lock(tmp_path: Path):
-    run_dir = tmp_path / "run"
-    run_dir.mkdir()
-    lock_path = run_dir / "start.lock"
+def test_windows_appctl_stop_waits_for_prefix_transaction_lock(tmp_path: Path):
     ready_path = tmp_path / "lock-ready"
     holder_script = f"""
-$lock = [IO.File]::Open({powershell_literal(lock_path)}, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+. {powershell_literal(ROOT / 'scripts' / 'appctl.ps1')} help
+$context = [pscustomobject]@{{ Prefix = {powershell_literal(tmp_path)} }}
+$lock = Enter-PrefixTransactionLock -Context $context
 try {{
     [IO.File]::WriteAllText({powershell_literal(ready_path)}, "ready")
     Start-Sleep -Milliseconds 1500
 }} finally {{
-    $lock.Dispose()
+    Exit-PrefixTransactionLock -Mutex $lock
 }}
 """
     holder = subprocess.Popen(
@@ -1430,26 +1558,25 @@ $recoveryPath = Write-RecoveryServerRecord -Context $context -Record $record
 
 def test_windows_appctl_serializes_lifecycle_and_publishes_records_atomically():
     script = read("scripts/appctl.ps1")
-    start_section = script.split("function Start-App", 1)[1].split("function Stop-App", 1)[0]
-    stop_section = script.split("function Stop-App", 1)[1].split("function Show-Usage", 1)[0]
+    start_internal = script.split("function Start-AppInternal", 1)[1].split("function Start-App {", 1)[0]
+    start_section = script.split("function Start-App {", 1)[1].split("function Stop-AppInternal", 1)[0]
+    stop_internal = script.split("function Stop-AppInternal", 1)[1].split("function Stop-App {", 1)[0]
+    stop_section = script.split("function Stop-App {", 1)[1].split("function Write-VersionPointerAtomic", 1)[0]
 
-    assert "FileMode]::OpenOrCreate" in script
-    assert "FileAccess]::ReadWrite" in script
-    assert "FileShare]::None" in script
-    assert "Enter-LifecycleLock -Context $Context" in start_section
-    assert "Enter-LifecycleLock -Context $Context" in stop_section
-    assert "$lifecycleLock.Dispose()" in start_section
-    assert "$lifecycleLock.Dispose()" in stop_section
-    assert "Write-ServerRecordAtomically" in start_section
-    assert "Write-RecoveryServerRecord" in start_section
-    assert "Remove-ServerRecordIfMatches" in stop_section
+    assert "ImagePromptLibrary.Transaction." in script
+    assert "Enter-PrefixTransactionLock -Context $Context" in start_section
+    assert "Enter-PrefixTransactionLock -Context $Context" in stop_section
+    assert "Exit-PrefixTransactionLock -Mutex $transactionLock" in start_section
+    assert "Exit-PrefixTransactionLock -Mutex $transactionLock" in stop_section
+    assert "Write-ServerRecordAtomically" in start_internal
+    assert "Write-RecoveryServerRecord" in start_internal
+    assert "Remove-ServerRecordIfMatches" in stop_internal
     assert "Set-Content" not in script.split("function Write-ServerRecordAtomically", 1)[1].split("function ", 1)[0]
     assert "[IO.File]::Move" in script
-    assert start_section.index("Read-ServerRecord") < start_section.index("Test-PortInUse")
-    assert start_section.index("Test-PortInUse") < start_section.index("Start-Process -FilePath")
-    assert start_section.index("Start-Process -FilePath") < start_section.index("Write-ServerRecordAtomically")
-    assert stop_section.index("Enter-LifecycleLock") < stop_section.index("Read-ServerRecord")
-    assert "Cleanup could not confirm exit, and the launched process identity could not be retained" not in start_section
+    assert start_internal.index("Read-ServerRecord") < start_internal.index("Test-PortInUse")
+    assert start_internal.index("Test-PortInUse") < start_internal.index("Start-Process -FilePath")
+    assert start_internal.index("Start-Process -FilePath") < start_internal.index("Write-ServerRecordAtomically")
+    assert "Cleanup could not confirm exit, and the launched process identity could not be retained" not in start_internal
 
 
 def test_windows_appctl_retains_safe_handle_through_identity_and_termination():
@@ -1588,7 +1715,8 @@ def test_windows_installer_requires_python_and_a_capable_verified_release():
     assert "current-version" in script
     assert "previous-version" in script
     assert "image-prompt-library.cmd" in script
-    assert "image-prompt-library.ps1" in script
+    assert "image-prompt-library-delegate.ps1" in script
+    assert 'Publish-AtomicText -Path (Join-Path $BinPath "image-prompt-library.ps1")' not in script
     assert not re.search(r"(?i)winget\s+install", script)
     assert "New-ScheduledTask" not in script
     assert "Start-Service" not in script
@@ -1636,6 +1764,52 @@ def test_windows_installer_rejects_github_release_assets_on_nondefault_port():
 
 
 @pytest.mark.parametrize(
+    "uri, accepted",
+    [
+        ("https://downloads.example.test/release.tar.gz", True),
+        ("http://127.0.0.1:8765/release.tar.gz", True),
+        ("http://localhost:8765/release.tar.gz", True),
+        ("http://[::1]:8765/release.tar.gz", True),
+        ("http://downloads.example.test/release.tar.gz", False),
+        ("ftp://downloads.example.test/release.tar.gz", False),
+    ],
+)
+def test_windows_installer_restricts_remote_release_sources(uri: str, accepted: bool):
+    result = run_installer_function(
+        f"Assert-ReleaseSource -Source {powershell_literal(uri)}; 'accepted'"
+    )
+
+    assert (result.returncode == 0) is accepted, result.stdout + result.stderr
+    if not accepted:
+        assert "https" in result.stderr.lower()
+
+
+def test_windows_installer_python_error_reports_detected_version_and_launcher_guidance(
+    tmp_path: Path,
+):
+    result = run_installer_function(
+        "New-PythonRequirementMessage -Detected @('python 3.9.18')"
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "3.9.18" in result.stdout
+    assert "py -3" in result.stdout
+    assert "python launcher" in result.stdout.lower()
+    find_section = read("scripts/install.ps1").split("function Find-SupportedPython", 1)[1].split(
+        "function Assert-DisjointPaths", 1
+    )[0]
+    assert "Get-PythonCandidateInfo" in find_section
+
+
+def test_windows_runtime_setup_python_diagnostics_include_version_and_launcher_guidance():
+    setup = read("scripts/setup-runtime.ps1")
+    assert "Get-PythonCandidateInfo" in setup
+    assert "Detected unsupported Python" in setup
+    assert "py -3" in setup
+    assert "https://www.python.org/downloads/windows/" in setup
+
+
+@pytest.mark.parametrize(
     "pointer_value",
     ["v1.2.3.", "v1.2.3 ", "v1.2.3.backup.", "v1.2.3.backup "],
 )
@@ -1654,7 +1828,7 @@ def test_windows_installer_generated_shim_rejects_windows_version_aliases(
             powershell_executable(),
             "-NoProfile",
             "-File",
-            str(prefix / "bin" / "image-prompt-library.ps1"),
+            str(prefix / "bin" / "image-prompt-library-delegate.ps1"),
             "status",
         ],
         cwd=ROOT,
@@ -1690,7 +1864,7 @@ def test_windows_installer_generated_shim_handles_power_shell_only_success(tmp_p
             "-ExecutionPolicy",
             "Bypass",
             "-File",
-            str(prefix / "bin" / "image-prompt-library.ps1"),
+            str(prefix / "bin" / "image-prompt-library-delegate.ps1"),
             "version",
         ],
         cwd=ROOT,
@@ -1702,6 +1876,94 @@ def test_windows_installer_generated_shim_handles_power_shell_only_success(tmp_p
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip() == "version"
+
+
+def test_windows_installer_bare_command_runs_under_restricted_policy(tmp_path: Path):
+    prefix = tmp_path / "prefix with spaces"
+    scripts = prefix / "app" / "versions" / "v1.0.0" / "scripts"
+    scripts.mkdir(parents=True)
+    (prefix / "app" / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    (scripts / "appctl.ps1").write_text(
+        "param([Parameter(ValueFromRemainingArguments=$true)][string[]]$CommandArgs)\n"
+        "Write-Output ($CommandArgs -join ',')\n",
+        encoding="ascii",
+    )
+    generated = run_installer_function(
+        f"Write-CommandShim -BinPath {powershell_literal(prefix / 'bin')}"
+    )
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+    assert not (prefix / "bin" / "image-prompt-library.ps1").exists()
+    assert (prefix / "bin" / "image-prompt-library.cmd").is_file()
+    assert (prefix / "bin" / "image-prompt-library-delegate.ps1").is_file()
+
+    environment = os.environ.copy()
+    environment["PATH"] = str(prefix / "bin") + os.pathsep + environment["PATH"]
+    result = subprocess.run(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Restricted",
+            "-Command",
+            "image-prompt-library version",
+        ],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip() == "version"
+
+
+def test_windows_installer_cmd_preserves_success_when_uninstall_deletes_its_prefix(
+    tmp_path: Path,
+):
+    prefix = tmp_path / "self deleting prefix"
+    scripts = prefix / "app" / "versions" / "v1.0.0" / "scripts"
+    scripts.mkdir(parents=True)
+    (prefix / "app" / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    shutil.copyfile(ROOT / "scripts" / "appctl.ps1", scripts / "appctl.ps1")
+    library = tmp_path / "private library"
+    library.mkdir()
+    (library / "sentinel.txt").write_text("keep\n", encoding="ascii")
+    (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
+    generated = run_installer_function(
+        f"Write-CommandShim -BinPath {powershell_literal(prefix / 'bin')}"
+    )
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+    environment = os.environ.copy()
+    environment["PATH"] = str(prefix / "bin") + os.pathsep + environment["PATH"]
+
+    result = subprocess.run(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Restricted",
+            "-Command",
+            "image-prompt-library uninstall",
+        ],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "uninstalled" in result.stdout
+    deadline = time.monotonic() + 10
+    while prefix.exists() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not prefix.exists()
+    assert (library / "sentinel.txt").read_text(encoding="ascii") == "keep\n"
 
 
 def test_windows_installer_generated_shim_does_not_leak_handled_native_exit(
@@ -1730,7 +1992,7 @@ def test_windows_installer_generated_shim_does_not_leak_handled_native_exit(
             "-ExecutionPolicy",
             "Bypass",
             "-File",
-            str(prefix / "bin" / "image-prompt-library.ps1"),
+            str(prefix / "bin" / "image-prompt-library-delegate.ps1"),
             "status",
         ],
         cwd=ROOT,
@@ -1750,7 +2012,7 @@ def test_windows_installer_generated_shim_does_not_leak_handled_native_exit(
             "-ExecutionPolicy",
             "Bypass",
             "-File",
-            str(prefix / "bin" / "image-prompt-library.ps1"),
+            str(prefix / "bin" / "image-prompt-library-delegate.ps1"),
             "fail",
         ],
         cwd=ROOT,
@@ -1844,7 +2106,7 @@ def test_windows_installer_rolls_back_late_publication_and_start_failure(tmp_pat
     assert "intentional start failure" in result.stderr
     assert "Automatic recovery restored v1.0.0." in result.stdout
     commands = (old_target / "scripts" / "commands.log").read_text(encoding="ascii").splitlines()
-    assert "start --host 127.0.0.5 --port 4231 --no-browser" in commands
+    assert "internal-start --host 127.0.0.5 --port 4231 --no-browser" in commands
     assert (old_target / "keep.txt").read_text(encoding="ascii") == "old runtime"
     assert (app / "current-version").read_text(encoding="ascii") == "v1.0.0\n"
     assert (app / "previous-version").read_text(encoding="ascii") == "v0.9.0\n"
@@ -1855,9 +2117,9 @@ def test_windows_installer_rolls_back_late_publication_and_start_failure(tmp_pat
     assert not (app / "versions" / "v1.2.3.backup").exists()
 
 
-def test_windows_installer_restores_published_state_when_target_cleanup_fails(tmp_path: Path):
+def test_windows_installer_restores_published_state_when_replacing_target_then_start_fails(tmp_path: Path):
     release_dir = tmp_path / "release"
-    write_test_release(release_dir, locked_start_failure=True, lock_backup_during_setup=True)
+    write_test_release(release_dir, start_failure=True)
     prefix = tmp_path / "prefix"
     library = tmp_path / "library"
     app = prefix / "app"
@@ -1879,18 +2141,19 @@ def test_windows_installer_restores_published_state_when_target_cleanup_fails(tm
     result = run_installer(release_dir, prefix, library, no_start=False)
 
     assert result.returncode == 1
-    assert "intentional locked start failure" in result.stderr
-    assert "Rollback failed" in result.stderr
+    assert "intentional start failure" in result.stderr
     assert (app / "current-version").read_text(encoding="ascii") == "v1.0.0\n"
     assert (app / "previous-version").read_text(encoding="ascii") == "v0.9.0\n"
     assert (prefix / ".env").read_text(encoding="ascii") == "old env\n"
     assert (prefix / "bin" / "image-prompt-library.ps1").read_text(encoding="ascii") == "old ps1\n"
     assert (prefix / "bin" / "image-prompt-library.cmd").read_text(encoding="ascii") == "old cmd\n"
+    assert (replaced_target / "locked.txt").read_text(encoding="ascii") == "locked old target"
+    assert not (app / "versions" / "v1.2.3.backup").exists()
 
 
-def test_windows_installer_does_not_rollback_after_backup_cleanup_failure(tmp_path: Path):
+def test_windows_installer_removes_replaced_target_backup_after_child_runtime_setup_exits(tmp_path: Path):
     release_dir = tmp_path / "release"
-    write_test_release(release_dir, lock_backup_during_setup=True)
+    write_test_release(release_dir)
     prefix = tmp_path / "prefix"
     library = tmp_path / "library"
     app = prefix / "app"
@@ -1907,7 +2170,7 @@ def test_windows_installer_does_not_rollback_after_backup_cleanup_failure(tmp_pa
     assert result.returncode == 0, result.stderr
     assert (app / "current-version").read_text(encoding="ascii").strip() == "v1.2.3"
     assert (replaced_target / "setup-called.txt").is_file()
-    assert (app / "versions" / "v1.2.3.backup" / "locked.txt").is_file()
+    assert not (app / "versions" / "v1.2.3.backup").exists()
 
 
 def test_windows_installer_same_version_reinstall_preserves_previous_pointer(tmp_path: Path):
@@ -1990,6 +2253,44 @@ try {{
     assert payload["path"] == original_text
 
 
+def test_windows_installer_path_rollback_removes_only_added_entry_and_preserves_concurrent_edits(
+    tmp_path: Path,
+):
+    bin_path = tmp_path / "prefix" / "bin"
+    result = run_installer_function(
+        f"""
+$originalUser = [Environment]::GetEnvironmentVariable('Path', 'User')
+$originalProcess = $env:Path
+try {{
+    [Environment]::SetEnvironmentVariable('Path', 'UserBefore', 'User')
+    $env:Path = 'ProcessBefore'
+    $change = Add-UserPathEntry -BinPath {powershell_literal(bin_path)}
+    [Environment]::SetEnvironmentVariable('Path', ([Environment]::GetEnvironmentVariable('Path', 'User') + ';UserConcurrent'), 'User')
+    $env:Path += ';ProcessConcurrent'
+    Undo-AddedPathEntry -BinPath {powershell_literal(bin_path)} -Change $change
+    [pscustomobject]@{{
+        user = [Environment]::GetEnvironmentVariable('Path', 'User')
+        process = $env:Path
+        added_user = $change.AddedUser
+        added_process = $change.AddedProcess
+    }} | ConvertTo-Json -Compress
+}} finally {{
+    [Environment]::SetEnvironmentVariable('Path', $originalUser, 'User')
+    $env:Path = $originalProcess
+}}
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload == {
+        "user": "UserBefore;UserConcurrent",
+        "process": "ProcessBefore;ProcessConcurrent",
+        "added_user": True,
+        "added_process": True,
+    }
+
+
 def write_test_release(
     release_dir: Path,
     version: str = "v1.2.3",
@@ -2014,10 +2315,10 @@ def write_test_release(
         "frontend/dist/index.html": "<!doctype html>\n",
         "scripts/appctl.ps1": (
             "$global:testLock = [IO.File]::Open((Join-Path $PSScriptRoot 'locked.bin'), 'OpenOrCreate', 'ReadWrite', 'None')\n"
-            "if ($args -contains 'start') { throw 'intentional locked start failure' }\n"
+            "if ($args -contains 'internal-start') { throw 'intentional locked start failure' }\n"
             if locked_start_failure
             else (
-                "if ($args -contains 'start') { throw 'intentional start failure' }\n"
+                "if ($args -contains 'internal-start') { throw 'intentional start failure' }\n"
                 if start_failure
                 else "Write-Output ($args -join ' ')\n"
             )
@@ -2091,6 +2392,25 @@ def write_stopped_test_controller(version_root: Path) -> None:
     )
 
 
+def write_installed_version_payload(version_root: Path, version: str) -> None:
+    required = (
+        "pyproject.toml",
+        "backend/main.py",
+        "frontend/dist/index.html",
+        "scripts/install.ps1",
+        "scripts/install-sample-data.ps1",
+        "scripts/setup-runtime.ps1",
+        ".venv/Scripts/python.exe",
+    )
+    (version_root / "VERSION").parent.mkdir(parents=True, exist_ok=True)
+    (version_root / "VERSION").write_text(version + "\n", encoding="ascii")
+    for relative in required:
+        path = version_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("fixture\n", encoding="ascii")
+    write_stopped_test_controller(version_root)
+
+
 def write_running_test_controller(
     version_root: Path, host: str = "127.0.0.1", port: int = 8000
 ) -> None:
@@ -2141,6 +2461,8 @@ def run_installer(
         env=env,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
         timeout=30,
     )
@@ -2182,6 +2504,62 @@ def test_windows_installer_serializes_concurrent_publication(tmp_path: Path):
     assert not any(path.name.endswith((".tmp", ".tmp.bak")) for path in prefix.rglob("*"))
 
 
+@pytest.mark.parametrize(
+    "arguments, expected_code",
+    [
+        (("start", "--no-browser"), 1),
+        (("rollback",), 1),
+        (("uninstall", "--yes"), 0),
+    ],
+)
+def test_windows_mutations_wait_for_the_installer_prefix_transaction_lock(
+    tmp_path: Path, arguments: tuple[str, ...], expected_code: int
+):
+    prefix = tmp_path / arguments[0] / "prefix"
+    library = tmp_path / arguments[0] / "library"
+    if arguments[0] == "uninstall":
+        write_uninstall_layout(prefix, library)
+    marker = tmp_path / arguments[0] / "lock-ready.txt"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    holder = tmp_path / arguments[0] / "hold-lock.ps1"
+    holder.write_text(
+        "$source = [IO.File]::ReadAllText("
+        + powershell_literal(ROOT / "scripts" / "install.ps1")
+        + ")\n"
+        "$entryPoint = $source.LastIndexOf('try {')\n"
+        "Invoke-Expression $source.Substring(0, $entryPoint)\n"
+        f"$mutex = Enter-InstallLock -AppPrefix {powershell_literal(prefix)}\n"
+        f"[IO.File]::WriteAllText({powershell_literal(marker)}, 'ready')\n"
+        "try { Start-Sleep -Milliseconds 1200 } finally { Exit-InstallLock -Mutex $mutex }\n",
+        encoding="ascii",
+    )
+    process = subprocess.Popen(
+        [powershell_executable(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(holder)],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        deadline = time.monotonic() + 5
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert marker.exists(), process.communicate(timeout=5)
+        started = time.monotonic()
+        result = run_appctl(
+            prefix,
+            *arguments,
+            environment_overrides={"IMAGE_PROMPT_LIBRARY_PATH": str(library)},
+        )
+        elapsed = time.monotonic() - started
+    finally:
+        stdout, stderr = process.communicate(timeout=5)
+
+    assert process.returncode == 0, stdout + stderr
+    assert result.returncode == expected_code, result.stdout + result.stderr
+    assert elapsed >= 0.8, f"{arguments[0]} bypassed the prefix transaction lock ({elapsed:.3f}s)"
+
+
 def test_windows_installer_cleanup_does_not_follow_junction(tmp_path: Path):
     prefix = tmp_path / "prefix"
     outside = tmp_path / "outside"
@@ -2205,6 +2583,46 @@ def test_windows_installer_cleanup_does_not_follow_junction(tmp_path: Path):
     assert sentinel.read_text(encoding="ascii") == "keep"
 
 
+@pytest.mark.parametrize("target", ["prefix", "library"])
+def test_windows_installer_rejects_existing_reparse_ancestor_before_mutation(
+    tmp_path: Path, target: str
+):
+    release_dir = tmp_path / "release"
+    write_test_release(release_dir)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.txt"
+    sentinel.write_text("keep", encoding="ascii")
+    alias = tmp_path / "alias"
+    created = run_powershell(
+        f"New-Item -ItemType Junction -Path {powershell_literal(alias)} -Target {powershell_literal(outside)} -ErrorAction Stop | Out-Null"
+    )
+    if created.returncode != 0:
+        pytest.skip(f"Windows junction creation unavailable: {created.stderr.strip()}")
+    prefix = alias / "prefix" if target == "prefix" else tmp_path / "prefix"
+    library = alias / "library" if target == "library" else tmp_path / "library"
+
+    result = run_installer(release_dir, prefix, library)
+
+    assert result.returncode == 1
+    assert "reparse" in result.stderr.lower()
+    assert sentinel.read_text(encoding="ascii") == "keep"
+    assert not (outside / target).exists()
+
+
+def test_windows_installer_rejects_extended_path_canonical_alias_overlap(tmp_path: Path):
+    target = (tmp_path / "same-target").resolve()
+    target.mkdir()
+    extended_alias = "\\\\?\\" + str(target)
+
+    result = run_installer_function(
+        f"Assert-DisjointPaths -AppPrefix {powershell_literal(target)} -PrivateLibrary {powershell_literal(extended_alias)}"
+    )
+
+    assert result.returncode == 1
+    assert "must not contain each other" in result.stderr.lower()
+
+
 def test_windows_installer_places_runtime_then_publishes_shim_and_pointers(tmp_path: Path):
     release_dir = tmp_path / "release files"
     prefix = tmp_path / "app prefix"
@@ -2223,7 +2641,7 @@ def test_windows_installer_places_runtime_then_publishes_shim_and_pointers(tmp_p
     assert (final / "setup-called.txt").read_text(encoding="ascii").strip() == str(final)
     assert (prefix / "app" / "current-version").read_text(encoding="ascii").strip() == "v1.2.3"
     assert not (prefix / "app" / "previous-version").exists()
-    assert (prefix / "bin" / "image-prompt-library.ps1").is_file()
+    assert (prefix / "bin" / "image-prompt-library-delegate.ps1").is_file()
     assert (prefix / "bin" / "image-prompt-library.cmd").is_file()
     assert not any(path.name.startswith(".staging-") for path in final.parent.iterdir())
     assert (prefix / ".env").read_text(encoding="ascii").splitlines() == [
@@ -2475,8 +2893,8 @@ if ($sleeper) {{ Stop-Process -Id $sleeperId -Force; Wait-Process -Id $sleeperId
 def test_windows_appctl_rollback_command_preserves_stopped_state(tmp_path: Path):
     prefix = tmp_path / "prefix"
     app = prefix / "app"
-    (app / "versions" / "v1.0.0").mkdir(parents=True)
-    (app / "versions" / "v0.9.0").mkdir()
+    write_installed_version_payload(app / "versions" / "v1.0.0", "v1.0.0")
+    write_installed_version_payload(app / "versions" / "v0.9.0", "v0.9.0")
     (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
     (app / "previous-version").write_text("v0.9.0\n", encoding="ascii")
 
@@ -2488,20 +2906,72 @@ def test_windows_appctl_rollback_command_preserves_stopped_state(tmp_path: Path)
     assert not (prefix / "run" / "server.json").exists()
 
 
+@pytest.mark.parametrize(
+    "corruption",
+    ["missing-version", "wrong-version", "missing-controller", "missing-payload", "missing-python"],
+)
+def test_windows_appctl_stopped_rollback_rejects_corrupt_target_without_mutation(
+    tmp_path: Path, corruption: str
+):
+    prefix = tmp_path / "prefix"
+    app = prefix / "app"
+    current_root = app / "versions" / "v2.0.0"
+    previous_root = app / "versions" / "v1.0.0"
+    write_installed_version_payload(current_root, "v2.0.0")
+    write_installed_version_payload(previous_root, "v1.0.0")
+    (app / "current-version").write_text("v2.0.0\n", encoding="ascii")
+    (app / "previous-version").write_text("v1.0.0\n", encoding="ascii")
+    corrupt_path = {
+        "missing-version": previous_root / "VERSION",
+        "missing-controller": previous_root / "scripts" / "appctl.ps1",
+        "missing-payload": previous_root / "backend" / "main.py",
+        "missing-python": previous_root / ".venv" / "Scripts" / "python.exe",
+    }.get(corruption)
+    if corruption == "wrong-version":
+        (previous_root / "VERSION").write_text("v0.9.0\n", encoding="ascii")
+    elif corrupt_path:
+        corrupt_path.unlink()
+
+    result = run_appctl(prefix, "rollback")
+
+    assert result.returncode == 1
+    assert (app / "current-version").read_text(encoding="ascii") == "v2.0.0\n"
+    assert (app / "previous-version").read_text(encoding="ascii") == "v1.0.0\n"
+    assert not (prefix / "run" / "server.json").exists()
+
+
+def test_windows_appctl_doctor_validates_previous_pointer_target(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    app = prefix / "app"
+    current_root = app / "versions" / "v2.0.0"
+    previous_root = app / "versions" / "v1.0.0"
+    write_installed_version_payload(current_root, "v2.0.0")
+    write_installed_version_payload(previous_root, "v1.0.0")
+    (previous_root / ".venv" / "Scripts" / "python.exe").unlink()
+    (app / "current-version").write_text("v2.0.0\n", encoding="ascii")
+    (app / "previous-version").write_text("v1.0.0\n", encoding="ascii")
+
+    result = run_appctl(prefix, "doctor")
+
+    assert result.returncode == 0, result.stderr
+    assert "Previous version: ERROR" in result.stdout
+    assert "version-local Python" in result.stdout
+
+
 def test_windows_appctl_rollback_target_failure_restores_runtime_and_pointer_pair(tmp_path: Path):
     prefix = tmp_path / "prefix"
     app = prefix / "app"
-    (app / "versions" / "v1.0.0").mkdir(parents=True)
-    (app / "versions" / "v0.9.0").mkdir()
+    write_installed_version_payload(app / "versions" / "v1.0.0", "v1.0.0")
+    write_installed_version_payload(app / "versions" / "v0.9.0", "v0.9.0")
     (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
     (app / "previous-version").write_text("v0.9.0\n", encoding="ascii")
     script = f"""
 $env:IMAGE_PROMPT_LIBRARY_PREFIX = {powershell_literal(prefix)}
 $context = Get-InstallContext
 $script:startLines = New-Object Collections.Generic.List[string]
-function Get-OwnedRuntimeState {{ [pscustomobject]@{{ running = $true; host = '127.0.0.7'; port = 4567 }} }}
-function Stop-App {{ param($Context) }}
-function Start-App {{
+function Get-OwnedRuntimeState {{ param($Context, $Version) [pscustomobject]@{{ running = $true; host = '127.0.0.7'; port = 4567 }} }}
+function Stop-AppInternal {{ param($Context) }}
+function Start-AppInternal {{
     param($Context, [string[]]$Arguments, $VersionOverride = $null)
     $resolvedVersion = if ($VersionOverride) {{ $VersionOverride.Version }} else {{ (Get-Content -LiteralPath (Join-Path $Context.AppDir 'current-version') -Raw).Trim() }}
     $script:startLines.Add($resolvedVersion + '|' + ($Arguments -join ' '))
@@ -2533,8 +3003,8 @@ try {{ Rollback-App -Context $context }} catch {{ $failure = $_.Exception.Messag
 def test_windows_appctl_pointer_failure_restores_both_and_restarts_old_runtime(tmp_path: Path):
     prefix = tmp_path / "prefix"
     app = prefix / "app"
-    (app / "versions" / "v1.0.0").mkdir(parents=True)
-    (app / "versions" / "v0.9.0").mkdir()
+    write_installed_version_payload(app / "versions" / "v1.0.0", "v1.0.0")
+    write_installed_version_payload(app / "versions" / "v0.9.0", "v0.9.0")
     (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
     (app / "previous-version").write_text("v0.9.0\n", encoding="ascii")
     script = f"""
@@ -2543,9 +3013,9 @@ $context = Get-InstallContext
 $script:realWriter = ${{function:Write-VersionPointerAtomic}}
 $script:writeCalls = 0
 $script:startLines = New-Object Collections.Generic.List[string]
-function Get-OwnedRuntimeState {{ [pscustomobject]@{{ running = $true; host = '127.0.0.8'; port = 4678 }} }}
-function Stop-App {{ param($Context) }}
-function Start-App {{
+function Get-OwnedRuntimeState {{ param($Context, $Version) [pscustomobject]@{{ running = $true; host = '127.0.0.8'; port = 4678 }} }}
+function Stop-AppInternal {{ param($Context) }}
+function Start-AppInternal {{
     param($Context, [string[]]$Arguments, $VersionOverride = $null)
     $resolvedVersion = if ($VersionOverride) {{ $VersionOverride.Version }} else {{ (Get-Content -LiteralPath (Join-Path $Context.AppDir 'current-version') -Raw).Trim() }}
     $script:startLines.Add($resolvedVersion + '|' + ($Arguments -join ' '))
@@ -2883,7 +3353,7 @@ try {{ Invoke-Install }} catch {{ $failure = $_.Exception.Message }}
     assert (app / "current-version").read_text(encoding="ascii") == "v1.0.0\n"
     assert (app / "previous-version").read_text(encoding="ascii") == "v0.9.0\n"
     commands = (old_target / "scripts" / "commands.log").read_text(encoding="ascii").splitlines()
-    assert "start --host 127.0.0.6 --port 4789 --no-browser" in commands
+    assert "internal-start --host 127.0.0.6 --port 4789 --no-browser" in commands
 
 
 def test_public_docs_explain_native_windows_without_installing_python():
@@ -2911,3 +3381,26 @@ def test_public_docs_do_not_claim_legacy_release_is_windows_native():
     installation = read("docs/INSTALLATION.md")
     assert "Native Windows support begins with v0.8.0" in installation
     assert "v0.7.10 supports native Windows" not in installation
+
+
+def test_windows_docs_match_restricted_policy_command_and_recovery_contracts():
+    installation = read("docs/INSTALLATION.md")
+    troubleshooting = read("docs/TROUBLESHOOTING.md")
+    release_notes = read("docs/releases/v0.8.0.md")
+    for document in (installation, troubleshooting, release_notes):
+        assert "Restricted" in document
+        assert ".cmd" in document
+        assert "durable" in document.lower()
+    assert "powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer" in installation
+    assert "image-prompt-library-delegate.ps1" not in troubleshooting
+    assert "image-prompt-library.cmd" in troubleshooting
+
+    for path, heading in (
+        ("README_zh-TW.md", "### macOS、Linux 與 WSL 2"),
+        ("README_zh-CN.md", "### macOS、Linux 和 WSL 2"),
+    ):
+        document = read(path)
+        windows_index = document.index("### Windows")
+        unix_index = document.index(heading)
+        curl_prerequisite = document.index("`curl`")
+        assert windows_index < unix_index < curl_prerequisite

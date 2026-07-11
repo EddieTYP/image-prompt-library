@@ -36,8 +36,6 @@ Image Prompt Library 就是為這件事而做：把分散在聊天紀錄、資�
 
 ## 快速開始
 
-一般 release 安裝只需要 **Python 3.10+** 和 `curl`，不需要 Node.js。
-
 ### Windows（v0.8.0+）
 
 原生 Windows 支援從 v0.8.0 開始。現行 stable release 仍是 v0.7.10，請勿在 v0.7.10 使用這條原生 Windows 安裝路徑。需要 Windows 10/11、PowerShell 5.1+ 與 **Python 3.10+**；安裝程式不會自動安裝 Python。
@@ -51,6 +49,8 @@ irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts
 ### macOS、Linux 與 WSL 2
 
 Windows 使用者也可透過 WSL 2 使用下列 Unix 安裝方式。
+
+一般 Unix/WSL release 安裝只需要 **Python 3.10+** 和 `curl`，不需要 Node.js。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash

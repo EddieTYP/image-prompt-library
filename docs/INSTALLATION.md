@@ -24,19 +24,24 @@ irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts
 
 The installer downloads a release only when its manifest advertises the `windows-powershell-v1` capability, verifies the release checksum before extraction, creates a version-local Python runtime, starts the app in the background, and opens the browser.
 
+The public bare command resolves to `%LOCALAPPDATA%\ImagePromptLibrary\bin\image-prompt-library.cmd`. The CMD shim launches its differently named internal PowerShell delegate with `-NoProfile -ExecutionPolicy Bypass -File`, so normal commands continue to work when the caller's Windows PowerShell execution policy is `Restricted`.
+
 To inspect the script before running it:
 
 ```powershell
-Invoke-WebRequest https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.ps1 -OutFile .\install.ps1
-notepad .\install.ps1
-.\install.ps1
+$installer = Join-Path $env:TEMP "image-prompt-library-install.ps1"
+Invoke-WebRequest https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.ps1 -OutFile $installer
+notepad $installer
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
 ```
 
 To choose a released version, use the downloaded script:
 
 ```powershell
-.\install.ps1 -Version v0.8.0
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -Version v0.8.0
 ```
+
+Development and CI release overrides accept literal local directories, `file:` URLs, and loopback HTTP servers. Non-loopback remote release sources must use HTTPS.
 
 ### Layout and private data
 
@@ -79,7 +84,7 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 image-prompt-library uninstall
 ```
 
-An update switches version pointers transactionally and restores the prior version and runtime if the new target cannot start. `rollback` selects the previous installed version. Default uninstall removes only the app state and preserves `%USERPROFILE%\ImagePromptLibrary`; use `image-prompt-library uninstall --delete-library` only to remove the private library too, and add `--yes` for non-interactive use.
+Update, rollback, start, stop, and uninstall operations share one per-prefix transaction lock. An update switches version pointers transactionally and restores the prior version and runtime after a handled setup, switch, or health failure. This is not durable power-loss recovery: an OS or power interruption can still require `image-prompt-library doctor` followed by a manual retry or rollback. `rollback` validates the previous payload and version-local Python before changing either pointer. Default uninstall removes only the app state and preserves `%USERPROFILE%\ImagePromptLibrary`; use `image-prompt-library uninstall --delete-library` only to remove the private library too, and add `--yes` for non-interactive use.
 
 ## Unix and WSL 2
 

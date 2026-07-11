@@ -10,31 +10,50 @@ $ErrorActionPreference = "Stop"
 
 function Test-PythonCandidate {
     param([string]$Exe, [string[]]$PrefixArgs)
+    return (Get-PythonCandidateInfo -Exe $Exe -PrefixArgs $PrefixArgs).Supported
+}
+
+function Get-PythonCandidateInfo {
+    param([string]$Exe, [string[]]$PrefixArgs)
     try {
-        & $Exe @PrefixArgs -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" 2>$null
-        return $LASTEXITCODE -eq 0
+        $output = @(& $Exe @PrefixArgs -c "import sys; print('.'.join(map(str, sys.version_info[:3]))); raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" 2>$null)
+        $version = if ($output.Count) { [string]$output[$output.Count - 1] } else { "unknown" }
+        return [pscustomobject]@{ Supported = $LASTEXITCODE -eq 0; Version = $version.Trim() }
     } catch {
-        return $false
+        return [pscustomobject]@{ Supported = $false; Version = "unavailable" }
     }
+}
+
+function New-PythonRequirementMessage {
+    param([string[]]$Detected = @())
+    $message = "Image Prompt Library requires Python 3.10 or newer."
+    if ($Detected.Count) { $message += " Detected unsupported Python: $($Detected -join ',')." }
+    return $message + " Install Python from https://www.python.org/downloads/windows/, make sure the Python launcher is available and 'py -3' works, then rerun setup."
 }
 
 function Find-SupportedPython {
     if ($PythonExe) {
-        if (-not (Test-PythonCandidate -Exe $PythonExe -PrefixArgs $PythonPrefixArgs)) {
-            throw "Image Prompt Library requires Python 3.10 or newer. Download it from https://www.python.org/downloads/windows/ and rerun the installer."
+        $info = Get-PythonCandidateInfo -Exe $PythonExe -PrefixArgs $PythonPrefixArgs
+        if (-not $info.Supported) {
+            throw (New-PythonRequirementMessage -Detected @("$PythonExe $($info.Version)"))
         }
         return [pscustomobject]@{ Exe = $PythonExe; PrefixArgs = @($PythonPrefixArgs) }
     }
+    $detected = New-Object Collections.Generic.List[string]
     foreach ($candidate in @(
         [pscustomobject]@{ Name = "py"; PrefixArgs = @("-3") },
         [pscustomobject]@{ Name = "python"; PrefixArgs = @() }
     )) {
         $command = Get-Command $candidate.Name -ErrorAction SilentlyContinue
-        if ($command -and (Test-PythonCandidate -Exe $command.Source -PrefixArgs $candidate.PrefixArgs)) {
-            return [pscustomobject]@{ Exe = $command.Source; PrefixArgs = @($candidate.PrefixArgs) }
+        if ($command) {
+            $info = Get-PythonCandidateInfo -Exe $command.Source -PrefixArgs $candidate.PrefixArgs
+            if ($info.Supported) {
+                return [pscustomobject]@{ Exe = $command.Source; PrefixArgs = @($candidate.PrefixArgs) }
+            }
+            $detected.Add("$($candidate.Name) $($info.Version)")
         }
     }
-    throw "Image Prompt Library requires Python 3.10 or newer. Download it from https://www.python.org/downloads/windows/ and rerun the installer."
+    throw (New-PythonRequirementMessage -Detected ([string[]]$detected))
 }
 
 function Invoke-PythonChecked {

@@ -136,12 +136,33 @@ function Assert-Failed {
 
 function Invoke-App {
     param([string[]]$Arguments)
-    return Invoke-IsolatedPowerShell -ScriptPath (Join-Path $prefix "bin\image-prompt-library.ps1") -Arguments $Arguments
+    $commandArguments = @($Arguments | ForEach-Object { "'" + $_.Replace("'", "''") + "'" })
+    return Invoke-RestrictedCommand -CommandText ("image-prompt-library " + ($commandArguments -join " "))
+}
+
+function Invoke-RestrictedCommand {
+    param([string]$CommandText)
+    Initialize-ImmediateProcessRunner
+    $parts = @("-NoProfile", "-ExecutionPolicy", "Restricted", "-Command", $CommandText)
+    $quoted = @($parts | ForEach-Object { '"' + $_.Replace('"', '\"') + '"' })
+    $result = [ImagePromptLibraryImmediateProcessRunner]::Run("powershell.exe", ($quoted -join " "), $repoRoot)
+    $output = @($result.Stdout, $result.Stderr) | Where-Object { $_ }
+    return [pscustomobject]@{ ExitCode = $result.ExitCode; Output = ($output -join [Environment]::NewLine) }
 }
 
 function Get-Pointer {
     param([string]$Name)
     return (Get-Content -LiteralPath (Join-Path $prefix "app\$Name") -Raw).Trim()
+}
+
+function Wait-ForPathRemoval {
+    param([string]$Path, [int]$TimeoutSeconds = 15)
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if (-not (Test-Path -LiteralPath $Path)) { return }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Timed out waiting for uninstall cleanup: $Path"
 }
 
 function Test-PathMembership {
@@ -321,7 +342,7 @@ function Invoke-SmokeCleanup {
     param([switch]$KeepWorkRoot)
     $errors = New-Object Collections.Generic.List[string]
     $ownedState = [pscustomobject]@{ Pid = $null; Running = $false }
-    $shim = Join-Path $prefix "bin\image-prompt-library.ps1"
+    $shim = Join-Path $prefix "bin\image-prompt-library.cmd"
     $workRootExisted = Test-Path -LiteralPath $workRoot
 
     Invoke-CleanupStep -Errors $errors -Name "owned app record inspection" -Action {
@@ -468,7 +489,8 @@ try {
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafePrefix "app\versions\$versionA"))) "Unsafe tar probe must not publish a version."
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $unsafePrefix "app\versions\escape.txt"))) "Unsafe tar probe must not escape staging."
 
-    $install = Invoke-IsolatedPowerShell -ScriptPath $installer -Arguments @("-Version", $versionA, "-Prefix", $prefix, "-LibraryPath", $library, "-ReleaseBaseUrl", $releaseBase, "-PythonExe", $python, "-NoStart")
+    $restrictedInstallCommand = "& powershell.exe -NoProfile -ExecutionPolicy Bypass -File '" + $installer.Replace("'", "''") + "' -Version '" + $versionA + "' -Prefix '" + $prefix.Replace("'", "''") + "' -LibraryPath '" + $library.Replace("'", "''") + "' -ReleaseBaseUrl '" + $releaseBase.Replace("'", "''") + "' -PythonExe '" + $python.Replace("'", "''") + "' -NoStart; exit `$LASTEXITCODE"
+    $install = Invoke-RestrictedCommand -CommandText $restrictedInstallCommand
     Assert-Succeeded $install "Fresh install"
     Assert-Equal $versionA (Get-Pointer "current-version") "Fresh install current pointer mismatch."
     $versionRoot = Join-Path $prefix "app\versions\$versionA"
@@ -476,9 +498,11 @@ try {
     foreach ($name in @("appctl.ps1", "install.ps1", "install-sample-data.ps1", "setup-runtime.ps1")) {
         Assert-True (Test-Path -LiteralPath (Join-Path $versionRoot "scripts\$name") -PathType Leaf) "Packaged PowerShell script is missing: $name"
     }
-    Assert-True (Test-Path -LiteralPath (Join-Path $prefix "bin\image-prompt-library.ps1") -PathType Leaf) "PowerShell shim is missing."
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $prefix "bin\image-prompt-library.ps1"))) "Legacy same-basename PowerShell shim must be absent."
+    Assert-True (Test-Path -LiteralPath (Join-Path $prefix "bin\image-prompt-library-delegate.ps1") -PathType Leaf) "PowerShell delegate is missing."
     Assert-True (Test-Path -LiteralPath (Join-Path $prefix "bin\image-prompt-library.cmd") -PathType Leaf) "CMD shim is missing."
     Assert-True (Test-PathMembership -PathValue ([Environment]::GetEnvironmentVariable("Path", "User")) -ExpectedPath (Join-Path $prefix "bin")) "User PATH does not contain the install bin directory."
+    $env:Path = (Join-Path $prefix "bin") + ";" + $env:Path
     $versionResult = Invoke-App -Arguments @("version")
     Assert-Succeeded $versionResult "Version command"
     Assert-Equal $versionA $versionResult.Output.Trim() "Version command output mismatch."
@@ -623,6 +647,7 @@ try {
     $uninstall = Invoke-App -Arguments @("uninstall", "--yes")
     Assert-Succeeded $uninstall "Preserving uninstall"
     Assert-Contains $uninstall.Output "Private library preserved at $library" "Private library preserved at message mismatch."
+    Wait-ForPathRemoval -Path $prefix
     Assert-True (-not (Test-Path -LiteralPath $prefix)) "Preserving uninstall left the prefix."
     Assert-True (Test-Path -LiteralPath $sentinel -PathType Leaf) "Preserving uninstall removed private data."
     Assert-True (-not (Test-PathMembership -PathValue ([Environment]::GetEnvironmentVariable("Path", "User")) -ExpectedPath (Join-Path $prefix "bin"))) "Preserving uninstall left User PATH residue."
@@ -631,6 +656,7 @@ try {
     Assert-Succeeded $reinstall "Reinstall before delete-library uninstall"
     $deleteUninstall = Invoke-App -Arguments @("uninstall", "--delete-library", "--yes")
     Assert-Succeeded $deleteUninstall "Delete-library uninstall"
+    Wait-ForPathRemoval -Path $prefix
     Assert-True (-not (Test-Path -LiteralPath $prefix)) "Delete-library uninstall left the prefix."
     Assert-True (-not (Test-Path -LiteralPath $library)) "Delete-library uninstall left the private library."
     Assert-True (-not (Test-PathMembership -PathValue ([Environment]::GetEnvironmentVariable("Path", "User")) -ExpectedPath (Join-Path $prefix "bin"))) "Delete-library uninstall left User PATH residue."

@@ -6,10 +6,10 @@ Native Windows support begins with v0.8.0 and requires Python 3.10+. The install
 
 ## Windows: `image-prompt-library` is not found
 
-The installer adds `%LOCALAPPDATA%\ImagePromptLibrary\bin` to your user PATH. Close PowerShell, open a new window, and try the command again. If it is still unavailable, run the installed controller directly:
+The installer adds `%LOCALAPPDATA%\ImagePromptLibrary\bin` to your user PATH. Close PowerShell, open a new window, and try the command again. The public command is a `.cmd`, so it remains callable when Windows PowerShell uses the `Restricted` execution policy. If PATH is still unavailable, run that public shim directly:
 
 ```powershell
-& "$env:LOCALAPPDATA\ImagePromptLibrary\bin\image-prompt-library.ps1" status
+& "$env:LOCALAPPDATA\ImagePromptLibrary\bin\image-prompt-library.cmd" status
 ```
 
 Use `image-prompt-library doctor` to check the user PATH and selected version.
@@ -35,7 +35,7 @@ image-prompt-library status
 
 ## Windows: update recovery or rollback
 
-An interrupted update restores the previous version and runtime when possible. Check the selected version and health with `image-prompt-library version` and `image-prompt-library status`, then use `image-prompt-library rollback` if you need the previously installed version.
+A handled update failure restores the previous version and runtime when possible. The controller does not provide a durable crash journal, so an OS or power interruption can still leave work for `doctor`. Check the selected version and health with `image-prompt-library version`, `image-prompt-library status`, and `image-prompt-library doctor`; then retry or use `image-prompt-library rollback` if the validated previous version is available.
 
 ## Windows: uninstall and private data
 

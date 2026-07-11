@@ -4,6 +4,7 @@ param([Parameter(ValueFromRemainingArguments=$true)][string[]]$CommandArgs)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $script:ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$script:ControllerPath = $MyInvocation.MyCommand.Path
 
 function Get-InstallContext {
     $scriptDir = $script:ScriptRoot
@@ -53,6 +54,41 @@ function Get-CurrentVersion {
     if (-not $root.StartsWith($versionsRoot + "\", [StringComparison]::OrdinalIgnoreCase)) { throw "The current version pointer is invalid." }
     if (-not (Test-Path -LiteralPath $root -PathType Container)) { throw "The current version directory is missing: $root" }
     [pscustomobject]@{ Version = $version; Root = $root; Python = Join-Path $root ".venv\Scripts\python.exe" }
+}
+
+function Get-ValidatedInstalledVersion {
+    param($Context, [string]$Version, [string]$Label = "Selected")
+    if (-not $Version -or $Version -in @(".", "..") -or $Version -match '[\\/]') {
+        throw "$Label version pointer is invalid."
+    }
+    $versionsRoot = [IO.Path]::GetFullPath((Join-Path $Context.AppDir "versions"))
+    $root = [IO.Path]::GetFullPath((Join-Path $versionsRoot $Version))
+    if (-not $root.StartsWith($versionsRoot + "\", [StringComparison]::OrdinalIgnoreCase)) {
+        throw "$Label version pointer is invalid."
+    }
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) { throw "$Label version directory is missing: $root" }
+    foreach ($relative in @(
+        "VERSION",
+        "pyproject.toml",
+        "backend\main.py",
+        "frontend\dist\index.html",
+        "scripts\appctl.ps1",
+        "scripts\install.ps1",
+        "scripts\install-sample-data.ps1",
+        "scripts\setup-runtime.ps1"
+    )) {
+        if (-not (Test-Path -LiteralPath (Join-Path $root $relative) -PathType Leaf)) {
+            throw "$Label version target is missing expected payload $relative."
+        }
+    }
+    if ((Get-Content -LiteralPath (Join-Path $root "VERSION") -Raw).Trim() -ne $Version) {
+        throw "$Label version target VERSION does not match its pointer."
+    }
+    $python = Join-Path $root ".venv\Scripts\python.exe"
+    if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+        throw "$Label version target is missing version-local Python."
+    }
+    return [pscustomobject]@{ Version = $Version; Root = $root; Python = $python }
 }
 
 function Read-ServerRecord {
@@ -123,6 +159,11 @@ function Get-AppUrl {
     return "http://{0}:{1}/" -f $urlHost, $Port
 }
 
+function Get-StartFailureLogMessage {
+    param($Context)
+    return "Logs: stdout=$(Join-Path $Context.LogDir 'app.out.log'); stderr=$(Join-Path $Context.LogDir 'app.err.log'); previous stdout=$(Join-Path $Context.LogDir 'app.previous.out.log'); previous stderr=$(Join-Path $Context.LogDir 'app.previous.err.log')."
+}
+
 function Write-ServerRecordFileAtomically {
     param([string]$Path, $Record)
     $directory = Split-Path -Parent $Path
@@ -156,6 +197,21 @@ function Test-ServerRecordMatches {
         [string]::Equals([string]$Expected.created_at, [string]$Actual.created_at, [StringComparison]::Ordinal)
 }
 
+function Test-ServerRecordMatchesVersion {
+    param($Record, $Version)
+    try {
+        $recordRoot = [IO.Path]::GetFullPath([string]$Record.app_root).TrimEnd('\')
+        $versionRoot = [IO.Path]::GetFullPath([string]$Version.Root).TrimEnd('\')
+        $recordPython = [IO.Path]::GetFullPath([string]$Record.process_executable_path)
+        $versionPython = [IO.Path]::GetFullPath([string]$Version.Python)
+    } catch {
+        return $false
+    }
+    return [string]::Equals([string]$Record.version, [string]$Version.Version, [StringComparison]::Ordinal) -and
+        [string]::Equals($recordRoot, $versionRoot, [StringComparison]::OrdinalIgnoreCase) -and
+        [string]::Equals($recordPython, $versionPython, [StringComparison]::OrdinalIgnoreCase)
+}
+
 function Remove-ServerRecordIfMatches {
     param($Context, $ExpectedRecord)
     try { $actualRecord = Read-ServerRecord $Context }
@@ -165,19 +221,44 @@ function Remove-ServerRecordIfMatches {
     return $true
 }
 
-function Enter-LifecycleLock {
-    param($Context)
-    New-Item -ItemType Directory -Force -Path $Context.RunDir | Out-Null
-    $path = Join-Path $Context.RunDir "start.lock"
-    $deadline = [DateTime]::UtcNow.AddSeconds(60)
-    while ([DateTime]::UtcNow -lt $deadline) {
-        try {
-            return [IO.File]::Open($path, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
-        } catch [IO.IOException] {
-            Start-Sleep -Milliseconds 100
-        }
+function Get-NormalizedTransactionPath {
+    param([string]$Path)
+    $full = [IO.Path]::GetFullPath($Path)
+    if ($full.StartsWith('\\?\UNC\', [StringComparison]::OrdinalIgnoreCase)) {
+        $full = '\\' + $full.Substring(8)
+    } elseif ($full.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase)) {
+        $full = $full.Substring(4)
     }
-    throw "Another lifecycle operation did not finish within 60 seconds."
+    return [IO.Path]::GetFullPath($full).TrimEnd('\')
+}
+
+function Enter-PrefixTransactionLock {
+    param($Context)
+    $bytes = [Text.Encoding]::UTF8.GetBytes((Get-NormalizedTransactionPath -Path $Context.Prefix).ToUpperInvariant())
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        $name = "ImagePromptLibrary.Transaction." + (($sha256.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '')
+    } finally {
+        $sha256.Dispose()
+    }
+    $mutex = New-Object Threading.Mutex($false, $name)
+    try {
+        if (-not $mutex.WaitOne([TimeSpan]::FromMinutes(2))) {
+            throw "Another Image Prompt Library transaction is already running for this prefix."
+        }
+    } catch [Threading.AbandonedMutexException] {
+    } catch {
+        $mutex.Dispose()
+        throw
+    }
+    return $mutex
+}
+
+function Exit-PrefixTransactionLock {
+    param([Threading.Mutex]$Mutex)
+    if ($Mutex) {
+        try { $Mutex.ReleaseMutex() } finally { $Mutex.Dispose() }
+    }
 }
 
 function Get-RecordedProcess {
@@ -205,7 +286,7 @@ function Get-OwnedProcess {
 }
 
 function Get-OwnedRuntimeState {
-    param($Context)
+    param($Context, $Version)
     $record = Read-ServerRecord -Context $Context
     if (-not $record) {
         return [pscustomobject]@{ running = $false; host = $null; port = $null }
@@ -220,6 +301,12 @@ function Get-OwnedRuntimeState {
         return [pscustomobject]@{ running = $false; host = $null; port = $null }
     }
     try {
+        if (-not (Test-ServerRecordMatchesVersion -Record $record -Version $Version)) {
+            throw "The owned runtime record does not match the selected version, app root, and executable."
+        }
+        if (-not (Test-AppHealth -HostName $record.host -Port $record.port -ExpectedVersion $Version.Version)) {
+            throw "The owned runtime is not healthy for the selected version."
+        }
         return [pscustomobject]@{ running = $true; host = [string]$record.host; port = [int]$record.port }
     } finally {
         Close-ProcessLease -Lease $lease
@@ -345,7 +432,7 @@ function Get-StartedProcessIdentity {
 }
 
 function Get-ServerRuntimeData {
-    param($Context)
+    param($Context, $Version = $null)
     try { $record = Read-ServerRecord $Context }
     catch { return [pscustomobject]@{ State = "stale runtime record"; Record = $null } }
     if (-not $record) { return [pscustomobject]@{ State = "stopped"; Record = $null } }
@@ -353,7 +440,11 @@ function Get-ServerRuntimeData {
     $lease = Get-OwnedProcess $record
     if (-not $lease) { return [pscustomobject]@{ State = "stale runtime record"; Record = $record } }
     try {
-        if (Test-AppHealth -HostName $record.host -Port $record.port -ExpectedVersion $record.version) {
+        if ($Version -and -not (Test-ServerRecordMatchesVersion -Record $record -Version $Version)) {
+            return [pscustomobject]@{ State = "stale runtime record"; Record = $record }
+        }
+        $expectedVersion = if ($Version) { $Version.Version } else { $record.version }
+        if (Test-AppHealth -HostName $record.host -Port $record.port -ExpectedVersion $expectedVersion) {
             return [pscustomobject]@{ State = "running"; Record = $record }
         }
         return [pscustomobject]@{ State = "unhealthy"; Record = $record }
@@ -364,7 +455,7 @@ function Get-ServerRuntimeData {
 
 function Get-AppStatusData {
     param($Context, $Environment, $Version)
-    $runtime = Get-ServerRuntimeData $Context
+    $runtime = Get-ServerRuntimeData $Context $Version
     $statusScript = @'
 import json, sqlite3, sys
 from pathlib import Path
@@ -474,11 +565,20 @@ function Show-Doctor {
 
     Write-Output "Updates / Runtime"
     try {
+        $pointerState = Get-VersionPointerState -Context $Context
+        if (-not $pointerState.Previous) {
+            Write-Output "  Previous version: MISSING"
+        } else {
+            $previousVersion = Get-ValidatedInstalledVersion -Context $Context -Version $pointerState.Previous -Label "Previous"
+            Write-Output ("  Previous version: OK (" + $previousVersion.Version + ")")
+        }
+    } catch { Write-Output ("  Previous version: ERROR - " + $_.Exception.Message) }
+    try {
         if ($version -and (Test-Path -LiteralPath $version.Python -PathType Leaf)) { Write-Output "  Version-local Python: OK" }
         else { Write-Output "  Version-local Python: MISSING" }
     } catch { Write-Output ("  Version-local Python: ERROR - " + $_.Exception.Message) }
     try {
-        $shim = Join-Path $Context.BinDir "image-prompt-library.ps1"
+        $shim = Join-Path $Context.BinDir "image-prompt-library.cmd"
         if (Test-Path -LiteralPath $shim -PathType Leaf) { Write-Output "  Command shim: OK" }
         else { Write-Output ("  Command shim: MISSING - " + $shim) }
     } catch { Write-Output ("  Command shim: ERROR - " + $_.Exception.Message) }
@@ -503,7 +603,7 @@ function Show-Doctor {
     Write-Output "  Run image-prompt-library status for a concise summary."
 }
 
-function Start-App {
+function Start-AppInternal {
     param($Context, [string[]]$Arguments, $VersionOverride = $null)
     $settings = Read-AppEnvironment -Context $Context
     $hostName = $settings.Host
@@ -530,16 +630,17 @@ function Start-App {
     if ($port -lt 1 -or $port -gt 65535) { throw "Port must be an integer from 1 to 65535." }
     if (-not (Test-BindHost -HostName $hostName)) { throw "Host must be a single valid DNS name or IP address." }
 
-    $lifecycleLock = Enter-LifecycleLock -Context $Context
-    try {
-        $version = if ($VersionOverride) { $VersionOverride } else { Get-CurrentVersion $Context }
+    $version = if ($VersionOverride) { $VersionOverride } else { Get-CurrentVersion $Context }
         try { $record = Read-ServerRecord $Context }
         catch { throw "Cannot start with a malformed runtime record. Run image-prompt-library doctor." }
         if ($record) {
             $ownedLease = Get-OwnedProcess $record
             if ($ownedLease) {
                 try {
-                    if (Test-AppHealth -HostName $record.host -Port $record.port -ExpectedVersion $record.version) {
+                    if (-not (Test-ServerRecordMatchesVersion -Record $record -Version $version)) {
+                        throw "The managed app process does not match the selected version, app root, and executable. Run image-prompt-library doctor."
+                    }
+                    if (Test-AppHealth -HostName $record.host -Port $record.port -ExpectedVersion $version.Version) {
                         $existingUrl = Get-AppUrl -HostName $record.host -Port $record.port
                         Write-Output ("Image Prompt Library is already running at " + $existingUrl)
                         if (-not $noBrowser) {
@@ -569,6 +670,7 @@ function Start-App {
         $env:IMAGE_PROMPT_LIBRARY_PATH = [IO.Path]::GetFullPath($settings.LibraryPath)
         $env:BACKEND_HOST = $hostName
         $env:BACKEND_PORT = [string]$port
+        New-Item -ItemType Directory -Force -Path $Context.RunDir | Out-Null
         New-Item -ItemType Directory -Force -Path $Context.LogDir | Out-Null
         $outLog = Join-Path $Context.LogDir "app.out.log"
         $errLog = Join-Path $Context.LogDir "app.err.log"
@@ -619,7 +721,7 @@ function Start-App {
                 if (Test-ProcessExited -Process $processLease.Process) { break }
                 Start-Sleep -Milliseconds 250
             }
-            throw "The app did not become healthy. See logs in $($Context.LogDir)."
+            throw "The app did not become healthy. $(Get-StartFailureLogMessage -Context $Context)"
         } catch {
             $failure = $_.Exception.Message
             if ($processLease -and -not (Test-ProcessExited -Process $processLease.Process)) {
@@ -653,16 +755,21 @@ function Start-App {
             if ($processLease) { Close-ProcessLease -Lease $processLease }
             elseif ($process) { $process.Dispose() }
         }
+}
+
+function Start-App {
+    param($Context, [string[]]$Arguments, $VersionOverride = $null)
+    $transactionLock = Enter-PrefixTransactionLock -Context $Context
+    try {
+        Start-AppInternal -Context $Context -Arguments $Arguments -VersionOverride $VersionOverride
     } finally {
-        $lifecycleLock.Dispose()
+        Exit-PrefixTransactionLock -Mutex $transactionLock
     }
 }
 
-function Stop-App {
+function Stop-AppInternal {
     param($Context)
-    $lifecycleLock = Enter-LifecycleLock -Context $Context
-    try {
-        $record = Read-ServerRecord $Context
+    $record = Read-ServerRecord $Context
         if (-not $record) {
             Write-Output "Image Prompt Library is already stopped."
             return
@@ -689,8 +796,15 @@ function Stop-App {
             Close-ProcessLease -Lease $lease
         }
         Write-Output "Image Prompt Library is stopped."
+}
+
+function Stop-App {
+    param($Context)
+    $transactionLock = Enter-PrefixTransactionLock -Context $Context
+    try {
+        Stop-AppInternal -Context $Context
     } finally {
-        $lifecycleLock.Dispose()
+        Exit-PrefixTransactionLock -Mutex $transactionLock
     }
 }
 
@@ -758,7 +872,7 @@ function Restore-VersionSwitch {
     }
     if ($Runtime.running) {
         try {
-            foreach ($line in @(Start-App -Context $Context -Arguments $RestartArguments -VersionOverride $OldVersion 2>&1)) { $output.Add($line) }
+            foreach ($line in @(Start-AppInternal -Context $Context -Arguments $RestartArguments -VersionOverride $OldVersion 2>&1)) { $output.Add($line) }
         } catch {
             $errors.Add("old-version restart: $($_.Exception.Message)")
         }
@@ -773,15 +887,10 @@ function Switch-VersionTransactional {
     if (-not $TargetVersion -or $TargetVersion -in @('.', '..') -or $TargetVersion -match '[\\/]') {
         throw "The previous version pointer is invalid."
     }
-    $versionsRoot = [IO.Path]::GetFullPath((Join-Path $Context.AppDir "versions"))
-    $targetRoot = [IO.Path]::GetFullPath((Join-Path $versionsRoot $TargetVersion))
-    if (-not $targetRoot.StartsWith($versionsRoot + "\", [StringComparison]::OrdinalIgnoreCase)) {
-        throw "The previous version pointer is invalid."
-    }
-    if (-not (Test-Path -LiteralPath $targetRoot -PathType Container)) { throw "Previous version directory is missing: $targetRoot" }
-    $runtime = Get-OwnedRuntimeState -Context $Context
+    $target = Get-ValidatedInstalledVersion -Context $Context -Version $TargetVersion -Label "Previous"
+    $runtime = Get-OwnedRuntimeState -Context $Context -Version $current
     $restartArgs = @("--host", $runtime.host, "--port", [string]$runtime.port, "--no-browser")
-    if ($runtime.running) { Stop-App -Context $Context }
+    if ($runtime.running) { Stop-AppInternal -Context $Context }
     try {
         Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "current-version") -Value $TargetVersion
         Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "previous-version") -Value $current.Version
@@ -796,7 +905,7 @@ function Switch-VersionTransactional {
     }
     if ($runtime.running) {
         try {
-            Start-App -Context $Context -Arguments $restartArgs
+            Start-AppInternal -Context $Context -Arguments $restartArgs -VersionOverride $target
         } catch {
             $recovery = Restore-VersionSwitch -Context $Context -PointerState $pointerState -Runtime $runtime -OldVersion $current -RestartArguments $restartArgs
             foreach ($line in $recovery.Output) { Write-Output $line }
@@ -810,11 +919,16 @@ function Switch-VersionTransactional {
 
 function Rollback-App {
     param($Context)
-    $pointer = Join-Path $Context.AppDir "previous-version"
-    if (-not (Test-Path -LiteralPath $pointer -PathType Leaf)) { throw "No previous version is available for rollback." }
-    $previous = (Get-Content -LiteralPath $pointer -Raw).Trim()
-    if (-not $previous) { throw "No previous version is available for rollback." }
-    Switch-VersionTransactional -Context $Context -TargetVersion $previous
+    $transactionLock = Enter-PrefixTransactionLock -Context $Context
+    try {
+        $pointer = Join-Path $Context.AppDir "previous-version"
+        if (-not (Test-Path -LiteralPath $pointer -PathType Leaf)) { throw "No previous version is available for rollback." }
+        $previous = (Get-Content -LiteralPath $pointer -Raw).Trim()
+        if (-not $previous) { throw "No previous version is available for rollback." }
+        Switch-VersionTransactional -Context $Context -TargetVersion $previous
+    } finally {
+        Exit-PrefixTransactionLock -Mutex $transactionLock
+    }
 }
 
 function Update-App {
@@ -838,7 +952,9 @@ function Update-App {
     if ($env:IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL) {
         $installParameters.ReleaseBaseUrl = $env:IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL
     }
-    & $installer @installParameters
+    $installArguments = @("-Version", $installParameters.Version, "-Prefix", $installParameters.Prefix, "-LibraryPath", $installParameters.LibraryPath)
+    if ($installParameters.ContainsKey("ReleaseBaseUrl")) { $installArguments += @("-ReleaseBaseUrl", $installParameters.ReleaseBaseUrl) }
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer @installArguments
     if ($LASTEXITCODE -ne 0) { throw "Update failed." }
 }
 
@@ -858,7 +974,7 @@ function Install-SampleData {
     $installer = Join-Path $current.Root "scripts\install-sample-data.ps1"
     if (-not (Test-Path -LiteralPath $installer -PathType Leaf)) { throw "The current Image Prompt Library version is incomplete." }
     $environment = Read-AppEnvironment -Context $Context
-    & $installer -Language $language -Package $package -AppRoot $current.Root -LibraryPath $environment.LibraryPath
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -Language $language -Package $package -AppRoot $current.Root -LibraryPath $environment.LibraryPath
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
@@ -867,6 +983,12 @@ function Get-NormalizedUninstallPath {
     if ([string]::IsNullOrWhiteSpace($Path)) { throw "Uninstall target paths must not be empty." }
     try {
         $full = [IO.Path]::GetFullPath($Path)
+        if ($full.StartsWith('\\?\UNC\', [StringComparison]::OrdinalIgnoreCase)) {
+            $full = '\\' + $full.Substring(8)
+        } elseif ($full.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase)) {
+            $full = $full.Substring(4)
+        }
+        $full = [IO.Path]::GetFullPath($full)
         $root = [IO.Path]::GetPathRoot($full)
     } catch {
         throw "Uninstall target path is invalid: $Path"
@@ -910,17 +1032,23 @@ function Assert-UninstallTargets {
 function Assert-UninstallTargetNotReparse {
     param([string]$Path, [string]$Name)
     $normalized = Get-NormalizedUninstallPath -Path $Path
-    try {
-        $attributes = [IO.File]::GetAttributes($normalized)
-    } catch {
-        $cause = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
-        if ($cause -is [IO.FileNotFoundException] -or $cause -is [IO.DirectoryNotFoundException]) {
-            return $normalized
+    $root = [IO.Path]::GetPathRoot($normalized)
+    $parts = @($normalized.Substring($root.Length).Split(@('\'), [StringSplitOptions]::RemoveEmptyEntries))
+    $cursor = $root
+    foreach ($part in $parts) {
+        $cursor = Join-Path $cursor $part
+        try {
+            $attributes = [IO.File]::GetAttributes($cursor)
+        } catch {
+            $cause = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
+            if ($cause -is [IO.FileNotFoundException] -or $cause -is [IO.DirectoryNotFoundException]) {
+                return $normalized
+            }
+            throw
         }
-        throw
-    }
-    if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-        throw "$Name uninstall target must not be a reparse point."
+        if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "$Name uninstall target must not use a reparse-point ancestor: $cursor"
+        }
     }
     return $normalized
 }
@@ -991,6 +1119,7 @@ function Remove-ExactUninstallTree {
     if (-not $validated.Equals($expected, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Uninstall cleanup target did not match the validated target."
     }
+    Assert-UninstallTargetNotReparse -Path $validated -Name "Validated" | Out-Null
     Remove-UninstallTree -Target $validated -Root $expected
 }
 
@@ -1028,7 +1157,59 @@ function Get-UninstallWorkingDirectory {
     return $systemRoot
 }
 
-function Invoke-Uninstall {
+function Start-DeferredPrefixRemoval {
+    param($Context, [string]$ExpectedPrefix)
+    $readyPath = Join-Path ([IO.Path]::GetTempPath()) ("image-prompt-library-uninstall-" + [Guid]::NewGuid().ToString("N") + ".ready")
+    $arguments = @(
+        "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $script:ControllerPath,
+        "internal-delete-prefix", "--expected", $ExpectedPrefix, "--ready", $readyPath, "--parent-pid", [string]$PID
+    )
+    $quoted = @($arguments | ForEach-Object { '"' + $_.Replace('"', '\"') + '"' })
+    Start-Process -FilePath "powershell.exe" -ArgumentList ($quoted -join " ") -WindowStyle Hidden | Out-Null
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if ([IO.File]::Exists($readyPath)) { return }
+        Start-Sleep -Milliseconds 50
+    }
+    throw "The deferred uninstall cleanup helper did not start."
+}
+
+function Invoke-DeferredPrefixRemoval {
+    param($Context, [string[]]$Arguments)
+    if (@($Arguments).Count -ne 6 -or $Arguments[0] -ne "--expected" -or $Arguments[2] -ne "--ready" -or $Arguments[4] -ne "--parent-pid") {
+        throw "Internal prefix cleanup arguments are invalid."
+    }
+    $expected = Get-NormalizedUninstallPath -Path $Arguments[1]
+    $readyPath = [IO.Path]::GetFullPath($Arguments[3])
+    $parentPid = [int]$Arguments[5]
+    $prefix = Get-NormalizedUninstallPath -Path $Context.Prefix
+    if (-not $prefix.Equals($expected, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Internal prefix cleanup target does not match this install."
+    }
+    if ($prefix.Equals([IO.Path]::GetPathRoot($prefix), [StringComparison]::OrdinalIgnoreCase) -or
+        (Test-UninstallPathWithinOrEqual -Path (Get-NormalizedUninstallPath -Path $env:USERPROFILE) -Parent $prefix)) {
+        throw "Internal prefix cleanup target is unsafe."
+    }
+    [IO.File]::WriteAllText($readyPath, "ready", [Text.Encoding]::ASCII)
+    $transactionLock = Enter-PrefixTransactionLock -Context $Context
+    try {
+        $deadline = [DateTime]::UtcNow.AddSeconds(15)
+        while ([DateTime]::UtcNow -lt $deadline -and (Get-Process -Id $parentPid -ErrorAction SilentlyContinue)) {
+            Start-Sleep -Milliseconds 50
+        }
+        if (Get-Process -Id $parentPid -ErrorAction SilentlyContinue) {
+            throw "The uninstalling controller did not exit before deferred cleanup."
+        }
+        Start-Sleep -Milliseconds 3000
+        Assert-UninstallTargetNotReparse -Path $prefix -Name "App prefix" | Out-Null
+        Remove-ExactUninstallTree -Target $prefix -ExpectedTarget $expected
+    } finally {
+        Exit-PrefixTransactionLock -Mutex $transactionLock
+        if ([IO.File]::Exists($readyPath)) { [IO.File]::Delete($readyPath) }
+    }
+}
+
+function Invoke-UninstallInternal {
     param($Context, [string[]]$Arguments)
     $options = Get-UninstallOptions -Arguments $Arguments
     Assert-UninstallTargetNotReparse -Path $Context.Prefix -Name "App prefix" | Out-Null
@@ -1045,22 +1226,37 @@ function Invoke-Uninstall {
     }
     Set-Location -LiteralPath $workingDirectory
     [Environment]::CurrentDirectory = $workingDirectory
-    Stop-App -Context $Context
+    Stop-AppInternal -Context $Context
     Remove-UserPathEntry -BinDir $targets.BinDir
     if (-not $options.DeleteLibrary) {
         Write-Output "Private library preserved at $($targets.Library)"
     }
-    Remove-ExactUninstallTree -Target $targets.Prefix -ExpectedTarget $targets.Prefix
+    $deferPrefixRemoval = $env:IMAGE_PROMPT_LIBRARY_CMD_SHIM -eq "1"
+    if (-not $deferPrefixRemoval) {
+        Remove-ExactUninstallTree -Target $targets.Prefix -ExpectedTarget $targets.Prefix
+    }
     if ($options.DeleteLibrary) {
         try {
             Remove-ExactUninstallTree -Target $targets.Library -ExpectedTarget $targets.Library
         } catch {
-            Write-Output "Application removed at $($targets.Prefix)."
+            if (-not $deferPrefixRemoval) { Write-Output "Application removed at $($targets.Prefix)." }
             throw "Application removal succeeded, but private library removal failed: $($_.Exception.Message)"
         }
+        if ($deferPrefixRemoval) { Start-DeferredPrefixRemoval -Context $Context -ExpectedPrefix $targets.Prefix }
         Write-Output "Image Prompt Library and private library uninstalled."
     } else {
+        if ($deferPrefixRemoval) { Start-DeferredPrefixRemoval -Context $Context -ExpectedPrefix $targets.Prefix }
         Write-Output "Image Prompt Library uninstalled."
+    }
+}
+
+function Invoke-Uninstall {
+    param($Context, [string[]]$Arguments)
+    $transactionLock = Enter-PrefixTransactionLock -Context $Context
+    try {
+        Invoke-UninstallInternal -Context $Context -Arguments $Arguments
+    } finally {
+        Exit-PrefixTransactionLock -Mutex $transactionLock
     }
 }
 
@@ -1090,7 +1286,13 @@ try {
             if (@($rest).Count) { throw "Rollback does not accept arguments." }
             Rollback-App -Context $context
         }
-        "internal-owned-runtime" { Get-OwnedRuntimeState -Context $context | ConvertTo-Json -Compress }
+        "internal-start" { Start-AppInternal -Context $context -Arguments $rest }
+        "internal-stop" { Stop-AppInternal -Context $context }
+        "internal-delete-prefix" { Invoke-DeferredPrefixRemoval -Context $context -Arguments $rest }
+        "internal-owned-runtime" {
+            $selectedVersion = Get-CurrentVersion -Context $context
+            Get-OwnedRuntimeState -Context $context -Version $selectedVersion | ConvertTo-Json -Compress
+        }
         "help" { Show-Usage }
         default { [Console]::Error.WriteLine("Unknown command: $command"); Show-Usage; exit 2 }
     }

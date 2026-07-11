@@ -26,31 +26,50 @@ function Fail-Friendly {
 
 function Test-PythonCandidate {
     param([string]$Exe, [string[]]$PrefixArgs)
+    return (Get-PythonCandidateInfo -Exe $Exe -PrefixArgs $PrefixArgs).Supported
+}
+
+function Get-PythonCandidateInfo {
+    param([string]$Exe, [string[]]$PrefixArgs)
     try {
-        & $Exe @PrefixArgs -c "import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" 2>$null
-        return $LASTEXITCODE -eq 0
+        $output = @(& $Exe @PrefixArgs -c "import sys; print('.'.join(map(str, sys.version_info[:3]))); raise SystemExit(0 if sys.version_info >= (3, 10) else 1)" 2>$null)
+        $version = if ($output.Count) { [string]$output[$output.Count - 1] } else { "unknown" }
+        return [pscustomobject]@{ Supported = $LASTEXITCODE -eq 0; Version = $version.Trim() }
     } catch {
-        return $false
+        return [pscustomobject]@{ Supported = $false; Version = "unavailable" }
     }
+}
+
+function New-PythonRequirementMessage {
+    param([string[]]$Detected = @())
+    $message = "Image Prompt Library requires Python 3.10 or newer."
+    if ($Detected.Count) { $message += " Detected unsupported Python: $($Detected -join ',')." }
+    return $message + " Install Python from https://www.python.org/downloads/windows/, make sure the Python launcher is available and 'py -3' works, then rerun the installer."
 }
 
 function Find-SupportedPython {
     if ($PythonExe) {
-        if (-not (Test-PythonCandidate -Exe $PythonExe -PrefixArgs $PythonPrefixArgs)) {
-            throw "Image Prompt Library requires Python 3.10 or newer. Download it from https://www.python.org/downloads/windows/ and rerun the installer."
+        $info = Get-PythonCandidateInfo -Exe $PythonExe -PrefixArgs $PythonPrefixArgs
+        if (-not $info.Supported) {
+            throw (New-PythonRequirementMessage -Detected @("$PythonExe $($info.Version)"))
         }
         return [pscustomobject]@{ Exe = $PythonExe; PrefixArgs = @($PythonPrefixArgs) }
     }
+    $detected = New-Object Collections.Generic.List[string]
     foreach ($candidate in @(
         [pscustomobject]@{ Name = "py"; PrefixArgs = @("-3") },
         [pscustomobject]@{ Name = "python"; PrefixArgs = @() }
     )) {
         $command = Get-Command $candidate.Name -ErrorAction SilentlyContinue
-        if ($command -and (Test-PythonCandidate -Exe $command.Source -PrefixArgs $candidate.PrefixArgs)) {
-            return [pscustomobject]@{ Exe = $command.Source; PrefixArgs = @($candidate.PrefixArgs) }
+        if ($command) {
+            $info = Get-PythonCandidateInfo -Exe $command.Source -PrefixArgs $candidate.PrefixArgs
+            if ($info.Supported) {
+                return [pscustomobject]@{ Exe = $command.Source; PrefixArgs = @($candidate.PrefixArgs) }
+            }
+            $detected.Add("$($candidate.Name) $($info.Version)")
         }
     }
-    throw "Image Prompt Library requires Python 3.10 or newer. Download it from https://www.python.org/downloads/windows/ and rerun the installer."
+    throw (New-PythonRequirementMessage -Detected ([string[]]$detected))
 }
 
 function Assert-DisjointPaths {
@@ -66,9 +85,38 @@ function Assert-DisjointPaths {
 function Get-NormalizedPath {
     param([string]$Path)
     $full = [IO.Path]::GetFullPath($Path)
+    if ($full.StartsWith('\\?\UNC\', [StringComparison]::OrdinalIgnoreCase)) {
+        $full = '\\' + $full.Substring(8)
+    } elseif ($full.StartsWith('\\?\', [StringComparison]::OrdinalIgnoreCase)) {
+        $full = $full.Substring(4)
+    }
+    $full = [IO.Path]::GetFullPath($full)
     $root = [IO.Path]::GetPathRoot($full)
     if ($full.Length -gt $root.Length) { $full = $full.TrimEnd('\') }
     return $full
+}
+
+function Assert-NoReparseAncestors {
+    param([string]$Path, [string]$Name, [switch]$ExcludeLeaf)
+    $normalized = Get-NormalizedPath -Path $Path
+    $root = [IO.Path]::GetPathRoot($normalized)
+    $parts = @($normalized.Substring($root.Length).Split(@('\'), [StringSplitOptions]::RemoveEmptyEntries))
+    $limit = if ($ExcludeLeaf -and $parts.Count) { $parts.Count - 1 } else { $parts.Count }
+    $cursor = $root
+    for ($index = 0; $index -lt $limit; $index++) {
+        $cursor = Join-Path $cursor $parts[$index]
+        try {
+            $attributes = [IO.File]::GetAttributes($cursor)
+        } catch {
+            $cause = if ($_.Exception.InnerException) { $_.Exception.InnerException } else { $_.Exception }
+            if ($cause -is [IO.FileNotFoundException] -or $cause -is [IO.DirectoryNotFoundException]) { return $normalized }
+            throw
+        }
+        if (($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "$Name must not use an existing reparse-point ancestor: $cursor"
+        }
+    }
+    return $normalized
 }
 
 function Test-PathWithinOrEqual {
@@ -111,14 +159,14 @@ function Enter-InstallLock {
     $bytes = [Text.Encoding]::UTF8.GetBytes((Get-NormalizedPath -Path $AppPrefix).ToUpperInvariant())
     $sha256 = [Security.Cryptography.SHA256]::Create()
     try {
-        $name = "ImagePromptLibrary.Install." + (($sha256.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '')
+        $name = "ImagePromptLibrary.Transaction." + (($sha256.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '')
     } finally {
         $sha256.Dispose()
     }
     $mutex = New-Object Threading.Mutex($false, $name)
     try {
         if (-not $mutex.WaitOne([TimeSpan]::FromMinutes(2))) {
-            throw "Another Image Prompt Library installer is already running for this prefix."
+            throw "Another Image Prompt Library transaction is already running for this prefix."
         }
     } catch [Threading.AbandonedMutexException] {
     } catch {
@@ -138,6 +186,7 @@ function Exit-InstallLock {
 function Remove-ValidatedTree {
     param([string]$Target, [string]$AppPrefix)
     $validated = Assert-ManagedPath -Path $Target -AppPrefix $AppPrefix
+    Assert-NoReparseAncestors -Path $validated -Name "Installer cleanup path" -ExcludeLeaf | Out-Null
     if (-not (Test-Path -LiteralPath $validated)) { return }
     $item = Get-Item -LiteralPath $validated -Force
     if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
@@ -153,6 +202,7 @@ function Remove-ValidatedTree {
             Remove-ValidatedTree -Target $child.FullName -AppPrefix $AppPrefix
         }
     }
+    Assert-NoReparseAncestors -Path $validated -Name "Installer cleanup path" -ExcludeLeaf | Out-Null
     Remove-Item -LiteralPath $validated -Force
 }
 
@@ -209,13 +259,10 @@ function Invoke-Download {
         Copy-Item -LiteralPath $Uri -Destination $Destination -Force
         return
     }
-    $parsed = $null
-    if ([Uri]::TryCreate($Uri, [UriKind]::Absolute, [ref]$parsed) -and $parsed.IsFile) {
+    $parsed = Assert-ReleaseSource -Source $Uri
+    if ($parsed.IsFile) {
         Copy-Item -LiteralPath $parsed.LocalPath -Destination $Destination -Force
         return
-    }
-    if (-not $parsed -or $parsed.Scheme -notin @("http", "https")) {
-        throw "Release asset location is not a local file or HTTP(S) URL: $Uri"
     }
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         try {
@@ -226,6 +273,23 @@ function Invoke-Download {
             Start-Sleep -Seconds $attempt
         }
     }
+}
+
+function Assert-ReleaseSource {
+    param([string]$Source)
+    if (Test-Path -LiteralPath $Source -PathType Leaf) { return [Uri]::new([IO.Path]::GetFullPath($Source)) }
+    $parsed = $null
+    if (-not [Uri]::TryCreate($Source, [UriKind]::Absolute, [ref]$parsed)) {
+        throw "Release asset location is not a local file or valid URL: $Source"
+    }
+    if ($parsed.IsFile -or $parsed.Scheme -eq "https") { return $parsed }
+    if ($parsed.Scheme -eq "http") {
+        $address = $null
+        $loopback = $parsed.Host.TrimEnd('.').Equals("localhost", [StringComparison]::OrdinalIgnoreCase) -or
+            ([Net.IPAddress]::TryParse($parsed.Host, [ref]$address) -and [Net.IPAddress]::IsLoopback($address))
+        if ($loopback) { return $parsed }
+    }
+    throw "Remote release assets must use HTTPS; plain HTTP is allowed only for loopback test servers."
 }
 
 function Get-ApiJson {
@@ -583,7 +647,7 @@ function Invoke-Controller {
     $oldErrorActionPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = "Continue"
-        if (@($Arguments).Count -gt 0 -and $Arguments[0] -eq "start") {
+        if (@($Arguments).Count -gt 0 -and $Arguments[0] -in @("start", "internal-start")) {
             Initialize-ImmediateProcessRunner
             $quotedArgs = @($processArgs | ForEach-Object { '"' + $_.Replace('"', '\"') + '"' })
             $result = [ImagePromptLibraryImmediateProcessRunner]::Run("powershell.exe", ($quotedArgs -join " "), $VersionRoot)
@@ -613,7 +677,7 @@ function Invoke-UpdateRecovery {
     $output = New-Object Collections.Generic.List[object]
     if ($StopTarget) {
         try {
-            $stopResult = Invoke-Controller -VersionRoot $TargetVersionRoot -Arguments @("stop")
+            $stopResult = Invoke-Controller -VersionRoot $TargetVersionRoot -Arguments @("internal-stop")
             if ($stopResult.ExitCode -ne 0) {
                 $errors.Add("target stop: $($stopResult.Output -join [Environment]::NewLine)")
             } else {
@@ -629,7 +693,7 @@ function Invoke-UpdateRecovery {
         $errors.Add($_.Exception.Message)
     }
     if ($Runtime.running) {
-        $restartArguments = @("start", "--host", [string]$Runtime.host, "--port", [string]$Runtime.port, "--no-browser")
+        $restartArguments = @("internal-start", "--host", [string]$Runtime.host, "--port", [string]$Runtime.port, "--no-browser")
         try {
             $restartResult = Invoke-Controller -VersionRoot $OldVersionRoot -Arguments $restartArguments
             if ($restartResult.ExitCode -ne 0) {
@@ -668,12 +732,13 @@ if (-not (Test-Path -LiteralPath $controller -PathType Leaf)) { throw "The curre
 exit $LASTEXITCODE
 '@
     $cmdShim = @'
-@echo off
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0image-prompt-library.ps1" %*
-exit /b %ERRORLEVEL%
+@setlocal EnableExtensions EnableDelayedExpansion
+@set "IMAGE_PROMPT_LIBRARY_CMD_SHIM=1" & powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0image-prompt-library-delegate.ps1" %* & exit /b !errorlevel!
 '@
-    Publish-AtomicText -Path (Join-Path $BinPath "image-prompt-library.ps1") -Value $powerShellShim
+    Publish-AtomicText -Path (Join-Path $BinPath "image-prompt-library-delegate.ps1") -Value $powerShellShim
     Publish-AtomicText -Path (Join-Path $BinPath "image-prompt-library.cmd") -Value $cmdShim
+    $legacyShim = Join-Path $BinPath "image-prompt-library.ps1"
+    if (Test-Path -LiteralPath $legacyShim) { Remove-ValidatedTree -Target $legacyShim -AppPrefix (Split-Path -Parent $BinPath) }
 }
 
 function Add-UserPathEntry {
@@ -690,6 +755,7 @@ function Add-UserPathEntry {
     $currentParts = if ($null -eq $currentPath) { @() } else { @($currentPath -split ';') }
     $currentPresent = @($currentParts | Where-Object { Test-PathEntryMatch -Entry $_ -NormalizedPath $normalized }).Count -gt 0
     if (-not $currentPresent) { $env:Path = if ([string]::IsNullOrEmpty($currentPath)) { $normalized } else { $currentPath + ';' + $normalized } }
+    return [pscustomobject]@{ AddedUser = -not $present; AddedProcess = -not $currentPresent }
 }
 
 function Test-PathEntryMatch {
@@ -703,6 +769,34 @@ function Test-PathEntryMatch {
         return (Get-NormalizedPath -Path $candidate).Equals($NormalizedPath, [StringComparison]::OrdinalIgnoreCase)
     } catch {
         return $false
+    }
+}
+
+function Remove-OnePathEntry {
+    param([AllowEmptyString()][string]$PathValue, [string]$NormalizedPath)
+    if ($null -eq $PathValue) { return $null }
+    $parts = @($PathValue -split ';')
+    $kept = New-Object Collections.Generic.List[string]
+    $removed = $false
+    foreach ($entry in $parts) {
+        if (-not $removed -and (Test-PathEntryMatch -Entry $entry -NormalizedPath $NormalizedPath)) {
+            $removed = $true
+        } else {
+            $kept.Add($entry)
+        }
+    }
+    return ($kept -join ';')
+}
+
+function Undo-AddedPathEntry {
+    param([string]$BinPath, $Change)
+    $normalized = Get-NormalizedPath -Path $BinPath
+    if ($Change.AddedUser) {
+        $currentUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+        [Environment]::SetEnvironmentVariable('Path', (Remove-OnePathEntry -PathValue $currentUserPath -NormalizedPath $normalized), 'User')
+    }
+    if ($Change.AddedProcess) {
+        $env:Path = Remove-OnePathEntry -PathValue $env:Path -NormalizedPath $normalized
     }
 }
 
@@ -723,17 +817,19 @@ function Write-AppEnvironment {
 function Start-InstalledVersion {
     param([string]$VersionRoot)
     if ($NoStart) { return }
-    $controller = Join-Path $VersionRoot "scripts\appctl.ps1"
-    $arguments = @("start")
+    $arguments = @("internal-start")
     if ($NoBrowser) { $arguments += "--no-browser" }
-    & $controller @arguments
-    if ($LASTEXITCODE -ne 0) { throw "The application could not be started. Run image-prompt-library doctor for details." }
+    $result = Invoke-Controller -VersionRoot $VersionRoot -Arguments $arguments
+    Write-Output $result.Output
+    if ($result.ExitCode -ne 0) { throw "The application could not be started. Run image-prompt-library doctor for details." }
 }
 
 function Invoke-Install {
     $normalizedPrefix = Get-NormalizedPath -Path $Prefix
     $normalizedLibrary = Get-NormalizedPath -Path $LibraryPath
     if ($Version -ne 'latest' -and -not (Test-VersionToken -Value $Version)) { throw "Release version is invalid: $Version" }
+    Assert-NoReparseAncestors -Path $normalizedPrefix -Name "App prefix" | Out-Null
+    Assert-NoReparseAncestors -Path $normalizedLibrary -Name "Private library" | Out-Null
     Assert-DisjointPaths -AppPrefix $normalizedPrefix -PrivateLibrary $normalizedLibrary
     $python = Find-SupportedPython
     $installLock = Enter-InstallLock -AppPrefix $normalizedPrefix
@@ -745,9 +841,10 @@ function Invoke-Install {
     $installCommitted = $false
     $stateCaptured = $false
     $oldPointerState = $null
-    $oldUserPath = $null
-    $oldProcessPath = $env:Path
+    $pathChange = [pscustomobject]@{ AddedUser = $false; AddedProcess = $false }
     try {
+        Assert-NoReparseAncestors -Path $normalizedPrefix -Name "App prefix" | Out-Null
+        Assert-NoReparseAncestors -Path $normalizedLibrary -Name "Private library" | Out-Null
         $release = Resolve-Release
         $appPath = Join-Path $normalizedPrefix 'app'
         $versionsPath = Join-Path $appPath 'versions'
@@ -761,6 +858,7 @@ function Invoke-Install {
         $backupPath = Join-Path $normalizedPrefix 'backups'
         foreach ($path in @($appPath, $versionsPath, $downloadsPath, $currentPointer, $previousPointer, $finalTarget, $backupTarget, $binPath, $environmentPath, $backupPath)) {
             Assert-ManagedPath -Path $path -AppPrefix $normalizedPrefix | Out-Null
+            Assert-NoReparseAncestors -Path $path -Name "Managed install path" | Out-Null
         }
         $currentVersion = ''
         if (Test-Path -LiteralPath $currentPointer -PathType Leaf) {
@@ -770,12 +868,12 @@ function Invoke-Install {
 
         $publishedState = [pscustomobject]@{
             Environment = Get-FileState -Path $environmentPath
-            PowerShellShim = Get-FileState -Path (Join-Path $binPath 'image-prompt-library.ps1')
+            LegacyPowerShellShim = Get-FileState -Path (Join-Path $binPath 'image-prompt-library.ps1')
+            PowerShellDelegate = Get-FileState -Path (Join-Path $binPath 'image-prompt-library-delegate.ps1')
             CmdShim = Get-FileState -Path (Join-Path $binPath 'image-prompt-library.cmd')
             CurrentPointer = Get-FileState -Path $currentPointer
             PreviousPointer = Get-FileState -Path $previousPointer
         }
-        $oldUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
         $stateCaptured = $true
 
         if ($currentVersion -ne $release.Version -or -not (Test-Path -LiteralPath $finalTarget -PathType Container)) {
@@ -803,8 +901,10 @@ function Invoke-Install {
             $staging = $null
             $targetPublished = $true
             $setup = Join-Path $finalTarget 'scripts\setup-runtime.ps1'
-            & $setup -AppRoot $finalTarget -PythonExe $python.Exe -PythonPrefixArgs $python.PrefixArgs
-            if (-not $?) { throw 'Runtime setup failed.' }
+            $setupArguments = @("-AppRoot", $finalTarget, "-PythonExe", $python.Exe)
+            if (@($python.PrefixArgs).Count) { $setupArguments += @("-PythonPrefixArgs") + @($python.PrefixArgs) }
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $setup @setupArguments
+            if ($LASTEXITCODE -ne 0) { throw 'Runtime setup failed.' }
         }
 
         if (-not (Test-Path -LiteralPath $normalizedLibrary -PathType Container)) {
@@ -815,7 +915,7 @@ function Invoke-Install {
         }
         Write-AppEnvironment -Path $environmentPath -PrivateLibrary $normalizedLibrary -AppPrefix $normalizedPrefix
         Write-CommandShim -BinPath $binPath
-        if (-not $SkipPath) { Add-UserPathEntry -BinPath $binPath }
+        if (-not $SkipPath) { $pathChange = Add-UserPathEntry -BinPath $binPath }
         if ($targetPublished -and $currentVersion -ne $release.Version) {
             $oldPointerState = Get-CurrentPointerState -AppDir $appPath
             $oldRuntime = [pscustomobject]@{ running = $false; host = $null; port = $null }
@@ -835,7 +935,7 @@ function Invoke-Install {
                     throw "The current version returned an invalid runtime state."
                 }
                 if ($oldRuntime.running) {
-                    $stopResult = Invoke-Controller -VersionRoot $oldVersionRoot -Arguments @("stop")
+                    $stopResult = Invoke-Controller -VersionRoot $oldVersionRoot -Arguments @("internal-stop")
                     if ($stopResult.ExitCode -ne 0) {
                         throw "Could not stop the current version before updating: $($stopResult.Output -join [Environment]::NewLine)"
                     }
@@ -856,15 +956,15 @@ function Invoke-Install {
                 throw "Version pointer switch failed: $pointerFailure"
             }
             if ($oldPointerState.Current -and $oldRuntime.running) {
-                $restartArguments = @("start", "--host", [string]$oldRuntime.host, "--port", [string]$oldRuntime.port, "--no-browser")
+                $restartArguments = @("internal-start", "--host", [string]$oldRuntime.host, "--port", [string]$oldRuntime.port, "--no-browser")
                 $targetStartResult = Invoke-Controller -VersionRoot $finalTarget -Arguments $restartArguments
                 if ($targetStartResult.ExitCode -eq 0) {
                     Write-Output $targetStartResult.Output
                 } else {
                     $recovery = Invoke-UpdateRecovery -AppDir $appPath -PointerState $oldPointerState -AppPrefix $normalizedPrefix -OldVersionRoot $oldVersionRoot -Runtime $oldRuntime -TargetVersionRoot $finalTarget -StopTarget
                     foreach ($line in $recovery.Output) { Write-Output $line }
-                    $currentLogs = Join-Path $normalizedPrefix "logs\app.out.log"
-                    $previousLogs = Join-Path $normalizedPrefix "logs\app.previous.out.log"
+                    $currentLogs = "stdout=$(Join-Path $normalizedPrefix 'logs\app.out.log'); stderr=$(Join-Path $normalizedPrefix 'logs\app.err.log')"
+                    $previousLogs = "previous stdout=$(Join-Path $normalizedPrefix 'logs\app.previous.out.log'); previous stderr=$(Join-Path $normalizedPrefix 'logs\app.previous.err.log')"
                     if (-not $recovery.Errors.Count) {
                         Write-Output "Automatic recovery restored $($oldPointerState.Current)."
                         throw "Update failed after target start failure. Target controller output: $($targetStartResult.Output -join [Environment]::NewLine) Current logs: $currentLogs. Previous logs: $previousLogs."
@@ -897,16 +997,14 @@ function Invoke-Install {
         if ($stateCaptured) {
             $rollbackSteps += @(
                 [pscustomobject]@{ Name = 'environment'; Action = { Restore-FileState -Path $environmentPath -State $publishedState.Environment -AppPrefix $normalizedPrefix } },
-                [pscustomobject]@{ Name = 'PowerShell shim'; Action = { Restore-FileState -Path (Join-Path $binPath 'image-prompt-library.ps1') -State $publishedState.PowerShellShim -AppPrefix $normalizedPrefix } },
+                [pscustomobject]@{ Name = 'legacy PowerShell shim'; Action = { Restore-FileState -Path (Join-Path $binPath 'image-prompt-library.ps1') -State $publishedState.LegacyPowerShellShim -AppPrefix $normalizedPrefix } },
+                [pscustomobject]@{ Name = 'PowerShell delegate'; Action = { Restore-FileState -Path (Join-Path $binPath 'image-prompt-library-delegate.ps1') -State $publishedState.PowerShellDelegate -AppPrefix $normalizedPrefix } },
                 [pscustomobject]@{ Name = 'cmd shim'; Action = { Restore-FileState -Path (Join-Path $binPath 'image-prompt-library.cmd') -State $publishedState.CmdShim -AppPrefix $normalizedPrefix } },
                 [pscustomobject]@{ Name = 'current pointer'; Action = { Restore-FileState -Path $currentPointer -State $publishedState.CurrentPointer -AppPrefix $normalizedPrefix } },
                 [pscustomobject]@{ Name = 'previous pointer'; Action = { Restore-FileState -Path $previousPointer -State $publishedState.PreviousPointer -AppPrefix $normalizedPrefix } }
             )
             if (-not $SkipPath) {
-                $rollbackSteps += @(
-                    [pscustomobject]@{ Name = 'user PATH'; Action = { [Environment]::SetEnvironmentVariable('Path', $oldUserPath, 'User') } },
-                    [pscustomobject]@{ Name = 'process PATH'; Action = { $env:Path = $oldProcessPath } }
-                )
+                $rollbackSteps += [pscustomobject]@{ Name = 'PATH addition'; Action = { Undo-AddedPathEntry -BinPath $binPath -Change $pathChange } }
             }
         }
         if ($targetPublished -and (Test-Path -LiteralPath $finalTarget)) {
