@@ -123,20 +123,49 @@ function Get-AppUrl {
     return "http://{0}:{1}/" -f $urlHost, $Port
 }
 
-function Write-ServerRecordAtomically {
-    param($Context, $Record)
-    $path = Join-Path $Context.RunDir "server.json"
-    $temporaryPath = Join-Path $Context.RunDir ("server.json.{0}.tmp" -f [Guid]::NewGuid().ToString("N"))
+function Write-ServerRecordFileAtomically {
+    param([string]$Path, $Record)
+    $directory = Split-Path -Parent $Path
+    $temporaryPath = Join-Path $directory ((Split-Path -Leaf $Path) + ".{0}.tmp" -f [Guid]::NewGuid().ToString("N"))
     try {
         $encoding = New-Object Text.UTF8Encoding($false)
         [IO.File]::WriteAllText($temporaryPath, ($Record | ConvertTo-Json), $encoding)
-        [IO.File]::Move($temporaryPath, $path)
+        [IO.File]::Move($temporaryPath, $Path)
     } finally {
         if ([IO.File]::Exists($temporaryPath)) { [IO.File]::Delete($temporaryPath) }
     }
 }
 
-function Enter-StartLock {
+function Write-ServerRecordAtomically {
+    param($Context, $Record)
+    Write-ServerRecordFileAtomically -Path (Join-Path $Context.RunDir "server.json") -Record $Record
+}
+
+function Write-RecoveryServerRecord {
+    param($Context, $Record)
+    $path = Join-Path $Context.RunDir ("server.recovery.{0}.json" -f [Guid]::NewGuid().ToString("N"))
+    Write-ServerRecordFileAtomically -Path $path -Record $Record
+    return $path
+}
+
+function Test-ServerRecordMatches {
+    param($Expected, $Actual)
+    return [long]$Expected.pid -eq [long]$Actual.pid -and
+        [long]$Expected.process_start_time_utc_ticks -eq [long]$Actual.process_start_time_utc_ticks -and
+        [string]::Equals([string]$Expected.process_executable_path, [string]$Actual.process_executable_path, [StringComparison]::OrdinalIgnoreCase) -and
+        [string]::Equals([string]$Expected.created_at, [string]$Actual.created_at, [StringComparison]::Ordinal)
+}
+
+function Remove-ServerRecordIfMatches {
+    param($Context, $ExpectedRecord)
+    try { $actualRecord = Read-ServerRecord $Context }
+    catch { return $false }
+    if (-not $actualRecord -or -not (Test-ServerRecordMatches -Expected $ExpectedRecord -Actual $actualRecord)) { return $false }
+    Remove-Item -LiteralPath (Join-Path $Context.RunDir "server.json") -Force
+    return $true
+}
+
+function Enter-LifecycleLock {
     param($Context)
     New-Item -ItemType Directory -Force -Path $Context.RunDir | Out-Null
     $path = Join-Path $Context.RunDir "start.lock"
@@ -148,7 +177,7 @@ function Enter-StartLock {
             Start-Sleep -Milliseconds 100
         }
     }
-    throw "Another start operation did not finish within 60 seconds."
+    throw "Another lifecycle operation did not finish within 60 seconds."
 }
 
 function Get-RecordedProcess {
@@ -163,8 +192,44 @@ function Get-OwnedProcess {
     if (-not $Record -or -not $Record.PSObject.Properties["pid"] -or -not $Record.PSObject.Properties["process_start_time_utc_ticks"] -or -not $Record.PSObject.Properties["process_executable_path"]) { return $null }
     $process = Get-RecordedProcess $Record
     if (-not $process) { return $null }
-    if (-not (Test-ProcessIdentity -Process $process -Record $Record)) { return $null }
-    return $process
+    try { $lease = New-ProcessLease -Process $process }
+    catch {
+        $process.Dispose()
+        return $null
+    }
+    if (-not (Test-ProcessIdentity -Process $lease.Process -Record $Record)) {
+        Close-ProcessLease -Lease $lease
+        return $null
+    }
+    return $lease
+}
+
+function New-ProcessLease {
+    param($Process)
+    $safeHandle = $null
+    $referenceAdded = $false
+    try {
+        $safeHandle = $Process.SafeHandle
+        $safeHandle.DangerousAddRef([ref]$referenceAdded)
+        if (-not $referenceAdded) { throw "The process handle could not be retained." }
+        return [pscustomobject]@{ Process = $Process; SafeHandle = $safeHandle; ReferenceAdded = $true }
+    } catch {
+        if ($referenceAdded -and $safeHandle) { $safeHandle.DangerousRelease() }
+        throw
+    }
+}
+
+function Close-ProcessLease {
+    param($Lease)
+    if (-not $Lease) { return }
+    try {
+        if ($Lease.ReferenceAdded) {
+            $Lease.SafeHandle.DangerousRelease()
+            $Lease.ReferenceAdded = $false
+        }
+    } finally {
+        $Lease.Process.Dispose()
+    }
 }
 
 function Test-ProcessIdentity {
@@ -191,15 +256,23 @@ function Test-ProcessExited {
 }
 
 function Stop-VerifiedProcess {
-    param($Process)
-    if (Test-ProcessExited -Process $Process) { return $true }
-    try { $Process.Kill() }
+    param($Lease)
+    if (Test-ProcessExited -Process $Lease.Process) { return $true }
+    try { $Lease.Process.Kill() }
     catch {
-        if (Test-ProcessExited -Process $Process) { return $true }
+        if (Test-ProcessExited -Process $Lease.Process) { return $true }
         return $false
     }
-    try { $Process.WaitForExit(10000) | Out-Null } catch {}
-    return Test-ProcessExited -Process $Process
+    try { $Lease.Process.WaitForExit(10000) | Out-Null } catch {}
+    return Test-ProcessExited -Process $Lease.Process
+}
+
+function Wait-ForExactProcessExit {
+    param($Lease)
+    while (-not (Test-ProcessExited -Process $Lease.Process)) {
+        try { $Lease.Process.WaitForExit(1000) | Out-Null }
+        catch { Start-Sleep -Milliseconds 100 }
+    }
 }
 
 function Test-AppHealth {
@@ -232,12 +305,16 @@ function Get-ServerRuntimeData {
     catch { return [pscustomobject]@{ State = "stale runtime record"; Record = $null } }
     if (-not $record) { return [pscustomobject]@{ State = "stopped"; Record = $null } }
 
-    $process = Get-OwnedProcess $record
-    if (-not $process) { return [pscustomobject]@{ State = "stale runtime record"; Record = $record } }
-    if (Test-AppHealth -HostName $record.host -Port $record.port -ExpectedVersion $record.version) {
-        return [pscustomobject]@{ State = "running"; Record = $record }
+    $lease = Get-OwnedProcess $record
+    if (-not $lease) { return [pscustomobject]@{ State = "stale runtime record"; Record = $record } }
+    try {
+        if (Test-AppHealth -HostName $record.host -Port $record.port -ExpectedVersion $record.version) {
+            return [pscustomobject]@{ State = "running"; Record = $record }
+        }
+        return [pscustomobject]@{ State = "unhealthy"; Record = $record }
+    } finally {
+        Close-ProcessLease -Lease $lease
     }
-    return [pscustomobject]@{ State = "unhealthy"; Record = $record }
 }
 
 function Get-AppStatusData {
@@ -295,7 +372,7 @@ function Show-Status {
     Write-Output "Image Prompt Library status"
     Write-Output ("Version: " + $version.Version)
     Write-Output ("Library: " + $environment.LibraryPath)
-    $url = if ($status.Runtime -eq "running" -and $status.Record) {
+    $url = if ($status.Runtime -in @("running", "unhealthy") -and $status.Record) {
         Get-AppUrl -HostName $status.Record.host -Port $status.Record.port
     } else {
         Get-AppUrl -HostName $environment.Host -Port $environment.Port
@@ -406,28 +483,37 @@ function Start-App {
     if ($port -lt 1 -or $port -gt 65535) { throw "Port must be an integer from 1 to 65535." }
     if (-not (Test-BindHost -HostName $hostName)) { throw "Host must be a single valid DNS name or IP address." }
 
-    $startLock = Enter-StartLock -Context $Context
+    $lifecycleLock = Enter-LifecycleLock -Context $Context
     try {
         $version = Get-CurrentVersion $Context
         try { $record = Read-ServerRecord $Context }
         catch { throw "Cannot start with a malformed runtime record. Run image-prompt-library doctor." }
         if ($record) {
-            $ownedProcess = Get-OwnedProcess $record
-            if ($ownedProcess) {
-                if (Test-AppHealth -HostName $record.host -Port $record.port -ExpectedVersion $record.version) {
-                    $existingUrl = Get-AppUrl -HostName $record.host -Port $record.port
-                    Write-Output ("Image Prompt Library is already running at " + $existingUrl)
-                    if (-not $noBrowser) {
-                        try { Start-Process $existingUrl }
-                        catch { Write-Warning "The app is running, but its URL could not be opened automatically." }
+            $ownedLease = Get-OwnedProcess $record
+            if ($ownedLease) {
+                try {
+                    if (Test-AppHealth -HostName $record.host -Port $record.port -ExpectedVersion $record.version) {
+                        $existingUrl = Get-AppUrl -HostName $record.host -Port $record.port
+                        Write-Output ("Image Prompt Library is already running at " + $existingUrl)
+                        if (-not $noBrowser) {
+                            try { Start-Process $existingUrl }
+                            catch { Write-Warning "The app is running, but its URL could not be opened automatically." }
+                        }
+                        return
                     }
-                    return
+                    throw "The managed app process is unhealthy; it was not replaced. Run image-prompt-library stop before starting again."
+                } finally {
+                    Close-ProcessLease -Lease $ownedLease
                 }
-                throw "The managed app process is unhealthy; it was not replaced. Run image-prompt-library stop before starting again."
             }
             $recordedProcess = Get-RecordedProcess $record
-            if ($recordedProcess) { throw "The runtime record conflicts with a live process. Run image-prompt-library doctor." }
-            Remove-Item -LiteralPath (Join-Path $Context.RunDir "server.json") -Force
+            if ($recordedProcess) {
+                $recordedProcess.Dispose()
+                throw "The runtime record conflicts with a live process. Run image-prompt-library doctor."
+            }
+            if (-not (Remove-ServerRecordIfMatches -Context $Context -ExpectedRecord $record)) {
+                throw "The runtime record changed while start was inspecting it; it was retained."
+            }
         }
         if (Test-PortInUse -HostName $hostName -Port $port) {
             throw "Port $port is already in use by a process not managed by this install. Try image-prompt-library start --port <next-port>."
@@ -446,21 +532,27 @@ function Start-App {
 
         $arguments = @("-m", "uvicorn", "backend.main:app", "--host", $hostName, "--port", [string]$port)
         $process = $null
+        $processLease = $null
         $record = $null
         try {
             $process = Start-Process -FilePath $version.Python -ArgumentList $arguments -WorkingDirectory $version.Root -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru
-            $process.Refresh()
+            $processLease = New-ProcessLease -Process $process
+            $processLease.Process.Refresh()
             try {
-                $startTime = $process.StartTime.ToUniversalTime()
+                $startTime = $processLease.Process.StartTime.ToUniversalTime()
+                $actualExecutablePath = $processLease.Process.Path
             } catch {
                 throw "The app process identity could not be read. See logs in $($Context.LogDir)."
             }
             $executablePath = [IO.Path]::GetFullPath($version.Python)
+            if (-not [string]::Equals($actualExecutablePath, $executablePath, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "The launched app executable did not match the selected version."
+            }
             $record = [pscustomobject][ordered]@{
-                pid = $process.Id
+                pid = $processLease.Process.Id
                 process_start_time_utc = $startTime.ToString("o")
                 process_start_time_utc_ticks = $startTime.Ticks
-                process_executable_path = $executablePath
+                process_executable_path = $actualExecutablePath
                 version = $version.Version
                 app_root = $version.Root
                 host = $hostName
@@ -469,17 +561,10 @@ function Start-App {
                 stderr_log = $errLog
                 created_at = [DateTime]::UtcNow.ToString("o")
             }
-            try {
-                if (-not [string]::Equals($process.Path, $executablePath, [StringComparison]::OrdinalIgnoreCase)) {
-                    throw "The launched app executable did not match the selected version."
-                }
-            } catch {
-                throw "The app process executable identity could not be verified. See logs in $($Context.LogDir)."
-            }
             $deadline = [DateTime]::UtcNow.AddSeconds(30)
             while ([DateTime]::UtcNow -lt $deadline) {
                 if (Test-AppHealth -HostName $hostName -Port $port -ExpectedVersion $version.Version) {
-                    if (-not (Test-ProcessIdentity -Process $process -Record $record)) {
+                    if (-not (Test-ProcessIdentity -Process $processLease.Process -Record $record)) {
                         throw "The launched app process identity changed before publication."
                     }
                     Write-ServerRecordAtomically -Context $Context -Record $record
@@ -491,67 +576,82 @@ function Start-App {
                     }
                     return
                 }
-                if (Test-ProcessExited -Process $process) { break }
+                if (Test-ProcessExited -Process $processLease.Process) { break }
                 Start-Sleep -Milliseconds 250
             }
             throw "The app did not become healthy. See logs in $($Context.LogDir)."
         } catch {
             $failure = $_.Exception.Message
-            if ($process -and -not (Test-ProcessExited -Process $process)) {
-                $stopped = Stop-VerifiedProcess -Process $process
+            if ($processLease -and -not (Test-ProcessExited -Process $processLease.Process)) {
+                $stopped = Stop-VerifiedProcess -Lease $processLease
                 if (-not $stopped) {
                     if (-not $record) {
-                        try {
-                            $process.Refresh()
-                            $startTime = $process.StartTime.ToUniversalTime()
-                            $record = [pscustomobject][ordered]@{
-                                pid = $process.Id
-                                process_start_time_utc = $startTime.ToString("o")
-                                process_start_time_utc_ticks = $startTime.Ticks
-                                process_executable_path = $process.Path
-                                version = $version.Version
-                                app_root = $version.Root
-                                host = $hostName
-                                port = $port
-                                stdout_log = $outLog
-                                stderr_log = $errLog
-                                created_at = [DateTime]::UtcNow.ToString("o")
+                        Wait-ForExactProcessExit -Lease $processLease
+                        throw "$failure Cleanup retained the exact process handle until exit; no partial ownership record was written."
+                    }
+                    try {
+                        $primaryRecordPath = Join-Path $Context.RunDir "server.json"
+                        if ([IO.File]::Exists($primaryRecordPath)) {
+                            $recoveryPath = Write-RecoveryServerRecord -Context $Context -Record $record
+                        } else {
+                            try {
+                                Write-ServerRecordAtomically -Context $Context -Record $record
+                                $recoveryPath = $primaryRecordPath
+                            } catch {
+                                $recoveryPath = Write-RecoveryServerRecord -Context $Context -Record $record
                             }
-                        } catch {}
+                        }
+                    } catch {
+                        Wait-ForExactProcessExit -Lease $processLease
+                        throw "$failure Cleanup evidence could not be published; the exact process handle was retained until exit."
                     }
-                    if ($record) {
-                        Write-ServerRecordAtomically -Context $Context -Record $record
-                        throw "$failure Cleanup could not confirm exit; the ownership record was retained for safe recovery."
-                    }
-                    throw "$failure Cleanup could not confirm exit, and the launched process identity could not be retained. PID: $($process.Id)."
+                    throw "$failure Cleanup could not confirm exit; ownership evidence was retained at $recoveryPath."
                 }
             }
             throw $failure
+        } finally {
+            if ($processLease) { Close-ProcessLease -Lease $processLease }
+            elseif ($process) { $process.Dispose() }
         }
     } finally {
-        $startLock.Dispose()
+        $lifecycleLock.Dispose()
     }
 }
 
 function Stop-App {
     param($Context)
-    $record = Read-ServerRecord $Context
-    if (-not $record) {
-        Write-Output "Image Prompt Library is already stopped."
-        return
-    }
-    if (-not $record.PSObject.Properties["pid"]) { throw "The runtime record is incomplete; it was retained." }
-    $process = Get-OwnedProcess $record
-    if (-not $process) {
-        $recordedProcess = Get-RecordedProcess $record
-        if ($recordedProcess) { throw "The runtime record conflicts with a live process; it was not stopped." }
-        Remove-Item -LiteralPath (Join-Path $Context.RunDir "server.json") -Force
+    $lifecycleLock = Enter-LifecycleLock -Context $Context
+    try {
+        $record = Read-ServerRecord $Context
+        if (-not $record) {
+            Write-Output "Image Prompt Library is already stopped."
+            return
+        }
+        $lease = Get-OwnedProcess $record
+        if (-not $lease) {
+            $recordedProcess = Get-RecordedProcess $record
+            if ($recordedProcess) {
+                $recordedProcess.Dispose()
+                throw "The runtime record conflicts with a live process; it was not stopped."
+            }
+            if (-not (Remove-ServerRecordIfMatches -Context $Context -ExpectedRecord $record)) {
+                throw "The runtime record changed while stop was inspecting it; it was retained."
+            }
+            Write-Output "Image Prompt Library is stopped."
+            return
+        }
+        try {
+            if (-not (Stop-VerifiedProcess -Lease $lease)) { throw "The app process did not stop; the runtime record was retained." }
+            if (-not (Remove-ServerRecordIfMatches -Context $Context -ExpectedRecord $record)) {
+                throw "The app stopped, but its runtime record changed and was retained."
+            }
+        } finally {
+            Close-ProcessLease -Lease $lease
+        }
         Write-Output "Image Prompt Library is stopped."
-        return
+    } finally {
+        $lifecycleLock.Dispose()
     }
-    if (-not (Stop-VerifiedProcess -Process $process)) { throw "The app process did not stop; the runtime record was retained." }
-    Remove-Item -LiteralPath (Join-Path $Context.RunDir "server.json") -Force
-    Write-Output "Image Prompt Library is stopped."
 }
 
 function Show-Usage {
