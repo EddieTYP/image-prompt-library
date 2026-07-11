@@ -4,7 +4,8 @@ param([Parameter(ValueFromRemainingArguments=$true)][string[]]$CommandArgs)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $script:ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$script:ControllerPath = $MyInvocation.MyCommand.Path
+$controllerPathProperty = $MyInvocation.MyCommand.PSObject.Properties["Path"]
+$script:ControllerPath = if ($controllerPathProperty) { [string]$controllerPathProperty.Value } else { "" }
 
 function Get-InstallContext {
     $scriptDir = $script:ScriptRoot
@@ -1159,6 +1160,7 @@ function Get-UninstallWorkingDirectory {
 
 function Start-DeferredPrefixRemoval {
     param($Context, [string]$ExpectedPrefix)
+    if (-not $script:ControllerPath) { throw "Deferred uninstall requires a file-based controller." }
     $readyPath = Join-Path ([IO.Path]::GetTempPath()) ("image-prompt-library-uninstall-" + [Guid]::NewGuid().ToString("N") + ".ready")
     $arguments = @(
         "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $script:ControllerPath,
