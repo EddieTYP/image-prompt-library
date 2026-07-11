@@ -18,12 +18,16 @@ Status: `PASS WITH CONCERNS`
   `scripts/install-sample-data.ps1`, and `tests/windows-installer-smoke.ps1`.
 - PASS: the final cache-disabled selected pytest command covering
   `tests/test_windows_installer.py`, `tests/test_installer_release.py`, and
-  `tests/test_public_mvp.py` reported `215 passed, 1 warning in 280.52s`.
-  The warning was the known Starlette/httpx `TestClient` deprecation.
-- NOT RERUN: `npm run build` was not repeated during final-review fixes because
-  no frontend source, dependency, or build input changed. The earlier committed
-  QA baseline remains `1,751` modules and `built in 941ms`.
-- PASS: the final external-network native smoke exited `0` in `241.2s` and ended
+  `tests/test_public_mvp.py` reported
+  `235 passed, 1 skipped, 1 warning in 323.64s`. The deterministic skip records
+  that 8.3 aliases are disabled on the test volume; practical SUBST alias
+  coverage passed. The warning was the known Starlette/httpx `TestClient`
+  deprecation.
+- PASS: `npm run build` transformed `1,751` modules and completed the Vite
+  production build in `872ms` (`3.95s` for the full command). The first
+  sandbox attempt could not write Vite's repo-local temporary config; the
+  identical approved rerun passed.
+- PASS: the final external-network native smoke exited `0` in `241.11s` and ended
   with the exact success line `Native Windows installer smoke passed.`
 - PASS: `git diff --check` completed without whitespace errors. Existing CRLF
   conversion notices were limited to unrelated dirty files.
@@ -46,6 +50,9 @@ The successful smoke exercised and asserted all of the following:
   launch error-log evidence.
 - A mismatched live PID record was refused by `stop`; the unowned sleeper
   process remained alive.
+- A deterministic lock barrier proved uninstall held the physical-prefix mutex
+  while stale start and reinstall contenders both reached their lock entrance;
+  only then did the test release uninstall to finish retirement and cleanup.
 - Default-preserve uninstall removed the app prefix and its User PATH entry
   while retaining the private-library sentinel. Delete-library uninstall then
   removed both the prefix and the private library with no PATH residue.
@@ -91,6 +98,11 @@ audit verified zero owned artifacts:
 - Owned loopback listeners: `0`.
 - QA-generated private-library sentinel path: `0` after preservation was
   recorded and final cleanup was requested.
+
+The deferred-cleanup failure regression intentionally retains a tombstone
+inside pytest's own temporary test directory so the assertion can inspect its
+failure evidence. That fixture is not an installed prefix, PATH entry, owned
+process, listener, or Task 11 smoke root.
 
 Browser QA used a locally packaged test release and the already built
 `frontend/dist` output, then attached the browser after the local service was

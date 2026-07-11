@@ -64,10 +64,12 @@ deletion.
   profile root are rejected for either managed target.
 - Release downloads follow redirects manually, validate every next location,
   retain bytes only after a successful validated response, and reject remote
-  UNC `file:` sources.
+  UNC `file:` sources plus existing UNC literal paths.
 - CMD uninstall/start/reinstall overlap and deferred-helper failure are covered
-  behaviorally. The 8.3 identity test skips deterministically when short names
-  are disabled on the test volume.
+  behaviorally. A two-way test barrier proves both contenders reach the held
+  physical-prefix mutex before uninstall is released. Helper launch/readiness
+  failures are asserted directly. The 8.3 identity test skips deterministically
+  when short names are disabled on the test volume.
 - The QA note now distinguishes warning suppression and LF normalization used
   only for disposable browser packaging setup from the later clean committed-
   tree Restricted-policy smoke that superseded them for installer validation.
@@ -84,19 +86,30 @@ deletion.
   `8 passed` after fileless controller-path handling was corrected.
 - Follow-up deferred-uninstall set: GREEN `3 passed in 13.45s`, covering CMD
   self-removal, retained helper-failure evidence, and concurrent CMD
-  uninstall/start/reinstall. Final parser, selected-suite, and real-smoke gates
-  are delegated to the parent final-review run.
+  uninstall/start/reinstall.
+- Follow-up path/process/source slice: RED `2 failed, 8 passed`; GREEN
+  `18 passed in 18.52s` after physical profile aliases, persistent CMD process
+  identity, and existing UNC literal sources were handled.
+- Deterministic lifecycle overlap: the first timing-based test was rejected by
+  independent review; the explicit two-way lock barrier passed in `6.11s`.
+- The final selected gate exposed two dangling-reparse diagnostic regressions;
+  both focused tests passed in `3.19s` after reordering fail-closed preflight.
 
 ## Verification
 
 - PowerShell parser: all five required files parsed with `0` errors.
-- Selected pytest, cache disabled: `215 passed, 1 warning in 280.52s`.
-- Warning: known Starlette/httpx `TestClient` deprecation only.
-- Native Windows smoke with external network: exit `0` in `241.2s`, exact final
+- Selected pytest, cache disabled:
+  `235 passed, 1 skipped, 1 warning in 323.64s`.
+- Skip: 8.3 aliases unavailable on the test volume; SUBST physical-alias
+  coverage passed. Warning: known Starlette/httpx `TestClient` deprecation.
+- Native Windows smoke with external network: exit `0` in `241.11s`, exact final
   line `Native Windows installer smoke passed.`
 - Restricted install and bare-command path: included in the native smoke.
-- Frontend build: not rerun because no frontend source, dependency, or build
-  input changed; prior committed QA build evidence remains applicable.
+- Frontend build: `1,751` modules, Vite `872ms`, full command `3.95s`.
+- Residue audit: `0` smoke roots, `0` uninstall ready markers, and `0` temporary
+  User PATH matches after exact cleanup of the earlier failed-smoke tombstone.
+- Independent final review: approved after the deterministic barrier replaced
+  the rejected timing-based overlap test.
 
 ## Concerns
 
