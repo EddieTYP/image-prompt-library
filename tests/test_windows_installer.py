@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import http.server
 import io
 import json
 import os
@@ -10,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import threading
 import time
 import warnings
 import zipfile
@@ -257,6 +259,8 @@ def run_powershell(script: str) -> subprocess.CompletedProcess[str]:
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
         timeout=30,
     )
@@ -751,7 +755,7 @@ try {{
     assert "selected version" in result.stdout.lower()
 
 
-def test_windows_appctl_owned_runtime_rejects_unhealthy_matching_record():
+def test_windows_appctl_owned_runtime_accepts_unhealthy_matching_record_for_update_recovery():
     result = run_appctl_function(
         r"""
 $context = [pscustomobject]@{}
@@ -764,7 +768,7 @@ function Read-ServerRecord {
 }
 function Get-OwnedProcess { [pscustomobject]@{} }
 function Close-ProcessLease {}
-function Test-AppHealth { return $false }
+function Test-AppHealth { throw 'health must not gate transactional recovery' }
 try {
     Get-OwnedRuntimeState -Context $context -Version $version | Out-Null
     'accepted'
@@ -775,8 +779,44 @@ try {
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "accepted" not in result.stdout
-    assert "healthy" in result.stdout.lower()
+    assert result.stdout.strip().endswith("accepted")
+
+
+def test_windows_appctl_rollback_stops_and_restarts_owned_unhealthy_runtime(tmp_path: Path):
+    result = run_appctl_function(
+        f"""
+$context = [pscustomobject]@{{ AppDir = {powershell_literal(tmp_path)} }}
+$current = [pscustomobject]@{{ Version = 'v2'; Root = 'C:\\app\\v2'; Python = 'C:\\app\\v2\\python.exe' }}
+$target = [pscustomobject]@{{ Version = 'v1'; Root = 'C:\\app\\v1'; Python = 'C:\\app\\v1\\python.exe' }}
+$script:calls = New-Object Collections.Generic.List[string]
+function Get-CurrentVersion {{ return $current }}
+function Get-VersionPointerState {{ [pscustomobject]@{{ Current = 'v2'; Previous = 'v1' }} }}
+function Get-ValidatedInstalledVersion {{ return $target }}
+function Read-ServerRecord {{
+    [pscustomobject]@{{
+        pid = 1; process_start_time_utc_ticks = 1; process_executable_path = 'C:\\app\\v2\\python.exe'
+        version = 'v2'; app_root = 'C:\\app\\v2'; host = '127.0.0.1'; port = 8123
+    }}
+}}
+function Get-OwnedProcess {{ [pscustomobject]@{{}} }}
+function Close-ProcessLease {{}}
+function Test-AppHealth {{ throw 'rollback must not health-gate an owned runtime' }}
+function Stop-AppInternal {{ $script:calls.Add('stop') }}
+function Write-VersionPointerAtomic {{ param($Path, $Value); $script:calls.Add('write:' + $Value) }}
+function Start-AppInternal {{ param($Context, $Arguments, $VersionOverride); $script:calls.Add('start:' + $VersionOverride.Version + ':' + ($Arguments -join ',')) }}
+Switch-VersionTransactional -Context $context -TargetVersion 'v1'
+@($script:calls) | ConvertTo-Json -Compress
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    calls = json.loads(result.stdout.strip().splitlines()[-1])
+    assert calls == [
+        "stop",
+        "write:v1",
+        "write:v2",
+        "start:v1:--host,127.0.0.1,--port,8123,--no-browser",
+    ]
 
 
 def test_windows_appctl_stop_uses_retained_handle_for_disposable_child(tmp_path: Path):
@@ -1784,6 +1824,74 @@ def test_windows_installer_restricts_remote_release_sources(uri: str, accepted: 
         assert "https" in result.stderr.lower()
 
 
+def test_windows_installer_rejects_remote_unc_file_release_source():
+    result = run_installer_function(
+        "Assert-ReleaseSource -Source 'file://server/share/release.tar.gz'"
+    )
+
+    assert result.returncode == 1
+    assert "remote file" in result.stderr.lower()
+
+
+def test_windows_installer_revalidates_each_redirect_before_retaining_download(tmp_path: Path):
+    requested: list[str] = []
+
+    class RedirectHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            requested.append(self.path)
+            if self.path == "/first":
+                self.send_response(302)
+                self.send_header("Location", "/second")
+                self.end_headers()
+            elif self.path == "/second":
+                self.send_response(302)
+                self.send_header("Location", "http://downloads.example.test/payload")
+                self.end_headers()
+            else:
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"unsafe")
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), RedirectHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    destination = tmp_path / "download.bin"
+    try:
+        result = run_installer_function(
+            f"Invoke-Download -Uri 'http://127.0.0.1:{server.server_port}/first' "
+            f"-Destination {powershell_literal(destination)}"
+        )
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+    assert result.returncode == 1
+    assert "https" in result.stderr.lower()
+    assert requested == ["/first", "/second"]
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize(
+    "location, accepted",
+    [
+        ("https://cdn.example.test/payload", True),
+        ("http://cdn.example.test/payload", False),
+        ("file://server/share/payload", False),
+    ],
+)
+def test_windows_installer_validates_https_redirect_target(location: str, accepted: bool):
+    result = run_installer_function(
+        f"Get-ValidatedRedirectUri -Current 'https://downloads.example.test/release' "
+        f"-Location {powershell_literal(location)} | Out-Null"
+    )
+
+    assert (result.returncode == 0) is accepted, result.stdout + result.stderr
+
+
 def test_windows_installer_python_error_reports_detected_version_and_launcher_guidance(
     tmp_path: Path,
 ):
@@ -1958,12 +2066,41 @@ def test_windows_installer_cmd_preserves_success_when_uninstall_deletes_its_pref
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "uninstalled" in result.stdout
+    assert "cleanup" in result.stdout.lower()
+    assert not (prefix / "app").exists(), "the old generation was not retired before CMD returned"
     deadline = time.monotonic() + 10
     while prefix.exists() and time.monotonic() < deadline:
         time.sleep(0.05)
     assert not prefix.exists()
     assert (library / "sentinel.txt").read_text(encoding="ascii") == "keep\n"
+
+
+def test_windows_appctl_deferred_cleanup_failure_is_recorded_and_retains_tombstone(
+    tmp_path: Path,
+):
+    prefix = tmp_path / "prefix"
+    tombstone = tmp_path / (".prefix.uninstall-" + "a" * 32)
+    tombstone.mkdir()
+    ready = tmp_path / "ready.txt"
+    failure = Path(str(tombstone) + ".failed.txt")
+    result = run_appctl_function(
+        f"""
+$context = [pscustomobject]@{{ Prefix = {powershell_literal(prefix)} }}
+function Remove-ExactUninstallTree {{ throw 'forced tombstone cleanup failure' }}
+try {{
+    Invoke-DeferredPrefixRemoval -Context $context -Arguments @(
+        '--tombstone', {powershell_literal(tombstone)}, '--ready', {powershell_literal(ready)},
+        '--parent-pid', '999999', '--failure', {powershell_literal(failure)}, '--token', 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+    )
+}} catch {{}}
+[pscustomobject]@{{ Tombstone = (Test-Path -LiteralPath {powershell_literal(tombstone)}); Failure = [IO.File]::ReadAllText({powershell_literal(failure)}) }} | ConvertTo-Json -Compress
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["Tombstone"] is True
+    assert "forced tombstone cleanup failure" in payload["Failure"]
 
 
 def test_windows_installer_generated_shim_does_not_leak_handled_native_exit(
@@ -2030,7 +2167,7 @@ def test_windows_installer_rejects_drive_root_containing_prefix(tmp_path: Path):
     result = run_installer(tmp_path / "missing", tmp_path / "prefix", drive_root)
 
     assert result.returncode == 1
-    assert "must not contain each other" in result.stderr.lower()
+    assert "unsafe root" in result.stderr.lower()
 
 
 def test_windows_installer_rejects_unc_root_containing_prefix():
@@ -2504,6 +2641,83 @@ def test_windows_installer_serializes_concurrent_publication(tmp_path: Path):
     assert not any(path.name.endswith((".tmp", ".tmp.bak")) for path in prefix.rglob("*"))
 
 
+def test_windows_cmd_uninstall_retires_old_generation_before_concurrent_start_and_reinstall(
+    tmp_path: Path,
+):
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    release_dir = tmp_path / "release"
+    scripts = prefix / "app" / "versions" / "v0.9.0" / "scripts"
+    scripts.mkdir(parents=True)
+    shutil.copyfile(ROOT / "scripts" / "appctl.ps1", scripts / "appctl.ps1")
+    (prefix / "app" / "current-version").write_text("v0.9.0\n", encoding="ascii")
+    library.mkdir()
+    (library / "sentinel.txt").write_text("keep\n", encoding="ascii")
+    (prefix / ".env").write_text(
+        f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii"
+    )
+    generated = run_installer_function(
+        f"Write-CommandShim -BinPath {powershell_literal(prefix / 'bin')}"
+    )
+    assert generated.returncode == 0, generated.stdout + generated.stderr
+    write_test_release(release_dir)
+    environment = os.environ.copy()
+    environment["PATH"] = str(prefix / "bin") + os.pathsep + environment["PATH"]
+    uninstall = subprocess.Popen(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Restricted",
+            "-Command",
+            "image-prompt-library uninstall",
+        ],
+        cwd=ROOT,
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    marker = prefix / "bin" / ".retired-generation"
+    deadline = time.monotonic() + 10
+    while not marker.exists() and time.monotonic() < deadline:
+        time.sleep(0.005)
+    assert marker.exists(), "CMD uninstall did not publish its retired-generation marker"
+    assert not (prefix / "app").exists(), "CMD uninstall did not retire the old generation"
+    assert uninstall.poll() is None, "retirement was not observable before helper handoff returned"
+
+    stale_start = subprocess.run(
+        [
+            powershell_executable(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Restricted",
+            "-Command",
+            "image-prompt-library start --no-browser",
+        ],
+        cwd=ROOT,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    reinstall = run_installer(release_dir, prefix, library)
+    stdout, stderr = uninstall.communicate(timeout=30)
+
+    assert uninstall.returncode == 0, stdout + stderr
+    assert stale_start.returncode != 0, stale_start.stdout + stale_start.stderr
+    assert reinstall.returncode == 0, reinstall.stdout + reinstall.stderr
+    assert (prefix / "app" / "current-version").read_text(encoding="ascii").strip() == "v1.2.3"
+    assert (library / "sentinel.txt").read_text(encoding="ascii") == "keep\n"
+    deadline = time.monotonic() + 10
+    tombstones = list(tmp_path.glob(".prefix.uninstall-*"))
+    while tombstones and time.monotonic() < deadline:
+        time.sleep(0.05)
+        tombstones = list(tmp_path.glob(".prefix.uninstall-*"))
+    assert not tombstones
+
+
 @pytest.mark.parametrize(
     "arguments, expected_code",
     [
@@ -2621,6 +2835,86 @@ def test_windows_installer_rejects_extended_path_canonical_alias_overlap(tmp_pat
 
     assert result.returncode == 1
     assert "must not contain each other" in result.stderr.lower()
+
+
+@pytest.mark.parametrize("target", ["prefix", "library"])
+@pytest.mark.parametrize("unsafe", ["drive-root", "profile-root"])
+def test_windows_installer_rejects_root_targets_symmetrically(
+    tmp_path: Path, target: str, unsafe: str
+):
+    unsafe_path = Path(tmp_path.anchor) if unsafe == "drive-root" else Path.home()
+    prefix = unsafe_path if target == "prefix" else tmp_path / "prefix"
+    library = unsafe_path if target == "library" else tmp_path / "library"
+
+    result = run_installer_function(
+        f"Assert-SafeInstallTarget -Path {powershell_literal(prefix)} -Name 'App prefix'; "
+        f"Assert-SafeInstallTarget -Path {powershell_literal(library)} -Name 'Private library'"
+    )
+
+    assert result.returncode == 1
+    assert "unsafe root" in result.stderr.lower()
+
+
+def test_windows_installer_physical_identity_resolves_subst_alias(tmp_path: Path):
+    target = tmp_path / "subst target"
+    target.mkdir()
+    used = {path.drive.upper() for path in Path("C:/").glob("*") if path.drive}
+    drive = next((f"{letter}:" for letter in "ZYXWVUT" if f"{letter}:" not in used), None)
+    if drive is None:
+        pytest.skip("No drive letter is available for SUBST testing")
+    created = subprocess.run(
+        ["subst", drive, str(target)], capture_output=True, text=True, check=False
+    )
+    if created.returncode != 0:
+        pytest.skip(f"SUBST is unavailable: {created.stderr.strip()}")
+    try:
+        alias = Path(drive + "\\") / "future" / "prefix"
+        direct = target / "future" / "prefix"
+        result = run_installer_function(
+            f"$a = Get-PhysicalPathIdentity -Path {powershell_literal(alias)}; "
+            f"$b = Get-PhysicalPathIdentity -Path {powershell_literal(direct)}; "
+            "[pscustomobject]@{ Equal = $a.Equals($b, [StringComparison]::OrdinalIgnoreCase); A = $a; B = $b } | ConvertTo-Json -Compress"
+        )
+    finally:
+        subprocess.run(["subst", drive, "/d"], capture_output=True, check=False)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert payload["Equal"], payload
+
+
+def test_windows_installer_and_controller_lock_on_physical_prefix_identity():
+    installer = read("scripts/install.ps1")
+    controller = read("scripts/appctl.ps1")
+    install_lock = installer.split("function Enter-InstallLock", 1)[1].split("function ", 1)[0]
+    appctl_lock = controller.split("function Enter-PrefixTransactionLock", 1)[1].split(
+        "function ", 1
+    )[0]
+
+    assert "Get-PhysicalPathIdentity" in install_lock
+    assert "Get-PhysicalPathIdentity" in appctl_lock
+
+
+def test_windows_installer_physical_identity_resolves_8dot3_alias_when_available(tmp_path: Path):
+    target = tmp_path / "long physical identity directory"
+    target.mkdir()
+    short = subprocess.run(
+        ["cmd.exe", "/d", "/c", f'for %I in ("{target}") do @echo %~sI'],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    if not short or "~" not in short or short.lower() == str(target).lower():
+        pytest.skip("8.3 aliases are disabled on this volume")
+
+    result = run_installer_function(
+        f"$a = Get-PhysicalPathIdentity -Path {powershell_literal(short)}; "
+        f"$b = Get-PhysicalPathIdentity -Path {powershell_literal(target)}; "
+        "$a.Equals($b, [StringComparison]::OrdinalIgnoreCase)"
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "True"
 
 
 def test_windows_installer_places_runtime_then_publishes_shim_and_pointers(tmp_path: Path):

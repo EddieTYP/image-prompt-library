@@ -74,8 +74,14 @@ function Find-SupportedPython {
 
 function Assert-DisjointPaths {
     param([string]$AppPrefix, [string]$PrivateLibrary)
-    $app = Get-NormalizedPath -Path $AppPrefix
-    $library = Get-NormalizedPath -Path $PrivateLibrary
+    $lexicalApp = Get-NormalizedPath -Path $AppPrefix
+    $lexicalLibrary = Get-NormalizedPath -Path $PrivateLibrary
+    if ((Test-PathWithinOrEqual -Path $lexicalApp -Parent $lexicalLibrary) -or
+        (Test-PathWithinOrEqual -Path $lexicalLibrary -Parent $lexicalApp)) {
+        throw "The app prefix and private library must not contain each other."
+    }
+    $app = Get-PhysicalPathIdentity -Path $AppPrefix
+    $library = Get-PhysicalPathIdentity -Path $PrivateLibrary
     if ((Test-PathWithinOrEqual -Path $app -Parent $library) -or
         (Test-PathWithinOrEqual -Path $library -Parent $app)) {
         throw "The app prefix and private library must not contain each other."
@@ -94,6 +100,67 @@ function Get-NormalizedPath {
     $root = [IO.Path]::GetPathRoot($full)
     if ($full.Length -gt $root.Length) { $full = $full.TrimEnd('\') }
     return $full
+}
+
+if (-not ('ImagePromptLibrary.NativePaths' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+namespace ImagePromptLibrary {
+    public static class NativePaths {
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path, uint length, uint flags);
+
+        public static string GetFinalPath(string path) {
+            using (SafeFileHandle handle = CreateFile(path, 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero)) {
+                if (handle.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+                StringBuilder buffer = new StringBuilder(32768);
+                uint length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Capacity, 0);
+                if (length == 0 || length >= buffer.Capacity) throw new Win32Exception(Marshal.GetLastWin32Error());
+                return buffer.ToString();
+            }
+        }
+    }
+}
+'@
+}
+
+function Get-PhysicalPathIdentity {
+    param([string]$Path)
+    $normalized = Get-NormalizedPath -Path $Path
+    $suffix = New-Object Collections.Generic.List[string]
+    $cursor = $normalized
+    while (-not [IO.Directory]::Exists($cursor) -and -not [IO.File]::Exists($cursor)) {
+        $leaf = [IO.Path]::GetFileName($cursor)
+        if (-not $leaf) { throw "No existing ancestor could be resolved for path: $Path" }
+        $suffix.Insert(0, $leaf)
+        $cursor = [IO.Path]::GetDirectoryName($cursor)
+    }
+    $physical = Get-NormalizedPath -Path ([ImagePromptLibrary.NativePaths]::GetFinalPath($cursor))
+    foreach ($component in $suffix) { $physical = Join-Path $physical $component }
+    return (Get-NormalizedPath -Path $physical)
+}
+
+function Assert-SafeInstallTarget {
+    param([string]$Path, [string]$Name)
+    $normalized = Get-NormalizedPath -Path $Path
+    $lexicalRoot = [IO.Path]::GetPathRoot($normalized)
+    $lexicalProfile = Get-NormalizedPath -Path $env:USERPROFILE
+    if ($normalized.Equals($lexicalRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        $normalized.Equals($lexicalProfile, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "$Name must not be an unsafe root path."
+    }
+    $identity = Get-PhysicalPathIdentity -Path $Path
+    if ($identity.Equals([IO.Path]::GetPathRoot($identity), [StringComparison]::OrdinalIgnoreCase)) {
+        throw "$Name must not be an unsafe root path."
+    }
+    return $identity
 }
 
 function Assert-NoReparseAncestors {
@@ -156,7 +223,7 @@ function Test-VersionToken {
 
 function Enter-InstallLock {
     param([string]$AppPrefix)
-    $bytes = [Text.Encoding]::UTF8.GetBytes((Get-NormalizedPath -Path $AppPrefix).ToUpperInvariant())
+    $bytes = [Text.Encoding]::UTF8.GetBytes((Get-PhysicalPathIdentity -Path $AppPrefix).ToUpperInvariant())
     $sha256 = [Security.Cryptography.SHA256]::Create()
     try {
         $name = "ImagePromptLibrary.Transaction." + (($sha256.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '')
@@ -249,6 +316,13 @@ function Restore-FileState {
     }
 }
 
+function Get-ValidatedRedirectUri {
+    param([Uri]$Current, [string]$Location)
+    if (-not $Location) { throw "Release download redirect did not provide a location." }
+    $next = [Uri]::new($Current, $Location)
+    return (Assert-ReleaseSource -Source $next.AbsoluteUri)
+}
+
 function Invoke-Download {
     param([string]$Uri, [string]$Destination)
     $parent = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Destination))
@@ -264,12 +338,40 @@ function Invoke-Download {
         Copy-Item -LiteralPath $parsed.LocalPath -Destination $Destination -Force
         return
     }
+    $temporary = $Destination + ".download-" + [Guid]::NewGuid().ToString("N")
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         try {
-            Invoke-WebRequest -Uri $Uri -UseBasicParsing -OutFile $Destination
-            return
+            $current = $parsed
+            for ($redirect = 0; $redirect -le 10; $redirect++) {
+                $request = [Net.HttpWebRequest]::Create($current)
+                $request.AllowAutoRedirect = $false
+                $request.UserAgent = "image-prompt-library-installer"
+                $response = $null
+                try {
+                    $response = $request.GetResponse()
+                    $status = [int]$response.StatusCode
+                    if ($status -in @(301, 302, 303, 307, 308)) {
+                        if ($redirect -eq 10) { throw "Release download exceeded 10 redirects." }
+                        $current = Get-ValidatedRedirectUri -Current $current -Location ([string]$response.Headers["Location"])
+                        continue
+                    }
+                    if ($status -lt 200 -or $status -ge 300) { throw "Release download returned HTTP $status." }
+                    $inputStream = $response.GetResponseStream()
+                    $outputStream = [IO.File]::Open($temporary, [IO.FileMode]::Create, [IO.FileAccess]::Write, [IO.FileShare]::None)
+                    try { $inputStream.CopyTo($outputStream) }
+                    finally {
+                        $outputStream.Dispose()
+                        $inputStream.Dispose()
+                    }
+                    Move-Item -LiteralPath $temporary -Destination $Destination -Force
+                    return
+                } finally {
+                    if ($response) { $response.Dispose() }
+                }
+            }
         } catch {
-            if ($attempt -eq 3) { throw }
+            if ([IO.File]::Exists($temporary)) { [IO.File]::Delete($temporary) }
+            if ($attempt -eq 3 -or $_.Exception.Message -match 'must use HTTPS|Remote file') { throw }
             Start-Sleep -Seconds $attempt
         }
     }
@@ -282,7 +384,11 @@ function Assert-ReleaseSource {
     if (-not [Uri]::TryCreate($Source, [UriKind]::Absolute, [ref]$parsed)) {
         throw "Release asset location is not a local file or valid URL: $Source"
     }
-    if ($parsed.IsFile -or $parsed.Scheme -eq "https") { return $parsed }
+    if ($parsed.IsFile) {
+        if ($parsed.IsUnc -or $parsed.Host) { throw "Remote file release assets are not allowed." }
+        return $parsed
+    }
+    if ($parsed.Scheme -eq "https") { return $parsed }
     if ($parsed.Scheme -eq "http") {
         $address = $null
         $loopback = $parsed.Host.TrimEnd('.').Equals("localhost", [StringComparison]::OrdinalIgnoreCase) -or
@@ -718,6 +824,14 @@ function Write-CommandShim {
 param([Parameter(ValueFromRemainingArguments=$true)][string[]]$CommandArgs)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+if ($env:IMAGE_PROMPT_LIBRARY_CMD_SHIM -eq "1") {
+    try {
+        $parent = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $PID) -ErrorAction Stop
+        $env:IMAGE_PROMPT_LIBRARY_CMD_PARENT_PID = [string]$parent.ParentProcessId
+    } catch {
+        $env:IMAGE_PROMPT_LIBRARY_CMD_PARENT_PID = [string]$PID
+    }
+}
 $prefix = Split-Path -Parent $PSScriptRoot
 $pointer = Join-Path $prefix "app\current-version"
 if (-not (Test-Path -LiteralPath $pointer -PathType Leaf)) { throw "Image Prompt Library is not installed." }
@@ -828,6 +942,8 @@ function Invoke-Install {
     $normalizedPrefix = Get-NormalizedPath -Path $Prefix
     $normalizedLibrary = Get-NormalizedPath -Path $LibraryPath
     if ($Version -ne 'latest' -and -not (Test-VersionToken -Value $Version)) { throw "Release version is invalid: $Version" }
+    Assert-SafeInstallTarget -Path $normalizedPrefix -Name "App prefix" | Out-Null
+    Assert-SafeInstallTarget -Path $normalizedLibrary -Name "Private library" | Out-Null
     Assert-NoReparseAncestors -Path $normalizedPrefix -Name "App prefix" | Out-Null
     Assert-NoReparseAncestors -Path $normalizedLibrary -Name "Private library" | Out-Null
     Assert-DisjointPaths -AppPrefix $normalizedPrefix -PrivateLibrary $normalizedLibrary
@@ -845,6 +961,8 @@ function Invoke-Install {
     try {
         Assert-NoReparseAncestors -Path $normalizedPrefix -Name "App prefix" | Out-Null
         Assert-NoReparseAncestors -Path $normalizedLibrary -Name "Private library" | Out-Null
+        $retiredMarker = Join-Path $normalizedPrefix 'bin\.retired-generation'
+        if ([IO.File]::Exists($retiredMarker)) { [IO.File]::Delete($retiredMarker) }
         $release = Resolve-Release
         $appPath = Join-Path $normalizedPrefix 'app'
         $versionsPath = Join-Path $appPath 'versions'

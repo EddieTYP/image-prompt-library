@@ -233,9 +233,54 @@ function Get-NormalizedTransactionPath {
     return [IO.Path]::GetFullPath($full).TrimEnd('\')
 }
 
+if (-not ('ImagePromptLibrary.NativePaths' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+using Microsoft.Win32.SafeHandles;
+
+namespace ImagePromptLibrary {
+    public static class NativePaths {
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern SafeFileHandle CreateFile(string name, uint access, uint share, IntPtr security, uint creation, uint flags, IntPtr template);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path, uint length, uint flags);
+
+        public static string GetFinalPath(string path) {
+            using (SafeFileHandle handle = CreateFile(path, 0, 7, IntPtr.Zero, 3, 0x02000000, IntPtr.Zero)) {
+                if (handle.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+                StringBuilder buffer = new StringBuilder(32768);
+                uint length = GetFinalPathNameByHandle(handle, buffer, (uint)buffer.Capacity, 0);
+                if (length == 0 || length >= buffer.Capacity) throw new Win32Exception(Marshal.GetLastWin32Error());
+                return buffer.ToString();
+            }
+        }
+    }
+}
+'@
+}
+
+function Get-PhysicalPathIdentity {
+    param([string]$Path)
+    $normalized = Get-NormalizedTransactionPath -Path $Path
+    $suffix = New-Object Collections.Generic.List[string]
+    $cursor = $normalized
+    while (-not [IO.Directory]::Exists($cursor) -and -not [IO.File]::Exists($cursor)) {
+        $leaf = [IO.Path]::GetFileName($cursor)
+        if (-not $leaf) { throw "No existing ancestor could be resolved for path: $Path" }
+        $suffix.Insert(0, $leaf)
+        $cursor = [IO.Path]::GetDirectoryName($cursor)
+    }
+    $physical = Get-NormalizedTransactionPath -Path ([ImagePromptLibrary.NativePaths]::GetFinalPath($cursor))
+    foreach ($component in $suffix) { $physical = Join-Path $physical $component }
+    return (Get-NormalizedTransactionPath -Path $physical)
+}
+
 function Enter-PrefixTransactionLock {
     param($Context)
-    $bytes = [Text.Encoding]::UTF8.GetBytes((Get-NormalizedTransactionPath -Path $Context.Prefix).ToUpperInvariant())
+    $bytes = [Text.Encoding]::UTF8.GetBytes((Get-PhysicalPathIdentity -Path $Context.Prefix).ToUpperInvariant())
     $sha256 = [Security.Cryptography.SHA256]::Create()
     try {
         $name = "ImagePromptLibrary.Transaction." + (($sha256.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') }) -join '')
@@ -304,9 +349,6 @@ function Get-OwnedRuntimeState {
     try {
         if (-not (Test-ServerRecordMatchesVersion -Record $record -Version $Version)) {
             throw "The owned runtime record does not match the selected version, app root, and executable."
-        }
-        if (-not (Test-AppHealth -HostName $record.host -Port $record.port -ExpectedVersion $Version.Version)) {
-            throw "The owned runtime is not healthy for the selected version."
         }
         return [pscustomobject]@{ running = $true; host = [string]$record.host; port = [int]$record.port }
     } finally {
@@ -1158,19 +1200,81 @@ function Get-UninstallWorkingDirectory {
     return $systemRoot
 }
 
-function Start-DeferredPrefixRemoval {
+function Move-PrefixToUninstallTombstone {
     param($Context, [string]$ExpectedPrefix)
     if (-not $script:ControllerPath) { throw "Deferred uninstall requires a file-based controller." }
+    $prefix = Get-NormalizedUninstallPath -Path $Context.Prefix
+    $expected = Get-NormalizedUninstallPath -Path $ExpectedPrefix
+    if (-not $prefix.Equals($expected, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Deferred uninstall target does not match this install."
+    }
+    $controller = Get-NormalizedUninstallPath -Path $script:ControllerPath
+    if (-not (Test-UninstallPathWithinOrEqual -Path $controller -Parent $prefix)) {
+        throw "Deferred uninstall controller is outside this install."
+    }
+    $parent = [IO.Path]::GetDirectoryName($prefix)
+    $leaf = [IO.Path]::GetFileName($prefix)
+    $tombstone = Join-Path $parent ("." + $leaf + ".uninstall-" + [Guid]::NewGuid().ToString("N"))
+    if ([IO.Directory]::Exists($tombstone) -or [IO.File]::Exists($tombstone)) {
+        throw "Deferred uninstall tombstone already exists."
+    }
+    $relativeController = $controller.Substring($prefix.Length).TrimStart('\')
+    $token = [Guid]::NewGuid().ToString("N")
+    $bin = Join-Path $prefix "bin"
+    $marker = Join-Path $bin ".retired-generation"
+    New-Item -ItemType Directory -Path $tombstone | Out-Null
+    $moved = New-Object Collections.Generic.List[string]
+    try {
+        foreach ($child in @(Get-ChildItem -LiteralPath $prefix -Force)) {
+            if ($child.FullName.Equals($bin, [StringComparison]::OrdinalIgnoreCase)) { continue }
+            Move-Item -LiteralPath $child.FullName -Destination $tombstone
+            $moved.Add($child.Name)
+        }
+        [IO.File]::WriteAllText($marker, $token, [Text.Encoding]::ASCII)
+        return [pscustomobject]@{
+            Tombstone = $tombstone
+            Controller = Join-Path $tombstone $relativeController
+            Failure = $tombstone + ".failed.txt"
+            Token = $token
+        }
+    } catch {
+        for ($index = $moved.Count - 1; $index -ge 0; $index--) {
+            $name = $moved[$index]
+            $retiredPath = Join-Path $tombstone $name
+            if (Test-Path -LiteralPath $retiredPath) { Move-Item -LiteralPath $retiredPath -Destination $prefix }
+        }
+        if ([IO.File]::Exists($marker)) { [IO.File]::Delete($marker) }
+        if ([IO.Directory]::Exists($tombstone)) { [IO.Directory]::Delete($tombstone, $false) }
+        throw
+    }
+}
+
+function Start-DeferredPrefixRemoval {
+    param($Context, $Retired)
+    $cleanupParentPid = $PID
+    if ($env:IMAGE_PROMPT_LIBRARY_CMD_PARENT_PID -match '^\d+$') {
+        $cleanupParentPid = [int]$env:IMAGE_PROMPT_LIBRARY_CMD_PARENT_PID
+    }
     $readyPath = Join-Path ([IO.Path]::GetTempPath()) ("image-prompt-library-uninstall-" + [Guid]::NewGuid().ToString("N") + ".ready")
     $arguments = @(
-        "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $script:ControllerPath,
-        "internal-delete-prefix", "--expected", $ExpectedPrefix, "--ready", $readyPath, "--parent-pid", [string]$PID
+        "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $Retired.Controller,
+        "internal-delete-prefix", "--tombstone", $Retired.Tombstone, "--ready", $readyPath,
+        "--parent-pid", [string]$cleanupParentPid, "--failure", $Retired.Failure, "--token", $Retired.Token
     )
     $quoted = @($arguments | ForEach-Object { '"' + $_.Replace('"', '\"') + '"' })
-    Start-Process -FilePath "powershell.exe" -ArgumentList ($quoted -join " ") -WindowStyle Hidden | Out-Null
+    $oldPrefix = [Environment]::GetEnvironmentVariable("IMAGE_PROMPT_LIBRARY_PREFIX", [EnvironmentVariableTarget]::Process)
+    try {
+        [Environment]::SetEnvironmentVariable("IMAGE_PROMPT_LIBRARY_PREFIX", $Context.Prefix, [EnvironmentVariableTarget]::Process)
+        Start-Process -FilePath (Join-Path $PSHOME "powershell.exe") -ArgumentList ($quoted -join " ") -WindowStyle Hidden | Out-Null
+    } finally {
+        [Environment]::SetEnvironmentVariable("IMAGE_PROMPT_LIBRARY_PREFIX", $oldPrefix, [EnvironmentVariableTarget]::Process)
+    }
     $deadline = [DateTime]::UtcNow.AddSeconds(5)
     while ([DateTime]::UtcNow -lt $deadline) {
-        if ([IO.File]::Exists($readyPath)) { return }
+        if ([IO.File]::Exists($readyPath)) {
+            [IO.File]::Delete($readyPath)
+            return
+        }
         Start-Sleep -Milliseconds 50
     }
     throw "The deferred uninstall cleanup helper did not start."
@@ -1178,23 +1282,27 @@ function Start-DeferredPrefixRemoval {
 
 function Invoke-DeferredPrefixRemoval {
     param($Context, [string[]]$Arguments)
-    if (@($Arguments).Count -ne 6 -or $Arguments[0] -ne "--expected" -or $Arguments[2] -ne "--ready" -or $Arguments[4] -ne "--parent-pid") {
+    if (@($Arguments).Count -ne 10 -or $Arguments[0] -ne "--tombstone" -or $Arguments[2] -ne "--ready" -or
+        $Arguments[4] -ne "--parent-pid" -or $Arguments[6] -ne "--failure" -or $Arguments[8] -ne "--token") {
         throw "Internal prefix cleanup arguments are invalid."
     }
-    $expected = Get-NormalizedUninstallPath -Path $Arguments[1]
+    $tombstone = Get-NormalizedUninstallPath -Path $Arguments[1]
     $readyPath = [IO.Path]::GetFullPath($Arguments[3])
     $parentPid = [int]$Arguments[5]
+    $failurePath = [IO.Path]::GetFullPath($Arguments[7])
+    $token = [string]$Arguments[9]
     $prefix = Get-NormalizedUninstallPath -Path $Context.Prefix
-    if (-not $prefix.Equals($expected, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Internal prefix cleanup target does not match this install."
+    $parent = [IO.Path]::GetDirectoryName($prefix)
+    $expectedPattern = '^\.' + [regex]::Escape([IO.Path]::GetFileName($prefix)) + '\.uninstall-[a-f0-9]{32}$'
+    if (-not [IO.Path]::GetDirectoryName($tombstone).Equals($parent, [StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFileName($tombstone) -notmatch $expectedPattern -or
+        -not $failurePath.Equals($tombstone + ".failed.txt", [StringComparison]::OrdinalIgnoreCase) -or
+        $token -notmatch '^[a-f0-9]{32}$') {
+        throw "Internal tombstone cleanup target is unsafe."
     }
-    if ($prefix.Equals([IO.Path]::GetPathRoot($prefix), [StringComparison]::OrdinalIgnoreCase) -or
-        (Test-UninstallPathWithinOrEqual -Path (Get-NormalizedUninstallPath -Path $env:USERPROFILE) -Parent $prefix)) {
-        throw "Internal prefix cleanup target is unsafe."
-    }
-    [IO.File]::WriteAllText($readyPath, "ready", [Text.Encoding]::ASCII)
-    $transactionLock = Enter-PrefixTransactionLock -Context $Context
     try {
+        Assert-UninstallTargetNotReparse -Path $tombstone -Name "Retired app prefix" | Out-Null
+        [IO.File]::WriteAllText($readyPath, "ready", [Text.Encoding]::ASCII)
         $deadline = [DateTime]::UtcNow.AddSeconds(15)
         while ([DateTime]::UtcNow -lt $deadline -and (Get-Process -Id $parentPid -ErrorAction SilentlyContinue)) {
             Start-Sleep -Milliseconds 50
@@ -1202,11 +1310,22 @@ function Invoke-DeferredPrefixRemoval {
         if (Get-Process -Id $parentPid -ErrorAction SilentlyContinue) {
             throw "The uninstalling controller did not exit before deferred cleanup."
         }
-        Start-Sleep -Milliseconds 3000
-        Assert-UninstallTargetNotReparse -Path $prefix -Name "App prefix" | Out-Null
-        Remove-ExactUninstallTree -Target $prefix -ExpectedTarget $expected
+        $transactionLock = Enter-PrefixTransactionLock -Context $Context
+        try {
+            $marker = Join-Path $prefix "bin\.retired-generation"
+            if ([IO.File]::Exists($marker) -and [IO.File]::ReadAllText($marker).Equals($token, [StringComparison]::Ordinal)) {
+                Move-Item -LiteralPath (Join-Path $prefix "bin") -Destination $tombstone
+                [IO.Directory]::Delete($prefix, $false)
+            }
+            Assert-UninstallTargetNotReparse -Path $tombstone -Name "Retired app prefix" | Out-Null
+            Remove-ExactUninstallTree -Target $tombstone -ExpectedTarget $tombstone
+        } finally {
+            Exit-PrefixTransactionLock -Mutex $transactionLock
+        }
+    } catch {
+        [IO.File]::WriteAllText($failurePath, $_.Exception.Message, [Text.Encoding]::UTF8)
+        throw
     } finally {
-        Exit-PrefixTransactionLock -Mutex $transactionLock
         if ([IO.File]::Exists($readyPath)) { [IO.File]::Delete($readyPath) }
     }
 }
@@ -1244,16 +1363,32 @@ function Invoke-UninstallInternal {
             if (-not $deferPrefixRemoval) { Write-Output "Application removed at $($targets.Prefix)." }
             throw "Application removal succeeded, but private library removal failed: $($_.Exception.Message)"
         }
-        if ($deferPrefixRemoval) { Start-DeferredPrefixRemoval -Context $Context -ExpectedPrefix $targets.Prefix }
-        Write-Output "Image Prompt Library and private library uninstalled."
+        if ($deferPrefixRemoval) {
+            $retired = Move-PrefixToUninstallTombstone -Context $Context -ExpectedPrefix $targets.Prefix
+            Start-DeferredPrefixRemoval -Context $Context -Retired $retired
+            Write-Output "Image Prompt Library and private library retired; cleanup continues in the background."
+        } else {
+            Write-Output "Image Prompt Library and private library uninstalled."
+        }
     } else {
-        if ($deferPrefixRemoval) { Start-DeferredPrefixRemoval -Context $Context -ExpectedPrefix $targets.Prefix }
-        Write-Output "Image Prompt Library uninstalled."
+        if ($deferPrefixRemoval) {
+            $retired = Move-PrefixToUninstallTombstone -Context $Context -ExpectedPrefix $targets.Prefix
+            Start-DeferredPrefixRemoval -Context $Context -Retired $retired
+            Write-Output "Image Prompt Library retired; cleanup continues in the background."
+        } else {
+            Write-Output "Image Prompt Library uninstalled."
+        }
     }
 }
 
 function Invoke-Uninstall {
     param($Context, [string[]]$Arguments)
+    $prefix = Get-NormalizedUninstallPath -Path $Context.Prefix
+    if ($prefix.Equals([IO.Path]::GetPathRoot($prefix), [StringComparison]::OrdinalIgnoreCase) -or
+        $prefix.Equals((Get-NormalizedUninstallPath -Path $env:USERPROFILE), [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Uninstall app prefix is unsafe."
+    }
+    Assert-UninstallTargetNotReparse -Path $prefix -Name "App prefix" | Out-Null
     $transactionLock = Enter-PrefixTransactionLock -Context $Context
     try {
         Invoke-UninstallInternal -Context $Context -Arguments $Arguments
