@@ -703,30 +703,88 @@ function Write-VersionPointerAtomic {
     }
 }
 
+function Get-VersionPointerState {
+    param($Context)
+    $currentPath = Join-Path $Context.AppDir "current-version"
+    $previousPath = Join-Path $Context.AppDir "previous-version"
+    return [pscustomobject]@{
+        Current = if (Test-Path -LiteralPath $currentPath -PathType Leaf) { (Get-Content -LiteralPath $currentPath -Raw).Trim() } else { "" }
+        Previous = if (Test-Path -LiteralPath $previousPath -PathType Leaf) { (Get-Content -LiteralPath $previousPath -Raw).Trim() } else { "" }
+    }
+}
+
+function Restore-VersionPointerState {
+    param($Context, $State)
+    $errors = New-Object Collections.Generic.List[string]
+    try {
+        Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "current-version") -Value $State.Current
+    } catch {
+        $errors.Add("current-version: $($_.Exception.Message)")
+    }
+    try {
+        Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "previous-version") -Value $State.Previous
+    } catch {
+        $errors.Add("previous-version: $($_.Exception.Message)")
+    }
+    if ($errors.Count) { throw "Pointer restoration failed: $($errors -join '; ')" }
+}
+
+function Restore-VersionSwitch {
+    param($Context, $PointerState, $Runtime, [string[]]$RestartArguments)
+    $errors = New-Object Collections.Generic.List[string]
+    $output = New-Object Collections.Generic.List[object]
+    try {
+        Restore-VersionPointerState -Context $Context -State $PointerState
+    } catch {
+        $errors.Add($_.Exception.Message)
+    }
+    if ($Runtime.running) {
+        try {
+            foreach ($line in @(Start-App -Context $Context -Arguments $RestartArguments 2>&1)) { $output.Add($line) }
+        } catch {
+            $errors.Add("old-version restart: $($_.Exception.Message)")
+        }
+    }
+    return [pscustomobject]@{ Errors = [string[]]$errors; Output = [object[]]$output }
+}
+
 function Switch-VersionTransactional {
     param($Context, [string]$TargetVersion)
     $current = Get-CurrentVersion $Context
+    $pointerState = Get-VersionPointerState -Context $Context
     if (-not $TargetVersion -or $TargetVersion -in @('.', '..') -or $TargetVersion -match '[\\/]') {
         throw "The previous version pointer is invalid."
     }
     $versionsRoot = [IO.Path]::GetFullPath((Join-Path $Context.AppDir "versions"))
     $targetRoot = [IO.Path]::GetFullPath((Join-Path $versionsRoot $TargetVersion))
-    if (-not $targetRoot.StartsWith($versionsRoot + "\\", [StringComparison]::OrdinalIgnoreCase)) {
+    if (-not $targetRoot.StartsWith($versionsRoot + "\", [StringComparison]::OrdinalIgnoreCase)) {
         throw "The previous version pointer is invalid."
     }
     if (-not (Test-Path -LiteralPath $targetRoot -PathType Container)) { throw "Previous version directory is missing: $targetRoot" }
     $runtime = Get-OwnedRuntimeState -Context $Context
+    $restartArgs = @("--host", $runtime.host, "--port", [string]$runtime.port, "--no-browser")
     if ($runtime.running) { Stop-App -Context $Context }
-    Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "current-version") -Value $TargetVersion
-    Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "previous-version") -Value $current.Version
+    try {
+        Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "current-version") -Value $TargetVersion
+        Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "previous-version") -Value $current.Version
+    } catch {
+        $pointerFailure = $_.Exception.Message
+        $recovery = Restore-VersionSwitch -Context $Context -PointerState $pointerState -Runtime $runtime -RestartArguments $restartArgs
+        foreach ($line in $recovery.Output) { Write-Output $line }
+        if ($recovery.Errors.Count) {
+            throw "Version pointer switch failed: $pointerFailure Recovery failed: $($recovery.Errors -join '; ')"
+        }
+        throw "Version pointer switch failed: $pointerFailure Restored $($current.Version)."
+    }
     if ($runtime.running) {
-        $restartArgs = @("--host", $runtime.host, "--port", [string]$runtime.port, "--no-browser")
         try {
             Start-App -Context $Context -Arguments $restartArgs
         } catch {
-            Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "current-version") -Value $current.Version
-            Write-VersionPointerAtomic -Path (Join-Path $Context.AppDir "previous-version") -Value $TargetVersion
-            Start-App -Context $Context -Arguments $restartArgs
+            $recovery = Restore-VersionSwitch -Context $Context -PointerState $pointerState -Runtime $runtime -RestartArguments $restartArgs
+            foreach ($line in $recovery.Output) { Write-Output $line }
+            if ($recovery.Errors.Count) {
+                throw "Rollback target failed health checks. Recovery failed: $($recovery.Errors -join '; ')"
+            }
             throw "Rollback target failed health checks; restored $($current.Version)."
         }
     }

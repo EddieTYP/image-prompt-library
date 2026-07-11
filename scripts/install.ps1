@@ -493,8 +493,18 @@ function Get-CurrentPointerState {
 
 function Restore-PointerState {
     param([string]$AppDir, $State, [string]$AppPrefix)
-    Write-VersionPointer -Path (Join-Path $AppDir "current-version") -Value $State.Current -AppPrefix $AppPrefix
-    Write-VersionPointer -Path (Join-Path $AppDir "previous-version") -Value $State.Previous -AppPrefix $AppPrefix
+    $errors = New-Object Collections.Generic.List[string]
+    try {
+        Write-VersionPointer -Path (Join-Path $AppDir "current-version") -Value $State.Current -AppPrefix $AppPrefix
+    } catch {
+        $errors.Add("current-version: $($_.Exception.Message)")
+    }
+    try {
+        Write-VersionPointer -Path (Join-Path $AppDir "previous-version") -Value $State.Previous -AppPrefix $AppPrefix
+    } catch {
+        $errors.Add("previous-version: $($_.Exception.Message)")
+    }
+    if ($errors.Count) { throw "Pointer restoration failed: $($errors -join '; ')" }
 }
 
 function Invoke-Controller {
@@ -502,8 +512,60 @@ function Invoke-Controller {
     $controller = Join-Path $VersionRoot "scripts\appctl.ps1"
     if (-not (Test-Path -LiteralPath $controller -PathType Leaf)) { throw "The current Image Prompt Library version is incomplete." }
     $processArgs = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $controller) + $Arguments
-    $output = & powershell.exe @processArgs 2>&1
-    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = @($output) }
+    $oldErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        $output = & powershell.exe @processArgs 2>&1
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+    }
+    return [pscustomobject]@{ ExitCode = $exitCode; Output = @($output) }
+}
+
+function Invoke-UpdateRecovery {
+    param(
+        [string]$AppDir,
+        $PointerState,
+        [string]$AppPrefix,
+        [string]$OldVersionRoot,
+        $Runtime,
+        [string]$TargetVersionRoot = "",
+        [switch]$StopTarget
+    )
+    $errors = New-Object Collections.Generic.List[string]
+    $output = New-Object Collections.Generic.List[object]
+    if ($StopTarget) {
+        try {
+            $stopResult = Invoke-Controller -VersionRoot $TargetVersionRoot -Arguments @("stop")
+            if ($stopResult.ExitCode -ne 0) {
+                $errors.Add("target stop: $($stopResult.Output -join [Environment]::NewLine)")
+            } else {
+                foreach ($line in $stopResult.Output) { $output.Add($line) }
+            }
+        } catch {
+            $errors.Add("target stop: $($_.Exception.Message)")
+        }
+    }
+    try {
+        Restore-PointerState -AppDir $AppDir -State $PointerState -AppPrefix $AppPrefix
+    } catch {
+        $errors.Add($_.Exception.Message)
+    }
+    if ($Runtime.running) {
+        $restartArguments = @("start", "--host", [string]$Runtime.host, "--port", [string]$Runtime.port, "--no-browser")
+        try {
+            $restartResult = Invoke-Controller -VersionRoot $OldVersionRoot -Arguments $restartArguments
+            if ($restartResult.ExitCode -ne 0) {
+                $errors.Add("old-version restart: $($restartResult.Output -join [Environment]::NewLine)")
+            } else {
+                foreach ($line in $restartResult.Output) { $output.Add($line) }
+            }
+        } catch {
+            $errors.Add("old-version restart: $($_.Exception.Message)")
+        }
+    }
+    return [pscustomobject]@{ Errors = [string[]]$errors; Output = [object[]]$output }
 }
 
 function Write-CommandShim {
@@ -706,25 +768,34 @@ function Invoke-Install {
                     Write-Output $stopResult.Output
                 }
             }
-            Write-VersionPointer -Path $previousPointer -Value $oldPointerState.Current -AppPrefix $normalizedPrefix
-            Write-VersionPointer -Path $currentPointer -Value $release.Version -AppPrefix $normalizedPrefix
-            if ($oldPointerState.Current -and $oldRuntime.running -and -not $NoStart) {
+            try {
+                Write-VersionPointer -Path $previousPointer -Value $oldPointerState.Current -AppPrefix $normalizedPrefix
+                Write-VersionPointer -Path $currentPointer -Value $release.Version -AppPrefix $normalizedPrefix
+            } catch {
+                $pointerFailure = $_.Exception.Message
+                $recovery = Invoke-UpdateRecovery -AppDir $appPath -PointerState $oldPointerState -AppPrefix $normalizedPrefix -OldVersionRoot $oldVersionRoot -Runtime $oldRuntime
+                foreach ($line in $recovery.Output) { Write-Output $line }
+                if ($recovery.Errors.Count) {
+                    throw "Version pointer switch failed: $pointerFailure Recovery failed: $($recovery.Errors -join '; ')"
+                }
+                if ($oldRuntime.running) { Write-Output "Automatic recovery restored $($oldPointerState.Current)." }
+                throw "Version pointer switch failed: $pointerFailure"
+            }
+            if ($oldPointerState.Current -and $oldRuntime.running) {
                 $restartArguments = @("start", "--host", [string]$oldRuntime.host, "--port", [string]$oldRuntime.port, "--no-browser")
                 $targetStartResult = Invoke-Controller -VersionRoot $finalTarget -Arguments $restartArguments
                 if ($targetStartResult.ExitCode -eq 0) {
                     Write-Output $targetStartResult.Output
                 } else {
-                    $targetStopResult = Invoke-Controller -VersionRoot $finalTarget -Arguments @("stop")
-                    Restore-PointerState -AppDir $appPath -State $oldPointerState -AppPrefix $normalizedPrefix
-                    $recoveryResult = Invoke-Controller -VersionRoot $oldVersionRoot -Arguments $restartArguments
-                    Write-Output "Automatic recovery restored $($oldPointerState.Current)."
+                    $recovery = Invoke-UpdateRecovery -AppDir $appPath -PointerState $oldPointerState -AppPrefix $normalizedPrefix -OldVersionRoot $oldVersionRoot -Runtime $oldRuntime -TargetVersionRoot $finalTarget -StopTarget
+                    foreach ($line in $recovery.Output) { Write-Output $line }
                     $currentLogs = Join-Path $normalizedPrefix "logs\app.out.log"
                     $previousLogs = Join-Path $normalizedPrefix "logs\app.previous.out.log"
-                    if ($recoveryResult.ExitCode -eq 0) {
-                        Write-Output $recoveryResult.Output
-                        throw "Update failed after target start failure. Current logs: $currentLogs. Previous logs: $previousLogs."
+                    if (-not $recovery.Errors.Count) {
+                        Write-Output "Automatic recovery restored $($oldPointerState.Current)."
+                        throw "Update failed after target start failure. Target controller output: $($targetStartResult.Output -join [Environment]::NewLine) Current logs: $currentLogs. Previous logs: $previousLogs."
                     }
-                    throw "Update failed; pointers were restored but manual recovery is required. Target controller output: $($targetStartResult.Output -join [Environment]::NewLine) Target stop output: $($targetStopResult.Output -join [Environment]::NewLine) Previous controller output: $($recoveryResult.Output -join [Environment]::NewLine) Current logs: $currentLogs. Previous logs: $previousLogs."
+                    throw "Update failed; automatic recovery was incomplete and manual recovery is required. Target controller output: $($targetStartResult.Output -join [Environment]::NewLine) Recovery errors: $($recovery.Errors -join '; ') Current logs: $currentLogs. Previous logs: $previousLogs."
                 }
             }
         }

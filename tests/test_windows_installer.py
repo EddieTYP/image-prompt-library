@@ -69,6 +69,22 @@ Invoke-Expression $source.Substring(0, $entryPoint)
     )
 
 
+def run_appctl_function(script: str) -> subprocess.CompletedProcess[str]:
+    appctl = powershell_literal(ROOT / "scripts" / "appctl.ps1")
+    script_root = powershell_literal(ROOT / "scripts")
+    script_root_assignment = powershell_literal(f"$script:ScriptRoot = {script_root}")
+    return run_powershell(
+        f"""
+$source = [IO.File]::ReadAllText({appctl})
+$source = $source.Replace('$script:ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path', {script_root_assignment})
+$entryPoint = $source.LastIndexOf('try {{')
+if ($entryPoint -lt 0) {{ throw 'Controller entry point was not found.' }}
+Invoke-Expression $source.Substring(0, $entryPoint)
+{script}
+"""
+    )
+
+
 def test_windows_runtime_setup_is_local_and_never_installs_python():
     path = ROOT / "scripts" / "setup-runtime.ps1"
     assert path.is_file()
@@ -733,7 +749,7 @@ def test_windows_installer_rolls_back_late_publication_and_start_failure(tmp_pat
     library = tmp_path / "library"
     old_target = prefix / "app" / "versions" / "v1.0.0"
     old_target.mkdir(parents=True)
-    write_running_test_controller(old_target)
+    write_running_test_controller(old_target, host="127.0.0.5", port=4231)
     (old_target / "keep.txt").write_text("old runtime", encoding="ascii")
     app = prefix / "app"
     (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
@@ -750,6 +766,9 @@ def test_windows_installer_rolls_back_late_publication_and_start_failure(tmp_pat
 
     assert result.returncode == 1
     assert "intentional start failure" in result.stderr
+    assert "Automatic recovery restored v1.0.0." in result.stdout
+    commands = (old_target / "scripts" / "commands.log").read_text(encoding="ascii").splitlines()
+    assert "start --host 127.0.0.5 --port 4231 --no-browser" in commands
     assert (old_target / "keep.txt").read_text(encoding="ascii") == "old runtime"
     assert (app / "current-version").read_text(encoding="ascii") == "v1.0.0\n"
     assert (app / "previous-version").read_text(encoding="ascii") == "v0.9.0\n"
@@ -996,11 +1015,14 @@ def write_stopped_test_controller(version_root: Path) -> None:
     )
 
 
-def write_running_test_controller(version_root: Path) -> None:
+def write_running_test_controller(
+    version_root: Path, host: str = "127.0.0.1", port: int = 8000
+) -> None:
     controller = version_root / "scripts" / "appctl.ps1"
     controller.parent.mkdir(exist_ok=True)
     controller.write_text(
-        "if ($args -contains 'internal-owned-runtime') { Write-Output '{\"running\":true,\"host\":\"127.0.0.1\",\"port\":8000}'; exit 0 }\n"
+        "$args -join ' ' | Add-Content -LiteralPath (Join-Path $PSScriptRoot 'commands.log')\n"
+        f"if ($args -contains 'internal-owned-runtime') {{ Write-Output '{{\"running\":true,\"host\":\"{host}\",\"port\":{port}}}'; exit 0 }}\n"
         "Write-Output ($args -join ' ')\n",
         encoding="ascii",
     )
@@ -1266,17 +1288,228 @@ Write-Output 'INTERACTIVE-SHELL-RETAINED'
     assert "must not contain each other" in piped.stderr.lower()
 
 
-def test_windows_update_and_rollback_are_transactional():
-    installer = read("scripts/install.ps1")
-    appctl = read("scripts/appctl.ps1")
-    assert "Get-CurrentPointerState" in installer
-    assert "Restore-PointerState" in installer
-    assert "Invoke-Controller" in installer
-    assert "Automatic recovery restored" in installer
-    assert "--no-browser" in installer
-    assert "function Get-OwnedRuntimeState" in appctl
-    assert '"internal-owned-runtime"' in appctl
-    assert "function Switch-VersionTransactional" in appctl
-    assert '"update"' in appctl
-    assert '"rollback"' in appctl
-    assert "No previous version is available for rollback." in appctl
+def test_windows_installer_running_update_ignores_no_start_and_preserves_endpoint(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_test_release(release_dir)
+    old_target = prefix / "app" / "versions" / "v1.0.0"
+    old_target.mkdir(parents=True)
+    write_running_test_controller(old_target, host="127.0.0.9", port=4312)
+    app = prefix / "app"
+    (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    (app / "previous-version").write_text("v0.9.0\n", encoding="ascii")
+
+    result = run_installer(release_dir, prefix, library, no_start=True)
+
+    assert result.returncode == 0, result.stderr
+    assert "start --host 127.0.0.9 --port 4312 --no-browser" in result.stdout
+    assert (app / "current-version").read_text(encoding="ascii") == "v1.2.3\n"
+    assert (app / "previous-version").read_text(encoding="ascii") == "v1.0.0\n"
+
+
+def test_windows_installer_stopped_update_preserves_stopped_state(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_test_release(release_dir)
+    old_target = prefix / "app" / "versions" / "v1.0.0"
+    old_target.mkdir(parents=True)
+    write_stopped_test_controller(old_target)
+    app = prefix / "app"
+    (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    (app / "previous-version").write_text("v0.9.0\n", encoding="ascii")
+
+    result = run_installer(release_dir, prefix, library, no_start=False)
+
+    assert result.returncode == 0, result.stderr
+    assert "start --host" not in result.stdout
+    assert (app / "current-version").read_text(encoding="ascii") == "v1.2.3\n"
+    assert (app / "previous-version").read_text(encoding="ascii") == "v1.0.0\n"
+
+
+def test_windows_appctl_update_invokes_installer_with_exact_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    prefix = tmp_path / "prefix with spaces"
+    library = tmp_path / "library with spaces"
+    release = tmp_path / "release with spaces"
+    current = prefix / "app" / "versions" / "v1.0.0"
+    scripts = current / "scripts"
+    scripts.mkdir(parents=True)
+    (prefix / "app" / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    prefix.mkdir(exist_ok=True)
+    (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
+    (scripts / "install.ps1").write_text(
+        "$args | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $env:IMAGE_PROMPT_LIBRARY_PREFIX 'update-args.json') -Encoding UTF8\n"
+        "$global:LASTEXITCODE = 0\n",
+        encoding="ascii",
+    )
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL", str(release))
+
+    result = run_appctl(prefix, "update", "--version", "v2.0.0")
+
+    assert result.returncode == 0, result.stderr
+    assert json.loads((prefix / "update-args.json").read_text(encoding="utf-8-sig")) == [
+        "-Version",
+        "v2.0.0",
+        "-Prefix",
+        str(prefix),
+        "-LibraryPath",
+        str(library),
+        "-ReleaseBaseUrl",
+        str(release),
+    ]
+
+
+def test_windows_appctl_rollback_command_preserves_stopped_state(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    app = prefix / "app"
+    (app / "versions" / "v1.0.0").mkdir(parents=True)
+    (app / "versions" / "v0.9.0").mkdir()
+    (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    (app / "previous-version").write_text("v0.9.0\n", encoding="ascii")
+
+    result = run_appctl(prefix, "rollback")
+
+    assert result.returncode == 0, result.stderr
+    assert (app / "current-version").read_text(encoding="ascii") == "v0.9.0\n"
+    assert (app / "previous-version").read_text(encoding="ascii") == "v1.0.0\n"
+    assert not (prefix / "run" / "server.json").exists()
+
+
+def test_windows_appctl_rollback_target_failure_restores_runtime_and_pointer_pair(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    app = prefix / "app"
+    (app / "versions" / "v1.0.0").mkdir(parents=True)
+    (app / "versions" / "v0.9.0").mkdir()
+    (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    (app / "previous-version").write_text("v0.9.0\n", encoding="ascii")
+    script = f"""
+$env:IMAGE_PROMPT_LIBRARY_PREFIX = {powershell_literal(prefix)}
+$context = Get-InstallContext
+$script:startLines = New-Object Collections.Generic.List[string]
+function Get-OwnedRuntimeState {{ [pscustomobject]@{{ running = $true; host = '127.0.0.7'; port = 4567 }} }}
+function Stop-App {{ param($Context) }}
+function Start-App {{
+    param($Context, [string[]]$Arguments)
+    $script:startLines.Add(($Arguments -join ' '))
+    if ((Get-Content -LiteralPath (Join-Path $Context.AppDir 'current-version') -Raw).Trim() -eq 'v0.9.0') {{ throw 'forced target start failure' }}
+}}
+$failure = ''
+try {{ Rollback-App -Context $context }} catch {{ $failure = $_.Exception.Message }}
+[pscustomobject]@{{
+    failure = $failure
+    current = (Get-Content -LiteralPath (Join-Path $context.AppDir 'current-version') -Raw).Trim()
+    previous = (Get-Content -LiteralPath (Join-Path $context.AppDir 'previous-version') -Raw).Trim()
+    starts = @($script:startLines)
+}} | ConvertTo-Json -Compress
+"""
+
+    result = run_appctl_function(script)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert "Rollback target failed health checks; restored v1.0.0." in payload["failure"]
+    assert payload["current"] == "v1.0.0"
+    assert payload["previous"] == "v0.9.0"
+    assert payload["starts"] == [
+        "--host 127.0.0.7 --port 4567 --no-browser",
+        "--host 127.0.0.7 --port 4567 --no-browser",
+    ]
+
+
+def test_windows_appctl_pointer_failure_restores_both_and_restarts_old_runtime(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    app = prefix / "app"
+    (app / "versions" / "v1.0.0").mkdir(parents=True)
+    (app / "versions" / "v0.9.0").mkdir()
+    (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    (app / "previous-version").write_text("v0.9.0\n", encoding="ascii")
+    script = f"""
+$env:IMAGE_PROMPT_LIBRARY_PREFIX = {powershell_literal(prefix)}
+$context = Get-InstallContext
+$script:realWriter = ${{function:Write-VersionPointerAtomic}}
+$script:writeCalls = 0
+$script:startLines = New-Object Collections.Generic.List[string]
+function Get-OwnedRuntimeState {{ [pscustomobject]@{{ running = $true; host = '127.0.0.8'; port = 4678 }} }}
+function Stop-App {{ param($Context) }}
+function Start-App {{ param($Context, [string[]]$Arguments); $script:startLines.Add(($Arguments -join ' ')) }}
+function Write-VersionPointerAtomic {{
+    param([string]$Path, [AllowEmptyString()][string]$Value)
+    $script:writeCalls++
+    if ($script:writeCalls -eq 2) {{ throw 'forced second pointer failure' }}
+    if ($script:writeCalls -eq 3) {{ throw 'forced current restoration failure' }}
+    if ($script:writeCalls -eq 4) {{ throw 'forced previous restoration failure' }}
+    & $script:realWriter -Path $Path -Value $Value
+}}
+$failure = ''
+try {{ Rollback-App -Context $context }} catch {{ $failure = $_.Exception.Message }}
+[pscustomobject]@{{
+    failure = $failure
+    write_calls = $script:writeCalls
+    previous = (Get-Content -LiteralPath (Join-Path $context.AppDir 'previous-version') -Raw).Trim()
+    starts = @($script:startLines)
+}} | ConvertTo-Json -Compress
+"""
+
+    result = run_appctl_function(script)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert "forced second pointer failure" in payload["failure"]
+    assert "forced current restoration failure" in payload["failure"]
+    assert "forced previous restoration failure" in payload["failure"]
+    assert payload["write_calls"] == 4
+    assert payload["previous"] == "v0.9.0"
+    assert payload["starts"] == ["--host 127.0.0.8 --port 4678 --no-browser"]
+
+
+def test_windows_installer_pointer_failure_restores_both_and_restarts_old_runtime(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_test_release(release_dir)
+    old_target = prefix / "app" / "versions" / "v1.0.0"
+    old_target.mkdir(parents=True)
+    write_running_test_controller(old_target, host="127.0.0.6", port=4789)
+    app = prefix / "app"
+    (app / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    (app / "previous-version").write_text("v0.9.0\n", encoding="ascii")
+    script = f"""
+$Version = 'v1.2.3'
+$Prefix = {powershell_literal(prefix)}
+$LibraryPath = {powershell_literal(library)}
+$ReleaseBaseUrl = {powershell_literal(release_dir)}
+$PythonExe = {powershell_literal(shutil.which('python.exe') or shutil.which('python') or 'python')}
+$PythonPrefixArgs = @()
+$NoStart = $true
+$SkipPath = $true
+$NoBrowser = $false
+$script:realWriter = ${{function:Write-VersionPointer}}
+$script:writeCalls = 0
+function Write-VersionPointer {{
+    param([string]$Path, [AllowEmptyString()][string]$Value, [string]$AppPrefix)
+    $script:writeCalls++
+    if ($script:writeCalls -eq 2) {{ throw 'forced second pointer failure' }}
+    if ($script:writeCalls -eq 3) {{ throw 'forced current restoration failure' }}
+    if ($script:writeCalls -eq 4) {{ throw 'forced previous restoration failure' }}
+    & $script:realWriter -Path $Path -Value $Value -AppPrefix $AppPrefix
+}}
+$failure = ''
+try {{ Invoke-Install }} catch {{ $failure = $_.Exception.Message }}
+[pscustomobject]@{{ failure = $failure; write_calls = $script:writeCalls }} | ConvertTo-Json -Compress
+"""
+
+    result = run_installer_function(script)
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert "forced second pointer failure" in payload["failure"]
+    assert "forced current restoration failure" in payload["failure"]
+    assert "forced previous restoration failure" in payload["failure"]
+    assert payload["write_calls"] == 4
+    assert (app / "current-version").read_text(encoding="ascii") == "v1.0.0\n"
+    assert (app / "previous-version").read_text(encoding="ascii") == "v0.9.0\n"
+    commands = (old_target / "scripts" / "commands.log").read_text(encoding="ascii").splitlines()
+    assert "start --host 127.0.0.6 --port 4789 --no-browser" in commands
