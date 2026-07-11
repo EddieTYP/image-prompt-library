@@ -38,22 +38,75 @@ function Assert-Contains {
     if (-not $Text.Contains($Expected)) { throw "ASSERTION FAILED: $Message Missing '$Expected'. Output: $Text" }
 }
 
+function Initialize-ImmediateProcessRunner {
+    if ("ImagePromptLibraryImmediateProcessRunner" -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.Diagnostics;
+using System.Text;
+using System.Threading;
+
+public sealed class ImagePromptLibraryImmediateProcessResult
+{
+    public int ExitCode { get; set; }
+    public string Stdout { get; set; }
+    public string Stderr { get; set; }
+}
+
+public static class ImagePromptLibraryImmediateProcessRunner
+{
+    public static ImagePromptLibraryImmediateProcessResult Run(string fileName, string arguments, string workingDirectory)
+    {
+        var stdout = new StringBuilder();
+        var stderr = new StringBuilder();
+        var stdoutLock = new object();
+        var stderrLock = new object();
+        using (var process = new Process())
+        {
+            process.StartInfo = new ProcessStartInfo
+            {
+                FileName = fileName,
+                Arguments = arguments,
+                WorkingDirectory = workingDirectory,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            };
+            process.OutputDataReceived += delegate(object sender, DataReceivedEventArgs eventArgs)
+            {
+                if (eventArgs.Data != null) lock (stdoutLock) stdout.AppendLine(eventArgs.Data);
+            };
+            process.ErrorDataReceived += delegate(object sender, DataReceivedEventArgs eventArgs)
+            {
+                if (eventArgs.Data != null) lock (stderrLock) stderr.AppendLine(eventArgs.Data);
+            };
+            if (!process.Start()) throw new InvalidOperationException("Could not start the child process.");
+            process.BeginOutputReadLine();
+            process.BeginErrorReadLine();
+            if (!process.WaitForExit(Int32.MaxValue)) throw new TimeoutException("The child process did not exit.");
+            var exitCode = process.ExitCode;
+            Thread.Sleep(50);
+            try { process.CancelOutputRead(); } catch (InvalidOperationException) { }
+            try { process.CancelErrorRead(); } catch (InvalidOperationException) { }
+            string output;
+            string error;
+            lock (stdoutLock) output = stdout.ToString().TrimEnd();
+            lock (stderrLock) error = stderr.ToString().TrimEnd();
+            return new ImagePromptLibraryImmediateProcessResult { ExitCode = exitCode, Stdout = output, Stderr = error };
+        }
+    }
+}
+'@
+}
+
 function Invoke-IsolatedPowerShell {
     param([string]$ScriptPath, [string[]]$Arguments = @())
-    function Read-CaptureText {
-        param([string]$Path)
-        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return "" }
-        $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
-        $reader = New-Object IO.StreamReader($stream, [Text.Encoding]::UTF8, $true)
-        try { return $reader.ReadToEnd().TrimEnd() }
-        finally { $reader.Dispose(); $stream.Dispose() }
-    }
+    Initialize-ImmediateProcessRunner
     $captureRoot = Join-Path $workRoot ("Capture-" + [Guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Path $captureRoot | Out-Null
     $wrapperPath = Join-Path $captureRoot "invoke.ps1"
     $argumentsPath = Join-Path $captureRoot "arguments.json"
-    $stdoutPath = Join-Path $captureRoot "stdout.txt"
-    $stderrPath = Join-Path $captureRoot "stderr.txt"
     $wrapper = @'
 [CmdletBinding()]
 param([string]$Target, [string]$ArgumentsPath)
@@ -66,25 +119,9 @@ exit $LASTEXITCODE
     [IO.File]::WriteAllText($argumentsPath, $argumentJson, (New-Object Text.UTF8Encoding($false)))
     $parts = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $wrapperPath, "-Target", $ScriptPath, "-ArgumentsPath", $argumentsPath)
     $quoted = @($parts | ForEach-Object { '"' + $_.Replace('"', '\"') + '"' })
-    $command = '""powershell.exe" ' + ($quoted -join " ") + ' 1>"' + $stdoutPath + '" 2>"' + $stderrPath + '""'
-    $startInfo = New-Object Diagnostics.ProcessStartInfo
-    $startInfo.FileName = $env:ComSpec
-    $startInfo.Arguments = "/d /s /c $command"
-    $startInfo.WorkingDirectory = $repoRoot
-    $startInfo.UseShellExecute = $false
-    $startInfo.CreateNoWindow = $true
-    $process = New-Object Diagnostics.Process
-    $process.StartInfo = $startInfo
-    try {
-        if (-not $process.Start()) { throw "Could not start isolated PowerShell." }
-        $process.WaitForExit()
-        $exitCode = $process.ExitCode
-        $stdout = Read-CaptureText -Path $stdoutPath
-        $stderr = Read-CaptureText -Path $stderrPath
-        $output = @($stdout, $stderr) | Where-Object { $_ }
-        $result = [pscustomobject]@{ ExitCode = $exitCode; Output = ($output -join [Environment]::NewLine) }
-    } finally { $process.Dispose() }
-    return $result
+    $result = [ImagePromptLibraryImmediateProcessRunner]::Run("powershell.exe", ($quoted -join " "), $repoRoot)
+    $output = @($result.Stdout, $result.Stderr) | Where-Object { $_ }
+    return [pscustomobject]@{ ExitCode = $result.ExitCode; Output = ($output -join [Environment]::NewLine) }
 }
 
 function Assert-Succeeded {
@@ -267,6 +304,126 @@ function Remove-ValidatedWorkRoot {
     if ([IO.Directory]::Exists($full)) { [IO.Directory]::Delete($full, $true) }
 }
 
+function Test-ExactString {
+    param([AllowNull()][string]$Actual, [AllowNull()][string]$Expected)
+    if ($null -eq $Expected) { return $null -eq $Actual }
+    return [string]::Equals($Actual, $Expected, [StringComparison]::Ordinal)
+}
+
+function Invoke-CleanupStep {
+    param([Collections.Generic.List[string]]$Errors, [string]$Name, [scriptblock]$Action)
+    try { & $Action | Out-Null }
+    catch { $Errors.Add("$Name`: $($_.Exception.Message)") }
+}
+
+function Invoke-SmokeCleanup {
+    [CmdletBinding()]
+    param([switch]$KeepWorkRoot)
+    $errors = New-Object Collections.Generic.List[string]
+    $ownedState = [pscustomobject]@{ Pid = $null; Running = $false }
+    $shim = Join-Path $prefix "bin\image-prompt-library.ps1"
+    $workRootExisted = Test-Path -LiteralPath $workRoot
+
+    Invoke-CleanupStep -Errors $errors -Name "owned app record inspection" -Action {
+        if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) { return }
+        $recordPath = Join-Path $prefix "run\server.json"
+        if (Test-Path -LiteralPath $recordPath -PathType Leaf) {
+            $record = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
+            $ownedState.Pid = [int]$record.pid
+        }
+    }
+    Invoke-CleanupStep -Errors $errors -Name "owned app state inspection" -Action {
+        if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) { return }
+        $owned = Invoke-App -Arguments @("internal-owned-runtime")
+        if ($owned.ExitCode -ne 0) { throw "internal-owned-runtime exited $($owned.ExitCode): $($owned.Output)" }
+        $runtime = $owned.Output | ConvertFrom-Json
+        $ownedState.Running = $runtime.running -eq $true
+        if ($ownedState.Running -and $null -eq $ownedState.Pid) { throw "owned runtime record is missing" }
+    }
+    Invoke-CleanupStep -Errors $errors -Name "owned app stop" -Action {
+        if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) { return }
+        $stopResult = Invoke-App -Arguments @("stop")
+        if ($stopResult.ExitCode -ne 0) { throw "stop exited $($stopResult.ExitCode): $($stopResult.Output)" }
+    }
+    Invoke-CleanupStep -Errors $errors -Name "owned app termination" -Action {
+        if ($null -eq $ownedState.Pid) { return }
+        $deadline = [DateTime]::UtcNow.AddSeconds(10)
+        do {
+            $remaining = Get-Process -Id $ownedState.Pid -ErrorAction SilentlyContinue
+            if (-not $remaining) { return }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $deadline)
+        throw "owned PID $($ownedState.Pid) remained alive"
+    }
+    Invoke-CleanupStep -Errors $errors -Name "owned app post-stop state" -Action {
+        if (-not (Test-Path -LiteralPath $shim -PathType Leaf)) { return }
+        $owned = Invoke-App -Arguments @("internal-owned-runtime")
+        if ($owned.ExitCode -ne 0) { throw "internal-owned-runtime exited $($owned.ExitCode): $($owned.Output)" }
+        $runtime = $owned.Output | ConvertFrom-Json
+        if ($runtime.running -eq $true) { throw "owned runtime still reports running" }
+    }
+    Invoke-CleanupStep -Errors $errors -Name "User PATH restoration" -Action {
+        [Environment]::SetEnvironmentVariable("Path", $originalUserPath, "User")
+        $actual = [Environment]::GetEnvironmentVariable("Path", "User")
+        if (-not (Test-ExactString -Actual $actual -Expected $originalUserPath)) { throw "exact User PATH was not restored" }
+    }
+    Invoke-CleanupStep -Errors $errors -Name "process PATH restoration" -Action {
+        $env:Path = $originalProcessPath
+        if (-not (Test-ExactString -Actual $env:Path -Expected $originalProcessPath)) { throw "exact process PATH was not restored" }
+    }
+    foreach ($name in @("SAMPLE_DATA_MANIFEST", "SAMPLE_DATA_IMAGE_ZIP", "SAMPLE_DATA_IMAGE_ZIP_SHA256", "SAMPLE_DATA_WORK_DIR", "SAMPLE_DATA_IMAGE_DIR", "SAMPLE_DATA_RELEASE_BASE_URL", "SAMPLE_DATA_RELEASE_ASSET_NAME")) {
+        Invoke-CleanupStep -Errors $errors -Name "$name cleanup" -Action {
+            [Environment]::SetEnvironmentVariable($name, $null, "Process")
+            if ($null -ne [Environment]::GetEnvironmentVariable($name, "Process")) { throw "$name was not cleared" }
+        }
+    }
+    Invoke-CleanupStep -Errors $errors -Name "release override restoration" -Action {
+        [Environment]::SetEnvironmentVariable("IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL", $originalReleaseBase, "Process")
+        $actual = [Environment]::GetEnvironmentVariable("IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL", "Process")
+        if (-not (Test-ExactString -Actual $actual -Expected $originalReleaseBase)) { throw "release override was not restored" }
+    }
+    Invoke-CleanupStep -Errors $errors -Name "sleeper termination" -Action {
+        if (-not $sleeper) { return }
+        $sleeper.Refresh()
+        if (-not $sleeper.HasExited) {
+            $sleeper.Kill()
+            if (-not $sleeper.WaitForExit(10000)) { throw "sleeper did not exit within 10 seconds" }
+        }
+    }
+    Invoke-CleanupStep -Errors $errors -Name "sleeper exit verification" -Action {
+        if (-not $sleeper) { return }
+        $sleeper.Refresh()
+        if (-not $sleeper.HasExited) { throw "sleeper remains alive" }
+    }
+    Invoke-CleanupStep -Errors $errors -Name "sleeper disposal" -Action {
+        if ($sleeper) { $sleeper.Dispose() }
+    }
+    Invoke-CleanupStep -Errors $errors -Name "work-root cleanup" -Action {
+        if (-not $KeepWorkRoot) { Remove-ValidatedWorkRoot }
+    }
+    Invoke-CleanupStep -Errors $errors -Name "work-root residue" -Action {
+        $exists = Test-Path -LiteralPath $workRoot
+        if ($KeepWorkRoot) {
+            if ($workRootExisted -and -not $exists) { throw "-KeepWorkRoot did not retain the work root" }
+        } elseif ($exists) {
+            throw "smoke work root remains"
+        }
+    }
+    Invoke-CleanupStep -Errors $errors -Name "owned process residue" -Action {
+        foreach ($process in @(Get-Process -ErrorAction SilentlyContinue)) {
+            try {
+                if ($process.Path -and $process.Path.StartsWith($workRoot + "\", [StringComparison]::OrdinalIgnoreCase)) {
+                    throw "PID $($process.Id) remains under the smoke work root"
+                }
+            } catch [Management.Automation.RuntimeException] { throw }
+            catch {}
+        }
+    }
+    return [string[]]$errors
+}
+
+$runFailure = $null
+$cleanupErrors = @()
 try {
     Assert-True (Test-Path -LiteralPath (Join-Path $repoRoot "frontend\dist\index.html") -PathType Leaf) "frontend/dist/index.html must exist before packaging."
     New-Item -ItemType Directory -Path $workRoot, $releaseBase, $sampleRoot | Out-Null
@@ -436,6 +593,14 @@ try {
     Assert-Equal $versionB (Get-Pointer "previous-version") "Rollback previous pointer mismatch."
     Assert-HealthVersion $versionA
 
+    $previousErrorLog = Join-Path $prefix "logs\app.previous.err.log"
+    $previousErrorLogExisted = Test-Path -LiteralPath $previousErrorLog -PathType Leaf
+    $previousErrorLogHash = $null
+    $previousErrorLogMtime = $null
+    if ($previousErrorLogExisted) {
+        $previousErrorLogHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $previousErrorLog).Hash
+        $previousErrorLogMtime = (Get-Item -LiteralPath $previousErrorLog).LastWriteTimeUtc.Ticks
+    }
     Publish-DerivedRelease -Python $python -SourceTag $versionB -TargetTag $versionBroken -Mode broken -Destination $releaseBase
     $brokenUpdate = Invoke-App -Arguments @("update", "--version", $versionBroken)
     Assert-Failed $brokenUpdate "Broken update"
@@ -443,7 +608,13 @@ try {
     Assert-Equal $versionA (Get-Pointer "current-version") "Recovery current pointer mismatch."
     Assert-Equal $versionB (Get-Pointer "previous-version") "Recovery previous pointer mismatch."
     Assert-HealthVersion $versionA
-    Assert-True (Test-Path -LiteralPath (Join-Path $prefix "logs\app.previous.err.log") -PathType Leaf) "Failed-launch previous error log was not retained."
+    Assert-True (Test-Path -LiteralPath $previousErrorLog -PathType Leaf) "Failed-launch previous error log was not retained."
+    $freshErrorLog = Get-Item -LiteralPath $previousErrorLog
+    Assert-True ($freshErrorLog.Length -gt 0) "Failed-launch previous error log was empty."
+    if ($previousErrorLogExisted) {
+        $freshErrorLogHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $previousErrorLog).Hash
+        Assert-True ($freshErrorLog.LastWriteTimeUtc.Ticks -gt $previousErrorLogMtime -and $freshErrorLogHash -ne $previousErrorLogHash) "Failed-launch previous error log was not fresh."
+    }
 
     $sentinel = Join-Path $library "private-sentinel.txt"
     [IO.File]::WriteAllText($sentinel, "preserve", [Text.Encoding]::ASCII)
@@ -464,29 +635,17 @@ try {
     Assert-True (-not (Test-Path -LiteralPath $library)) "Delete-library uninstall left the private library."
     Assert-True (-not (Test-PathMembership -PathValue ([Environment]::GetEnvironmentVariable("Path", "User")) -ExpectedPath (Join-Path $prefix "bin"))) "Delete-library uninstall left User PATH residue."
     $passed = $true
+} catch {
+    $runFailure = $_
 } finally {
-    if (Test-Path -LiteralPath (Join-Path $prefix "bin\image-prompt-library.ps1") -PathType Leaf) {
-        $owned = Invoke-App -Arguments @("internal-owned-runtime")
-        if ($owned.ExitCode -eq 0) {
-            try {
-                $runtime = $owned.Output | ConvertFrom-Json
-                if ($runtime.running -eq $true) { Invoke-App -Arguments @("stop") | Out-Null }
-            } catch {}
-        }
-    }
-    [Environment]::SetEnvironmentVariable("Path", $originalUserPath, "User")
-    $env:Path = $originalProcessPath
-    foreach ($name in @("SAMPLE_DATA_MANIFEST", "SAMPLE_DATA_IMAGE_ZIP", "SAMPLE_DATA_IMAGE_ZIP_SHA256", "SAMPLE_DATA_WORK_DIR", "SAMPLE_DATA_IMAGE_DIR", "SAMPLE_DATA_RELEASE_BASE_URL", "SAMPLE_DATA_RELEASE_ASSET_NAME")) {
-        [Environment]::SetEnvironmentVariable($name, $null, "Process")
-    }
-    [Environment]::SetEnvironmentVariable("IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL", $originalReleaseBase, "Process")
-    if ($sleeper) {
-        try {
-            $sleeper.Refresh()
-            if (-not $sleeper.HasExited) { $sleeper.Kill(); $sleeper.WaitForExit(10000) | Out-Null }
-        } finally { $sleeper.Dispose() }
-    }
-    if (-not $KeepWorkRoot) { Remove-ValidatedWorkRoot }
+    try { $cleanupErrors = @(Invoke-SmokeCleanup -KeepWorkRoot:$KeepWorkRoot) }
+    catch { $cleanupErrors = @("cleanup coordinator: $($_.Exception.Message)") }
 }
 
-if ($passed) { Write-Output "Native Windows installer smoke passed." }
+if ($runFailure) {
+    if ($cleanupErrors.Count) { throw "$($runFailure.Exception.Message) Cleanup errors: $($cleanupErrors -join '; ')" }
+    throw $runFailure
+}
+if ($cleanupErrors.Count) { throw "Smoke cleanup failed: $($cleanupErrors -join '; ')" }
+if (-not $passed) { throw "Smoke did not complete." }
+Write-Output "Native Windows installer smoke passed."

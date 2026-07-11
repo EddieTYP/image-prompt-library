@@ -38,6 +38,11 @@ def test_native_windows_smoke_and_ci_contract():
         "Automatic recovery restored",
         "process_start_time_utc_ticks",
         "Private library preserved at",
+        "$previousErrorLogExisted",
+        "Get-FileHash -Algorithm SHA256 -LiteralPath $previousErrorLog",
+        "LastWriteTimeUtc.Ticks",
+        "Failed-launch previous error log was empty.",
+        "Failed-launch previous error log was not fresh.",
     ):
         assert required in smoke
 
@@ -86,7 +91,7 @@ def test_native_windows_smoke_capture_does_not_wait_for_detached_descendants(
     smoke = powershell_literal(ROOT / "tests" / "windows-installer-smoke.ps1")
     script = f"""
 $source = [IO.File]::ReadAllText({smoke})
-$functionStart = $source.IndexOf('function Invoke-IsolatedPowerShell')
+$functionStart = $source.IndexOf('function Initialize-ImmediateProcessRunner')
 $functionEnd = $source.IndexOf('function Assert-Succeeded')
 if ($functionStart -lt 0 -or $functionEnd -lt 0) {{ throw 'Smoke process helper was not found.' }}
 $repoRoot = {powershell_literal(ROOT)}
@@ -112,7 +117,9 @@ if ($sleeper) {{ Stop-Process -Id $sleeperId -Force; Wait-Process -Id $sleeperId
 
 
 def test_native_windows_smoke_preserves_switch_like_argument_arrays(tmp_path: Path):
-    child = tmp_path / "echo-arguments.ps1"
+    percent_dir = tmp_path / "%TEMP% literal"
+    percent_dir.mkdir()
+    child = percent_dir / "echo-arguments.ps1"
     child.write_text(
         "param([Parameter(ValueFromRemainingArguments=$true)][string[]]$CommandArgs)\n"
         "ConvertTo-Json -InputObject ([object[]]@($CommandArgs)) -Compress\n",
@@ -121,11 +128,11 @@ def test_native_windows_smoke_preserves_switch_like_argument_arrays(tmp_path: Pa
     smoke = powershell_literal(ROOT / "tests" / "windows-installer-smoke.ps1")
     script = f"""
 $source = [IO.File]::ReadAllText({smoke})
-$functionStart = $source.IndexOf('function Invoke-IsolatedPowerShell')
+$functionStart = $source.IndexOf('function Initialize-ImmediateProcessRunner')
 $functionEnd = $source.IndexOf('function Assert-Succeeded')
 if ($functionStart -lt 0 -or $functionEnd -lt 0) {{ throw 'Smoke process helper was not found.' }}
 $repoRoot = {powershell_literal(ROOT)}
-$workRoot = {powershell_literal(tmp_path / 'capture-root')}
+$workRoot = {powershell_literal(percent_dir / 'capture-root')}
 New-Item -ItemType Directory -Path $workRoot | Out-Null
 Invoke-Expression $source.Substring($functionStart, $functionEnd - $functionStart)
 $result = Invoke-IsolatedPowerShell -ScriptPath {powershell_literal(child)} -Arguments @('update', '--version', 'v2.0.0', '-ReleaseBaseUrl', 'release with spaces')
@@ -144,6 +151,65 @@ $result | ConvertTo-Json -Compress
         "-ReleaseBaseUrl",
         "release with spaces",
     ]
+
+
+def test_native_windows_smoke_cleanup_is_independent_and_keep_root_is_explicit(
+    tmp_path: Path,
+):
+    smoke = powershell_literal(ROOT / "tests" / "windows-installer-smoke.ps1")
+    temp_root = powershell_literal(tmp_path)
+    script = f"""
+$source = [IO.File]::ReadAllText({smoke})
+$functionStart = $source.IndexOf('function Assert-True')
+$entryPoint = $source.IndexOf('$runFailure = $null')
+if ($functionStart -lt 0 -or $entryPoint -lt 0) {{ throw 'Smoke cleanup functions were not found.' }}
+Invoke-Expression $source.Substring($functionStart, $entryPoint - $functionStart)
+$tempRoot = {temp_root}
+$workName = 'image-prompt-library-smoke-' + [Guid]::NewGuid().ToString('N')
+$workRoot = Join-Path $tempRoot $workName
+$prefix = Join-Path $workRoot 'App Prefix'
+New-Item -ItemType Directory -Path (Join-Path $prefix 'bin') -Force | Out-Null
+New-Item -ItemType File -Path (Join-Path $prefix 'bin\\image-prompt-library.ps1') | Out-Null
+$originalUserPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+$originalProcessPath = $env:Path
+$originalReleaseBase = [Environment]::GetEnvironmentVariable('IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL', 'Process')
+$sleeper = $null
+$script:stopCalls = 0
+function Invoke-App {{
+    param([string[]]$Arguments)
+    if ($Arguments[0] -eq 'stop') {{
+        $script:stopCalls++
+        return [pscustomobject]@{{ ExitCode = 0; Output = 'stopped' }}
+    }}
+    throw 'owned cleanup probe'
+}}
+$errors = @(Invoke-SmokeCleanup)
+$first = [pscustomobject]@{{
+    Errors = $errors
+    StopCalls = $script:stopCalls
+    RootExists = Test-Path -LiteralPath $workRoot
+    UserPathRestored = [Environment]::GetEnvironmentVariable('Path', 'User') -ceq $originalUserPath
+    ProcessPathRestored = $env:Path -ceq $originalProcessPath
+}}
+$workName = 'image-prompt-library-smoke-' + [Guid]::NewGuid().ToString('N')
+$workRoot = Join-Path $tempRoot $workName
+$prefix = Join-Path $workRoot 'App Prefix'
+New-Item -ItemType Directory -Path $workRoot | Out-Null
+$keepErrors = @(Invoke-SmokeCleanup -KeepWorkRoot)
+$second = [pscustomobject]@{{ Errors = $keepErrors; RootExists = Test-Path -LiteralPath $workRoot }}
+[pscustomobject]@{{ First = $first; Keep = $second }} | ConvertTo-Json -Depth 5 -Compress
+"""
+
+    result = run_powershell(script)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert any("owned app" in error.lower() for error in payload["First"]["Errors"])
+    assert payload["First"]["StopCalls"] == 1
+    assert payload["First"]["RootExists"] is False
+    assert payload["First"]["UserPathRestored"] is True
+    assert payload["First"]["ProcessPathRestored"] is True
+    assert payload["Keep"] == {"Errors": [], "RootExists": True}
 
 
 def powershell_executable() -> str:
@@ -363,6 +429,10 @@ Invoke-PythonChecked -Exe {python} -Arguments @('-c', 'import json,sys; print(js
 
 def test_real_release_package_extracts_with_hardened_windows_installer(tmp_path: Path):
     version = "v9.9.11-test"
+    repo_artifacts = [
+        ROOT / "dist-release" / f"image-prompt-library-{version}{suffix}"
+        for suffix in (".tar.gz", ".tar.gz.sha256", ".manifest.json")
+    ]
     git_bash = next(
         (
             candidate
@@ -376,7 +446,35 @@ def test_real_release_package_extracts_with_hardened_windows_installer(tmp_path:
     )
     if git_bash is None:
         pytest.skip("Git Bash is required for the real release package regression")
-    bash_root = f"/{ROOT.drive[0].lower()}{ROOT.as_posix()[2:]}"
+    assert not any(path.exists() for path in repo_artifacts)
+    source_root = tmp_path / "package-source"
+    for relative_path in (
+        "backend",
+        "frontend/dist",
+        "sample-data/manifests",
+        "scripts/appctl.sh",
+        "scripts/install.sh",
+        "scripts/install-sample-data.sh",
+        "scripts/setup-runtime.sh",
+        "scripts/appctl.ps1",
+        "scripts/install.ps1",
+        "scripts/install-sample-data.ps1",
+        "scripts/setup-runtime.ps1",
+        "scripts/package-release.sh",
+        "pyproject.toml",
+        "README.md",
+        "LICENSE",
+        "NOTICE",
+        "SECURITY.md",
+    ):
+        source = ROOT / relative_path
+        target = source_root / relative_path
+        if source.is_dir():
+            shutil.copytree(source, target)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
+    bash_root = f"/{source_root.drive[0].lower()}{source_root.as_posix()[2:]}"
     python_path = Path(sys.executable)
     bash_python = f"/{python_path.drive[0].lower()}{python_path.as_posix()[2:]}"
     packaged = subprocess.run(
@@ -385,7 +483,7 @@ def test_real_release_package_extracts_with_hardened_windows_installer(tmp_path:
             "-lc",
             f"python3() {{ '{bash_python}' \"$@\"; }}; export -f python3; cd '{bash_root}' && scripts/package-release.sh '{version}' --skip-build",
         ],
-        cwd=ROOT,
+        cwd=source_root,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -395,9 +493,13 @@ def test_real_release_package_extracts_with_hardened_windows_installer(tmp_path:
     )
     assert packaged.returncode == 0, packaged.stdout + packaged.stderr
 
-    artifact = ROOT / "dist-release" / f"image-prompt-library-{version}.tar.gz"
+    artifact = source_root / "dist-release" / f"image-prompt-library-{version}.tar.gz"
     manifest = json.loads(
-        (ROOT / "dist-release" / f"image-prompt-library-{version}.manifest.json").read_text()
+        (
+            source_root
+            / "dist-release"
+            / f"image-prompt-library-{version}.manifest.json"
+        ).read_text()
     )
     with tarfile.open(artifact, "r:gz") as archive:
         names = [member.name for member in archive.getmembers()]
@@ -417,6 +519,7 @@ Expand-SafeTar -ArtifactPath {powershell_literal(artifact)} -Destination {powers
     assert (destination / "VERSION").read_text(encoding="ascii").strip() == version
     assert (destination / "sample-data" / "manifests").is_dir()
     assert (destination / "LICENSE").is_file()
+    assert not any(path.exists() for path in repo_artifacts)
 
 
 def test_windows_release_sources_are_ascii():
@@ -2336,7 +2439,7 @@ def test_windows_appctl_update_invokes_installer_with_exact_context(
 def test_windows_installer_controller_start_does_not_wait_for_detached_app(
     tmp_path: Path,
 ):
-    version_root = tmp_path / "version"
+    version_root = tmp_path / "version %TEMP% literal"
     scripts = version_root / "scripts"
     scripts.mkdir(parents=True)
     pid_path = tmp_path / "sleeper.pid"
