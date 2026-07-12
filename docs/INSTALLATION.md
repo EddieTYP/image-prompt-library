@@ -4,7 +4,7 @@ This guide keeps operational details out of the main README.
 
 ## Native Windows PowerShell (v0.8.0+)
 
-Native Windows support begins with v0.8.0. The current stable release is v0.7.10 and does not provide this native PowerShell quick-start path.
+Native Windows support begins with v0.8.0, the current stable release.
 
 ### Prerequisites
 

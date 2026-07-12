@@ -4070,7 +4070,7 @@ def test_public_docs_explain_native_windows_without_installing_python():
     assert "Add stronger token refresh locking" not in roadmap
     assert "Generic URL plus X/Threads import" in roadmap
     assert "Native Windows Quick Start" in release
-    assert "v0.7.10" in read("README.md")
+    assert "v0.8.0" in read("README.md")
 
 
 def test_public_docs_do_not_claim_legacy_release_is_windows_native():

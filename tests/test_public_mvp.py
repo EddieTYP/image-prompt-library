@@ -72,7 +72,7 @@ def test_public_docs_explain_first_run_status_and_doctor():
     troubleshooting = (ROOT / "docs" / "TROUBLESHOOTING.md").read_text()
     roadmap = (ROOT / "ROADMAP.md").read_text()
 
-    assert "v0.7.10" in roadmap
+    assert "v0.8.0" in roadmap
     for doc in (readme, installation, troubleshooting):
         assert "image-prompt-library status" in doc
         assert "image-prompt-library doctor" in doc
@@ -95,7 +95,7 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Cards view" in readme
     assert "copy public sample prompts" in readme
     assert "Generate locally" in readme
-    assert "v0.7.10" in readme
+    assert "v0.8.0" in readme
     assert "`{{variables}}`" in readme
     assert "structured search filters" in readme
     assert "batch reference management" in readme
@@ -115,7 +115,7 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "ChatGPT / Codex OAuth" in readme
     assert "generate images" in readme.lower()
     assert "Current stable release:" in readme
-    assert "v0.7.10" in readme
+    assert "v0.8.0" in readme
     assert "Online sandbox" not in readme
     assert "只读 sample library" not in readme
     assert "唯讀 sample library" not in readme

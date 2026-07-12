@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.10)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.8.0)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 <p align="center">
@@ -33,13 +33,13 @@ Use the online demo as a visual prompt catalogue: search for ideas, inspect prom
 
 If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate new images through ChatGPT / Codex OAuth while keeping your SQLite database and image files on your own computer.
 
-Current stable release: [`v0.7.10`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.10). It includes structured search and sorting, batch reference management, cleanup tools, versioned install/update/rollback, a calmer first-run experience, and hardened OAuth session recovery for optional local generation.
+Current stable release: [`v0.8.0`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.8.0). It includes native Windows installation, structured search and sorting, batch reference management, cleanup tools, versioned install/update/rollback, a calmer first-run experience, and hardened OAuth session recovery for optional local generation.
 
 ## Quick start
 
 ### Windows (v0.8.0+)
 
-Native Windows support begins with v0.8.0. The current stable release remains v0.7.10, so do not use this native path with v0.7.10. Windows 10/11, PowerShell 5.1+, and **Python 3.10+** are required; the installer does not install Python.
+Native Windows support begins with the current stable release, v0.8.0. Windows 10/11, PowerShell 5.1+, and **Python 3.10+** are required; the installer does not install Python.
 
 ```powershell
 irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.ps1 | iex
