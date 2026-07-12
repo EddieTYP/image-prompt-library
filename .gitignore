@@ -11,6 +11,12 @@ backups/
 .local-work/
 .worktrees/
 .superpowers/
+docs/superpowers/
+.agents/
+.codex/
+.codebase-memory/
+.codex-qa-*
+.qa-*
 node_modules/
 .vite/
 .venv/
