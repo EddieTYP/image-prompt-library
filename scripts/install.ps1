@@ -499,7 +499,8 @@ function Resolve-Release {
         }
         return $release
     }
-    foreach ($candidate in @(Get-ApiJson -Uri "$apiBase`?per_page=20")) {
+    $candidates = Get-ApiJson -Uri "$apiBase`?per_page=20"
+    foreach ($candidate in $candidates) {
         if ($candidate.draft -or $candidate.prerelease) { continue }
         try {
             $release = New-ReleaseSpec -Tag ([string]$candidate.tag_name) -BaseUrl ([string]$candidate.html_url) -Assets @($candidate.assets)

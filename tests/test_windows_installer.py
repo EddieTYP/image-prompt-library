@@ -1825,6 +1825,50 @@ def test_windows_installer_requires_python_and_a_capable_verified_release():
     assert '"User"' in script
 
 
+def test_windows_installer_enumerates_stable_api_releases_in_powershell_51():
+    def release(tag: str) -> dict[str, object]:
+        names = (
+            f"image-prompt-library-{tag}.tar.gz",
+            f"image-prompt-library-{tag}.tar.gz.sha256",
+            f"image-prompt-library-{tag}.manifest.json",
+        )
+        return {
+            "tag_name": tag,
+            "draft": False,
+            "prerelease": False,
+            "html_url": f"https://github.com/EddieTYP/image-prompt-library/releases/tag/{tag}",
+            "assets": [
+                {
+                    "name": name,
+                    "browser_download_url": (
+                        "https://github.com/EddieTYP/image-prompt-library/"
+                        f"releases/download/{tag}/{name}"
+                    ),
+                }
+                for name in names
+            ],
+        }
+
+    releases = powershell_literal(json.dumps([release("v0.7.10"), release("v0.8.0")]))
+    result = run_installer_function(
+        f"""
+$ReleaseBaseUrl = ''
+$Version = 'latest'
+$Repo = 'EddieTYP/image-prompt-library'
+$Capability = 'windows-powershell-v1'
+function Get-ApiJson {{ {releases} | ConvertFrom-Json }}
+function Test-ApiReleaseCompatibility {{
+    param([object]$Release)
+    return $Release.Version -eq 'v0.8.0'
+}}
+(Resolve-Release).Version
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "v0.8.0"
+
+
 def test_windows_installer_rejects_overlapping_app_and_library_paths():
     script = read("scripts/install.ps1")
     assert "Assert-DisjointPaths" in script
