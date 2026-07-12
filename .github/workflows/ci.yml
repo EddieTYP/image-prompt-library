@@ -38,3 +38,30 @@ jobs:
         run: npm run build
       - name: Build read-only demo
         run: npm run build:demo
+
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install Python dependencies
+        run: python -m pip install -e '.[dev]'
+      - name: Install frontend dependencies
+        run: npm install
+      - name: Build local app
+        run: npm run build
+      - name: Run Windows installer contracts
+        run: python -m pytest -p no:cacheprovider -q tests/test_windows_installer.py
+      - name: Run native Windows installer smoke
+        shell: powershell
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/windows-installer-smoke.ps1

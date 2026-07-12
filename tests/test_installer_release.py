@@ -267,6 +267,7 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     assert manifest["name"] == "image-prompt-library"
     assert manifest["version"] == "v9.9.9-test"
     assert manifest["artifact"] == tarball_path.name
+    assert manifest["capabilities"] == ["windows-powershell-v1"]
     assert manifest["sha256"] in checksum_path.read_text()
     assert manifest["node_required_for_runtime"] is False
     assert manifest["built_frontend"] is True
@@ -277,7 +278,7 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     assert "backend/" in listing
     assert "frontend/dist/index.html" in listing
     with tarfile.open(tarball_path, "r:gz") as archive:
-        index_html = archive.extractfile("./frontend/dist/index.html").read().decode("utf-8")
+        index_html = archive.extractfile("frontend/dist/index.html").read().decode("utf-8")
     assert '/image-prompt-library/assets/' not in index_html
     assert '/assets/' in index_html
     assert "frontend/dist/assets/" in listing
@@ -285,6 +286,25 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     assert "scripts/install.sh" in listing
     assert "scripts/setup-runtime.sh" in listing
     assert "scripts/install-sample-data.sh" in listing
+    for windows_script in (
+        "scripts/appctl.ps1",
+        "scripts/install.ps1",
+        "scripts/install-sample-data.ps1",
+        "scripts/setup-runtime.ps1",
+    ):
+        assert windows_script in listing
+    with tarfile.open(tarball_path, "r:gz") as archive:
+        script_members = {
+            name: member
+            for member in archive.getmembers()
+            if member.isfile()
+            for name in (member.name[2:] if member.name.startswith("./") else member.name,)
+            if name.startswith("scripts/")
+        }
+    assert all(
+        member.mode & 0o777 == (0o755 if name.endswith(".sh") else 0o644)
+        for name, member in script_members.items()
+    )
     for dev_script in (
         "scripts/dev.sh",
         "scripts/setup.sh",

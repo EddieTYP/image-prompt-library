@@ -56,6 +56,10 @@ for path in \
   scripts/install.sh \
   scripts/install-sample-data.sh \
   scripts/setup-runtime.sh \
+  scripts/appctl.ps1 \
+  scripts/install.ps1 \
+  scripts/install-sample-data.ps1 \
+  scripts/setup-runtime.ps1 \
   sample-data/manifests \
   pyproject.toml \
   README.md \
@@ -102,7 +106,17 @@ rm -f \
 rm -f "$RELEASE_DIR/$ARTIFACT" "$RELEASE_DIR/$CHECKSUM_FILE" "$RELEASE_DIR/$MANIFEST"
 (
   cd "$STAGING"
-  tar -czf "../../$ARTIFACT" .
+  tar -czf "../../$ARTIFACT" \
+    VERSION \
+    backend \
+    frontend \
+    LICENSE \
+    NOTICE \
+    pyproject.toml \
+    README.md \
+    sample-data \
+    scripts \
+    SECURITY.md
 )
 
 if command -v sha256sum >/dev/null 2>&1; then
@@ -121,6 +135,7 @@ manifest = {
     "name": "image-prompt-library",
     "version": version,
     "schema_version": 1,
+    "capabilities": ["windows-powershell-v1"],
     "artifact": artifact,
     "sha256": sha256,
     "python": ">=3.10",
