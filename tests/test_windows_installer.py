@@ -3113,6 +3113,7 @@ def test_windows_installer_rejects_extended_path_canonical_alias_overlap(tmp_pat
 
 @pytest.mark.parametrize("target", ["prefix", "library"])
 @pytest.mark.parametrize("unsafe", ["drive-root", "profile-root", "profile-ancestor"])
+@pytest.mark.skipif(os.name != "nt", reason="requires Windows profile paths")
 def test_windows_installer_rejects_unsafe_targets_symmetrically(
     tmp_path: Path, target: str, unsafe: str
 ):
