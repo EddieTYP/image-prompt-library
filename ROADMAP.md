@@ -2,13 +2,13 @@
 
 ## Current stable direction
 
-Image Prompt Library is a local-first prompt and image manager. The current stable release is `v0.7.10`; its public GitHub Pages demo is a static, read-only catalogue of attributed prompt/image references. Private-library management, local data, and optional ChatGPT / Codex OAuth generation remain local-install features. The application code is AGPL-3.0-or-later, with commercial licensing available for organizations that need different terms.
+Image Prompt Library is a local-first prompt and image manager. The current stable release is `v0.8.0`; its public GitHub Pages demo is a static, read-only catalogue of attributed prompt/image references. Private-library management, local data, and optional ChatGPT / Codex OAuth generation remain local-install features. The application code is AGPL-3.0-or-later, with commercial licensing available for organizations that need different terms.
 
 The project does not provide hosted accounts, checkout, payments, SaaS sync, or a hosted private library. The local-first model keeps the SQLite database, images, prompts, and provider state on the user's machine.
 
-## v0.8.0 release focus
+## v0.8.0 release
 
-Native Windows Quick Start is the unreleased v0.8.0 focus. It prepares a PowerShell installer for Windows 10/11 with Python 3.10+, versioned app state under the user profile, a separate private library, background lifecycle commands, diagnostics, verified release assets, transactional update recovery, and rollback. v0.7.10 remains the current stable release until v0.8.0 is released.
+Native Windows Quick Start shipped in v0.8.0. It provides a PowerShell installer for Windows 10/11 with Python 3.10+, versioned app state under the user profile, a separate private library, background lifecycle commands, diagnostics, verified release assets, transactional update recovery, and rollback.
 
 Release follow-up remains necessary for service and update resilience beyond the Windows background controller, including continued release-download and recovery QA.
 

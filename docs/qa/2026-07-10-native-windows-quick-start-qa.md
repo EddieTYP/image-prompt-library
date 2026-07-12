@@ -124,6 +124,11 @@ superseded them for installer and command-path evidence.
 - Handled update failures recover transactionally, but there is no durable
   write-ahead crash journal for OS or power loss; `doctor` and manual retry or
   rollback may still be required after an interruption.
-- Post-release real-asset QA remains pending Task 12.
-- GitHub Ubuntu plus Windows CI remain pending.
-- No release, tag, or merge is included in this milestone.
+
+## Published Release Verification
+
+- GitHub release `v0.8.0` was published from commit `527d148`, and its release-assets workflow completed successfully with the archive, SHA256 file, and manifest.
+- The published manifest advertised `windows-powershell-v1`; its artifact SHA matched the uploaded asset digest.
+- An explicit-version install from raw `main` selected `v0.8.0`; status, doctor, health, homepage, stop/start, desktop rendering, and 390px mobile rendering passed before uninstall cleanup removed the isolated app and library.
+- A PowerShell 5.1 stable-discovery regression found during promotion was fixed in PR #11. CI run #121 passed both Ubuntu and native Windows jobs, including the Windows installer contracts and smoke test.
+- A second fresh raw-main install without `-Version` selected stable `v0.8.0`, returned healthy `v0.8.0`, and uninstalled with no app prefix, private library, or listener left behind.
