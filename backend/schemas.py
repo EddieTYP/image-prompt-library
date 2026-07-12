@@ -152,6 +152,9 @@ class ImportDraftCreate(BaseModel):
     warnings: List[str] = Field(default_factory=list)
     confidence: Optional[float] = None
 
+class PublicUrlPreviewRequest(BaseModel):
+    url: str
+
 class ImportDraftRecord(ImportDraftCreate):
     id: str
     status: str

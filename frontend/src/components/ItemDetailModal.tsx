@@ -7,11 +7,12 @@ import { copyTextToClipboard } from '../utils/clipboard';
 import { localizedDemoTitle } from '../utils/demoTitles';
 import { downloadFileName, imageDisplayPath, imageHeroPath, imageOriginalPath, selectPrimaryImage } from '../utils/images';
 import type { Translator } from '../utils/i18n';
-import { PROMPT_LANGUAGE_LABELS, resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage, type PromptLanguage } from '../utils/prompts';
+import { PROMPT_LANGUAGE_LABELS, resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage } from '../utils/prompts';
 
 const LANG_LABELS: Record<string, string> = {
   ...PROMPT_LANGUAGE_LABELS,
   en: 'ENG',
+  original: 'ORIGIN',
 };
 const promptDisplayOrder = ['en', 'zh_hant', 'zh_hans'];
 const FOCUSABLE_SELECTOR = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -37,7 +38,7 @@ function isReferenceImage(image?: ImageRecord) {
 function resolvePromptRecord<T extends { language: string; text: string }>(
   prompts: T[],
   selectedLanguage: string,
-  preferredLanguage: PromptLanguage,
+  preferredLanguage: string,
 ): T | undefined {
   const usable = prompts.filter(prompt => prompt.text.trim().length > 0);
   return usable.find(prompt => prompt.language === selectedLanguage)
@@ -47,11 +48,10 @@ function resolvePromptRecord<T extends { language: string; text: string }>(
 }
 
 
-function resolveInitialPromptLanguage(prompts: PromptRecord[], preferredLanguage: PromptCopyLanguage): PromptLanguage {
+function resolveInitialPromptLanguage(prompts: PromptRecord[], preferredLanguage: PromptCopyLanguage): string {
   if (preferredLanguage === 'origin') {
     const originalLanguage = resolveOriginalPrompt(prompts)?.language;
-    if (originalLanguage === 'en' || originalLanguage === 'zh_hant' || originalLanguage === 'zh_hans') return originalLanguage;
-    return 'en';
+    return originalLanguage || 'en';
   }
   return preferredLanguage;
 }
@@ -279,12 +279,19 @@ export default function ItemDetailModal({
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  const displayPromptLanguages = useMemo(() => {
+    const extraLanguages = (item?.prompts || [])
+      .map(prompt => prompt.language)
+      .filter(language => !promptDisplayOrder.includes(language));
+    return [...promptDisplayOrder, ...Array.from(new Set(extraLanguages))];
+  }, [item]);
+
   const availablePromptRecords = useMemo(() => {
     if (!item) return [];
-    return promptDisplayOrder
+    return displayPromptLanguages
       .map(promptLanguage => item.prompts.find(prompt => prompt.language === promptLanguage && prompt.text.trim().length > 0))
       .filter((prompt): prompt is NonNullable<typeof prompt> => Boolean(prompt));
-  }, [item]);
+  }, [displayPromptLanguages, item]);
 
   useEffect(() => {
     if (!item || !id) return;
@@ -344,13 +351,19 @@ export default function ItemDetailModal({
   };
   const commitPrompt = (language: string, text: string) => {
     if (!item) return;
+    const existingPrompts = new Map(item.prompts.map(existing => [existing.language, existing]));
     const merged = new Map(item.prompts.map(existing => [existing.language, existing.text]));
     if (text.trim()) merged.set(language, text.trim());
     else merged.delete(language);
-    const orderedPromptTexts = promptDisplayOrder.map(promptLanguage => ({ promptLanguage, text: merged.get(promptLanguage)?.trim() || '' }));
+    const orderedPromptTexts = displayPromptLanguages.map(promptLanguage => ({ promptLanguage, text: merged.get(promptLanguage)?.trim() || '' }));
     const primaryLanguage = orderedPromptTexts.find(nextPrompt => nextPrompt.text)?.promptLanguage;
     const prompts = orderedPromptTexts
-      .map(nextPrompt => ({ language: nextPrompt.promptLanguage, text: nextPrompt.text, is_primary: nextPrompt.promptLanguage === primaryLanguage }))
+      .map(nextPrompt => ({
+        language: nextPrompt.promptLanguage,
+        text: nextPrompt.text,
+        is_primary: nextPrompt.promptLanguage === primaryLanguage,
+        is_original: existingPrompts.get(nextPrompt.promptLanguage)?.is_original || false,
+      }))
       .filter(nextPrompt => nextPrompt.text);
     commitInlineUpdate({ prompts });
   };
@@ -547,7 +560,7 @@ export default function ItemDetailModal({
                       <section className="prompt-block prompt-panel active">
                         <header className="prompt-block-header">
                           <div className="prompt-language-tabs tabs" role="tablist" aria-label={t('promptLanguage')}>
-                            {promptDisplayOrder.map(promptLanguage => {
+                            {displayPromptLanguages.map(promptLanguage => {
                               const tabPrompt = item.prompts.find(prompt => prompt.language === promptLanguage);
                               const isOriginalPrompt = Boolean(tabPrompt?.is_original || originalPrompt?.language === promptLanguage);
                               return (

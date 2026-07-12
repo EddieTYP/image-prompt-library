@@ -1402,7 +1402,7 @@ def test_detail_modal_supports_inline_editing_contract():
     assert "setLang(nextPrompt.language)" in detail
     assert "const prompt = item?.prompts.find(promptRecord => promptRecord.language === lang)" in detail
     assert "const resolvedPrompt = resolvePromptRecord(availablePromptRecords, lang, fallbackLanguage)" in detail
-    assert "promptDisplayOrder.map(promptLanguage" in detail
+    assert "displayPromptLanguages.map(promptLanguage" in detail
     assert "const tabPrompt = item.prompts.find(prompt => prompt.language === promptLanguage)" in detail
     assert "onClick={() => { setLang(promptLanguage); cancelPromptEdit(); }}" in detail
     assert "disabled={!tabPrompt?.text.trim()}" not in detail

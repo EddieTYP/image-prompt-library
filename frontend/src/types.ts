@@ -34,3 +34,7 @@ export interface ItemBatchRequest { item_ids: string[]; action: ItemBatchAction;
 export interface ItemBatchResult { requested: number; changed: number; skipped: number; failed: number; item_ids: string[]; errors: Record<string, string> }
 export type ItemSortMode = 'updated_desc' | 'created_desc' | 'created_asc' | 'title_asc' | 'title_desc' | 'source_asc' | 'model_asc'
 export interface ItemCreate { title: string; cluster_name?: string; tags?: string[]; prompts: Array<{language: string; text: string; is_primary?: boolean; is_original?: boolean; provenance?: Record<string, unknown>}>; model?: string; source_name?: string; source_url?: string; author?: string; notes?: string }
+export interface ImportPrompt { language: string; text: string; is_primary?: boolean; is_original?: boolean; provenance?: Record<string, unknown> }
+export interface ImportDraftCreate { source_type: string; source_name?: string; source_url?: string; source_ref?: string; source_path?: string; title: string; model?: string; author?: string; suggested_cluster_name?: string; suggested_tags: string[]; prompts: ImportPrompt[]; media: Array<Record<string, unknown>>; warnings: string[]; confidence?: number }
+export interface ImportDraftRecord extends ImportDraftCreate { id: string; status: string; duplicate_of_item_id?: string; accepted_item_id?: string; created_at: string; updated_at: string; accepted_at?: string }
+export interface ImportDraftAcceptResult { draft: ImportDraftRecord; item: ItemDetail }

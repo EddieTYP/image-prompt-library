@@ -1,4 +1,4 @@
-import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationProviderStatus, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemList, ItemSortMode, ItemSummary, TagRecord, UploadImageRole } from '../types';
+import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationProviderStatus, ImportDraftAcceptResult, ImportDraftCreate, ImportDraftRecord, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemList, ItemSortMode, ItemSummary, TagRecord, UploadImageRole } from '../types';
 import { DEFAULT_ITEM_SORT } from '../utils/searchSort';
 
 const API = '';
@@ -120,6 +120,9 @@ export const api = isDemoMode ? {
   items: demoItemList,
   item: demoItem,
   createItem: (_payload: ItemCreate) => demoReadOnly(),
+  previewImportUrl: (_url: string) => demoReadOnly(),
+  createImportDraft: (_payload: ImportDraftCreate) => demoReadOnly(),
+  acceptImportDraft: (_id: string) => demoReadOnly(),
   updateItem: (_id: string, _payload: Partial<ItemCreate>) => demoReadOnly(),
   deleteItem: (_id: string) => demoReadOnly(),
   batchItems: (_payload: ItemBatchRequest) => demoReadOnly(),
@@ -184,6 +187,9 @@ export const api = isDemoMode ? {
   items: (params: Record<string, string | number | boolean | undefined>) => { const qs = new URLSearchParams(); Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)); }); return json<ItemList>(`/api/items?${qs}`); },
   item: (id: string) => json<ItemDetail>(`/api/items/${id}`),
   createItem: (payload: ItemCreate) => json<ItemDetail>('/api/items', { method: 'POST', body: JSON.stringify(payload) }),
+  previewImportUrl: (url: string) => json<ImportDraftCreate>('/api/import-drafts/url-preview', { method: 'POST', body: JSON.stringify({ url }) }),
+  createImportDraft: (payload: ImportDraftCreate) => json<ImportDraftRecord>('/api/import-drafts', { method: 'POST', body: JSON.stringify(payload) }),
+  acceptImportDraft: (id: string) => json<ImportDraftAcceptResult>(`/api/import-drafts/${id}/accept`, { method: 'POST' }),
   updateItem: (id: string, payload: Partial<ItemCreate>) => json<ItemDetail>(`/api/items/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
   deleteItem: (id: string) => json<ItemDetail>(`/api/items/${id}`, { method: 'DELETE' }),
   batchItems: (payload: ItemBatchRequest) => json<ItemBatchResult>('/api/items/batch', { method: 'POST', body: JSON.stringify(payload) }),

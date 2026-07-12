@@ -5,11 +5,13 @@ from backend.schemas import (
     ImportDraftCreate,
     ImportDraftList,
     ImportDraftRecord,
+    PublicUrlPreviewRequest,
     RepositoryIngestRequest,
     RepositoryIngestResult,
 )
 from backend.services.import_drafts import ImportDraftConflict, ImportDraftRepository
 from backend.services.repository_ingest import ingest_repository_to_drafts
+from backend.services.url_import import UrlImportError, preview_url_import
 
 router = APIRouter(prefix="/import-drafts", tags=["import-drafts"])
 
@@ -39,6 +41,14 @@ def ingest_repository(payload: RepositoryIngestRequest, request: Request):
         return ingest_repository_to_drafts(payload, request.app.state.library_path)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/url-preview", response_model=ImportDraftCreate)
+def preview_public_url(payload: PublicUrlPreviewRequest):
+    try:
+        return preview_url_import(payload.url)
+    except UrlImportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/{draft_id}", response_model=ImportDraftRecord)
