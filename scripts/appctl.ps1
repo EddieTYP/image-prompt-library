@@ -30,7 +30,7 @@ function Read-AppEnvironment {
     param($Context)
     $values = @{}
     if (Test-Path -LiteralPath $Context.EnvFile -PathType Leaf) {
-        foreach ($line in Get-Content -LiteralPath $Context.EnvFile) {
+        foreach ($line in Get-Content -LiteralPath $Context.EnvFile -Encoding UTF8) {
             if (-not $line -or $line.TrimStart().StartsWith("#") -or -not $line.Contains("=")) { continue }
             $parts = $line.Split(@("="), 2, [StringSplitOptions]::None)
             if ($parts[0] -in @("IMAGE_PROMPT_LIBRARY_PATH", "BACKEND_HOST", "BACKEND_PORT", "BACKUP_DIR")) {

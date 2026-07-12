@@ -305,7 +305,7 @@ function Publish-AtomicBytes {
 
 function Publish-AtomicText {
     param([string]$Path, [AllowEmptyString()][string]$Value)
-    Publish-AtomicBytes -Path $Path -Bytes ([Text.Encoding]::ASCII.GetBytes($Value + [Environment]::NewLine))
+    Publish-AtomicBytes -Path $Path -Bytes ([Text.Encoding]::UTF8.GetBytes($Value + [Environment]::NewLine))
 }
 
 function Get-FileState {
@@ -1100,7 +1100,7 @@ function Invoke-Install {
                 }
             }
         }
-        if (-not ($targetPublished -and $currentVersion -ne $release.Version -and $oldPointerState -and $oldPointerState.Current)) {
+        if ($targetPublished -and -not ($currentVersion -ne $release.Version -and $oldPointerState -and $oldPointerState.Current)) {
             Start-InstalledVersion -VersionRoot $finalTarget
         }
         $installCommitted = $true

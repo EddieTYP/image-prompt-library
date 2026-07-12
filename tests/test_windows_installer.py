@@ -2460,6 +2460,21 @@ def test_windows_installer_same_version_reinstall_preserves_previous_pointer(tmp
     assert previous.read_text(encoding="ascii") == "v1.0.0\n"
 
 
+def test_windows_installer_same_version_noop_preserves_stopped_state(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_test_release(release_dir)
+    first = run_installer(release_dir, prefix, library)
+    assert first.returncode == 0, first.stderr
+
+    second = run_installer(release_dir, prefix, library, no_start=False)
+
+    assert second.returncode == 0, second.stderr
+    assert "internal-start" not in second.stdout.splitlines()
+    assert "already installed" in second.stdout
+
+
 def test_windows_installer_preserves_user_path_text_when_appending(tmp_path: Path):
     release_dir = tmp_path / "release"
     prefix = tmp_path / "prefix"
@@ -3211,6 +3226,32 @@ def test_windows_installer_places_runtime_then_publishes_shim_and_pointers(tmp_p
         "BACKEND_PORT=8123",
         f"BACKUP_DIR={(prefix / 'backups').resolve()}",
     ]
+
+
+def test_windows_installer_environment_round_trips_unicode_paths(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    prefix = tmp_path / "app-應用程式"
+    library = tmp_path / "library-私人資料"
+    write_test_release(release_dir)
+
+    installed = run_installer(release_dir, prefix, library)
+
+    assert installed.returncode == 0, installed.stderr
+    environment_path = prefix / ".env"
+    assert environment_path.read_text(encoding="utf-8").splitlines()[0] == (
+        f"IMAGE_PROMPT_LIBRARY_PATH={library.resolve()}"
+    )
+
+    result = run_appctl_function(
+        f"""
+$env:IMAGE_PROMPT_LIBRARY_PATH = $null
+$context = [pscustomobject]@{{ EnvFile = {powershell_literal(environment_path)} }}
+(Read-AppEnvironment -Context $context).LibraryPath
+"""
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == str(library.resolve())
 
 
 @pytest.mark.parametrize(
