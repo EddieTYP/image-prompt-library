@@ -87,7 +87,7 @@ def test_native_windows_smoke_capture_does_not_wait_for_detached_descendants(
         "[Environment]::SetEnvironmentVariable('Path', $processPath, 'Process')\n"
         "$outLog = Join-Path $PSScriptRoot 'child.out.log'\n"
         "$errLog = Join-Path $PSScriptRoot 'child.err.log'\n"
-        "$sleeper = Start-Process powershell.exe -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Seconds 5') -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru\n"
+        "$sleeper = Start-Process powershell.exe -ArgumentList @('-NoProfile', '-Command', 'Start-Sleep -Seconds 15') -WindowStyle Hidden -RedirectStandardOutput $outLog -RedirectStandardError $errLog -PassThru\n"
         "[IO.File]::WriteAllText((Join-Path $PSScriptRoot 'sleeper.pid'), [string]$sleeper.Id)\n"
         "Write-Output 'done'\n",
         encoding="ascii",
@@ -118,7 +118,7 @@ if ($sleeper) {{ Stop-Process -Id $sleeperId -Force; Wait-Process -Id $sleeperId
     payload = json.loads(result_path.read_text())
     assert payload["ExitCode"] == 0
     assert payload["Output"] == "done"
-    assert payload["ElapsedMilliseconds"] < 3000
+    assert payload["ElapsedMilliseconds"] < 10000
 
 
 def test_native_windows_smoke_preserves_switch_like_argument_arrays(tmp_path: Path):
