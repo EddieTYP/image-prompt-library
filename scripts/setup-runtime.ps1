@@ -82,7 +82,12 @@ $probeLibrary = Join-Path ([IO.Path]::GetTempPath()) ("image-prompt-library-runt
 $incomingLibrary = $env:IMAGE_PROMPT_LIBRARY_PATH
 try {
     $env:IMAGE_PROMPT_LIBRARY_PATH = $probeLibrary
-    Invoke-PythonChecked -Exe $venvPython -Arguments @("-c", "import backend.main, uvicorn") -FailureMessage "The installed runtime could not import Image Prompt Library."
+    Push-Location -LiteralPath $AppRoot
+    try {
+        Invoke-PythonChecked -Exe $venvPython -Arguments @("-c", "import backend.main, uvicorn") -FailureMessage "The installed runtime could not import Image Prompt Library."
+    } finally {
+        Pop-Location
+    }
 } finally {
     if ($null -eq $incomingLibrary) { Remove-Item Env:IMAGE_PROMPT_LIBRARY_PATH -ErrorAction SilentlyContinue }
     else { $env:IMAGE_PROMPT_LIBRARY_PATH = $incomingLibrary }

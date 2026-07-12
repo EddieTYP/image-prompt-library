@@ -159,13 +159,13 @@ function Assert-SafeInstallTarget {
     $lexicalRoot = [IO.Path]::GetPathRoot($normalized)
     $lexicalProfile = Get-NormalizedPath -Path $env:USERPROFILE
     if ($normalized.Equals($lexicalRoot, [StringComparison]::OrdinalIgnoreCase) -or
-        $normalized.Equals($lexicalProfile, [StringComparison]::OrdinalIgnoreCase)) {
+        (Test-PathWithinOrEqual -Path $lexicalProfile -Parent $normalized)) {
         throw "$Name must not be an unsafe root path."
     }
     $identity = Get-PhysicalPathIdentity -Path $Path
     $profileIdentity = Get-UserProfilePhysicalIdentity
     if ($identity.Equals([IO.Path]::GetPathRoot($identity), [StringComparison]::OrdinalIgnoreCase) -or
-        $identity.Equals($profileIdentity, [StringComparison]::OrdinalIgnoreCase)) {
+        (Test-PathWithinOrEqual -Path $profileIdentity -Parent $identity)) {
         throw "$Name must not be an unsafe root path."
     }
     return $identity

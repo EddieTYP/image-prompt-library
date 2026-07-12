@@ -459,6 +459,42 @@ Invoke-PythonChecked -Exe {python} -Arguments @('-c', 'import json,sys; print(js
     assert json.loads(result.stdout.strip()) == ["alpha", "beta gamma"]
 
 
+def test_windows_runtime_setup_probes_from_extracted_app_root(tmp_path: Path):
+    app_root = tmp_path / "extracted-app"
+    caller_root = tmp_path / "caller-with-backend"
+    (app_root / ".venv" / "Scripts").mkdir(parents=True)
+    (app_root / ".venv" / "Scripts" / "python.exe").write_text("fixture", encoding="ascii")
+    (app_root / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="ascii")
+    (caller_root / "backend").mkdir(parents=True)
+    setup_runtime = powershell_literal(ROOT / "scripts" / "setup-runtime.ps1")
+    result = run_powershell(
+        f"""
+$source = [IO.File]::ReadAllText({setup_runtime})
+$entryPoint = $source.IndexOf('$AppRoot = [IO.Path]::GetFullPath')
+if ($entryPoint -lt 0) {{ throw 'Runtime setup entry point was not found.' }}
+Invoke-Expression $source.Substring(0, $entryPoint)
+$AppRoot = {powershell_literal(app_root)}
+$PythonExe = 'fixture-python'
+$PythonPrefixArgs = @()
+$script:probeLocation = ''
+function Find-SupportedPython {{ [pscustomobject]@{{ Exe = 'fixture-python'; PrefixArgs = @() }} }}
+function Test-PythonCandidate {{ $true }}
+function Invoke-PythonChecked {{
+    param([string]$Exe, [string[]]$Arguments, [string]$FailureMessage)
+    if ($Arguments -contains 'import backend.main, uvicorn') {{ $script:probeLocation = (Get-Location).Path }}
+}}
+Push-Location -LiteralPath {powershell_literal(caller_root)}
+try {{ Invoke-Expression $source.Substring($entryPoint) }} finally {{ Pop-Location }}
+[pscustomobject]@{{ ProbeLocation = $script:probeLocation; FinalLocation = (Get-Location).Path }} | ConvertTo-Json -Compress
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    payload = json.loads(result.stdout.strip().splitlines()[-1])
+    assert Path(payload["ProbeLocation"]) == app_root.resolve()
+    assert Path(payload["FinalLocation"]) == ROOT.resolve()
+
+
 def test_real_release_package_extracts_with_hardened_windows_installer(tmp_path: Path):
     version = "v9.9.11-test"
     repo_artifacts = [
@@ -3076,11 +3112,16 @@ def test_windows_installer_rejects_extended_path_canonical_alias_overlap(tmp_pat
 
 
 @pytest.mark.parametrize("target", ["prefix", "library"])
-@pytest.mark.parametrize("unsafe", ["drive-root", "profile-root"])
-def test_windows_installer_rejects_root_targets_symmetrically(
+@pytest.mark.parametrize("unsafe", ["drive-root", "profile-root", "profile-ancestor"])
+def test_windows_installer_rejects_unsafe_targets_symmetrically(
     tmp_path: Path, target: str, unsafe: str
 ):
-    unsafe_path = Path(tmp_path.anchor) if unsafe == "drive-root" else Path.home()
+    profile = Path(os.environ["USERPROFILE"])
+    unsafe_path = {
+        "drive-root": Path(tmp_path.anchor),
+        "profile-root": profile,
+        "profile-ancestor": profile.parent,
+    }[unsafe]
     prefix = unsafe_path if target == "prefix" else tmp_path / "prefix"
     library = unsafe_path if target == "library" else tmp_path / "library"
 
