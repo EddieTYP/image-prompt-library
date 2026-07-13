@@ -43,7 +43,7 @@ Outstanding:
 
 ### D. External inspiration import — deferred
 
-Local markdown repository ingestion and the shared `ImportDraft` review flow remain available. Generic URL, X/Threads, and Instagram adapters are deferred because reliable social-post reply extraction requires platform authentication, paid APIs, or brittle scraping that does not yet meet the product's acceptance bar.
+Local markdown repository ingestion and the shared `ImportDraft` review flow remain available. Generic URL plus X/Threads import, along with Instagram adapters, remains deferred because reliable social-post reply extraction requires platform authentication, paid APIs, or brittle scraping that does not yet meet the product's acceptance bar.
 
 If this lane resumes, adapters must still feed candidate prompts, media, provenance, warnings, and duplicate checks into `ImportDraft` for explicit user confirmation before library writes.
 
