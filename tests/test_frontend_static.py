@@ -180,7 +180,7 @@ def test_mobile_cards_use_touch_visible_two_column_masonry():
     assert ".desktop-cards-grid{display:none}" in compact_css
     assert ".mobile-masonry-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));" in compact_css
     assert "column-count:2" not in compact_css
-    assert "grid-template-columns:repeat(3" not in compact_css
+    assert ".mobile-masonry-columns{display:grid;grid-template-columns:repeat(3" not in compact_css
     assert ".mobile-masonry-columns.card-image-frame{min-height:0" in compact_css
     assert ".mobile-masonry-columns.card-image-frame.has-reserved-ratio{aspect-ratio:auto!important}" in compact_css
     assert ".mobile-masonry-columns.card-image-frameimg{width:100%;height:auto;object-fit:contain" in compact_css
@@ -608,14 +608,20 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "resultImageRef" in panel
     assert "fullscreenFrameRef.current.requestFullscreen" in panel
     assert "orchestratorModel" in panel
-    assert "useState('gpt-5.4')" in panel
+    assert "useState('gpt-5.6-luna')" in panel
     assert "MAX_EDIT_ATTACHMENTS = 4" in panel
     assert "mode: attachments.length > 0 ? 'image_edit' : 'text_to_image'" in panel
     assert "input_images: attachments" in panel
-    assert "generation-attachment-strip" in panel
-    assert "generation-attachment-thumb" in panel
-    assert "generation-attach-trigger" in panel
-    assert "aria-label=\"Attach image\"" in panel
+    assert "generation-reference-tray" in panel
+    assert "Choose from library" in panel
+    assert "Choose recent result" in panel
+    assert "image_id: attachment.imageId" in panel
+    assert "moveAttachment" in panel
+    assert "initialReferenceImage" not in detail
+    assert "generation-reference-card" in panel
+    assert "generation-reference-add" in panel
+    assert "aria-label=\"Add generation reference\"" in panel
+    assert "Upload image" in panel
     assert "Remove ${attachment.name}" in panel
     assert "Use result as edit input" in panel
     assert "canAttachToSourceItem" in panel
@@ -1557,13 +1563,12 @@ def test_generation_panel_surfaces_provider_readiness_and_blocks_unavailable_sub
     assert "disabled={busy || !selectedProviderCanGenerate || !promptText.trim() || hasMissingTemplateValues}" in panel
     assert "generation-provider-readiness" in panel
     assert "generation-provider-readiness" in css
-    assert "grid-template-columns:44px44px44px44pxminmax(0,1fr)minmax(112px,max-content)44px" in compact_css
-    assert "grid-template-columns:40px40px40px40px40pxminmax(84px,1fr)40px" in compact_css
-    assert ".generation-provider-readiness{grid-column:1/span5;max-width:none}" in compact_css
+    assert "grid-template-columns:44px44px44pxminmax(0,1fr)minmax(112px,max-content)44px" in compact_css
+    assert "grid-template-columns:40px40px40pxminmax(0,1fr)minmax(84px,1fr)40px" in compact_css
     assert ".generation-provider-readiness{flex:11100%;max-width:100%}" not in compact_css
     assert ".generation-primary-action{width:auto;min-width:0;height:40px;min-height:40px;margin-top:0;padding:010px;grid-column:6}" in compact_css
     assert "generation-control-value" in panel
-    assert "generation-attach-trigger" in panel
+    assert "generation-reference-add" in panel
 
 
 def test_oauth_session_recovery_keeps_provider_message_and_auth_actions_stable():

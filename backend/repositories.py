@@ -394,7 +394,12 @@ class ItemRepository:
     def _image_by_id(self, image_id: str) -> ImageRecord:
         with connect(self.library_path) as conn:
             row = conn.execute("SELECT * FROM images WHERE id=?", (image_id,)).fetchone()
+            if row is None:
+                raise KeyError(image_id)
             return ImageRecord(**dict(row))
+
+    def get_image(self, image_id: str) -> ImageRecord:
+        return self._image_by_id(image_id)
 
     def _tags(self, conn, item_id: str) -> list[TagRecord]:
         rows = conn.execute("SELECT t.id,t.name,t.kind,0 as count FROM tags t JOIN item_tags it ON it.tag_id=t.id WHERE it.item_id=? ORDER BY t.name", (item_id,)).fetchall()

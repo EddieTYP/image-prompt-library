@@ -37,8 +37,8 @@ DEFAULT_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
 CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 CODEX_AUTH_ISSUER = "https://auth.openai.com"
 CODEX_TOKEN_URL = f"{CODEX_AUTH_ISSUER}/oauth/token"
-CODEX_CHAT_MODEL = "gpt-5.4"
-DEFAULT_CODEX_ORCHESTRATOR_MODELS = [CODEX_CHAT_MODEL, "gpt-5.5", "gpt-5.3-codex"]
+CODEX_CHAT_MODEL = "gpt-5.6-luna"
+DEFAULT_CODEX_ORCHESTRATOR_MODELS = [CODEX_CHAT_MODEL, "gpt-5.6-terra", "gpt-5.5", "gpt-5.4"]
 UNSUPPORTED_IMAGE_ORCHESTRATOR_MODELS = {"gpt-5.3", "gpt-5.3-codex-spark"}
 IMAGE_MODEL = "gpt-image-2"
 DEFAULT_QUALITY = "high"
@@ -794,11 +794,28 @@ class OpenAICodexNativeProvider:
         if len(raw_images) > MAX_INPUT_IMAGES:
             raise CodexNativeAuthError(f"Generation edit supports up to {MAX_INPUT_IMAGES} input images")
         input_images: list[dict[str, Any]] = []
+        repo = GenerationJobRepository(library_path)
         for index, raw in enumerate(raw_images):
             if not isinstance(raw, dict):
                 continue
             name = str(raw.get("name") or f"input-{index + 1}.png")
             source = str(raw.get("source") or "uploaded")
+            image_id = raw.get("image_id")
+            if source == "library" and isinstance(image_id, str) and image_id:
+                try:
+                    result_path = raw.get("result_path")
+                    if isinstance(result_path, str) and result_path:
+                        image_path, mime_type = resolve_generation_input_image_path(
+                            library_path,
+                            result_path,
+                            allowed_roots={"generation-references"},
+                        )
+                    else:
+                        _, image_path, mime_type = repo.resolve_library_reference(image_id)
+                except GenerationJobConflict as exc:
+                    raise CodexNativeAuthError(str(exc)) from exc
+                input_images.append({"type": "input_image", "image_url": _data_url_from_bytes(image_path.read_bytes(), mime_type=mime_type), "name": name, "source": source, "image_id": image_id})
+                continue
             data_url = raw.get("data_url")
             if isinstance(data_url, str) and data_url:
                 try:

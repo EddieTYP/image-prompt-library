@@ -4,37 +4,68 @@
 
 Image Prompt Library is a local-first prompt and image manager. The current stable release is `v0.8.0`; its public GitHub Pages demo is a static, read-only catalogue of attributed prompt/image references. Private-library management, local data, and optional ChatGPT / Codex OAuth generation remain local-install features. The application code is AGPL-3.0-or-later, with commercial licensing available for organizations that need different terms.
 
-The project does not provide hosted accounts, checkout, payments, SaaS sync, or a hosted private library. The local-first model keeps the SQLite database, images, prompts, and provider state on the user's machine.
+The project does not provide hosted accounts, checkout, payments, SaaS sync, or a hosted private library. SQLite data, images, prompts, and provider state stay on the user's machine.
 
-## v0.8.0 release
+## Roadmap lanes
 
-Native Windows Quick Start shipped in v0.8.0. It provides a PowerShell installer for Windows 10/11 with Python 3.10+, versioned app state under the user profile, a separate private library, background lifecycle commands, diagnostics, verified release assets, transactional update recovery, and rollback.
+The roadmap uses four product lanes. They are ongoing areas, not four sequential releases.
 
-Release follow-up remains necessary for service and update resilience beyond the Windows background controller, including continued release-download and recovery QA.
+### A. Install and onboarding hardening — active follow-up
 
-## Product follow-ups
+Native Windows Quick Start shipped in `v0.8.0`, including versioned installs, background lifecycle commands, diagnostics, transactional updates, release assets, and rollback.
 
-- Improve batch image editing and import-review workflows.
-- Continue richer generation retry, saved-reference, and input-image UX.
-- Continue mobile Explore gestures and vertical layout improvements.
-- Build **Generic URL plus X/Threads import** through the existing reviewable ImportDraft flow, then consider Instagram as a later experimental adapter.
-- Add an optional export/import backup archive UI.
-- Consider additional sample/demo packs, a fuller interface language setting, and optional semantic/vector search.
+Outstanding:
 
-## Local generation
+- Continue release-download, interrupted-update, recovery, and rollback QA.
+- Harden service and update resilience beyond the current Windows background controller.
 
-Optional local generation keeps provider authentication and state outside the private library, backups, sample bundles, and public demo data. Users can connect a provider, create queued jobs, review results, attach results to an item, or save a result as a new item. Future work should preserve that explicit review step and improve retry, error handling, saved references, and input-image support without exposing private credentials.
+### B. Library power-user polish — current milestone complete
 
-## Read-only demo and provenance
+The completed milestone added clearer search, sort, and filter state; backend-backed batch management; preview-first cleanup; and stronger metadata/provenance handling.
 
-The public site remains a multilingual, provenance-aware read-only demo. Visitors can browse, search, inspect prompts and images, switch UI language, and copy public sample prompts. Add/edit/private-library management stays in local installs. Sample sources retain their own attribution and licenses; the app code license does not relicense sample content.
+Any future library work should be driven by observed usability problems rather than reopening this milestone broadly.
 
-Mobile browsing remains in scope: Cards should stay touch-first, and Explore should become a contained mobile canvas with one-finger pan, two-finger pinch zoom, and a vertical constellation layout.
+Observed UX follow-ups:
 
-## Account-management direction
+- Add a concise tooltip to batch `Tag` explaining that it adds tags to every selected item and how to enter multiple tags.
+- Replace the batch `Move` free-text collection prompt with a dropdown of existing collections.
 
-Future local account management may add optional password-capable accounts, admin/editor/read-only roles, and shared/private item visibility. Any account work must preserve the local-first model: backend permission checks protect app workflows, raw vault protection relies on OS filesystem permissions, existing items remain shared during migration, and GitHub Pages stays account-free and read-only.
+### C. Generation workflow hardening — active follow-up
 
-## Import direction
+The generation foundation, OAuth connection flow, queued jobs, result review, attach/save-as-new actions, retry controls, and session-reliability hardening are shipped.
 
-Importers should remain local-first and user-confirmed. Source adapters feed the common ImportDraft review flow with source metadata, candidate prompts/images, provenance, warnings, and duplicate checks before writing to the library. The intended order is local repository ingestion, Generic URL plus X/Threads import, then Instagram only after those adapters prove useful.
+The focused Generation Input & Reference Polish milestone is complete. Generation now supports ordered uploaded, saved-library, and prior-result references with preserved provenance across retry, review, attach, and save-as-new flows on desktop and mobile.
+
+Outstanding:
+
+- Improve retry and provider-error recovery where current guidance is still weak.
+- Keep credentials and provider state outside libraries, backups, samples, and public demo data.
+
+### D. External inspiration import — deferred
+
+Local markdown repository ingestion and the shared `ImportDraft` review flow remain available. Generic URL, X/Threads, and Instagram adapters are deferred because reliable social-post reply extraction requires platform authentication, paid APIs, or brittle scraping that does not yet meet the product's acceptance bar.
+
+If this lane resumes, adapters must still feed candidate prompts, media, provenance, warnings, and duplicate checks into `ImportDraft` for explicit user confirmation before library writes.
+
+## Prioritized outstanding work
+
+1. **Release and update resilience** — complete lane A follow-up QA and recovery hardening.
+2. **Generation workflow polish** — continue focused retry and provider-error recovery improvements.
+3. **Mobile browsing polish** — improve Cards density, detail/drawer layouts, and contained Explore gestures with a vertical constellation layout.
+4. **Batch image editing** — improve multi-image management without reopening the completed library-polish milestone.
+5. **Backup archive UI** — add optional export/import of a portable local backup archive.
+
+## Later or optional work
+
+- Additional sample/demo packs and a fuller interface language setting.
+- Optional semantic/vector search after normal search proves insufficient.
+- Optional local accounts with password-capable admin/editor/read-only roles and shared/private visibility.
+
+Account work must preserve the local-first model: backend permissions protect app workflows, OS filesystem permissions protect the raw vault, existing items remain shared during migration, and GitHub Pages stays account-free and read-only.
+
+## Product constraints
+
+- Public GitHub Pages remains a multilingual, provenance-aware, read-only demo.
+- Add, edit, generation, private-library management, and provider authentication remain local-install features.
+- Sample sources retain their own attribution and licenses; the app code license does not relicense sample content.
+- New imports and generated results require explicit review before becoming library items.
