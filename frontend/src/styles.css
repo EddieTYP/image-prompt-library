@@ -308,6 +308,7 @@ main{max-width:1680px;margin:0 auto;padding:26px 30px 88px}.app.explore-mode{hei
 @media(max-width:760px){.selection-toolbar{left:12px;right:12px;bottom:calc(16px + env(safe-area-inset-bottom));transform:none;justify-content:space-between;flex-wrap:wrap;border-radius:22px}.selection-toolbar-secondary{order:3;width:100%;justify-content:center;flex-wrap:wrap}.selection-toolbar-count{flex:1}.floating-action-rail .select-fab{min-width:88px}}
 
 /* Ordered generation references */
+.generation-prompt-area{position:relative}
 .generation-prompt-area textarea{padding-bottom:126px}
 .generation-reference-tray{position:absolute;left:12px;right:12px;bottom:12px;z-index:3;display:grid;gap:6px;padding:8px;border:1px solid rgba(122,108,145,.16);border-radius:16px;background:rgba(255,255,255,.94);box-shadow:0 10px 28px rgba(54,42,76,.10)}
 .generation-reference-tray.is-readonly{position:static;inset:auto;background:rgba(250,248,255,.82);box-shadow:none;backdrop-filter:none}
