@@ -588,7 +588,11 @@ class GenerationJobRepository:
     def _store_input_reference_images(self, prepared_images: list[tuple[bytes, str, str | None]], item_id: str, *, copy_library_images: bool) -> None:
         for data, name, source_image_id in prepared_images:
             if source_image_id and not copy_library_images:
-                continue
+                try:
+                    if self.items.get_image(source_image_id).item_id == item_id:
+                        continue
+                except KeyError:
+                    pass
             stored = store_image(self.library_path, data, name)
             self.items.add_image(
                 item_id,

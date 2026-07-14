@@ -622,6 +622,11 @@ def test_generation_ux_frontend_creates_runs_and_reviews_jobs():
     assert "generation-reference-add" in panel
     assert "aria-label=\"Add generation reference\"" in panel
     assert "Upload image" in panel
+    assert "function restorableJobAttachments" in panel
+    assert "attachment.dataUrl || attachment.resultPath || attachment.imageId" in panel
+    assert panel.count("setEditAttachments(restorableJobAttachments(") == 2
+    assert "const restorableAttachments = restorableJobAttachments(job)" in panel
+    assert "Re-upload unavailable image references before generating." in panel
     assert "Remove ${attachment.name}" in panel
     assert "Use result as edit input" in panel
     assert "canAttachToSourceItem" in panel

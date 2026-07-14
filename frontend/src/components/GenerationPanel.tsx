@@ -122,6 +122,10 @@ function jobAttachments(job?: GenerationJobRecord): EditAttachment[] {
   });
 }
 
+function restorableJobAttachments(job?: GenerationJobRecord): EditAttachment[] {
+  return jobAttachments(job).filter(attachment => Boolean(attachment.dataUrl || attachment.resultPath || attachment.imageId));
+}
+
 function friendlyFailure(job: GenerationJobRecord) {
   const rawKind = typeof job.metadata?.error_kind === 'string' ? job.metadata.error_kind : '';
   const raw = `${rawKind} ${job.error || ''}`.toLowerCase();
@@ -718,7 +722,7 @@ export default function GenerationPanel({
       setQuality(jobQuality(result.retry_job));
       setProvider(result.retry_job.provider || provider);
       setOrchestratorModel(jobModel(result.retry_job));
-      setEditAttachments(jobAttachments(result.retry_job));
+      setEditAttachments(restorableJobAttachments(result.retry_job));
       setFocusedJobHighlightId(result.retry_job.id);
       setMessage('Retry queued.');
     } catch (error) {
@@ -752,7 +756,7 @@ export default function GenerationPanel({
       setQuality(jobQuality(retry));
       setProvider(retry.provider || provider);
       setOrchestratorModel(jobModel(retry));
-      setEditAttachments(jobAttachments(retry));
+      setEditAttachments(restorableJobAttachments(retry));
       setFocusedJobHighlightId(retry.id);
       setMessage('Generation job retried.');
     } catch (error) {
@@ -788,14 +792,16 @@ export default function GenerationPanel({
   };
 
   const useJobAsDraft = (job: GenerationJobRecord) => {
+    const attachments = jobAttachments(job);
+    const restorableAttachments = restorableJobAttachments(job);
     setPromptText(jobPrompt(job));
     setAspectRatio(jobAspectRatio(job));
     setQuality(jobQuality(job));
     setProvider(job.provider || provider);
     setOrchestratorModel(jobModel(job));
-    setEditAttachments(jobAttachments(job));
+    setEditAttachments(restorableAttachments);
     setHistoryReviewJobId(undefined);
-    setMessage('Prompt copied to draft.');
+    setMessage(attachments.length > restorableAttachments.length ? 'Prompt copied. Re-upload unavailable image references before generating.' : 'Prompt copied to draft.');
   };
 
   const copyJobPrompt = async (job: GenerationJobRecord) => {

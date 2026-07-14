@@ -454,6 +454,31 @@ def test_generation_job_uses_ordered_library_image_references_without_duplicate_
     assert {image["id"] for image in images}.issuperset({first["id"], second["id"]})
 
 
+def test_generation_job_attach_copies_library_reference_from_another_item(tmp_path):
+    c = client(tmp_path)
+    target_item = create_source_item(c)
+    reference_item = create_source_item(c)
+    reference = c.post(
+        f"/api/items/{reference_item['id']}/images",
+        files={"file": ("external-reference.png", png_bytes("purple"), "image/png")},
+        data={"role": "reference_image"},
+    ).json()
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": target_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "Use a reference from another item",
+        "parameters": {"input_images": [{"source": "library", "image_id": reference["id"], "name": "External reference"}]},
+    }).json()
+    c.post(f"/api/generation-jobs/{job['id']}/result", files={"file": ("generated.png", png_bytes("green"), "image/png")})
+
+    accepted = c.post(f"/api/generation-jobs/{job['id']}/accept")
+
+    assert accepted.status_code == 200
+    images = accepted.json()["item"]["images"]
+    assert [image["role"] for image in images] == ["result_image", "reference_image"]
+    assert images[1]["id"] != reference["id"]
+
+
 def test_generation_job_rejects_missing_library_reference(tmp_path):
     c = client(tmp_path)
 
