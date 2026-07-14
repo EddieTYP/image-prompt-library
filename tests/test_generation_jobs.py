@@ -492,6 +492,27 @@ def test_generation_job_rejects_missing_library_reference(tmp_path):
     assert "not found" in response.json()["detail"].lower()
 
 
+def test_generation_job_uses_preserved_library_clone_when_image_is_missing(tmp_path):
+    c = client(tmp_path)
+    clone_path = tmp_path / "library" / "generation-references" / "old-job" / "reference.png"
+    clone_path.parent.mkdir(parents=True, exist_ok=True)
+    clone_path.write_bytes(png_bytes("purple"))
+
+    response = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "Use the preserved reference clone",
+        "parameters": {"input_images": [{
+            "source": "library",
+            "image_id": "img_deleted",
+            "result_path": "generation-references/old-job/reference.png",
+            "name": "Preserved reference",
+        }]},
+    })
+
+    assert response.status_code == 200
+    assert response.json()["parameters"]["input_images"][0]["result_path"] == "generation-references/old-job/reference.png"
+
+
 def test_generation_job_save_as_new_copies_library_reference_and_keeps_provenance(tmp_path):
     c = client(tmp_path)
     source_item = create_source_item(c)

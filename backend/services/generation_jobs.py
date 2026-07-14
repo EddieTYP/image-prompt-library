@@ -246,6 +246,11 @@ class GenerationJobRepository:
                 try:
                     image = self.items.get_image(image_id)
                 except KeyError as exc:
+                    preserved_result_path = spec.get("result_path")
+                    if isinstance(preserved_result_path, str) and preserved_result_path:
+                        resolve_generation_input_image_path(self.library_path, preserved_result_path)
+                        input_specs.append(spec)
+                        continue
                     raise GenerationJobConflict("Library generation reference image not found") from exc
                 source_path, _ = resolve_generation_input_image_path(
                     self.library_path,
