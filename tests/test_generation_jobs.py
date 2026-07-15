@@ -414,6 +414,148 @@ def test_generation_job_clones_generation_result_inputs_so_source_stays_discarda
     assert (tmp_path / "library" / cloned_input["result_path"]).is_file()
 
 
+def test_generation_job_uses_ordered_library_image_references_without_duplicate_attach(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    first = c.post(
+        f"/api/items/{source_item['id']}/images",
+        files={"file": ("first.png", png_bytes("red"), "image/png")},
+        data={"role": "result_image"},
+    ).json()
+    second = c.post(
+        f"/api/items/{source_item['id']}/images",
+        files={"file": ("second.png", png_bytes("blue"), "image/png")},
+        data={"role": "reference_image"},
+    ).json()
+
+    response = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "Use both saved references",
+        "parameters": {"input_images": [
+            {"source": "library", "image_id": second["id"], "name": "Second"},
+            {"source": "library", "image_id": first["id"], "name": "First"},
+        ]},
+    })
+
+    assert response.status_code == 200
+    job = response.json()
+    assert job["reference_image_ids"] == [second["id"], first["id"]]
+    assert [image["image_id"] for image in job["parameters"]["input_images"]] == [second["id"], first["id"]]
+    assert [image["role"] for image in job["parameters"]["input_images"]] == ["reference_image", "result_image"]
+    assert c.get(f"/media/{job['parameters']['input_images'][0]['preview_path']}").status_code == 200
+
+    c.post(f"/api/generation-jobs/{job['id']}/result", files={"file": ("generated.png", png_bytes("green"), "image/png")})
+    accepted = c.post(f"/api/generation-jobs/{job['id']}/accept")
+
+    assert accepted.status_code == 200
+    images = accepted.json()["item"]["images"]
+    assert len(images) == 3
+    assert {image["id"] for image in images}.issuperset({first["id"], second["id"]})
+
+
+def test_generation_job_attach_copies_library_reference_from_another_item(tmp_path):
+    c = client(tmp_path)
+    target_item = create_source_item(c)
+    reference_item = create_source_item(c)
+    reference = c.post(
+        f"/api/items/{reference_item['id']}/images",
+        files={"file": ("external-reference.png", png_bytes("purple"), "image/png")},
+        data={"role": "reference_image"},
+    ).json()
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": target_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "Use a reference from another item",
+        "parameters": {"input_images": [{"source": "library", "image_id": reference["id"], "name": "External reference"}]},
+    }).json()
+    c.post(f"/api/generation-jobs/{job['id']}/result", files={"file": ("generated.png", png_bytes("green"), "image/png")})
+
+    accepted = c.post(f"/api/generation-jobs/{job['id']}/accept")
+
+    assert accepted.status_code == 200
+    images = accepted.json()["item"]["images"]
+    assert [image["role"] for image in images] == ["result_image", "reference_image"]
+    assert images[1]["id"] != reference["id"]
+
+
+def test_generation_job_rejects_missing_library_reference(tmp_path):
+    c = client(tmp_path)
+
+    response = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "Missing reference",
+        "parameters": {"input_images": [{"source": "library", "image_id": "img_missing"}]},
+    })
+
+    assert response.status_code == 409
+    assert "not found" in response.json()["detail"].lower()
+
+
+def test_generation_job_uses_preserved_library_clone_when_image_is_missing(tmp_path):
+    c = client(tmp_path)
+    clone_path = tmp_path / "library" / "generation-references" / "old-job" / "reference.png"
+    clone_path.parent.mkdir(parents=True, exist_ok=True)
+    clone_path.write_bytes(png_bytes("purple"))
+
+    response = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "Use the preserved reference clone",
+        "parameters": {"input_images": [{
+            "source": "library",
+            "image_id": "img_deleted",
+            "result_path": "generation-references/old-job/reference.png",
+            "name": "Preserved reference",
+        }]},
+    })
+
+    assert response.status_code == 200
+    assert response.json()["parameters"]["input_images"][0]["result_path"] == "generation-references/old-job/reference.png"
+
+
+def test_generation_job_save_as_new_copies_library_reference_and_keeps_provenance(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    reference = c.post(
+        f"/api/items/{source_item['id']}/images",
+        files={"file": ("reference.png", png_bytes("purple"), "image/png")},
+        data={"role": "reference_image"},
+    ).json()
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "Save with its reference",
+        "parameters": {"input_images": [{"source": "library", "image_id": reference["id"], "name": "Source prompt"}]},
+    }).json()
+    c.post(f"/api/generation-jobs/{job['id']}/result", files={"file": ("generated.png", png_bytes("green"), "image/png")})
+
+    accepted = c.post(f"/api/generation-jobs/{job['id']}/accept-as-new-item")
+
+    assert accepted.status_code == 200
+    item = accepted.json()["item"]
+    assert [image["role"] for image in item["images"]] == ["result_image", "reference_image"]
+    provenance = item["prompts"][0]["provenance"]
+    assert provenance["source_generation_job_id"] == job["id"]
+    assert provenance["parameters"]["input_images"][0]["image_id"] == reference["id"]
+
+
+def test_generation_job_rejects_more_than_four_mixed_inputs(tmp_path):
+    c = client(tmp_path)
+    image_data_url = "data:image/png;base64," + base64.b64encode(png_bytes()).decode()
+
+    response = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "Too many references",
+        "parameters": {"input_images": [
+            {"source": "uploaded", "name": f"reference-{index}.png", "data_url": image_data_url}
+            for index in range(5)
+        ]},
+    })
+
+    assert response.status_code == 409
+    assert "up to 4" in response.json()["detail"]
+
+
 def test_generation_job_rejects_unsafe_result_path_inputs_on_create(tmp_path):
     c = client(tmp_path)
     source_item = create_source_item(c)

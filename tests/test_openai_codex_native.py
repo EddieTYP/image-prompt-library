@@ -709,9 +709,9 @@ def test_codex_native_device_flow_rejects_invalid_upstream_json(tmp_path, monkey
 def test_codex_native_uses_verified_default_image_orchestration_models():
     from backend.services.openai_codex_native import CODEX_CHAT_MODEL, DEFAULT_CODEX_ORCHESTRATOR_MODELS, codex_orchestrator_models
 
-    assert CODEX_CHAT_MODEL == "gpt-5.4"
-    assert DEFAULT_CODEX_ORCHESTRATOR_MODELS == ["gpt-5.4", "gpt-5.5", "gpt-5.3-codex"]
-    assert codex_orchestrator_models() == ["gpt-5.4", "gpt-5.5", "gpt-5.3-codex"]
+    assert CODEX_CHAT_MODEL == "gpt-5.6-luna"
+    assert DEFAULT_CODEX_ORCHESTRATOR_MODELS == ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.5", "gpt-5.4"]
+    assert codex_orchestrator_models() == ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.5", "gpt-5.4"]
 
 
 def test_codex_native_filters_known_text_only_orchestrator_models_from_env(monkeypatch):
@@ -719,7 +719,7 @@ def test_codex_native_filters_known_text_only_orchestrator_models_from_env(monke
 
     from backend.services.openai_codex_native import codex_orchestrator_models
 
-    assert codex_orchestrator_models() == ["gpt-5.4", "gpt-5.5", "gpt-5.3-codex"]
+    assert codex_orchestrator_models() == ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.5", "gpt-5.4"]
 
 
 def test_codex_native_status_exposes_orchestrator_and_image_models(tmp_path, monkeypatch):
@@ -734,8 +734,8 @@ def test_codex_native_status_exposes_orchestrator_and_image_models(tmp_path, mon
 
     codex = next(provider for provider in c.get("/api/generation-providers").json() if provider["provider"] == "openai_codex_oauth_native")
 
-    assert codex["orchestrator_models"] == ["gpt-5.4", "gpt-5.5", "gpt-5.3-codex"]
-    assert codex["default_orchestrator_model"] == "gpt-5.4"
+    assert codex["orchestrator_models"] == ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.5", "gpt-5.4"]
+    assert codex["default_orchestrator_model"] == "gpt-5.6-luna"
     assert codex["image_models"] == ["gpt-image-2"]
     assert codex["default_image_model"] == "gpt-image-2"
 
@@ -964,7 +964,7 @@ def test_codex_native_injects_requested_aspect_ratio_and_records_effective_promp
         "size": None,
         "quality": "high",
         "image_model": "gpt-image-2",
-        "orchestrator_model": "gpt-5.4",
+        "orchestrator_model": "gpt-5.6-luna",
     }
     assert payload["metadata"]["requested_aspect_ratio"] == "4:3"
     assert payload["metadata"]["aspect_ratio_prompt_injection"] == "Make the aspect ratio 4:3."
@@ -1084,6 +1084,53 @@ def test_codex_native_forwards_up_to_four_edit_input_images(tmp_path, monkeypatc
     assert len(captured["input_images"]) == 4
     assert all(image["image_url"].startswith("data:image/png;base64,") for image in captured["input_images"])
     assert response.json()["metadata"]["input_image_count"] == 4
+
+
+def test_codex_native_preserves_mixed_library_and_upload_input_order(tmp_path, monkeypatch):
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda *args, **kwargs: None)
+
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
+    captured = {}
+
+    def collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
+        captured["input_images"] = input_images
+        return base64.b64encode(png_bytes()).decode()
+
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    library_image = c.post(
+        f"/api/items/{source_item['id']}/images",
+        files={"file": ("library.png", png_bytes("purple"), "image/png")},
+        data={"role": "reference_image"},
+    ).json()
+    upload_data_url = "data:image/png;base64," + base64.b64encode(png_bytes("orange")).decode()
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "image_edit",
+        "provider": "openai_codex_oauth_native",
+        "model": "gpt-image-2",
+        "prompt_text": "Keep the reference order",
+        "parameters": {"input_images": [
+            {"source": "library", "image_id": library_image["id"], "name": "Library first"},
+            {"source": "uploaded", "name": "Upload second", "data_url": upload_data_url},
+        ]},
+    }).json()
+    cloned_reference = job["parameters"]["input_images"][0]["result_path"]
+    assert cloned_reference.startswith(f"generation-references/{job['id']}/")
+    assert (tmp_path / "library" / cloned_reference).is_file()
+    assert c.delete(f"/api/items/{source_item['id']}").status_code == 200
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+
+    assert response.status_code == 200
+    assert [image["source"] for image in captured["input_images"]] == ["library", "uploaded"]
+    assert [image["name"] for image in captured["input_images"]] == ["Library first", "Upload second"]
 
 
 def test_codex_native_rejects_invalid_data_url_before_provider_call(tmp_path, monkeypatch):

@@ -194,7 +194,8 @@ class GenerationJobRepository:
         if isinstance(input_images, list) and len(input_images) > MAX_GENERATION_INPUT_IMAGES:
             raise GenerationJobConflict(f"Generation edit supports up to {MAX_GENERATION_INPUT_IMAGES} input images")
         job_id = new_id("gen")
-        prepared_parameters, reference_image_copies = self._prepare_reference_input_clones(job_id, parameters)
+        prepared_parameters, library_reference_ids = self._prepare_library_reference_inputs(job_id, parameters)
+        prepared_parameters, reference_image_copies = self._prepare_reference_input_clones(job_id, prepared_parameters)
         metadata = {"reference_image_copies": reference_image_copies} if reference_image_copies else {}
         timestamp = now()
         with connect(self.library_path) as conn:
@@ -216,7 +217,7 @@ class GenerationJobRepository:
                     payload.prompt_language,
                     payload.prompt_text,
                     payload.edited_prompt_text,
-                    _to_json(payload.reference_image_ids),
+                    _to_json(library_reference_ids or payload.reference_image_ids),
                     _to_json(prepared_parameters),
                     _to_json(metadata),
                     timestamp,
@@ -225,6 +226,80 @@ class GenerationJobRepository:
             )
             conn.commit()
         return self.get_job(job_id)
+
+    def _prepare_library_reference_inputs(self, job_id: str, parameters: dict) -> tuple[dict, list[str]]:
+        prepared = dict(parameters or {})
+        raw_images = prepared.get("input_images")
+        if not isinstance(raw_images, list):
+            return prepared, []
+        library_reference_ids: list[str] = []
+        input_specs = []
+        for raw in raw_images:
+            if not isinstance(raw, dict):
+                input_specs.append(raw)
+                continue
+            spec = dict(raw)
+            image_id = spec.get("image_id")
+            if spec.get("source") == "library" or image_id:
+                if not isinstance(image_id, str) or not image_id:
+                    raise GenerationJobConflict("Library generation reference requires image_id")
+                try:
+                    image = self.items.get_image(image_id)
+                except KeyError as exc:
+                    preserved_result_path = spec.get("result_path")
+                    if isinstance(preserved_result_path, str) and preserved_result_path:
+                        resolve_generation_input_image_path(self.library_path, preserved_result_path)
+                        input_specs.append(spec)
+                        continue
+                    raise GenerationJobConflict("Library generation reference image not found") from exc
+                source_path, _ = resolve_generation_input_image_path(
+                    self.library_path,
+                    image.original_path,
+                    allowed_roots={"originals"},
+                )
+                data = source_path.read_bytes()
+                sha = hashlib.sha256(data).hexdigest()
+                suffix = Path(image.original_path).suffix.lower()
+                if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
+                    suffix = ".png"
+                copied_rel = Path(GENERATION_REFERENCE_ROOT) / job_id / f"from-library-{image.id}-{sha[:12]}{suffix}"
+                copied_path = resolve_generation_write_path(
+                    self.library_path,
+                    copied_rel.as_posix(),
+                    allowed_root=GENERATION_REFERENCE_ROOT,
+                )
+                copied_path.parent.mkdir(parents=True, exist_ok=True)
+                if copied_path.exists() and hashlib.sha256(copied_path.read_bytes()).hexdigest() != sha:
+                    raise GenerationJobConflict("Reference clone path collision")
+                if not copied_path.exists():
+                    copied_path.write_bytes(data)
+                spec.update({
+                    "source": "library",
+                    "image_id": image.id,
+                    "source_item_id": image.item_id,
+                    "role": image.role,
+                    "name": str(spec.get("name") or f"Library image {len(library_reference_ids) + 1}"),
+                    "source_original_path": image.original_path,
+                    "result_path": copied_rel.as_posix(),
+                    "preview_path": copied_rel.as_posix(),
+                    "cloned_from_library": True,
+                })
+                library_reference_ids.append(image.id)
+            input_specs.append(spec)
+        prepared["input_images"] = input_specs
+        return prepared, library_reference_ids
+
+    def resolve_library_reference(self, image_id: str):
+        try:
+            image = self.items.get_image(image_id)
+        except KeyError as exc:
+            raise GenerationJobConflict("Library generation reference image not found") from exc
+        path, mime_type = resolve_generation_input_image_path(
+            self.library_path,
+            image.original_path,
+            allowed_roots={"originals"},
+        )
+        return image, path, mime_type
 
     def _is_generation_result_path(self, value: str) -> bool:
         path = Path(value)
@@ -472,13 +547,30 @@ class GenerationJobRepository:
             return []
         return [raw for raw in raw_images[:MAX_GENERATION_INPUT_IMAGES] if isinstance(raw, dict)]
 
-    def _prepare_input_reference_images(self, job: GenerationJobRecord) -> list[tuple[bytes, str]]:
-        prepared: list[tuple[bytes, str]] = []
+    def _prepare_input_reference_images(self, job: GenerationJobRecord) -> list[tuple[bytes, str, str | None]]:
+        prepared: list[tuple[bytes, str, str | None]] = []
         for index, spec in enumerate(self._input_image_specs(job)):
             name = str(spec.get("name") or f"generation-reference-{index + 1}.png")
             data: bytes | None = None
+            source_image_id: str | None = None
+            image_id = spec.get("image_id")
+            if spec.get("source") == "library" and isinstance(image_id, str) and image_id:
+                result_path = spec.get("result_path")
+                if isinstance(result_path, str) and result_path:
+                    source_path, _ = resolve_generation_input_image_path(
+                        self.library_path,
+                        result_path,
+                        allowed_roots={GENERATION_REFERENCE_ROOT},
+                    )
+                    data = source_path.read_bytes()
+                    name = Path(result_path).name
+                else:
+                    image, source_path, _ = self.resolve_library_reference(image_id)
+                    data = source_path.read_bytes()
+                    name = Path(image.original_path).name
+                source_image_id = image_id
             result_path = spec.get("result_path")
-            if isinstance(result_path, str) and result_path:
+            if data is None and isinstance(result_path, str) and result_path:
                 source_path, _ = resolve_generation_input_image_path(self.library_path, result_path)
                 data = source_path.read_bytes()
                 name = Path(result_path).name
@@ -495,11 +587,17 @@ class GenerationJobRepository:
                     raise GenerationJobConflict("Generation edit input image contains invalid image data") from exc
             if data:
                 _validate_storeable_image_bytes(data)
-                prepared.append((data, name))
+                prepared.append((data, name, source_image_id))
         return prepared
 
-    def _store_input_reference_images(self, prepared_images: list[tuple[bytes, str]], item_id: str) -> None:
-        for data, name in prepared_images:
+    def _store_input_reference_images(self, prepared_images: list[tuple[bytes, str, str | None]], item_id: str, *, copy_library_images: bool) -> None:
+        for data, name, source_image_id in prepared_images:
+            if source_image_id and not copy_library_images:
+                try:
+                    if self.items.get_image(source_image_id).item_id == item_id:
+                        continue
+                except KeyError:
+                    pass
             stored = store_image(self.library_path, data, name)
             self.items.add_image(
                 item_id,
@@ -545,7 +643,7 @@ class GenerationJobRepository:
                 role="result_image",
             ),
         )
-        self._store_input_reference_images(input_reference_images, job.source_item_id)
+        self._store_input_reference_images(input_reference_images, job.source_item_id, copy_library_images=False)
         return GenerationJobAcceptResult(job=self._mark_accepted(job_id, image.id), item=self.items.get_item(job.source_item_id))
 
     def accept_result_as_new_item(self, job_id: str, overrides: GenerationJobAcceptAsNewItemRequest | None = None) -> GenerationJobAcceptResult:
@@ -616,7 +714,7 @@ class GenerationJobRepository:
                 role="result_image",
             ),
         )
-        self._store_input_reference_images(input_reference_images, new_item.id)
+        self._store_input_reference_images(input_reference_images, new_item.id, copy_library_images=True)
         return GenerationJobAcceptResult(job=self._mark_accepted(job_id, image.id), item=self.items.get_item(new_item.id))
 
     def _result_path_is_discardable(self, job: GenerationJobRecord) -> bool:

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Clipboard, Clock3, Download, FilePlus2, Maximize2, Paperclip, Plus, RotateCcw, Trash2, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { ArrowLeft, ChevronLeft, ChevronRight, Clipboard, Clock3, Download, FilePlus2, Images, Maximize2, Paperclip, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react';
 import aspectRatioIcon from '../assets/generation-controls/aspect-ratio.png';
 import brainAiIcon from '../assets/generation-controls/model.png';
 import qualityIcon from '../assets/generation-controls/quality.png';
 import { api, mediaUrl } from '../api/client';
-import type { ClusterRecord, GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ItemDetail, TagRecord } from '../types';
+import type { ClusterRecord, GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ImageRecord, ItemDetail, ItemSummary, TagRecord } from '../types';
 import type { Translator } from '../utils/i18n';
 import { downloadFileName } from '../utils/images';
 import { resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage } from '../utils/prompts';
@@ -78,11 +79,52 @@ const SAVE_NEW_LANGUAGE_OPTIONS = [
 type EditAttachment = {
   id: string;
   name: string;
-  source: 'uploaded' | 'generated_result';
+  source: 'uploaded' | 'generated_result' | 'library';
   previewUrl: string;
   dataUrl?: string;
   resultPath?: string;
+  imageId?: string;
+  sourceItemId?: string;
+  role?: string;
 };
+
+function libraryAttachment(image: ImageRecord, title: string): EditAttachment {
+  return {
+    id: `library-${image.id}`,
+    name: title,
+    source: 'library',
+    previewUrl: mediaUrl(image.preview_path || image.thumb_path || image.original_path),
+    imageId: image.id,
+    sourceItemId: image.item_id,
+    role: image.role,
+  };
+}
+
+function jobAttachments(job?: GenerationJobRecord): EditAttachment[] {
+  const inputs = job?.parameters?.input_images;
+  if (!Array.isArray(inputs)) return [];
+  return inputs.flatMap((raw, index) => {
+    if (!raw || typeof raw !== 'object') return [];
+    const input = raw as Record<string, unknown>;
+    const source = input.source === 'library' ? 'library' : input.source === 'generated_result' ? 'generated_result' : 'uploaded';
+    const resultPath = typeof input.result_path === 'string' ? input.result_path : undefined;
+    const previewPath = typeof input.preview_path === 'string' ? input.preview_path : undefined;
+    return [{
+      id: typeof input.id === 'string' ? input.id : `job-${job?.id}-${index}`,
+      name: typeof input.name === 'string' ? input.name : `Reference ${index + 1}`,
+      source,
+      previewUrl: previewPath ? mediaUrl(previewPath) : resultPath ? mediaUrl(resultPath) : '',
+      resultPath,
+      imageId: typeof input.image_id === 'string' ? input.image_id : undefined,
+      sourceItemId: typeof input.source_item_id === 'string' ? input.source_item_id : undefined,
+      role: typeof input.role === 'string' ? input.role : undefined,
+    }];
+  });
+}
+
+function restorableJobAttachments(job?: GenerationJobRecord): EditAttachment[] {
+  return jobAttachments(job).filter(attachment => Boolean(attachment.dataUrl || attachment.resultPath || attachment.imageId));
+}
 
 function friendlyFailure(job: GenerationJobRecord) {
   const rawKind = typeof job.metadata?.error_kind === 'string' ? job.metadata.error_kind : '';
@@ -185,12 +227,19 @@ export default function GenerationPanel({
   const [providers, setProviders] = useState<GenerationProviderStatus[]>([]);
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
   const [provider, setProvider] = useState('manual_upload');
-  const [orchestratorModel, setOrchestratorModel] = useState('gpt-5.4');
+  const [orchestratorModel, setOrchestratorModel] = useState('gpt-5.6-luna');
   const [aspectRatio, setAspectRatio] = useState('auto');
   const [quality, setQuality] = useState('high');
   const [openControl, setOpenControl] = useState<'aspect' | 'quality' | 'model' | null>(null);
   const [promptText, setPromptText] = useState(defaultPrompt);
   const [editAttachments, setEditAttachments] = useState<EditAttachment[]>([]);
+  const [referenceMenuOpen, setReferenceMenuOpen] = useState(false);
+  const [referencePicker, setReferencePicker] = useState<'library' | 'recent' | null>(null);
+  const [libraryItems, setLibraryItems] = useState<ItemSummary[]>([]);
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [libraryItem, setLibraryItem] = useState<ItemDetail>();
+  const [recentJobs, setRecentJobs] = useState<GenerationJobRecord[]>([]);
+  const [pickerBusy, setPickerBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [activeJobId, setActiveJobId] = useState<string | undefined>(initialJobId);
@@ -220,7 +269,7 @@ export default function GenerationPanel({
   const selectedProviderCanGenerate = providerCanGenerate(selectedProvider);
   const selectedProviderMessage = providerReadinessLabel(selectedProvider);
   const compactProviderMessage = compactProviderReadinessLabel(selectedProvider);
-  const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.4'];
+  const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.6-luna'];
   const templateVariables = useMemo(() => promptVariablesEnabled ? extractPromptTemplateVariableRecords(promptText) : [], [promptVariablesEnabled, promptText]);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
   const hasTemplateVariables = templateVariables.length > 0;
@@ -282,7 +331,7 @@ export default function GenerationPanel({
         const firstReady = nextProviders.find(nextProvider => nextProvider.provider !== 'manual_upload' && providerCanGenerate(nextProvider)) || nextProviders.find(providerCanGenerate) || nextProviders[0];
         if (firstReady) {
           setProvider(firstReady.provider);
-          setOrchestratorModel(firstReady.default_orchestrator_model || firstReady.orchestrator_models?.[0] || 'gpt-5.4');
+          setOrchestratorModel(firstReady.default_orchestrator_model || firstReady.orchestrator_models?.[0] || 'gpt-5.6-luna');
         }
       })
       .catch(() => setProviders([{ provider: 'manual_upload', display_name: 'Manual upload', optional: false, configured: true, authenticated: true, available: true, state: 'available', reason: null, features: { manual_result_upload: true } }]));
@@ -474,6 +523,9 @@ export default function GenerationPanel({
     source: attachment.source,
     data_url: attachment.dataUrl,
     result_path: attachment.resultPath,
+    image_id: attachment.imageId,
+    source_item_id: attachment.sourceItemId,
+    role: attachment.role,
   }));
 
   const addUploadedAttachments = async (files: FileList | null) => {
@@ -494,6 +546,66 @@ export default function GenerationPanel({
 
   const removeAttachment = (id: string) => {
     setEditAttachments(current => current.filter(attachment => attachment.id !== id));
+  };
+
+  const moveAttachment = (index: number, offset: -1 | 1) => {
+    setEditAttachments(current => {
+      const nextIndex = index + offset;
+      if (nextIndex < 0 || nextIndex >= current.length) return current;
+      const next = [...current];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  };
+
+  const addLibraryAttachment = (image: ImageRecord, title: string) => {
+    setEditAttachments(current => {
+      if (current.length >= MAX_EDIT_ATTACHMENTS || current.some(attachment => attachment.imageId === image.id)) return current;
+      return [...current, libraryAttachment(image, title)];
+    });
+  };
+
+  const openLibraryPicker = async () => {
+    setReferenceMenuOpen(false);
+    setReferencePicker('library');
+    setLibraryItem(undefined);
+    if (libraryItems.length) return;
+    setPickerBusy(true);
+    try {
+      const result = await api.items({ limit: 1000, sort: 'updated_desc' });
+      setLibraryItems(result.items.filter(candidate => candidate.first_image));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not load library images.');
+      setReferencePicker(null);
+    } finally {
+      setPickerBusy(false);
+    }
+  };
+
+  const openLibraryItem = async (candidate: ItemSummary) => {
+    setPickerBusy(true);
+    try {
+      setLibraryItem(await api.item(candidate.id));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not load library item.');
+    } finally {
+      setPickerBusy(false);
+    }
+  };
+
+  const openRecentPicker = async () => {
+    setReferenceMenuOpen(false);
+    setReferencePicker('recent');
+    setPickerBusy(true);
+    try {
+      const result = await api.generationJobs({ limit: 100 });
+      setRecentJobs(result.jobs.filter(candidate => Boolean(candidate.result_path) && ['succeeded', 'accepted'].includes(candidate.status)));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not load recent generation results.');
+      setReferencePicker(null);
+    } finally {
+      setPickerBusy(false);
+    }
   };
 
   const addResultAsAttachment = (job: GenerationJobRecord) => {
@@ -609,6 +721,8 @@ export default function GenerationPanel({
       setAspectRatio(jobAspectRatio(result.retry_job));
       setQuality(jobQuality(result.retry_job));
       setProvider(result.retry_job.provider || provider);
+      setOrchestratorModel(jobModel(result.retry_job));
+      setEditAttachments(restorableJobAttachments(result.retry_job));
       setFocusedJobHighlightId(result.retry_job.id);
       setMessage('Retry queued.');
     } catch (error) {
@@ -641,6 +755,8 @@ export default function GenerationPanel({
       setAspectRatio(jobAspectRatio(retry));
       setQuality(jobQuality(retry));
       setProvider(retry.provider || provider);
+      setOrchestratorModel(jobModel(retry));
+      setEditAttachments(restorableJobAttachments(retry));
       setFocusedJobHighlightId(retry.id);
       setMessage('Generation job retried.');
     } catch (error) {
@@ -676,12 +792,16 @@ export default function GenerationPanel({
   };
 
   const useJobAsDraft = (job: GenerationJobRecord) => {
+    const attachments = jobAttachments(job);
+    const restorableAttachments = restorableJobAttachments(job);
     setPromptText(jobPrompt(job));
     setAspectRatio(jobAspectRatio(job));
     setQuality(jobQuality(job));
     setProvider(job.provider || provider);
+    setOrchestratorModel(jobModel(job));
+    setEditAttachments(restorableAttachments);
     setHistoryReviewJobId(undefined);
-    setMessage('Prompt copied to draft.');
+    setMessage(attachments.length > restorableAttachments.length ? 'Prompt copied. Re-upload unavailable image references before generating.' : 'Prompt copied to draft.');
   };
 
   const copyJobPrompt = async (job: GenerationJobRecord) => {
@@ -693,6 +813,46 @@ export default function GenerationPanel({
       setMessage(text ? 'Prompt ready to copy.' : 'No prompt to copy.');
     }
   };
+
+  const renderReferenceTray = (attachments: EditAttachment[], readOnly = false) => (
+    <div className={`generation-reference-tray${readOnly ? ' is-readonly' : ''}`} aria-label={readOnly ? 'References used' : 'Generation references'}>
+      <div className="generation-reference-tray-head">
+        <strong>{readOnly ? 'References used' : 'References'}</strong>
+        <span>{attachments.length} / {MAX_EDIT_ATTACHMENTS}</span>
+      </div>
+      <div className="generation-reference-items">
+        {attachments.map((attachment, index) => (
+          <div className="generation-reference-card" key={attachment.id} title={attachment.name}>
+            <span className="generation-reference-number">{index + 1}</span>
+            {attachment.previewUrl ? <img src={attachment.previewUrl} alt="" loading="lazy" /> : <span className="generation-reference-placeholder"><Images size={15} /></span>}
+            <span className="generation-reference-copy">
+              <b>{attachment.source === 'library' ? 'Library' : attachment.source === 'generated_result' ? 'Generated' : 'Upload'}</b>
+              <em>{attachment.name}</em>
+            </span>
+            {!readOnly && (
+              <span className="generation-reference-actions">
+                <button type="button" onClick={() => moveAttachment(index, -1)} disabled={index === 0} aria-label={`Move ${attachment.name} left`}><ChevronLeft size={13} /></button>
+                <button type="button" onClick={() => moveAttachment(index, 1)} disabled={index === attachments.length - 1} aria-label={`Move ${attachment.name} right`}><ChevronRight size={13} /></button>
+                <button type="button" onClick={() => removeAttachment(attachment.id)} aria-label={`Remove ${attachment.name}`}><X size={13} /></button>
+              </span>
+            )}
+          </div>
+        ))}
+        {!readOnly && attachments.length < MAX_EDIT_ATTACHMENTS && (
+          <div className="generation-reference-add-wrap">
+            <button type="button" className="generation-reference-add" onClick={() => setReferenceMenuOpen(current => !current)} aria-label="Add generation reference"><Plus size={16} /> Add</button>
+          </div>
+        )}
+      </div>
+      {!readOnly && referenceMenuOpen && (
+        <div className="generation-reference-source-menu">
+          <button type="button" onClick={() => { setReferenceMenuOpen(false); attachmentInputRef.current?.click(); }}><Upload size={15} /> Upload image</button>
+          <button type="button" onClick={() => openLibraryPicker().catch(() => undefined)}><Images size={15} /> Choose from library</button>
+          <button type="button" onClick={() => openRecentPicker().catch(() => undefined)}><Clock3 size={15} /> Choose recent result</button>
+        </div>
+      )}
+    </div>
+  );
 
   const renderStageActions = (job: GenerationJobRecord) => (
     <div className="generation-stage-actions" aria-label="Result actions">
@@ -787,21 +947,10 @@ export default function GenerationPanel({
           <section className="generation-compose-card generation-composer-card">
             {!isHistoryReview ? (
               <>
-                <label className="generation-prompt-area">
-                  <span className="sr-only">Prompt</span>
-                  <textarea value={promptText} onChange={event => setPromptText(event.currentTarget.value)} placeholder="Prompt" />
-                  {editAttachments.length > 0 && (
-                    <div className="generation-attachment-strip" aria-label="Edit input images">
-                      {editAttachments.map(attachment => (
-                        <span className="generation-attachment-thumb" key={attachment.id} title={attachment.name}>
-                          <img src={attachment.previewUrl} alt="Edit input" />
-                          <em>{attachment.source === 'generated_result' ? 'Ref' : 'Upload'}</em>
-                          <button type="button" onClick={event => { event.preventDefault(); removeAttachment(attachment.id); }} aria-label={`Remove ${attachment.name}`} title="Remove image"><X size={11} /></button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </label>
+                <div className="generation-prompt-area">
+                  <textarea value={promptText} onChange={event => setPromptText(event.currentTarget.value)} placeholder="Prompt" aria-label="Generation prompt" />
+                  {renderReferenceTray(editAttachments)}
+                </div>
                 {hasTemplateVariables && (
                   <div className="generation-template-variable-fields" aria-label="Prompt variables">
                     <div className="generation-template-head">
@@ -870,9 +1019,6 @@ export default function GenerationPanel({
                     )}
                   </div>
                   <input ref={attachmentInputRef} className="generation-attachment-input" type="file" accept="image/*" multiple onChange={event => addUploadedAttachments(event.currentTarget.files)} />
-                  <button className="generation-control-trigger generation-attach-trigger" type="button" onClick={() => attachmentInputRef.current?.click()} disabled={editAttachments.length >= MAX_EDIT_ATTACHMENTS} aria-label="Attach image" title={editAttachments.length >= MAX_EDIT_ATTACHMENTS ? 'Maximum 4 images' : 'Attach image'}>
-                    <Plus size={18} aria-hidden="true" />
-                  </button>
                   <span className={`generation-provider-readiness ${selectedProviderCanGenerate ? 'is-ready' : 'needs-attention'}`} title={selectedProviderMessage} aria-label={selectedProviderMessage}>
                     {compactProviderMessage}
                   </span>
@@ -883,6 +1029,7 @@ export default function GenerationPanel({
             ) : historyReviewJob && (
               <div className="generation-history-prompt-preview">
                 <textarea readOnly value={jobPrompt(historyReviewJob)} aria-label="Selected history prompt" />
+                {renderReferenceTray(jobAttachments(historyReviewJob), true)}
                 <div className="generation-history-prompt-actions">
                   <button className="primary" onClick={() => useJobAsDraft(historyReviewJob)}>Use as draft</button>
                   <button className="secondary" onClick={() => copyJobPrompt(historyReviewJob)}><Clipboard size={15} /> Copy prompt</button>
@@ -899,6 +1046,73 @@ export default function GenerationPanel({
             {renderStage()}
           </section>
         </div>
+
+        {referencePicker && createPortal((
+          <div className="generation-reference-picker-backdrop" onClick={() => setReferencePicker(null)} onKeyDown={event => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopPropagation();
+            setReferencePicker(null);
+          }}>
+            <section className="generation-reference-picker" role="dialog" aria-modal="true" aria-label={referencePicker === 'library' ? 'Choose images from library' : 'Choose recent generation result'} onClick={event => event.stopPropagation()} tabIndex={-1} autoFocus>
+              <div className="drawer-head">
+                <div>
+                  <p className="drawer-eyebrow">References · {editAttachments.length} / {MAX_EDIT_ATTACHMENTS}</p>
+                  <h3>{referencePicker === 'library' ? 'Choose from library' : 'Choose recent result'}</h3>
+                </div>
+                <button className="modal-icon-button" type="button" onClick={() => setReferencePicker(null)} aria-label="Close reference picker"><X size={20} /></button>
+              </div>
+              {pickerBusy && <p className="muted">Loading…</p>}
+              {referencePicker === 'library' && !libraryItem && (
+                <>
+                  <input className="generation-reference-search" value={libraryQuery} onChange={event => setLibraryQuery(event.currentTarget.value)} placeholder="Search library" aria-label="Search library references" />
+                  <div className="generation-reference-picker-grid">
+                    {libraryItems.filter(candidate => candidate.title.toLowerCase().includes(libraryQuery.trim().toLowerCase())).map(candidate => (
+                      <button type="button" className="generation-reference-picker-card" key={candidate.id} onClick={() => openLibraryItem(candidate).catch(() => undefined)}>
+                        {candidate.first_image && <img src={mediaUrl(candidate.first_image.preview_path || candidate.first_image.thumb_path || candidate.first_image.original_path)} alt="" loading="lazy" />}
+                        <span><b>{candidate.title}</b><em>Choose image</em></span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+              {referencePicker === 'library' && libraryItem && (
+                <>
+                  <button className="generation-reference-back" type="button" onClick={() => setLibraryItem(undefined)}><ArrowLeft size={15} /> Back to library</button>
+                  <h4>{libraryItem.title}</h4>
+                  <div className="generation-reference-picker-grid images">
+                    {libraryItem.images.map(image => {
+                      const selected = editAttachments.some(attachment => attachment.imageId === image.id);
+                      return (
+                        <button type="button" className={`generation-reference-picker-card${selected ? ' is-selected' : ''}`} key={image.id} onClick={() => addLibraryAttachment(image, libraryItem.title)} disabled={selected || editAttachments.length >= MAX_EDIT_ATTACHMENTS}>
+                          <img src={mediaUrl(image.preview_path || image.thumb_path || image.original_path)} alt="" loading="lazy" />
+                          <span><b>{image.role === 'reference_image' ? 'Reference' : 'Result'}</b><em>{selected ? 'Selected' : 'Add reference'}</em></span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+              {referencePicker === 'recent' && (
+                <div className="generation-reference-picker-grid">
+                  {recentJobs.map(job => {
+                    const selected = editAttachments.some(attachment => attachment.resultPath === job.result_path);
+                    return (
+                      <button type="button" className={`generation-reference-picker-card${selected ? ' is-selected' : ''}`} key={job.id} onClick={() => addResultAsAttachment(job)} disabled={selected || editAttachments.length >= MAX_EDIT_ATTACHMENTS}>
+                        {job.result_path && <img src={jobResultUrl(job)} alt="" loading="lazy" />}
+                        <span><b>{jobPrompt(job) || 'Generated result'}</b><em>{selected ? 'Selected' : job.id}</em></span>
+                      </button>
+                    );
+                  })}
+                  {!pickerBusy && recentJobs.length === 0 && <p className="muted">No recent results available.</p>}
+                </div>
+              )}
+              <div className="generation-reference-picker-footer">
+                <button className="primary" type="button" onClick={() => setReferencePicker(null)}>Done · {editAttachments.length} selected</button>
+              </div>
+            </section>
+          </div>
+        ), document.body)}
 
         {showHistoryDrawer && (
           <aside className="generation-history-drawer" aria-label="Generation history">
@@ -938,6 +1152,7 @@ export default function GenerationPanel({
             <div className="save-new-metadata-grid">
               {jobResultUrl(reviewJob) && <img src={jobResultUrl(reviewJob)} alt="Generated result preview" />}
               <div className="save-new-fields">
+                {renderReferenceTray(jobAttachments(reviewJob), true)}
                 <label><span>Title</span><input value={metadataDraft.title || ''} onChange={event => updateMetadataDraft({ title: event.currentTarget.value })} /></label>
                 <label><span>Collection</span><input list="save-new-collection-suggestions" value={metadataDraft.cluster_name || ''} onChange={event => updateMetadataDraft({ cluster_name: event.currentTarget.value })} /></label>
                 <datalist id="save-new-collection-suggestions">
