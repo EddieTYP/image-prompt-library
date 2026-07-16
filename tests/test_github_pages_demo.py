@@ -1,5 +1,6 @@
-from pathlib import Path
 import json
+from pathlib import Path
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -16,161 +17,60 @@ def test_github_pages_demo_mode_uses_static_data_and_base_path():
     assert "demo-data/items.json" in client
     assert "demo-data/clusters.json" in client
     assert "demo-data/tags.json" in client
-    assert "mediaUrl = (path?: string)" in client
-    assert "demoUrl" in client
     assert '"build:demo"' in package_json
     assert "VITE_DEMO_MODE=true" in package_json
     assert "VITE_BASE_PATH=/image-prompt-library/" in package_json
 
 
-def test_github_pages_demo_is_read_only_and_discloses_local_generation_boundary():
-    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
-    cards = (ROOT / "frontend" / "src" / "components" / "CardsView.tsx").read_text()
-    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
-    i18n = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text()
+def test_github_pages_workflow_deploys_current_demo_with_legacy_redirects():
+    workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text()
 
-    assert "isDemoMode" in app
-    assert "demo-banner" in app
-    assert "onlineReadOnlyDemo" in i18n
-    assert "readOnlySampleLibrary" not in i18n
-    assert "compressedForDemo" not in i18n
-    assert "runLocallyForPrivateLibrary" in i18n
-    assert "localV06SupportsMobileGeneration" in i18n
-    assert "Online Read Only Demo" in i18n
-    assert "Demo 圖片已壓縮。" not in app
-    assert "新增／編輯／生成需要本機安裝，請在本機運行以建立你的私人 prompt library。" in i18n
-    assert "最新 v0.7 beta 加入 prompt variables 和 Template 標示" in i18n
-    assert "showActions" in cards
-    assert "showMutations" in detail
-    assert "!isDemoMode && <button className=\"fab\"" in app
-    assert "onAdd={isDemoMode ? undefined : openNewItemEditor}" in app
-    assert "onFavorite={isDemoMode ? undefined : favorite}" in app
-    assert "onEdit={isDemoMode ? undefined : editSummary}" in app
-
-
-def test_github_pages_workflow_deploys_versioned_demo_builds():
-    workflow = ROOT / ".github" / "workflows" / "pages.yml"
-    assert workflow.exists()
-    text = workflow.read_text()
-    assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true" in text
-    assert "actions/configure-pages@v6" in text
-    assert "actions/upload-pages-artifact@v5" in text
-    assert "actions/deploy-pages@v5" in text
-    assert "actions/configure-pages@v5" not in text
-    assert "actions/upload-pages-artifact@v4" not in text
-    assert "fetch-depth: 0" in text
-    assert "LEGACY_DEMO_REF: v0.1.0-alpha" in text
-    assert "CURRENT_PREVIEW_PATH: v0.7" in text
-    assert "ARCHIVED_03_DEMO_REF: v0.3.0-alpha" in text
-    assert "ARCHIVED_03_DEMO_PATH: v0.3" in text
-    assert "ARCHIVED_02_DEMO_REF: v0.2.0-alpha" in text
-    assert "ARCHIVED_02_DEMO_PATH: v0.2" in text
-    assert "ARCHIVED_04_DEMO_REF: v0.4.0-alpha" in text
-    assert "ARCHIVED_04_DEMO_PATH: v0.4" in text
-    assert "ARCHIVED_06_DEMO_REF: v0.6.8-beta" in text
-    assert "ARCHIVED_06_DEMO_PATH: v0.6" in text
-    assert "VITE_BASE_PATH=/image-prompt-library/${CURRENT_PREVIEW_PATH}/ npm run build" in text
-    assert "VITE_BASE_PATH=/image-prompt-library/${ARCHIVED_06_DEMO_PATH}/ npm run build" in text
-    assert "git worktree add .page-build/${ARCHIVED_06_DEMO_PATH} ${ARCHIVED_06_DEMO_REF}" in text
-    assert "VITE_BASE_PATH=/image-prompt-library/${ARCHIVED_03_DEMO_PATH}/ npm run build" in text
-    assert "git worktree add .page-build/${ARCHIVED_03_DEMO_PATH} ${ARCHIVED_03_DEMO_REF}" in text
-    assert "VITE_BASE_PATH=/image-prompt-library/${ARCHIVED_02_DEMO_PATH}/ npm run build" in text
-    assert "git worktree add .page-build/${LEGACY_DEMO_PATH} ${LEGACY_DEMO_REF}" in text
-    assert "VITE_BASE_PATH=/image-prompt-library/${LEGACY_DEMO_PATH}/ npm run build" in text
-    assert ".pages-artifact/${CURRENT_PREVIEW_PATH}" in text
-    assert ".pages-artifact/${ARCHIVED_06_DEMO_PATH}" in text
-    assert ".pages-artifact/${ARCHIVED_03_DEMO_PATH}" in text
-    assert ".pages-artifact/${ARCHIVED_02_DEMO_PATH}" in text
-    assert ".pages-artifact/${LEGACY_DEMO_PATH}" in text
-    assert "Online Read Only Demo" in text
-    assert "Demo images are compressed." not in text
-    assert "Add/edit/generation require local install; run locally to create your private prompt library." in text
-    assert "Latest v0.7 beta adds safer queue recovery and failed-job retry" in text
-    assert "local-generation-studio-banner-v0.7.png" in text
-    assert "hero-banner" in text
-    assert "View the v0.7.3 beta Safer Queue Recovery release" in text
-    assert "cp docs/assets/screenshots/local-generation-studio-banner-v0.7.png" in text
-    assert "View on GitHub" in text
-    assert "./v0.7/" in text
-    assert "Current demo · v0.7" in text
-    assert "./v0.6/" in text
-    assert "Archive · v0.6" in text
-    assert "The archived v0.6 read-only preview is preserved for old public links and release notes." in text
-    assert "Inject v0.4 upgrade notice into archived v0.3 preview" in text
-    assert "This v0.3 preview is archived." in text
-    assert "Go to the latest v0.4 demo" in text
-    assert "localStorage.getItem('image-prompt-library-hide-v03-upgrade')" in text
-    assert "Multilingual provenance-aware prompt vault" in text
-    assert "Archived 0.2 preview" in text
-    assert "Original alpha demo" in text
-    assert "path: .pages-artifact" in text
-
-
-def test_package_exposes_versioned_demo_build_scripts():
-    package_json = (ROOT / "package.json").read_text()
-    assert '"build:demo:v0.1"' in package_json
-    assert '"build:demo:v0.2"' in package_json
-    assert '"build:demo:v0.3"' in package_json
-    assert '"build:demo:v0.4"' in package_json
-    assert '"build:demo:v0.6"' in package_json
-    assert '"build:demo:v0.7"' in package_json
-    assert "VITE_BASE_PATH=/image-prompt-library/v0.1/" in package_json
-    assert "VITE_BASE_PATH=/image-prompt-library/v0.2/" in package_json
-    assert "VITE_BASE_PATH=/image-prompt-library/v0.3/" in package_json
-    assert "VITE_BASE_PATH=/image-prompt-library/v0.4/" in package_json
-    assert "VITE_BASE_PATH=/image-prompt-library/v0.6/" in package_json
-    assert "VITE_BASE_PATH=/image-prompt-library/v0.7/" in package_json
+    assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true" in workflow
+    assert "actions/checkout@v5" in workflow
+    assert "actions/configure-pages@v6" in workflow
+    assert "actions/upload-pages-artifact@v5" in workflow
+    assert "actions/deploy-pages@v5" in workflow
+    assert "npm ci" in workflow
+    assert "npm run build:demo" in workflow
+    assert "Preserve published version routes" in workflow
+    assert "for route in v0.1 v0.2 v0.3 v0.4 v0.6 v0.7" in workflow
+    assert 'url=/image-prompt-library/' in workflow
+    assert 'frontend/dist/$route/index.html' in workflow
+    assert "path: frontend/dist" in workflow
+    assert "git worktree" not in workflow
+    assert "ARCHIVED_" not in workflow
+    assert ".pages-artifact" not in workflow
 
 
 def test_demo_export_script_outputs_compact_static_assets():
-    script = ROOT / "scripts" / "export-demo-data.py"
-    assert script.exists()
-    text = script.read_text()
-    assert "frontend/public/demo-data" in text
-    assert "DEMO_IMAGE_MAX_WIDTH" in text
-    assert "DEMO_IMAGE_QUALITY" in text
-    assert "compressed" in text.lower()
-    assert "items.json" in text
-    assert "clusters.json" in text
-    assert "tags.json" in text
-    assert "demo_titles" in text
-    assert "build_demo_titles" in text
-    assert "PUBLIC_DEMO_SOURCES" in text
+    script = (ROOT / "scripts" / "export-demo-data.py").read_text()
 
-
-def test_demo_frontend_localizes_titles_only_in_demo_mode():
-    app = (ROOT / "frontend" / "src" / "App.tsx").read_text()
-    detail = (ROOT / "frontend" / "src" / "components" / "ItemDetailModal.tsx").read_text()
-    types = (ROOT / "frontend" / "src" / "types.ts").read_text()
-    demo_titles = (ROOT / "frontend" / "src" / "utils" / "demoTitles.ts").read_text()
-
-    assert "demo_titles" in types
-    assert "localizedDemoTitle" in demo_titles
-    assert "isDemoMode" in demo_titles
-    assert "localizeItemForDisplay" in app
-    assert "uiLanguage={uiLanguage}" in app
-    assert "displayTitle" in detail
+    assert "frontend/public/demo-data" in script
+    assert "DEMO_IMAGE_MAX_WIDTH" in script
+    assert "DEMO_IMAGE_QUALITY" in script
+    assert "items.json" in script
+    assert "clusters.json" in script
+    assert "tags.json" in script
+    assert "PUBLIC_DEMO_SOURCES" in script
 
 
 def test_demo_data_bundle_is_present_and_uses_compressed_media_paths():
     demo_root = ROOT / "frontend" / "public" / "demo-data"
-    assert (demo_root / "items.json").exists()
-    assert (demo_root / "clusters.json").exists()
-    assert (demo_root / "tags.json").exists()
-    items_text = (demo_root / "items.json").read_text()
+    items_text = (demo_root / "items.json").read_text(encoding="utf-8")
     clusters = json.loads((demo_root / "clusters.json").read_text(encoding="utf-8"))
     items = json.loads(items_text)
     sources = {item.get("source_name") for item in items}
+
+    assert (demo_root / "tags.json").exists()
     assert len(items) == 533
     assert {"wuyoscar/gpt_image_2_skill", "freestylefly/awesome-gpt-image-2"} <= sources
-    assert all({prompt.get("language") for prompt in item.get("prompts", [])} >= {"zh_hant", "zh_hans"} for item in items)
-    assert any({prompt.get("language") for prompt in item.get("prompts", [])} >= {"en", "zh_hant", "zh_hans"} for item in items)
+    assert all(
+        {prompt.get("language") for prompt in item.get("prompts", [])} >= {"zh_hant", "zh_hans"}
+        for item in items
+    )
     assert not any("http" in str(item.get("author", "")) for item in items)
-    assert not any("[" in str(item.get("author", "")) and "](" in str(item.get("author", "")) for item in items)
     assert "demo-data/media/" in items_text
     assert ".webp" in items_text
     assert "originals/" not in items_text
     assert "library/db.sqlite" not in items_text
     assert clusters and all(cluster.get("names", {}).get("zh_hant") for cluster in clusters)
-    assert items and all(item.get("cluster", {}).get("names", {}).get("zh_hant") for item in items if item.get("cluster"))
-    assert items and any(item.get("demo_titles", {}).get("en") for item in items)

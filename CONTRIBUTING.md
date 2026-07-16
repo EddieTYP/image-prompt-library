@@ -31,6 +31,7 @@ Before opening a PR, run:
 ```bash
 source .venv/bin/activate
 python -m pytest -q
+npm run test:frontend
 npm run build
 ```
 
@@ -50,6 +51,11 @@ If you have a running local server, also run:
   - `library/previews/`
   - `backups/`
 - Avoid hardcoded absolute paths in public docs or scripts.
+- Keep local agent state, QA captures, generated artifacts, machine-specific paths, usernames, credentials, and private prompts/images out of git.
+- Treat `.agents/`, `.codex/`, `.codex-qa-*`, `.codebase-memory/`, `.qa-*`, `.superpowers/`, `docs/plans/`, and `docs/qa/` as local-only.
+- Stage explicit paths only; never use `git add .` or `git add -A`.
+- Before committing, inspect `git status --short`, `git diff --cached --name-status`, and `git diff --cached`.
+- Before pushing, inspect `git diff --name-status origin/main...HEAD`.
 - Keep `/media` limited to intended image media directories; never expose the SQLite DB or internal files.
 - Prefer small, tested changes.
 - Add regression tests for bug fixes and public-install behavior.

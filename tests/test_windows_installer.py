@@ -4062,6 +4062,8 @@ def test_public_docs_explain_native_windows_without_installing_python():
         assert "scripts/install.ps1" in document
         assert "Python 3.10+" in document
         assert "v0.8.0" in document
+        assert "releases/tag/v0.8.0" in document
+        assert "releases/tag/v0.7.10" not in document
     assert "The installer does not install Python" in installation
     assert "image-prompt-library stop" in installation
     assert "app.previous.err.log" in troubleshooting

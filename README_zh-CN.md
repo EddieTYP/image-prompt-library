@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.10)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.8.0)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 <p align="center">
@@ -32,13 +32,13 @@ Image Prompt Library 就是为这件事而做：把分散在聊天记录、文�
 
 你可以用 demo 快速找灵感、看 prompt 结构、复制公开 sample prompt，或者比较不同 prompt 写法对出图效果的影响。GitHub Pages demo 是静态只读版本；新增、编辑、私人 library 管理和图片生成，都在本地安装版使用。
 
-当前 stable release：[`v0.7.10`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.10)。版本包括 structured search 与 sorting、batch reference management、cleanup tools、versioned install/update/rollback、更清晰的首次使用流程，以及 optional local generation 的 OAuth session recovery hardening。
+当前 stable release：[`v0.8.0`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.8.0)。版本包括 structured search 与 sorting、batch reference management、cleanup tools、versioned install/update/rollback、原生 Windows 安装、更清晰的首次使用流程，以及 optional local generation 的 OAuth session recovery hardening。
 
 ## 快速开始
 
 ### Windows（v0.8.0+）
 
-原生 Windows 支持从 v0.8.0 开始。当前 stable release 仍是 v0.7.10，请勿在 v0.7.10 使用这条原生 Windows 安装路径。需要 Windows 10/11、PowerShell 5.1+ 和 **Python 3.10+**；安装程序不会自动安装 Python。
+原生 Windows 支持已包含在当前 stable v0.8.0。需要 Windows 10/11、PowerShell 5.1+ 和 **Python 3.10+**；安装程序不会自动安装 Python。
 
 ```powershell
 irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.ps1 | iex
