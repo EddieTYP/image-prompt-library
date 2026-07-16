@@ -1,4 +1,5 @@
 import os
+import subprocess
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -11,12 +12,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_public_docs_do_not_use_edward_specific_setup_paths():
     readme = (ROOT / "README.md").read_text()
-    project_status = (ROOT / "docs" / "PROJECT_STATUS.md").read_text()
-    public_docs = readme + "\n" + project_status
+    public_docs = "\n".join(
+        (ROOT / path).read_text()
+        for path in (
+            "README.md",
+            "README_zh-TW.md",
+            "README_zh-CN.md",
+            "ROADMAP.md",
+            "docs/INSTALLATION.md",
+            "docs/DEVELOPMENT.md",
+            "docs/TROUBLESHOOTING.md",
+        )
+    )
     assert "/Users/" not in public_docs
     assert "edward" + "tsoi" not in public_docs.lower()
-    assert "Her" + "mes" not in project_status
-    assert "tele" + "gram" not in project_status.lower()
     assert "scripts/install.sh" in (ROOT / "docs" / "INSTALLATION.md").read_text()
     assert "Quick start" in readme
     assert "Privacy" in readme
@@ -176,10 +185,8 @@ def test_removed_source_specific_importer_is_not_shipped_or_exposed(tmp_path, mo
     assert response.status_code == 404
 
     readme = (ROOT / "README.md").read_text()
-    project_status = (ROOT / "docs" / "PROJECT_STATUS.md").read_text()
     roadmap = (ROOT / "ROADMAP.md").read_text()
     assert removed_source_name not in readme
-    assert removed_source_name not in project_status
     assert removed_source_name not in roadmap
 
 
@@ -302,6 +309,48 @@ def test_public_repo_hygiene_files_exist():
     assert "Local-first/privacy impact" in feature_template
     assert ".env" in gitignore
     assert "backups/" in gitignore
+    for local_only_path in (".codex/", ".codebase-memory/", ".qa-*", ".superpowers/", "docs/qa/"):
+        assert local_only_path in gitignore
+    assert "Stage explicit paths only" in (ROOT / "AGENTS.md").read_text()
+    assert "git diff --cached --name-status" in contributing
+
+
+def test_public_repo_does_not_track_ignored_local_artifacts():
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    tracked = [path for path in result.stdout.split("\0") if path and (ROOT / path).exists()]
+    ignored_result = subprocess.run(
+        ["git", "check-ignore", "--no-index", "-z", "--stdin"],
+        cwd=ROOT,
+        input="\0".join(tracked) + "\0",
+        text=True,
+        capture_output=True,
+    )
+    ignored_tracked = [path for path in ignored_result.stdout.split("\0") if path]
+    forbidden_prefixes = (
+        ".agents/",
+        ".codex/",
+        ".codex-qa-",
+        ".codebase-memory/",
+        ".qa-",
+        ".superpowers/",
+        "docs/plans/",
+        "docs/qa/",
+        "docs/superpowers/",
+    )
+    forbidden_files = {"docs/PROJECT_STATUS.md", "docs/README_SCREENSHOT_AUDIT.md"}
+    forbidden_tracked = [
+        path
+        for path in tracked
+        if path in forbidden_files or path.startswith(forbidden_prefixes)
+    ]
+
+    assert sorted(set(ignored_tracked + forbidden_tracked)) == []
 
 
 def test_library_path_can_be_configured_with_environment(monkeypatch, tmp_path):
