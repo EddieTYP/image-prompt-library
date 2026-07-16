@@ -27,7 +27,7 @@ elif grep -q '/image-prompt-library/assets/' frontend/dist/index.html; then
   VITE_APP_VERSION="$VERSION" npm run build
 fi
 
-RELEASE_DIR="dist-release"
+RELEASE_DIR="${IMAGE_PROMPT_LIBRARY_RELEASE_DIR:-dist-release}"
 STAGING_ROOT="$RELEASE_DIR/staging"
 STAGING="$STAGING_ROOT/image-prompt-library-$VERSION"
 ARTIFACT="image-prompt-library-$VERSION.tar.gz"

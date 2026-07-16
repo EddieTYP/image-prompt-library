@@ -107,6 +107,22 @@ def read(path: str) -> str:
     return (ROOT / path).read_text()
 
 
+def package_release(tmp_path: Path, version: str) -> Path:
+    release_dir = tmp_path / "dist-release"
+    env = os.environ.copy()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_DIR"] = git_bash_path(release_dir)
+    result = subprocess.run(
+        ["bash", "scripts/package-release.sh", version, "--skip-build"],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return release_dir
+
+
 def test_installer_and_runtime_scripts_define_versioned_install_contract():
     install_script = ROOT / "scripts" / "install.sh"
     appctl_script = ROOT / "scripts" / "appctl.sh"
@@ -245,16 +261,7 @@ def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developer
 
 
 def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_path):
-    result = subprocess.run(
-        ["bash", "scripts/package-release.sh", "v9.9.9-test", "--skip-build"],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        timeout=120,
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-
-    release_dir = ROOT / "dist-release"
+    release_dir = package_release(tmp_path, "v9.9.9-test")
     manifest_path = release_dir / "image-prompt-library-v9.9.9-test.manifest.json"
     tarball_path = release_dir / "image-prompt-library-v9.9.9-test.tar.gz"
     checksum_path = release_dir / "image-prompt-library-v9.9.9-test.tar.gz.sha256"
@@ -343,19 +350,12 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
 
 
 def test_installer_supports_file_release_base_and_installs_without_git(tmp_path):
-    subprocess.run(
-        ["bash", "scripts/package-release.sh", "v9.9.8-test", "--skip-build"],
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
-        timeout=120,
-    )
+    release_dir = package_release(tmp_path, "v9.9.8-test")
 
     prefix = tmp_path / "prefix"
     library = tmp_path / "library-data"
     env = os.environ.copy()
-    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = release_dir.as_uri()
     env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
     env["PYTHON"] = sys.executable
 
@@ -406,14 +406,7 @@ def test_installer_supports_file_release_base_and_installs_without_git(tmp_path)
 
 
 def test_installer_auto_detects_supported_python_when_python3_is_too_old(tmp_path):
-    subprocess.run(
-        ["bash", "scripts/package-release.sh", "v9.9.4-test", "--skip-build"],
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
-        timeout=120,
-    )
+    release_dir = package_release(tmp_path, "v9.9.4-test")
 
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
@@ -436,7 +429,7 @@ def test_installer_auto_detects_supported_python_when_python3_is_too_old(tmp_pat
     env = os.environ.copy()
     env.pop("PYTHON", None)
     env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
-    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = release_dir.as_uri()
     env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
 
     result = subprocess.run(
@@ -464,19 +457,12 @@ def test_installer_auto_detects_supported_python_when_python3_is_too_old(tmp_pat
 
 
 def test_installed_start_flags_override_env_host_and_port(tmp_path):
-    subprocess.run(
-        ["bash", "scripts/package-release.sh", "v9.9.3-test", "--skip-build"],
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
-        timeout=120,
-    )
+    release_dir = package_release(tmp_path, "v9.9.3-test")
 
     prefix = tmp_path / "prefix"
     library = tmp_path / "library-data"
     env = os.environ.copy()
-    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = release_dir.as_uri()
     env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
     env["PYTHON"] = sys.executable
     install = subprocess.run(
@@ -551,19 +537,12 @@ def test_installed_start_flags_override_env_host_and_port(tmp_path):
 
 
 def test_installed_doctor_reports_paths_db_and_provider_state_without_sensitive_values(tmp_path):
-    subprocess.run(
-        git_bash_cmd("scripts/package-release.sh", "v9.9.2-test", "--skip-build"),
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
-        timeout=120,
-    )
+    release_dir = package_release(tmp_path, "v9.9.2-test")
 
     prefix = tmp_path / "prefix"
     library = tmp_path / "library-data"
     env = os.environ.copy()
-    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = release_dir.as_uri()
     env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
     env["PYTHON"] = Path(sys.executable).as_posix()
     install = subprocess.run(
@@ -614,19 +593,12 @@ def test_installed_doctor_reports_paths_db_and_provider_state_without_sensitive_
 
 
 def test_installed_status_reports_short_local_summary(tmp_path):
-    subprocess.run(
-        git_bash_cmd("scripts/package-release.sh", "v9.9.3-test", "--skip-build"),
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
-        timeout=120,
-    )
+    release_dir = package_release(tmp_path, "v9.9.3-test")
 
     prefix = tmp_path / "prefix"
     library = tmp_path / "library-data"
     env = os.environ.copy()
-    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = release_dir.as_uri()
     env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
     env["PYTHON"] = Path(sys.executable).as_posix()
     install = subprocess.run(
@@ -671,14 +643,7 @@ def test_installed_status_reports_short_local_summary(tmp_path):
 
 
 def test_installed_service_commands_manage_macos_launchagent_with_fake_launchctl(tmp_path):
-    subprocess.run(
-        ["bash", "scripts/package-release.sh", "v9.9.1-test", "--skip-build"],
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
-        timeout=120,
-    )
+    release_dir = package_release(tmp_path, "v9.9.1-test")
 
     prefix = tmp_path / "prefix"
     library = tmp_path / "library-data"
@@ -710,7 +675,7 @@ def test_installed_service_commands_manage_macos_launchagent_with_fake_launchctl
     env = os.environ.copy()
     env["HOME"] = str(fake_home)
     env["PATH"] = f"{fake_bin}{os.pathsep}{env['PATH']}"
-    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = release_dir.as_uri()
     env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
     env["PYTHON"] = sys.executable
     install = subprocess.run(
@@ -849,19 +814,12 @@ def test_installed_service_commands_manage_macos_launchagent_with_fake_launchctl
 
 
 def test_installed_uninstall_removes_app_but_keeps_library_by_default(tmp_path):
-    subprocess.run(
-        ["bash", "scripts/package-release.sh", "v9.9.6-test", "--skip-build"],
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
-        timeout=120,
-    )
+    release_dir = package_release(tmp_path, "v9.9.6-test")
 
     prefix = tmp_path / "prefix"
     library = tmp_path / "installer-library"
     env = os.environ.copy()
-    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = release_dir.as_uri()
     env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
     env["PYTHON"] = sys.executable
     install = subprocess.run(
@@ -902,19 +860,12 @@ def test_installed_uninstall_removes_app_but_keeps_library_by_default(tmp_path):
 
 
 def test_installed_uninstall_can_delete_library_with_explicit_flag(tmp_path):
-    subprocess.run(
-        ["bash", "scripts/package-release.sh", "v9.9.5-test", "--skip-build"],
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
-        timeout=120,
-    )
+    release_dir = package_release(tmp_path, "v9.9.5-test")
 
     prefix = tmp_path / "prefix"
     library = tmp_path / "installer-library"
     env = os.environ.copy()
-    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = release_dir.as_uri()
     env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
     env["PYTHON"] = sys.executable
     install = subprocess.run(
@@ -955,19 +906,12 @@ def test_installed_uninstall_can_delete_library_with_explicit_flag(tmp_path):
 
 
 def test_installed_sample_data_script_imports_into_installer_library_by_default(tmp_path):
-    subprocess.run(
-        ["bash", "scripts/package-release.sh", "v9.9.7-test", "--skip-build"],
-        cwd=ROOT,
-        check=True,
-        text=True,
-        capture_output=True,
-        timeout=120,
-    )
+    release_dir = package_release(tmp_path, "v9.9.7-test")
 
     prefix = tmp_path / "prefix"
     library = tmp_path / "installer-library"
     env = os.environ.copy()
-    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = (ROOT / "dist-release").as_uri()
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = release_dir.as_uri()
     env["IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP"] = "1"
     env["PYTHON"] = sys.executable
     install = subprocess.run(
