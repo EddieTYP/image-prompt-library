@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/EddieTYP/image-prompt-library/workflows/CI/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/ci.yml)
 [![GitHub Pages demo](https://github.com/EddieTYP/image-prompt-library/workflows/Deploy%20GitHub%20Pages%20demo/badge.svg)](https://github.com/EddieTYP/image-prompt-library/actions/workflows/pages.yml)
-[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.10)
+[![Release](https://img.shields.io/github/v/tag/EddieTYP/image-prompt-library?sort=semver&label=release)](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.8.0)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
 <p align="center">
@@ -32,13 +32,13 @@ Image Prompt Library 就是為這件事而做：把分散在聊天紀錄、資�
 
 你可以用 demo 快速找靈感、看 prompt 結構、複製公開 sample prompt，或者比較不同寫法對出圖效果的影響。GitHub Pages demo 是靜態唯讀版本；新增、編輯、私人 library 管理和圖片生成，都在本地安裝版使用。
 
-目前 stable release：[`v0.7.10`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.7.10)。版本包括 structured search 與 sorting、batch reference management、cleanup tools、versioned install/update/rollback、較清晰的首次使用流程，以及 optional local generation 的 OAuth session recovery hardening。
+目前 stable release：[`v0.8.0`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.8.0)。版本包括 structured search 與 sorting、batch reference management、cleanup tools、versioned install/update/rollback、原生 Windows 安裝、較清晰的首次使用流程，以及 optional local generation 的 OAuth session recovery hardening。
 
 ## 快速開始
 
 ### Windows（v0.8.0+）
 
-原生 Windows 支援從 v0.8.0 開始。現行 stable release 仍是 v0.7.10，請勿在 v0.7.10 使用這條原生 Windows 安裝路徑。需要 Windows 10/11、PowerShell 5.1+ 與 **Python 3.10+**；安裝程式不會自動安裝 Python。
+原生 Windows 支援已包含在目前 stable v0.8.0。需要 Windows 10/11、PowerShell 5.1+ 與 **Python 3.10+**；安裝程式不會自動安裝 Python。
 
 ```powershell
 irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.ps1 | iex

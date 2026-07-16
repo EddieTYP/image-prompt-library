@@ -5,12 +5,7 @@
     "dev": "vite --host 127.0.0.1 --port 5177",
     "build": "tsc && vite build",
     "build:demo": "VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/ tsc && VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/ vite build",
-    "build:demo:v0.1": "VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/v0.1/ npm run build",
-    "build:demo:v0.2": "VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/v0.2/ npm run build",
-    "build:demo:v0.3": "VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/v0.3/ npm run build",
-    "build:demo:v0.4": "VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/v0.4/ npm run build",
-    "build:demo:v0.6": "VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/v0.6/ npm run build",
-    "build:demo:v0.7": "VITE_DEMO_MODE=true VITE_BASE_PATH=/image-prompt-library/v0.7/ npm run build",
+    "test:frontend": "node --test tests/frontend-utils.test.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 5177"
   },
   "dependencies": {
@@ -19,10 +14,7 @@
     "typescript": "6.0.3",
     "react": "19.2.5",
     "react-dom": "19.2.5",
-    "lucide-react": "1.11.0",
-    "@radix-ui/react-dialog": "1.1.15",
-    "@radix-ui/react-tabs": "1.1.13",
-    "tailwindcss": "4.2.4"
+    "lucide-react": "1.11.0"
   },
   "devDependencies": {
     "@types/react": "19.2.14",
