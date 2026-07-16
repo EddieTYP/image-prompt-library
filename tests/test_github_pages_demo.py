@@ -22,7 +22,7 @@ def test_github_pages_demo_mode_uses_static_data_and_base_path():
     assert "VITE_BASE_PATH=/image-prompt-library/" in package_json
 
 
-def test_github_pages_workflow_deploys_only_the_current_demo():
+def test_github_pages_workflow_deploys_current_demo_with_legacy_redirects():
     workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text()
 
     assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true" in workflow
@@ -32,6 +32,10 @@ def test_github_pages_workflow_deploys_only_the_current_demo():
     assert "actions/deploy-pages@v5" in workflow
     assert "npm ci" in workflow
     assert "npm run build:demo" in workflow
+    assert "Preserve published version routes" in workflow
+    assert "for route in v0.1 v0.2 v0.3 v0.4 v0.6 v0.7" in workflow
+    assert 'url=/image-prompt-library/' in workflow
+    assert 'frontend/dist/$route/index.html' in workflow
     assert "path: frontend/dist" in workflow
     assert "git worktree" not in workflow
     assert "ARCHIVED_" not in workflow
