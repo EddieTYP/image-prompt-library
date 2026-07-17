@@ -258,6 +258,7 @@ def test_codex_native_provider_marks_existing_job_failed_when_runtime_boundary_b
 
     failed = repo.get_job(job.id)
     assert failed.status == "failed"
+    assert failed.started_at is not None
     assert failed.metadata["error_kind"] == "auth_required"
     assert str(library) not in (failed.error or "")
 

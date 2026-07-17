@@ -693,7 +693,15 @@ class OpenAICodexNativeProvider:
             safe_error = "Provider credentials or library storage paths are unsafe. Move app-owned credentials outside the active library and restart."
             if (Path(library_path).expanduser() / "db.sqlite").is_file():
                 try:
-                    GenerationJobRepository(library_path).mark_failed(job_id, safe_error)
+                    repo = GenerationJobRepository(library_path)
+                    job = repo.get_job(job_id)
+                    if job.provider == PROVIDER_ID and job.status in {"queued", "failed"}:
+                        try:
+                            job = repo.mark_running(job_id)
+                        except GenerationJobConflict:
+                            job = repo.get_job(job_id)
+                    if job.provider == PROVIDER_ID and job.status not in {"succeeded", "accepted", "discarded", "cancelled"}:
+                        repo.mark_failed(job_id, safe_error)
                 except (GenerationJobConflict, KeyError, OSError):
                     pass
             raise CodexNativeAuthError(safe_error) from exc
