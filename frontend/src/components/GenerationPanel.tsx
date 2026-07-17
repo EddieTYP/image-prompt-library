@@ -8,6 +8,7 @@ import { api, mediaUrl } from '../api/client';
 import type { ClusterRecord, GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ImageRecord, ItemDetail, ItemSummary, TagRecord } from '../types';
 import type { Translator } from '../utils/i18n';
 import { downloadFileName } from '../utils/images';
+import { generationFailure } from '../utils/generationFailures';
 import { resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage } from '../utils/prompts';
 import { extractPromptTemplateVariableRecords, resolvePromptTemplate } from '../utils/promptTemplateVariables';
 
@@ -126,21 +127,6 @@ function restorableJobAttachments(job?: GenerationJobRecord): EditAttachment[] {
   return jobAttachments(job).filter(attachment => Boolean(attachment.dataUrl || attachment.resultPath || attachment.imageId));
 }
 
-function friendlyFailure(job: GenerationJobRecord) {
-  const rawKind = typeof job.metadata?.error_kind === 'string' ? job.metadata.error_kind : '';
-  const raw = `${rawKind} ${job.error || ''}`.toLowerCase();
-  if (raw.includes('policy') || raw.includes('refus') || raw.includes('violat') || raw.includes('safety')) {
-    return { title: 'Cannot generate this image', guidance: 'The provider refused this request because it may violate policy. Try changing the prompt.' };
-  }
-  if (raw.includes('rate') || raw.includes('too many') || raw.includes('429') || raw.includes('slow down')) {
-    return { title: 'Generation is temporarily rate limited', guidance: 'Please wait a bit before trying again.' };
-  }
-  if (raw.includes('auth') || raw.includes('credential') || raw.includes('login')) {
-    return { title: 'Provider connection needs attention', guidance: 'Reconnect or check the provider settings before retrying.' };
-  }
-  return { title: 'Generation failed', guidance: 'You can retry the job or adjust the prompt.' };
-}
-
 function buildInitialMetadata(job: GenerationJobRecord, item?: ItemDetail): GenerationJobAcceptAsNewItemPayload {
   const prompt = (job.edited_prompt_text || job.prompt_text || '').trim();
   return {
@@ -204,6 +190,7 @@ export default function GenerationPanel({
   item,
   preferredLanguage,
   onClose,
+  onOpenProviders,
   onAccepted,
   t,
   initialJobId,
@@ -214,6 +201,7 @@ export default function GenerationPanel({
   item?: ItemDetail;
   preferredLanguage: PromptCopyLanguage;
   onClose: () => void;
+  onOpenProviders: () => void;
   onAccepted: (item?: ItemDetail, message?: string) => void;
   t: Translator;
   initialJobId?: string;
@@ -259,6 +247,7 @@ export default function GenerationPanel({
   const resultImageRef = useRef<HTMLImageElement | null>(null);
   const fullscreenFrameRef = useRef<HTMLDivElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const initialFocusAppliedRef = useRef(false);
 
   const activeJob = useMemo(() => jobs.find(job => job.id === activeJobId), [jobs, activeJobId]);
@@ -384,7 +373,7 @@ export default function GenerationPanel({
   }, []);
 
   useEffect(() => {
-    if (selectedStageJob?.status !== 'succeeded') return;
+    if (!selectedStageJob || !['succeeded', 'failed'].includes(selectedStageJob.status)) return;
     window.requestAnimationFrame(() => stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
   }, [selectedStageJob?.id, selectedStageJob?.status]);
 
@@ -802,6 +791,10 @@ export default function GenerationPanel({
     setEditAttachments(restorableAttachments);
     setHistoryReviewJobId(undefined);
     setMessage(attachments.length > restorableAttachments.length ? 'Prompt copied. Re-upload unavailable image references before generating.' : 'Prompt copied to draft.');
+    window.requestAnimationFrame(() => {
+      promptInputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      promptInputRef.current?.focus({ preventScroll: true });
+    });
   };
 
   const copyJobPrompt = async (job: GenerationJobRecord) => {
@@ -901,19 +894,49 @@ export default function GenerationPanel({
     }
     if (selectedStageJob.status === 'failed') {
       const retryId = retriedByJobId(selectedStageJob);
+      const failure = generationFailure(selectedStageJob);
+      const retryButton = canRetryFailedJob(selectedStageJob) ? (
+        <button className={`stage-action${failure.kind === 'policy_violation' || failure.kind === 'auth_required' ? '' : ' primary'}`} onClick={() => retryFailedJob(selectedStageJob)} disabled={busy}>
+          Retry
+        </button>
+      ) : null;
+      const editPromptButton = (
+        <button className={`stage-action${failure.kind === 'policy_violation' ? ' primary' : ''}`} onClick={() => useJobAsDraft(selectedStageJob)} disabled={busy}>
+          Edit prompt
+        </button>
+      );
       return (
         <div className="generation-stage generation-stage-error">
-          <strong>{retryId ? 'Retried' : 'Failed'}</strong>
-          <div className="generation-stage-actions" aria-label="Failed generation actions">
-            {canRetryFailedJob(selectedStageJob) ? (
-              <button className="stage-action" onClick={() => retryFailedJob(selectedStageJob)} disabled={busy} aria-label="Retry failed job" title="Retry failed job">
-                <RotateCcw size={16} aria-hidden="true" />
+          <div className="generation-failure-content">
+            <div className="generation-failure-announcement" role="alert">
+              <strong>{retryId ? 'Retried' : failure.title}</strong>
+              <p>{failure.guidance}</p>
+              {message && <p className="provider-message generation-failure-message">{message}</p>}
+            </div>
+            {selectedStageJob.error && (
+              <details className="generation-failure-details">
+                <summary>Provider details</summary>
+                <small>{selectedStageJob.error}</small>
+              </details>
+            )}
+          </div>
+          <div className="generation-stage-actions generation-failure-actions" aria-label="Failed generation actions">
+            {retryId ? (
+              <button className="stage-action primary" onClick={() => retryFailedJob(selectedStageJob)} disabled={busy}>
+                Open retry job
               </button>
-            ) : retryId ? (
-              <button className="stage-action" onClick={() => retryFailedJob(selectedStageJob)} disabled={busy} aria-label="Open retry job" title="Open retry job">
-                Retried
-              </button>
-            ) : null}
+            ) : (
+              <>
+                {failure.kind === 'policy_violation' && editPromptButton}
+                {failure.kind === 'auth_required' && (
+                  <button className="stage-action primary" onClick={onOpenProviders} disabled={busy}>
+                    Open Providers
+                  </button>
+                )}
+                {retryButton}
+                {failure.kind === 'unknown' && editPromptButton}
+              </>
+            )}
           </div>
         </div>
       );
@@ -948,7 +971,7 @@ export default function GenerationPanel({
             {!isHistoryReview ? (
               <>
                 <div className="generation-prompt-area">
-                  <textarea value={promptText} onChange={event => setPromptText(event.currentTarget.value)} placeholder="Prompt" aria-label="Generation prompt" />
+                  <textarea ref={promptInputRef} value={promptText} onChange={event => setPromptText(event.currentTarget.value)} placeholder="Prompt" aria-label="Generation prompt" />
                   {renderReferenceTray(editAttachments)}
                 </div>
                 {hasTemplateVariables && (

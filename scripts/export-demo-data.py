@@ -145,6 +145,18 @@ def _rewrite_cluster_previews(clusters: list[dict], items: list[dict]) -> list[d
     return rewritten
 
 
+def _public_tags(items: list[dict]) -> list[dict]:
+    tags_by_id: dict[str, dict] = {}
+    for item in items:
+        for tag in item.get("tags", []):
+            tag_id = str(tag.get("id") or "")
+            if not tag_id:
+                continue
+            public_tag = tags_by_id.setdefault(tag_id, {**tag, "count": 0})
+            public_tag["count"] += 1
+    return sorted(tags_by_id.values(), key=lambda tag: str(tag.get("name") or "").casefold())
+
+
 def write_json(path: Path, data: object) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -160,7 +172,7 @@ def export_demo(library_path: Path, output: Path = DEFAULT_OUTPUT) -> None:
     public_items = [item for item in item_list.items if item.source_name in PUBLIC_DEMO_SOURCES]
     items = [_rewrite_item(library_path, media_dir, repo.get_item(item.id).model_dump(mode="json")) for item in public_items]
     clusters = _rewrite_cluster_previews([cluster.model_dump(mode="json") for cluster in repo.list_clusters()], items)
-    tags = [tag.model_dump(mode="json") for tag in repo.list_tags()]
+    tags = _public_tags(items)
     sources = sorted({item.source_name for item in public_items if item.source_name})
     source_label = "; ".join(sources) if sources else "sample data"
     metadata = {

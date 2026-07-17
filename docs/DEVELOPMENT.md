@@ -95,6 +95,10 @@ The backup includes:
 - `library/thumbs/`
 - `library/previews/`
 
+`backup.sh` archives only `db.sqlite`, `originals/`, `thumbs/`, and `previews/`. Before creating the archive it applies the same credential-path boundary as application startup, refuses an auth/config path inside the library, and rejects library media roots that resolve outside it through a symlink or junction. App-owned OAuth credentials, provider config, and device-login/session state stay outside the archive by construction.
+
+This is an allowlist, not a content scrubber. Prompts, notes, generation history, and images deliberately stored in the library are included; do not put secrets in library content.
+
 Restore by stopping the app, extracting the archive, and replacing the corresponding library directory contents. Keep backups somewhere outside the repo if the library matters to you.
 
 ## Tests and contribution workflow

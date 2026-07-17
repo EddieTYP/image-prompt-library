@@ -9,6 +9,7 @@ import zipfile
 from pathlib import Path
 
 from PIL import Image
+import pytest
 
 from backend.repositories import ItemRepository
 
@@ -53,7 +54,17 @@ def git_bash_env(env: dict[str, str] | None) -> dict[str, str] | None:
     if env is None:
         return None
     patched = dict(env)
-    for key in ("HOME", "PYTHON", "SAMPLE_DATA_MANIFEST", "SAMPLE_DATA_IMAGE_ZIP", "IMAGE_PROMPT_LIBRARY_PREFIX"):
+    for key in (
+        "HOME",
+        "PYTHON",
+        "SAMPLE_DATA_MANIFEST",
+        "SAMPLE_DATA_IMAGE_ZIP",
+        "IMAGE_PROMPT_LIBRARY_PREFIX",
+        "IMAGE_PROMPT_LIBRARY_PATH",
+        "IMAGE_PROMPT_LIBRARY_AUTH_PATH",
+        "IMAGE_PROMPT_LIBRARY_CONFIG_PATH",
+        "BACKUP_DIR",
+    ):
         if key in patched:
             patched[key] = git_bash_path(patched[key])
     return patched
@@ -121,6 +132,129 @@ def package_release(tmp_path: Path, version: str) -> Path:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     return release_dir
+
+
+def test_backup_archive_excludes_external_auth_and_config_files(tmp_path):
+    library = tmp_path / "library"
+    for directory in ("originals", "thumbs", "previews"):
+        (library / directory).mkdir(parents=True, exist_ok=True)
+    (library / "db.sqlite").write_bytes(b"fixture-database")
+    (library / "originals" / "image.txt").write_text("fixture-image", encoding="utf-8")
+    auth_path = tmp_path / "app-state" / "auth.json"
+    config_path = tmp_path / "app-state" / "config.json"
+    auth_path.parent.mkdir()
+    auth_path.write_text("backup-auth-canary", encoding="utf-8")
+    config_path.write_text("backup-config-canary", encoding="utf-8")
+    backup_dir = tmp_path / "backups"
+    env = os.environ.copy()
+    env.update({
+        "PYTHON": sys.executable,
+        "IMAGE_PROMPT_LIBRARY_PATH": str(library),
+        "IMAGE_PROMPT_LIBRARY_AUTH_PATH": str(auth_path),
+        "IMAGE_PROMPT_LIBRARY_CONFIG_PATH": str(config_path),
+        "BACKUP_DIR": str(backup_dir),
+    })
+
+    result = subprocess.run(
+        ["bash", "scripts/backup.sh"],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    archives = list(backup_dir.glob("image-prompt-library-*.tar.gz"))
+    assert len(archives) == 1
+    with tarfile.open(archives[0], "r:gz") as archive:
+        archive_bytes = b"".join(
+            extracted.read()
+            for member in archive.getmembers()
+            if member.isfile()
+            for extracted in (archive.extractfile(member),)
+            if extracted is not None
+        )
+    assert b"backup-auth-canary" not in archive_bytes
+    assert b"backup-config-canary" not in archive_bytes
+
+
+@pytest.mark.parametrize(
+    ("env_name", "relative_path"),
+    (
+        ("IMAGE_PROMPT_LIBRARY_AUTH_PATH", "originals/auth.json"),
+        ("IMAGE_PROMPT_LIBRARY_CONFIG_PATH", "config.json"),
+    ),
+)
+def test_backup_refuses_app_owned_path_inside_library(tmp_path, env_name, relative_path):
+    library = tmp_path / "library"
+    library.mkdir()
+    (library / "db.sqlite").write_bytes(b"fixture-database")
+    unsafe_path = library / relative_path
+    unsafe_path.parent.mkdir(parents=True, exist_ok=True)
+    unsafe_path.write_text("unsafe-backup-canary", encoding="utf-8")
+    backup_dir = tmp_path / "backups"
+    env = os.environ.copy()
+    env.update({
+        "PYTHON": sys.executable,
+        "IMAGE_PROMPT_LIBRARY_PATH": str(library),
+        "IMAGE_PROMPT_LIBRARY_AUTH_PATH": str(tmp_path / "app-state" / "auth.json"),
+        "IMAGE_PROMPT_LIBRARY_CONFIG_PATH": str(tmp_path / "app-state" / "config.json"),
+        "BACKUP_DIR": str(backup_dir),
+        env_name: str(unsafe_path),
+    })
+
+    result = subprocess.run(
+        ["bash", "scripts/backup.sh"],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert env_name in result.stderr
+    assert "unsafe-backup-canary" not in result.stderr
+    assert not list(backup_dir.glob("*.tar.gz"))
+
+
+def test_backup_refuses_external_resolving_library_storage_root(tmp_path):
+    library = tmp_path / "library"
+    library.mkdir()
+    (library / "db.sqlite").write_bytes(b"fixture-database")
+    for directory in ("thumbs", "previews"):
+        (library / directory).mkdir()
+    external = tmp_path / "app-state"
+    external.mkdir()
+    (external / "auth.json").write_text("junction-auth-canary", encoding="utf-8")
+    try:
+        (library / "originals").symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"directory symlinks are unavailable: {exc}")
+    backup_dir = tmp_path / "backups"
+    env = os.environ.copy()
+    env.update({
+        "PYTHON": sys.executable,
+        "IMAGE_PROMPT_LIBRARY_PATH": str(library),
+        "IMAGE_PROMPT_LIBRARY_AUTH_PATH": str(external / "auth.json"),
+        "IMAGE_PROMPT_LIBRARY_CONFIG_PATH": str(tmp_path / "config-state" / "config.json"),
+        "BACKUP_DIR": str(backup_dir),
+    })
+
+    result = subprocess.run(
+        ["bash", "scripts/backup.sh"],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "originals" in result.stderr
+    assert "junction-auth-canary" not in result.stderr
+    assert not list(backup_dir.glob("*.tar.gz"))
 
 
 def test_installer_and_runtime_scripts_define_versioned_install_contract():
@@ -395,6 +529,8 @@ def test_installer_supports_file_release_base_and_installs_without_git(tmp_path)
     env_text = env_file.read_text()
     assert f"IMAGE_PROMPT_LIBRARY_PATH={git_bash_arg(library)}" in env_text
     assert "BACKEND_PORT=8000" in env_text
+    assert "IMAGE_PROMPT_LIBRARY_AUTH_PATH" not in env_text
+    assert "IMAGE_PROMPT_LIBRARY_CONFIG_PATH" not in env_text
     assert str(library) not in str(installed)
 
     version = subprocess.check_output(

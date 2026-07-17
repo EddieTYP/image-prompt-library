@@ -171,6 +171,7 @@ export default function ItemDetailModal({
   onChanged,
   onDelete,
   onOpenItem,
+  onOpenProviders,
   showMutations = true,
   canGenerate = false,
   promptVariablesEnabled = false,
@@ -188,6 +189,7 @@ export default function ItemDetailModal({
   onChanged: () => void;
   onDelete?: (item: ItemDetail) => void;
   onOpenItem?: (id: string) => void;
+  onOpenProviders: () => void;
   showMutations?: boolean;
   canGenerate?: boolean;
   promptVariablesEnabled?: boolean;
@@ -647,6 +649,7 @@ export default function ItemDetailModal({
             tags={tags}
             promptVariablesEnabled={promptVariablesEnabled}
             onClose={() => setGenerationOpen(false)}
+            onOpenProviders={onOpenProviders}
             onAccepted={(acceptedItem, message) => {
               if (acceptedItem?.id && acceptedItem.id !== item.id) {
                 setToast({ message: message || 'New variant item created', actionLabel: 'View item', item: acceptedItem });

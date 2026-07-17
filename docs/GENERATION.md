@@ -20,7 +20,9 @@ No OpenAI API key is required by the app for the ChatGPT / Codex OAuth path. Adv
 
 Generation is local-install only. The public GitHub Pages demo does not perform live imports or generation and does not expose Add/Edit/private-library controls.
 
-The app-owned auth store lives outside the prompt library by default. Tokens must never be committed to git, sample bundles, backups, or GitHub Pages exports.
+The app-owned OAuth store and local provider config must resolve outside the active library. If `IMAGE_PROMPT_LIBRARY_AUTH_PATH` or `IMAGE_PROMPT_LIBRARY_CONFIG_PATH` resolves to the library itself or any child path, startup stops before the database or credential files are read. Library-managed media roots (`originals`, `thumbs`, `previews`, `generation-results`, and `generation-references`) must also resolve inside the library; external symlink or junction targets are rejected so they cannot alias app-owned state. The app does not move or delete an unsafe file automatically.
+
+For an existing unsafe override, move the file manually to `~/.image-prompt-library/auth.json` or `~/.image-prompt-library/config.json`, update or unset the override, then restart. Treat any older backup that may contain the file as sensitive; reconnect the provider if the credential may have been exposed. Tokens must never be committed to git, sample bundles, backups, or GitHub Pages exports.
 
 ## Connect the provider
 
@@ -68,18 +70,27 @@ If you save a result as a new library item, review and edit the metadata first. 
   <img src="assets/screenshots/generation-save-as-new-item.png" alt="Save generated image as a new item with editable metadata and readonly provenance" width="100%" />
 </p>
 
+## When generation fails
+
+The composer and Generation queue use the job's classified `metadata.error_kind` rather than trying to infer a new category from provider text:
+
+- `policy_violation`: edit the prompt, or retry the unchanged job if appropriate.
+- `rate_limited`: wait briefly, then retry.
+- `provider_unavailable`: retry shortly; the existing prompt and references remain with the job.
+- `auth_required`: open **Config → Providers**, reconnect, then retry.
+- `unknown`: retry, or edit the prompt before creating another job.
+
+The composer can show the sanitized provider error under **Provider details** as secondary diagnostic text. The queue intentionally shows only the classified guidance. Neither surface displays credentials or unsanitized provider responses.
+
 ## Current provider notes
 
 The current stable release includes the `openai_codex_oauth_native` provider path labelled in the UI as **ChatGPT / Codex OAuth**. Compatibility maintenance may be needed if the upstream OAuth or generation service changes.
 
-The current local composer supports attached input images for reference/edit-style generation jobs. Current hardening follow-ups include:
+The current local composer supports attached input images for reference/edit-style generation jobs. Current operational notes include:
 
 - Normal OAuth token renewal is coordinated locally and should not interrupt Config or generation. If the provider is temporarily unreachable, try again shortly; reconnect only when the app explicitly says OAuth needs attention.
-- Fresh OAuth onboarding QA.
-- Clearer error mapping for auth expiry, Cloudflare/challenge, empty image results, and upstream API drift.
-- Richer saved-reference selection and input-image UX polish.
-- Retry controls and richer job state transitions.
-- More complete local-only Generation UX polish.
+- Failed-job retry, stalled-job recovery, and backend-restart recovery preserve their existing semantics.
+- Final live-provider QA remains useful for fresh OAuth onboarding, an expired/revoked session, a temporary provider outage, and one low-cost generation request.
 
 ## Benchmark note
 

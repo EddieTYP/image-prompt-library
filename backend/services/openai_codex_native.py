@@ -23,14 +23,13 @@ else:
 import httpx
 from PIL import Image, UnidentifiedImageError
 
-from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository, resolve_generation_input_image_path
+from backend.config import resolve_auth_path, resolve_config_path, validate_app_owned_paths
+from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository, resolve_generation_input_image_path, sanitize_generation_error
 from backend.services.image_store import MAX_IMAGE_PIXELS
 
 PROVIDER_ID = "openai_codex_oauth_native"
 AUTH_MODE = "codex_oauth_native"
 DISPLAY_NAME = "ChatGPT / Codex OAuth"
-DEFAULT_AUTH_PATH = Path.home() / ".image-prompt-library" / "auth.json"
-DEFAULT_CONFIG_PATH = Path.home() / ".image-prompt-library" / "config.json"
 # Public native Codex OAuth client id used by the upstream openai/codex CLI.
 # Users may still override this with IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID or local config.
 DEFAULT_CODEX_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann"
@@ -129,7 +128,9 @@ def _codex_response_error_message(response: httpx.Response) -> str:
         if isinstance(data, dict):
             error = data.get("error")
             if isinstance(error, dict):
-                detail = str(error.get("message") or "").strip()
+                error_code = str(error.get("code") or "").strip()
+                error_message = str(error.get("message") or "").strip()
+                detail = f"{error_code}: {error_message}" if error_code and error_message else error_code or error_message
             elif isinstance(error, str):
                 detail = error.strip()
     except Exception:
@@ -137,10 +138,7 @@ def _codex_response_error_message(response: httpx.Response) -> str:
             detail = response.text.strip()
         except Exception:
             detail = ""
-    for marker in ("access_token", "refresh_token", "Bearer "):
-        if marker in detail:
-            detail = detail.split(marker, 1)[0].rstrip(" ;:")
-            break
+    detail = sanitize_generation_error(detail) if detail else ""
     prefix = f"Codex Responses API returned status {response.status_code}"
     return f"{prefix}: {detail[:500]}" if detail else prefix
 
@@ -194,13 +192,6 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _auth_path() -> Path:
-    configured = os.environ.get("IMAGE_PROMPT_LIBRARY_AUTH_PATH")
-    if configured:
-        return Path(configured).expanduser()
-    return DEFAULT_AUTH_PATH
-
-
 def _refresh_lock_path(auth_path: Path) -> Path:
     return auth_path.with_name(f"{auth_path.name}.refresh.lock")
 
@@ -227,15 +218,8 @@ def _unlock_file(handle) -> None:
         fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
-def _config_path() -> Path:
-    configured = os.environ.get("IMAGE_PROMPT_LIBRARY_CONFIG_PATH")
-    if configured:
-        return Path(configured).expanduser()
-    return DEFAULT_CONFIG_PATH
-
-
 def _client_id_from_config() -> str | None:
-    path = _config_path()
+    path = resolve_config_path()
     if not path.is_file():
         return None
     try:
@@ -373,7 +357,7 @@ class CodexNativeAuthStore:
     """
 
     def __init__(self, path: Path | str | None = None):
-        self.path = Path(path).expanduser() if path is not None else _auth_path()
+        self.path = Path(path).expanduser() if path is not None else resolve_auth_path()
 
     def save_tokens(self, tokens: dict[str, str]) -> None:
         access_token = str(tokens.get("access_token", "") or "").strip()
@@ -703,6 +687,24 @@ class OpenAICodexNativeProvider:
         self.timeout = timeout
 
     def run_job(self, library_path: Path | str, job_id: str):
+        try:
+            validate_app_owned_paths(library_path)
+        except ValueError as exc:
+            safe_error = "Provider credentials or library storage paths are unsafe. Move app-owned credentials outside the active library and restart."
+            if (Path(library_path).expanduser() / "db.sqlite").is_file():
+                try:
+                    repo = GenerationJobRepository(library_path)
+                    job = repo.get_job(job_id)
+                    if job.provider == PROVIDER_ID and job.status in {"queued", "failed"}:
+                        try:
+                            job = repo.mark_running(job_id)
+                        except GenerationJobConflict:
+                            job = repo.get_job(job_id)
+                    if job.provider == PROVIDER_ID and job.status not in {"succeeded", "accepted", "discarded", "cancelled"}:
+                        repo.mark_failed(job_id, safe_error)
+                except (GenerationJobConflict, KeyError, OSError):
+                    pass
+            raise CodexNativeAuthError(safe_error) from exc
         repo = GenerationJobRepository(library_path)
         job = repo.get_job(job_id)
         if job.provider != PROVIDER_ID:
@@ -719,7 +721,7 @@ class OpenAICodexNativeProvider:
                     if current.status == "cancelled":
                         raise GenerationJobConflict("Generation job is cancelled")
                     if current.status == "failed":
-                        raise CodexNativeAuthError(current.error or "Generation job failed")
+                        raise CodexNativeAuthError(sanitize_generation_error(current.error or "Generation job failed"))
                     job = current
                     break
                 time.sleep(0.05)
@@ -782,10 +784,8 @@ class OpenAICodexNativeProvider:
             repo.mark_failed(job_id, str(exc))
             raise
         except Exception as exc:
-            repo.mark_failed(job_id, str(exc))
-            if isinstance(exc, CodexNativeAuthError):
-                raise
-            raise CodexNativeAuthError("Codex native generation failed") from exc
+            failed = repo.mark_failed(job_id, str(exc))
+            raise CodexNativeAuthError(failed.error or "Codex native generation failed") from exc
 
     def _input_image_data_urls(self, job, library_path: Path) -> list[dict[str, Any]]:
         raw_images = job.parameters.get("input_images") if isinstance(job.parameters, dict) else None

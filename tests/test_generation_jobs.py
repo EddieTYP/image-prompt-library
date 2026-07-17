@@ -8,11 +8,17 @@ import time
 
 from fastapi.testclient import TestClient
 from PIL import Image
+import pytest
 
 from backend.db import connect
 from backend.main import create_app
 from backend.schemas import GenerationJobCreate
-from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository, _classify_error
+from backend.services.generation_jobs import (
+    GenerationJobConflict,
+    GenerationJobRepository,
+    _classify_error,
+    sanitize_generation_error,
+)
 
 
 def png_bytes(color="orange", size=(18, 12)) -> bytes:
@@ -25,8 +31,78 @@ def client(tmp_path):
     return TestClient(create_app(library_path=tmp_path / "library"))
 
 
-def test_temporary_token_refresh_errors_are_not_classified_as_auth_required():
-    assert _classify_error("Token refresh is temporarily unavailable") == "provider_unavailable"
+def symlink_or_skip(link: Path, target: Path, *, target_is_directory: bool = True) -> None:
+    try:
+        link.symlink_to(target, target_is_directory=target_is_directory)
+    except (NotImplementedError, OSError) as exc:
+        pytest.skip(f"symlinks are unavailable: {exc}")
+
+
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    (
+        ("Policy violated: request was refused by the safety system", "policy_violation"),
+        ("429 too many requests; retry later", "rate_limited"),
+        ("rate_limit_exceeded", "rate_limited"),
+        ("rate-limit-exceeded", "rate_limited"),
+        ("Token refresh is temporarily unavailable", "provider_unavailable"),
+        ("401 authentication required; reconnect the provider", "auth_required"),
+        ("Authentication refused: access_token expired", "auth_required"),
+        ("Authorization refused with HTTP 401", "auth_required"),
+        ("invalid_api_key: permission denied", "auth_required"),
+        ("403 forbidden: request violates safety policy", "policy_violation"),
+        ("Codex Responses API returned status 500", "provider_unavailable"),
+        ("504 Gateway Timeout", "provider_unavailable"),
+        ("The provider returned an opaque failure", "unknown"),
+    ),
+)
+def test_generation_failure_classification(message, expected):
+    assert _classify_error(message) == expected
+
+
+@pytest.mark.parametrize(
+    "message",
+    (
+        "Bearer secret-token",
+        "AUTHORIZATION: secret-token",
+        "token=opaque-value",
+        "ACCESS_TOKEN=secret-token",
+        "refresh_token=secret-token",
+        "Id_Token=secret-token",
+        "authorization_code=secret-token",
+        "CODE_VERIFIER=secret-token",
+        "device_auth_id=secret-token",
+        "USER_CODE=secret-token",
+        "api_key=sk-test-123456",
+        "secret=opaque-value",
+        "cookie=session-secret",
+        "session=opaque-secret",
+        "client_secret=secret-token",
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturevalue",
+    ),
+)
+def test_generation_error_sanitizer_redacts_credential_markers_case_insensitively(message):
+    sanitized = sanitize_generation_error(message)
+
+    assert sanitized == "Generation failed; provider returned a credential-related error"
+    assert "secret-token" not in sanitized
+
+
+def test_generation_error_sanitizer_preserves_safe_token_status_message():
+    message = "Token refresh is temporarily unavailable"
+
+    assert sanitize_generation_error(message) == message
+
+
+def test_generation_failure_classifies_raw_error_before_sanitizing(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="busy prompt"))
+
+    failed = repo.mark_failed(job.id, "429 access_token=super-secret")
+
+    assert failed.metadata["error_kind"] == "rate_limited"
+    assert failed.error == "Generation failed; provider returned a credential-related error"
+    assert "super-secret" not in failed.error
 
 
 def create_source_item(c, *, author=None):
@@ -598,7 +674,7 @@ def test_generation_job_rejects_symlinked_generation_root_inputs_on_create(tmp_p
     outside_image = outside_root / "gen_source" / "source.png"
     outside_image.parent.mkdir(parents=True)
     outside_image.write_bytes(png_bytes("red"))
-    (tmp_path / "library" / "generation-results").symlink_to(outside_root, target_is_directory=True)
+    symlink_or_skip(tmp_path / "library" / "generation-results", outside_root)
 
     response = c.post("/api/generation-jobs", json={
         "source_item_id": source_item["id"],
@@ -620,7 +696,7 @@ def test_generation_job_rejects_in_library_symlinked_generation_roots_on_create(
     wrong_results_image = wrong_results / "gen_source" / "source.png"
     wrong_results_image.parent.mkdir(parents=True)
     wrong_results_image.write_bytes(png_bytes("red"))
-    (library / "generation-results").symlink_to(wrong_results, target_is_directory=True)
+    symlink_or_skip(library / "generation-results", wrong_results)
 
     response = c.post("/api/generation-jobs", json={
         "source_item_id": source_item["id"],
@@ -637,7 +713,7 @@ def test_generation_job_rejects_in_library_symlinked_generation_roots_on_create(
     wrong_reference_image = wrong_references / "gen_source" / "source.png"
     wrong_reference_image.parent.mkdir(parents=True)
     wrong_reference_image.write_bytes(png_bytes("green"))
-    (library / "generation-references").symlink_to(wrong_references, target_is_directory=True)
+    symlink_or_skip(library / "generation-references", wrong_references)
 
     response = c.post("/api/generation-jobs", json={
         "source_item_id": source_item["id"],
@@ -655,7 +731,7 @@ def test_stage_result_rejects_symlinked_generation_result_root_before_write(tmp_
     job = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "unsafe result write"}).json()
     outside_root = tmp_path / "outside-results"
     outside_root.mkdir()
-    (tmp_path / "library" / "generation-results").symlink_to(outside_root, target_is_directory=True)
+    symlink_or_skip(tmp_path / "library" / "generation-results", outside_root)
 
     response = c.post(
         f"/api/generation-jobs/{job['id']}/result",
@@ -667,6 +743,22 @@ def test_stage_result_rejects_symlinked_generation_result_root_before_write(tmp_
     assert c.get(f"/api/generation-jobs/{job['id']}").json()["status"] == "queued"
 
 
+def test_stage_result_rejects_generation_result_root_alias_to_library(tmp_path):
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "unsafe root alias"}).json()
+    library = tmp_path / "library"
+    symlink_or_skip(library / "generation-results", library)
+
+    response = c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("green"), "image/png")},
+    )
+
+    assert response.status_code == 409
+    assert not (library / job["id"]).exists()
+    assert c.get(f"/api/generation-jobs/{job['id']}").json()["status"] == "queued"
+
+
 def test_stage_result_rejects_nested_generation_result_symlink_before_write(tmp_path):
     c = client(tmp_path)
     existing = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "existing result"}).json()
@@ -674,7 +766,7 @@ def test_stage_result_rejects_nested_generation_result_symlink_before_write(tmp_
     existing_dir = tmp_path / "library" / "generation-results" / existing["id"]
     before = sorted(path.relative_to(existing_dir).as_posix() for path in existing_dir.rglob("*"))
     job = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "unsafe nested result write"}).json()
-    (tmp_path / "library" / "generation-results" / job["id"]).symlink_to(existing_dir, target_is_directory=True)
+    symlink_or_skip(tmp_path / "library" / "generation-results" / job["id"], existing_dir)
 
     response = c.post(
         f"/api/generation-jobs/{job['id']}/result",
@@ -693,7 +785,7 @@ def test_generation_job_rejects_symlinked_generation_reference_clone_destination
     source_path = c.get(f"/api/generation-jobs/{source['id']}").json()["result_path"]
     outside_root = tmp_path / "outside-references"
     outside_root.mkdir()
-    (tmp_path / "library" / "generation-references").symlink_to(outside_root, target_is_directory=True)
+    symlink_or_skip(tmp_path / "library" / "generation-references", outside_root)
 
     response = c.post("/api/generation-jobs", json={
         "provider": "manual_upload",
@@ -715,7 +807,7 @@ def test_generation_job_rejects_nested_generation_reference_clone_symlink_destin
     library = tmp_path / "library"
     wrong_reference_dir = library / "generation-references" / "other-job"
     wrong_reference_dir.mkdir(parents=True)
-    (library / "generation-references" / "dest-job").symlink_to(wrong_reference_dir, target_is_directory=True)
+    symlink_or_skip(library / "generation-references" / "dest-job", wrong_reference_dir)
 
     try:
         GenerationJobRepository(library)._clone_generation_result_input(job_id="dest-job", result_path=source_path)
@@ -734,7 +826,7 @@ def test_discard_rejects_symlinked_generation_result_root_before_delete(tmp_path
     outside_file = outside_root / job["id"] / "generated.png"
     outside_file.parent.mkdir(parents=True)
     outside_file.write_bytes(png_bytes("purple"))
-    (tmp_path / "library" / "generation-results").symlink_to(outside_root, target_is_directory=True)
+    symlink_or_skip(tmp_path / "library" / "generation-results", outside_root)
     result_path = f"generation-results/{job['id']}/generated.png"
     with connect(tmp_path / "library") as conn:
         conn.execute(
@@ -763,7 +855,7 @@ def test_discard_rejects_nested_generation_result_file_symlink_before_delete(tmp
     job = c.get(f"/api/generation-jobs/{job['id']}").json()
     victim_file = tmp_path / "library" / job["result_path"]
     victim_file.unlink()
-    victim_file.symlink_to(target_file)
+    symlink_or_skip(victim_file, target_file, target_is_directory=False)
 
     response = c.post(f"/api/generation-jobs/{job['id']}/discard")
 

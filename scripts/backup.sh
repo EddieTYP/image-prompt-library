@@ -19,6 +19,27 @@ LIBRARY_PATH="${IMAGE_PROMPT_LIBRARY_PATH:-./library}"
 BACKUP_DIR="${BACKUP_DIR:-./backups}"
 TIMESTAMP="$(date +%Y%m%d-%H%M%S)"
 ARCHIVE="${BACKUP_DIR%/}/image-prompt-library-${TIMESTAMP}.tar.gz"
+PYTHON_BIN="${PYTHON:-}"
+
+if [ -z "$PYTHON_BIN" ]; then
+  if [ -x .venv/bin/python ]; then
+    PYTHON_BIN=.venv/bin/python
+  else
+    PYTHON_BIN=python3
+  fi
+fi
+
+"$PYTHON_BIN" - "$LIBRARY_PATH" <<'PY'
+import sys
+
+from backend.config import validate_app_owned_paths
+
+try:
+    validate_app_owned_paths(sys.argv[1])
+except ValueError as exc:
+    print(exc, file=sys.stderr)
+    raise SystemExit(2)
+PY
 
 if [ ! -f "$LIBRARY_PATH/db.sqlite" ]; then
   echo "No database found at $LIBRARY_PATH/db.sqlite. Start the app once before backing up." >&2
