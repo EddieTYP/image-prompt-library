@@ -64,6 +64,7 @@ const providerFallback: GenerationProviderStatus[] = [
 
 export default function ConfigPanel({
   open,
+  focusProviders = false,
   t,
   onClose,
   uiLanguage,
@@ -81,6 +82,7 @@ export default function ConfigPanel({
   onLibraryCleanup = () => undefined,
 }: {
   open: boolean;
+  focusProviders?: boolean;
   t: Translator;
   onClose: () => void;
   uiLanguage: UiLanguage;
@@ -111,6 +113,7 @@ export default function ConfigPanel({
   const [showActiveUpdateConfirm, setShowActiveUpdateConfirm] = useState(false);
   const drawerRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const providersSectionRef = useRef<HTMLElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
 
   const loadProviders = useCallback(() => api.generationProviders().then(nextProviders => {
@@ -151,9 +154,14 @@ export default function ConfigPanel({
       openerRef.current = activeElement;
     }
     window.setTimeout(() => {
-      closeButtonRef.current?.focus({ preventScroll: true });
+      if (focusProviders) {
+        providersSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        providersSectionRef.current?.focus({ preventScroll: true });
+      } else {
+        closeButtonRef.current?.focus({ preventScroll: true });
+      }
     }, 0);
-  }, [open]);
+  }, [open, focusProviders]);
 
   const closePanel = () => {
     onClose();
@@ -437,8 +445,8 @@ export default function ConfigPanel({
         </section>
       )}
 
-      <section className="setting-group provider-section">
-        <h3>{t('providers')}</h3>
+      <section ref={providersSectionRef} className="setting-group provider-section" tabIndex={-1} aria-labelledby="config-providers-title">
+        <h3 id="config-providers-title">{t('providers')}</h3>
         <p className="muted">Generation providers are optional. The core library remains usable without OAuth.</p>
         <div className="provider-list">
           {providers.map(provider => (

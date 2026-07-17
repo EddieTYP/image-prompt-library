@@ -11,7 +11,7 @@ from backend.schemas import (
     GenerationJobRecord,
     GenerationJobRetryResult,
 )
-from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository
+from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository, sanitize_generation_error
 from backend.services.generation_queue import enqueue_generation_jobs
 from backend.services.openai_codex_native import (
     PROVIDER_ID as CODEX_NATIVE_PROVIDER_ID,
@@ -52,6 +52,8 @@ def _sanitize_generation_job_parameters(parameters: object) -> object:
 def _sanitize_generation_job_record(job: GenerationJobRecord) -> GenerationJobRecord:
     payload = job.model_dump()
     payload["parameters"] = _sanitize_generation_job_parameters(payload.get("parameters"))
+    if payload.get("error"):
+        payload["error"] = sanitize_generation_error(str(payload["error"]))
     return GenerationJobRecord(**payload)
 
 

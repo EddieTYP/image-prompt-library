@@ -104,8 +104,8 @@ Only run this locally with a real account. Never commit `~/.image-prompt-library
 Before release, confirm:
 
 - `GET /api/generation-providers/openai-codex-native/status` never returns `access_token` or `refresh_token`.
-- `~/.image-prompt-library/auth.json` remains outside the library/export/demo data path.
-- `auth.json` is not included in sample bundles, release tarballs, GitHub Pages exports, screenshots, or logs.
+- Both effective app-owned paths are rejected when they equal or resolve inside the active library: `IMAGE_PROMPT_LIBRARY_AUTH_PATH` and `IMAGE_PROMPT_LIBRARY_CONFIG_PATH`.
+- OAuth tokens, provider config, and local device-login/session state are not included in backups, sample bundles, release tarballs, GitHub Pages exports, screenshots, or logs.
 - Status/error messages distinguish `not_connected` from upstream/provider failures.
 
 ## Release gate

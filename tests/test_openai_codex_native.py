@@ -196,6 +196,72 @@ def test_codex_native_smoke_script_reports_optional_status_without_tokens(tmp_pa
     assert "access_token" not in result.stdout
 
 
+def test_codex_native_smoke_rejects_unsafe_auth_path_before_reading_library(tmp_path):
+    library = tmp_path / "library"
+    unsafe_auth = library / "originals" / "auth.json"
+    unsafe_auth.parent.mkdir(parents=True)
+    unsafe_auth.write_text("smoke-auth-canary", encoding="utf-8")
+    env = os.environ.copy()
+    env["IMAGE_PROMPT_LIBRARY_AUTH_PATH"] = str(unsafe_auth)
+    env["IMAGE_PROMPT_LIBRARY_CONFIG_PATH"] = str(tmp_path / "app-state" / "config.json")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/codex_native_oauth_smoke.py",
+            "status",
+            "--library",
+            str(library),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode == 2
+    assert "IMAGE_PROMPT_LIBRARY_AUTH_PATH" in result.stderr
+    assert "smoke-auth-canary" not in result.stderr
+    assert unsafe_auth.read_text(encoding="utf-8") == "smoke-auth-canary"
+    assert not (library / "db.sqlite").exists()
+
+
+def test_codex_native_provider_rejects_unsafe_path_before_repository_initialization(tmp_path, monkeypatch):
+    from backend.services.openai_codex_native import CodexNativeAuthError, OpenAICodexNativeProvider
+
+    library = tmp_path / "library"
+    library.mkdir()
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(library / "auth.json"))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CONFIG_PATH", str(tmp_path / "app-state" / "config.json"))
+
+    with pytest.raises(CodexNativeAuthError, match="Provider credentials or library storage paths are unsafe"):
+        OpenAICodexNativeProvider().run_job(library, "missing-job")
+
+    assert not (library / "db.sqlite").exists()
+
+
+def test_codex_native_provider_marks_existing_job_failed_when_runtime_boundary_becomes_unsafe(tmp_path, monkeypatch):
+    from backend.schemas import GenerationJobCreate
+    from backend.services.generation_jobs import GenerationJobRepository
+    from backend.services.openai_codex_native import CodexNativeAuthError, OpenAICodexNativeProvider
+
+    library = tmp_path / "library"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(tmp_path / "app-state" / "auth.json"))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CONFIG_PATH", str(tmp_path / "app-state" / "config.json"))
+    repo = GenerationJobRepository(library)
+    job = repo.create_job(GenerationJobCreate(provider="openai_codex_oauth_native", prompt_text="boundary failure"))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(library / "auth.json"))
+
+    with pytest.raises(CodexNativeAuthError, match="Provider credentials or library storage paths are unsafe"):
+        OpenAICodexNativeProvider().run_job(library, job.id)
+
+    failed = repo.get_job(job.id)
+    assert failed.status == "failed"
+    assert failed.metadata["error_kind"] == "auth_required"
+    assert str(library) not in (failed.error or "")
+
+
 def test_codex_native_refreshes_expired_access_token_before_use(tmp_path, monkeypatch):
     auth_path = tmp_path / "auth" / "auth.json"
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
@@ -1264,7 +1330,31 @@ def test_codex_native_surfaces_non_200_responses_without_secrets():
 
     response = httpx.Response(400, json={"error": {"message": "Tool 'image_generation' is not supported with gpt-5.3-codex-spark. access_token=secret"}})
 
-    assert _codex_response_error_message(response) == "Codex Responses API returned status 400: Tool 'image_generation' is not supported with gpt-5.3-codex-spark."
+    assert _codex_response_error_message(response) == "Codex Responses API returned status 400: Generation failed; provider returned a credential-related error"
+
+
+@pytest.mark.parametrize("marker", ("AUTHORIZATION: secret", "Bearer secret", "ID_TOKEN=secret"))
+def test_codex_native_response_error_redacts_credential_markers_case_insensitively(marker):
+    import httpx
+    from backend.services.openai_codex_native import _codex_response_error_message
+
+    response = httpx.Response(503, json={"error": {"message": f"Provider unavailable. {marker}"}})
+
+    message = _codex_response_error_message(response)
+    assert message == "Codex Responses API returned status 503: Generation failed; provider returned a credential-related error"
+    assert "secret" not in message
+
+
+def test_codex_native_response_error_uses_safe_error_code_for_classification():
+    import httpx
+    from backend.services.generation_jobs import _classify_error
+    from backend.services.openai_codex_native import _codex_response_error_message
+
+    response = httpx.Response(400, json={"error": {"code": "invalid_api_key", "message": "invalid credentials"}})
+
+    message = _codex_response_error_message(response)
+    assert _classify_error(message) == "auth_required"
+    assert "api_key" not in message
 
 
 def test_codex_native_run_marks_job_failed_on_provider_errors(tmp_path, monkeypatch):
@@ -1294,6 +1384,9 @@ def test_codex_native_run_marks_job_failed_on_provider_errors(tmp_path, monkeypa
 
     response = c.post(f"/api/generation-jobs/{job['id']}/run")
     assert response.status_code == 409
+    assert response.json()["detail"] == "Generation failed; provider returned a credential-related error"
+    assert "access_token" not in response.text
+    assert "[REDACTED]" not in response.text
 
     failed = c.get(f"/api/generation-jobs/{job['id']}").json()
     assert failed["status"] == "failed"
@@ -1301,3 +1394,29 @@ def test_codex_native_run_marks_job_failed_on_provider_errors(tmp_path, monkeypa
     assert failed["completed_at"] is not None
     assert failed["error"] == "Generation failed; provider returned a credential-related error"
     assert "access_token" not in json.dumps(failed)
+
+
+def test_generation_job_api_sanitizes_legacy_provider_errors_on_read(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "provider": "manual_upload",
+        "prompt_text": "A legacy failed job",
+    }).json()
+    legacy_error = "UPSTREAM ACCESS_TOKEN=legacy-secret"
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET status='failed', error=?, completed_at=updated_at WHERE id=?",
+            (legacy_error, job["id"]),
+        )
+        conn.commit()
+
+    detail = c.get(f"/api/generation-jobs/{job['id']}")
+    listed = c.get("/api/generation-jobs")
+
+    assert detail.status_code == 200
+    assert listed.status_code == 200
+    assert detail.json()["error"] == "Generation failed; provider returned a credential-related error"
+    assert "legacy-secret" not in detail.text
+    assert "legacy-secret" not in listed.text

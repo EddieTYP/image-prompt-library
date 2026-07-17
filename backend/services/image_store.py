@@ -6,6 +6,8 @@ from io import BytesIO
 from pathlib import Path
 from PIL import Image
 
+from backend.config import resolve_library_storage_path
+
 MAX_IMAGE_PIXELS = 16_000_000
 
 @dataclass
@@ -35,13 +37,16 @@ def store_image(library_path: Path | str, data: bytes, filename: str = "image.pn
     original_rel = _rel("originals", sha, suffix)
     thumb_rel = _rel("thumbs", sha, ".webp")
     preview_rel = _rel("previews", sha, ".webp")
-    (library / original_rel).parent.mkdir(parents=True, exist_ok=True)
-    (library / thumb_rel).parent.mkdir(parents=True, exist_ok=True)
-    (library / preview_rel).parent.mkdir(parents=True, exist_ok=True)
-    if not (library / original_rel).exists():
-        (library / original_rel).write_bytes(data)
+    original_path = resolve_library_storage_path(library, original_rel)
+    thumb_path = resolve_library_storage_path(library, thumb_rel)
+    preview_path = resolve_library_storage_path(library, preview_rel)
+    original_path.parent.mkdir(parents=True, exist_ok=True)
+    thumb_path.parent.mkdir(parents=True, exist_ok=True)
+    preview_path.parent.mkdir(parents=True, exist_ok=True)
+    if not original_path.exists():
+        original_path.write_bytes(data)
     thumb = image.copy(); thumb.thumbnail((420, 420))
-    thumb.save(library / thumb_rel, "WEBP", quality=82)
+    thumb.save(thumb_path, "WEBP", quality=82)
     preview = image.copy(); preview.thumbnail((1400, 1400))
-    preview.save(library / preview_rel, "WEBP", quality=88)
-    return StoredImage(str(original_rel), str(thumb_rel), str(preview_rel), width, height, sha)
+    preview.save(preview_path, "WEBP", quality=88)
+    return StoredImage(original_rel.as_posix(), thumb_rel.as_posix(), preview_rel.as_posix(), width, height, sha)

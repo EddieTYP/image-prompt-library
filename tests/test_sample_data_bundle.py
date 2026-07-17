@@ -13,6 +13,33 @@ from backend.repositories import ItemRepository
 from backend.services.import_sample_bundle import import_sample_bundle
 
 ROOT = Path(__file__).resolve().parents[1]
+PRIVATE_RUNTIME_KEYS = {
+    "tokens",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "auth_mode",
+    "auth_store_path",
+    "account_id",
+    "token_present",
+    "providers",
+    "client_id",
+    "device_auth_id",
+    "user_code",
+    "authorization_code",
+    "code_verifier",
+    "session_id",
+}
+
+
+def nested_keys(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield key
+            yield from nested_keys(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from nested_keys(child)
 
 
 def test_sample_data_manifests_are_localized_and_truthful():
@@ -51,6 +78,7 @@ def assert_v2_prompt_provenance(manifest: dict):
         for prompt in prompts:
             provenance = prompt.get("provenance")
             assert isinstance(provenance, dict), item["id"]
+            assert set(provenance) <= {"kind", "source_language", "derived_from", "method"}, item["id"]
             assert provenance.get("kind") in {"source", "conversion", "translation", "manual"}
             assert provenance.get("source_language") in {"en", "zh_hant", "zh_hans"}
             if not prompt.get("is_original"):
@@ -61,6 +89,14 @@ def test_sample_data_manifests_use_schema_v2_prompt_provenance():
     manifest_dir = ROOT / "sample-data" / "manifests"
     for lang in ("en", "zh_hans", "zh_hant"):
         assert_v2_prompt_provenance(json.loads((manifest_dir / f"{lang}.json").read_text(encoding="utf-8")))
+
+
+def test_sample_data_manifests_exclude_private_runtime_fields():
+    manifest_dir = ROOT / "sample-data" / "manifests"
+
+    for path in manifest_dir.rglob("*.json"):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert PRIVATE_RUNTIME_KEYS.isdisjoint(nested_keys(payload)), path
 
 def test_sample_data_attribution_documents_third_party_license_boundary():
     attribution = (ROOT / "sample-data" / "ATTRIBUTION.md").read_text()

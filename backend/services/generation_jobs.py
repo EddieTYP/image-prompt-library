@@ -4,6 +4,7 @@ import hashlib
 import base64
 import binascii
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from contextlib import suppress
@@ -11,6 +12,7 @@ from io import BytesIO
 
 from PIL import Image, UnidentifiedImageError
 
+from backend.config import resolve_library_storage_path
 from backend.db import connect, init_db
 from backend.repositories import ItemRepository, StoredImageInput, new_id, now
 from backend.schemas import (
@@ -90,11 +92,11 @@ def resolve_generation_write_path(
     if root_path.is_symlink():
         raise GenerationJobConflict("Generation image path is invalid")
     _reject_symlink_path_components(library_abs, rel.parent, message="Generation image path is invalid")
-    root_abs = root_path.resolve()
-    _ensure_resolved_child(root_abs, library_abs)
-    parent_abs = (library_abs / rel.parent).resolve()
-    _ensure_resolved_child(parent_abs, root_abs)
-    dest_abs = parent_abs / rel.name
+    try:
+        root_abs = resolve_library_storage_path(library_abs, allowed_root)
+        dest_abs = resolve_library_storage_path(library_abs, rel)
+    except ValueError as exc:
+        raise GenerationJobConflict("Generation image path is invalid") from exc
     if dest_abs.is_symlink():
         raise GenerationJobConflict("Generation image path is invalid")
     if dest_abs.exists():
@@ -117,14 +119,9 @@ def resolve_generation_input_image_path(
     if allowed_root_path.is_symlink():
         raise GenerationJobConflict("Generation edit input image path is invalid")
     _reject_symlink_path_components(library_abs, rel, message="Generation edit input image path is invalid")
-    allowed_root = allowed_root_path.resolve()
     try:
-        allowed_root.relative_to(library_abs)
-    except ValueError as exc:
-        raise GenerationJobConflict("Generation edit input image path is invalid") from exc
-    candidate = (library_abs / rel).resolve()
-    try:
-        candidate.relative_to(allowed_root)
+        allowed_root = resolve_library_storage_path(library_abs, rel.parts[0])
+        candidate = resolve_library_storage_path(library_abs, rel)
     except ValueError as exc:
         raise GenerationJobConflict("Generation edit input image path is invalid") from exc
     if not candidate.is_file():
@@ -148,22 +145,76 @@ def _from_json(raw: str | None, fallback):
 
 def _classify_error(message: str) -> str:
     lowered = (message or "").lower()
-    if any(term in lowered for term in ("policy", "safety", "refus", "not allowed", "violat")):
-        return "policy_violation"
-    if any(term in lowered for term in ("rate limit", "too many", "slow down", "retry later", "429")):
+    if any(term in lowered for term in ("rate limit", "rate_limit", "rate-limit", "too many", "slow down", "retry later", "429")):
         return "rate_limited"
-    if any(term in lowered for term in ("unavailable", "timeout", "temporarily", "503", "502")):
+    if any(term in lowered for term in ("unavailable", "timeout", "temporarily", "gateway", "500", "502", "503", "504")):
         return "provider_unavailable"
-    if any(term in lowered for term in ("auth", "login", "token", "credential", "unauthorized", "forbidden", "401", "403")):
+    if any(term in lowered for term in ("policy", "safety", "not allowed", "violat")):
+        return "policy_violation"
+    if any(term in lowered for term in (
+        "auth",
+        "login",
+        "token",
+        "credential",
+        "unauthorized",
+        "forbidden",
+        "permission denied",
+        "invalid_grant",
+        "invalid grant",
+        "api key",
+        "api_key",
+        "apikey",
+        "401",
+        "403",
+    )) or _contains_sensitive_error_material(message):
         return "auth_required"
+    if "refus" in lowered:
+        return "policy_violation"
     return "unknown"
 
 
-def _redact_error(error: str) -> str:
+_SENSITIVE_ERROR_MARKERS = (
+    "bearer",
+    "authorization",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "authorization_code",
+    "code_verifier",
+    "device_auth_id",
+    "user_code",
+    "api key",
+    "api_key",
+    "apikey",
+    "client secret",
+    "client_secret",
+    "cookie",
+    "session",
+    "session token",
+    "session_token",
+    "session id",
+    "session_id",
+    "password",
+)
+_SENSITIVE_ERROR_PATTERNS = (
+    re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b", re.IGNORECASE),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b"),
+    re.compile(r"(?:^|[?&,\s{])[\"']?(?:token|secret|password|key)[\"']?\s*[:=]\s*[\"']?[^\s,;&}\"']+", re.IGNORECASE),
+)
+
+
+def _contains_sensitive_error_material(error: str) -> bool:
+    message = str(error or "")
+    lowered = message.lower()
+    return any(marker in lowered for marker in _SENSITIVE_ERROR_MARKERS) or any(
+        pattern.search(message) for pattern in _SENSITIVE_ERROR_PATTERNS
+    )
+
+
+def sanitize_generation_error(error: str) -> str:
     message = str(error or "Generation failed")
-    for marker in ("Bearer ", "access_token", "refresh_token"):
-        if marker in message:
-            return "Generation failed; provider returned a credential-related error"
+    if _contains_sensitive_error_material(message):
+        return "Generation failed; provider returned a credential-related error"
     return message[:1000]
 
 
@@ -410,10 +461,10 @@ class GenerationJobRepository:
 
     def mark_failed(self, job_id: str, error: str) -> GenerationJobRecord:
         timestamp = now()
-        redacted_error = _redact_error(error)
+        redacted_error = sanitize_generation_error(error)
         existing = self.get_job(job_id)
         metadata = dict(existing.metadata or {})
-        metadata["error_kind"] = _classify_error(redacted_error)
+        metadata["error_kind"] = _classify_error(str(error or ""))
         with connect(self.library_path) as conn:
             conn.execute(
                 """
@@ -450,7 +501,7 @@ class GenerationJobRepository:
             remaining = int((STALE_RUNNING_JOB_AFTER - age).total_seconds() // 60) + 1
             raise GenerationJobConflict(f"Generation job is not stale yet; wait about {remaining} more minute(s)")
         timestamp = now()
-        redacted_error = _redact_error(STALE_RUNNING_JOB_ERROR)
+        redacted_error = sanitize_generation_error(STALE_RUNNING_JOB_ERROR)
         metadata = dict(job.metadata or {})
         metadata["error_kind"] = _classify_error(redacted_error)
         metadata["stale_running_marked_failed"] = True

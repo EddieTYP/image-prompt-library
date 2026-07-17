@@ -12,7 +12,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from backend.schemas import GenerationJobCreate
-from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository
+from backend.config import validate_app_owned_paths
+from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository, sanitize_generation_error
 from backend.services.openai_codex_native import (
     IMAGE_MODEL,
     PROVIDER_ID,
@@ -126,9 +127,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
+        validate_app_owned_paths(Path(args.library).expanduser())
         return int(args.func(args) or 0)
     except (CodexNativeAuthError, GenerationJobConflict, KeyError, OSError, ValueError) as exc:
-        print(json.dumps({"error": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        print(json.dumps({"error": sanitize_generation_error(str(exc))}, ensure_ascii=False), file=sys.stderr)
         return 2
 
 

@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from .config import APP_VERSION, resolve_hidden_features, resolve_library_path
+from .config import APP_VERSION, resolve_hidden_features, resolve_library_path, resolve_library_storage_path, validate_app_owned_paths
 from .db import get_db_path, init_db
 from .routers import app_updates, cleanup, clusters, generation_jobs, generation_providers, images, import_drafts, items, tags
 from .services.generation_queue import PROVIDER_ID as NATIVE_GENERATION_PROVIDER_ID, enqueue_generation_jobs, recover_interrupted_generation_jobs
@@ -25,6 +25,7 @@ def frontend_file_response(path: Path, *, is_index: bool) -> FileResponse:
 
 def create_app(library_path: Path | str | None = None, frontend_dist_path: Path | str | None = None) -> FastAPI:
     library = resolve_library_path(library_path)
+    validate_app_owned_paths(library)
     frontend_dist = Path(frontend_dist_path).resolve() if frontend_dist_path is not None else DEFAULT_FRONTEND_DIST_PATH.resolve()
     init_db(library)
 
@@ -60,9 +61,9 @@ def create_app(library_path: Path | str | None = None, frontend_dist_path: Path 
         parts = Path(media_path).parts
         if not parts or parts[0] not in safe_roots:
             raise HTTPException(status_code=404)
-        candidate = (library / media_path).resolve()
-        allowed_root = (library / parts[0]).resolve()
         try:
+            candidate = resolve_library_storage_path(library, media_path)
+            allowed_root = resolve_library_storage_path(library, parts[0])
             candidate.relative_to(allowed_root)
         except ValueError as exc:
             raise HTTPException(status_code=404) from exc

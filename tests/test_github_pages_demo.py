@@ -1,8 +1,41 @@
 import json
+import runpy
 from pathlib import Path
+
+from PIL import Image
+
+from backend.repositories import ItemRepository, StoredImageInput
+from backend.schemas import ItemCreate, PromptIn
 
 
 ROOT = Path(__file__).resolve().parents[1]
+PRIVATE_RUNTIME_KEYS = {
+    "tokens",
+    "access_token",
+    "refresh_token",
+    "id_token",
+    "auth_mode",
+    "auth_store_path",
+    "account_id",
+    "token_present",
+    "providers",
+    "client_id",
+    "device_auth_id",
+    "user_code",
+    "authorization_code",
+    "code_verifier",
+    "session_id",
+}
+
+
+def nested_keys(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield key
+            yield from nested_keys(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from nested_keys(child)
 
 
 def test_github_pages_demo_mode_uses_static_data_and_base_path():
@@ -74,3 +107,47 @@ def test_demo_data_bundle_is_present_and_uses_compressed_media_paths():
     assert "originals/" not in items_text
     assert "library/db.sqlite" not in items_text
     assert clusters and all(cluster.get("names", {}).get("zh_hant") for cluster in clusters)
+
+
+def test_demo_export_only_includes_tags_from_public_items(tmp_path):
+    library = tmp_path / "library"
+    originals = library / "originals"
+    originals.mkdir(parents=True)
+    Image.new("RGB", (18, 12), "blue").save(originals / "public.png")
+    Image.new("RGB", (18, 12), "red").save(originals / "private.png")
+    repo = ItemRepository(library)
+    public_item = repo.create_item(ItemCreate(
+        title="Public item",
+        source_name="wuyoscar/gpt_image_2_skill",
+        tags=["public-only", "shared"],
+        prompts=[PromptIn(language="en", text="Public prompt", is_original=True)],
+    ))
+    private_item = repo.create_item(ItemCreate(
+        title="Private item",
+        source_name="personal-library",
+        tags=["private-only", "shared"],
+        prompts=[PromptIn(language="en", text="Private prompt", is_original=True)],
+    ))
+    repo.add_image(public_item.id, StoredImageInput(original_path="originals/public.png"))
+    repo.add_image(private_item.id, StoredImageInput(original_path="originals/private.png"))
+    (library / "auth.json").write_text("demo-auth-canary", encoding="utf-8")
+    (library / "config.json").write_text("demo-config-canary", encoding="utf-8")
+    output = tmp_path / "demo-output"
+    export_demo = runpy.run_path(str(ROOT / "scripts" / "export-demo-data.py"))["export_demo"]
+
+    export_demo(library, output)
+
+    tags = json.loads((output / "tags.json").read_text(encoding="utf-8"))
+    assert {tag["name"] for tag in tags} == {"public-only", "shared"}
+    assert next(tag for tag in tags if tag["name"] == "shared")["count"] == 1
+    output_bytes = b"".join(path.read_bytes() for path in output.rglob("*") if path.is_file())
+    assert b"demo-auth-canary" not in output_bytes
+    assert b"demo-config-canary" not in output_bytes
+
+
+def test_committed_demo_json_excludes_private_runtime_fields():
+    demo_root = ROOT / "frontend" / "public" / "demo-data"
+
+    for path in demo_root.glob("*.json"):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert PRIVATE_RUNTIME_KEYS.isdisjoint(nested_keys(payload)), path

@@ -26,6 +26,8 @@ A second sample package (`freestylefly/awesome-gpt-image-2`, Traditional Chinese
 
 The manifests in `sample-data/manifests/` are kept in git. The image files are distributed separately as release assets so normal clones stay lightweight. Sample items include available prompt variants; many include English, Traditional Chinese, and Simplified Chinese, while some upstream items are Chinese-only. Source/original text and derived machine translations or OpenCC conversions are marked in schema v2 prompt provenance. To refill missing variants during curation, install the optional curation dependencies and run:
 
+Curated sample manifests and image archives do not contain app-owned OAuth credentials, provider config, or device-login/session state. Build the GitHub Pages bundle from a dedicated sample library: `PUBLIC_DEMO_SOURCES` filters catalogue content, but it is not a general secret scrubber for a personal library.
+
 ```bash
 python -m pip install deep-translator opencc-python-reimplemented
 python backend/services/fill_sample_manifest_translations.py

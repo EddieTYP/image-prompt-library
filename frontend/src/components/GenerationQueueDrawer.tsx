@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { Bell, CheckCircle2, Clock3, ImagePlus, Maximize2, Trash2, X, XCircle } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import type { GenerationJobRecord } from '../types';
+import { generationFailure } from '../utils/generationFailures';
 import type { Translator } from '../utils/i18n';
 
 function isActive(job: GenerationJobRecord) {
@@ -93,12 +94,14 @@ export default function GenerationQueueDrawer({
   onOpen,
   onClose,
   onOpenJob,
+  onOpenProviders,
 }: {
   t: Translator;
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
   onOpenJob: (job: GenerationJobRecord) => void;
+  onOpenProviders: () => void;
 }) {
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
   const [loadError, setLoadError] = useState('');
@@ -223,6 +226,40 @@ export default function GenerationQueueDrawer({
     }
   };
 
+  const renderFailedJob = (job: GenerationJobRecord) => {
+    const failure = generationFailure(job);
+    const retryId = retriedByJobId(job);
+    const retry = retryId ? jobs.find(candidate => candidate.id === retryId) : undefined;
+    return (
+      <article className="generation-queue-failure status-failed" key={job.id}>
+        <button type="button" className="generation-queue-failure-summary" onClick={() => onOpenJob(job)}>
+          <span className="generation-queue-failure-icon" aria-hidden="true">{statusIcon(job)}</span>
+          <span className="generation-queue-failure-copy">
+            <strong>{retryId ? 'Retried' : failure.title}</strong>
+            <span>{failure.guidance}</span>
+            <small>{job.edited_prompt_text || job.prompt_text}</small>
+          </span>
+        </button>
+        <div className="generation-queue-failure-actions" aria-label="Failed generation actions">
+          {failure.kind === 'auth_required' && (
+            <button type="button" className="primary" onClick={onOpenProviders}>Open Providers</button>
+          )}
+          {canRetryFailedJob(job) && (
+            <button
+              type="button"
+              className={failure.kind === 'auth_required' ? 'secondary' : 'primary'}
+              onClick={() => retryJob(job).catch(() => undefined)}
+              disabled={retryBusyIds.has(job.id)}
+            >Retry</button>
+          )}
+          {retryId && (
+            <button type="button" className="secondary" onClick={() => onOpenJob(retry || job)}>Open retry job</button>
+          )}
+        </div>
+      </article>
+    );
+  };
+
   const counts = useMemo(() => ({
     running: jobs.filter(job => job.status === 'running').length,
     queued: jobs.filter(job => job.status === 'queued').length,
@@ -256,13 +293,13 @@ export default function GenerationQueueDrawer({
             </div>
             <button className="modal-icon-button" onClick={onClose} aria-label={t('close')}><X size={20} strokeWidth={2.25} /></button>
           </div>
-          {loadError && <p className="error">{loadError}</p>}
+          {loadError && <p className="error" role="alert">{loadError}</p>}
           <p className="muted queue-summary">{counts.running} running · {counts.queued} queued · {counts.ready} ready</p>
           {sections.map(section => (
             <section className="generation-queue-section" key={section.key}>
               <h3>{section.title}</h3>
               {section.jobs.length === 0 ? <p className="muted">—</p> : section.jobs.map(job => (
-                section.key === 'ready' && job.status === 'succeeded' ? (
+                section.key === 'failed' && job.status === 'failed' ? renderFailedJob(job) : section.key === 'ready' && job.status === 'succeeded' ? (
                   <div
                     key={job.id}
                     className="generation-queue-result generation-history-item status-succeeded"
