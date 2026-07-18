@@ -1161,6 +1161,68 @@ def test_posix_rollback_refuses_symlinked_versions_parent_without_external_mutat
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX signal recovery is covered by the Ubuntu CI job")
+def test_posix_installer_term_before_state_snapshot_preserves_existing_pointers(tmp_path):
+    import shutil
+
+    version = "v1.2.4"
+    release_dir = package_release(tmp_path, version)
+    prefix = tmp_path / "prefix"
+    app = prefix / "app"
+    versions = app / "versions"
+    current_target = versions / "v1.2.2"
+    previous_target = versions / "v1.2.1"
+    current_target.mkdir(parents=True)
+    previous_target.mkdir()
+    current_link = app / "current"
+    previous_link = app / "previous"
+    current_link.symlink_to(current_target, target_is_directory=True)
+    previous_link.symlink_to(previous_target, target_is_directory=True)
+
+    real_mkdir = shutil.which("mkdir")
+    assert real_mkdir
+    wrapper_dir = tmp_path / "bin"
+    wrapper_dir.mkdir()
+    mkdir_wrapper = wrapper_dir / "mkdir"
+    mkdir_wrapper.write_text(
+        "#!/bin/sh\n"
+        '"$REAL_MKDIR" "$@"\n'
+        "rc=$?\n"
+        'if [ "$#" -eq 2 ] && [ "$1" = "-p" ] && [ "$2" = "$SIGNAL_APP_PATH" ]; then\n'
+        '  kill -TERM "$PPID"\n'
+        "fi\n"
+        "exit \"$rc\"\n",
+        encoding="utf-8",
+    )
+    mkdir_wrapper.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": str(wrapper_dir) + os.pathsep + os.environ.get("PATH", ""),
+        "REAL_MKDIR": real_mkdir,
+        "SIGNAL_APP_PATH": str(app),
+        "PYTHON": sys.executable,
+        "IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL": release_dir.as_uri(),
+        "IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP": "1",
+    }
+
+    result = subprocess.run(
+        [
+            "bash", "scripts/install.sh", "--version", version,
+            "--prefix", str(prefix), "--library-path", str(tmp_path / "library"), "--no-shim",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    assert result.returncode != 0
+    assert current_link.is_symlink() and current_link.resolve() == current_target.resolve()
+    assert previous_link.is_symlink() and previous_link.resolve() == previous_target.resolve()
+    assert not (prefix / ".transaction.lock").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal recovery is covered by the Ubuntu CI job")
 def test_posix_installer_term_during_setup_restores_target_and_pointer_pair(tmp_path):
     import shutil
 

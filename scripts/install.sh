@@ -373,6 +373,7 @@ OLD_CURRENT_RESOLVED=""
 OLD_PREVIOUS_TARGET=""
 OLD_CURRENT_PRESENT=0
 OLD_PREVIOUS_PRESENT=0
+STATE_SAVED=0
 ENV_CREATED=0
 SHIM_BACKUP=""
 SHIM_CREATED=0
@@ -614,6 +615,7 @@ save_state() {
   if [ -L "$PREVIOUS_LINK" ]; then OLD_PREVIOUS_PRESENT=1; OLD_PREVIOUS_TARGET="$(readlink "$PREVIOUS_LINK")"; fi
   if [ -e "$CURRENT_LINK" ] && [ "$OLD_CURRENT_PRESENT" -eq 0 ]; then echo "Refusing non-symlink current pointer." >&2; exit 1; fi
   if [ -e "$PREVIOUS_LINK" ] && [ "$OLD_PREVIOUS_PRESENT" -eq 0 ]; then echo "Refusing non-symlink previous pointer." >&2; exit 1; fi
+  STATE_SAVED=1
 }
 
 restore_state() {
@@ -632,7 +634,7 @@ restore_state() {
 cleanup_exit() {
   local rc=$?
   trap - EXIT HUP INT TERM
-  if [ "$rc" -ne 0 ] && [ "$COMMITTED" -eq 0 ] && [ "$LOCK_HELD" -eq 1 ]; then
+  if [ "$rc" -ne 0 ] && [ "$COMMITTED" -eq 0 ] && [ "$LOCK_HELD" -eq 1 ] && [ "$STATE_SAVED" -eq 1 ]; then
     echo "Install failed; restoring the prior version and pointers." >&2
     restore_state || echo "Automatic recovery was incomplete; inspect $PREFIX and retry." >&2
   fi
