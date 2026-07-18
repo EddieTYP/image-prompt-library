@@ -115,7 +115,7 @@ def test_release_assets_workflow_packages_only_current_version_assets():
     assert "dist-release/image-prompt-library-${{ env.VERSION }}.tar.gz" in workflow
     assert "dist-release/image-prompt-library-${{ env.VERSION }}.tar.gz.sha256" in workflow
     assert "dist-release/image-prompt-library-${{ env.VERSION }}.manifest.json" in workflow
-    assert 'test "$GITHUB_SHA" = "$TAG_SHA"' in workflow
+    assert 'test "$GITHUB_SHA" = "$HEAD_SHA"' in workflow
     assert 'gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100"' in workflow
     assert 'releases/$RELEASE_ID' in workflow
     assert "Existing release contains unknown or duplicate assets" in workflow
@@ -124,8 +124,96 @@ def test_release_assets_workflow_packages_only_current_version_assets():
     assert "for attempt in 1 2 3 4 5" in workflow
     assert "target_commitish:" not in workflow
     assert "npm run test:frontend" in workflow
-    assert 'releases/latest' in workflow
-    assert "Published stable release was not promoted as GitHub Latest" in workflow
+    assert "push:" not in workflow
+    assert "refs/heads/main" in workflow
+    assert "ref: ${{ github.sha }}" in workflow
+    assert "token: ${{ github.token }}" in workflow
+    assert "persist-credentials: false" in workflow
+    assert "group: release-publication" in workflow
+    assert "Refs created by GITHUB_TOKEN do not recursively trigger this workflow" in workflow
+    assert 'if [ "$GITHUB_REF" != "refs/heads/main" ]' in workflow
+    assert "Release candidates must be dispatched from main" in workflow
+    assert "IS_PRERELEASE=true" in workflow
+    assert "REQUESTED_PRERELEASE" not in workflow
+    assert "Create exact release tag after local verification" in workflow
+    assert 'if: env.CREATE_TAG == \'true\'' in workflow
+    assert 'gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs"' in workflow
+    assert '-f ref="refs/tags/$VERSION" -f sha="$SOURCE_SHA"' in workflow
+    assert "GitHub did not create the release tag at the verified source commit" in workflow
+    assert "An existing GitHub release has no matching tag" in workflow
+    assert workflow.index("Package and verify release assets") < workflow.index("Create exact release tag after local verification")
+    assert workflow.index("Create exact release tag after local verification") < workflow.index("Upload assets to a draft release")
+    assert "Revalidate remote tag before release upload" in workflow
+    assert workflow.count('git ls-remote origin "refs/tags/$VERSION^{}"') == 2
+    assert "for attempt in 1 2 3 4 5" in workflow
+    assert '"$IS_PRERELEASE" "$RUNNER_TEMP/assets.tsv"' in workflow
+    assert 'expected_prerelease = prerelease_value.lower() == "true"' in workflow
+    assert 'expected_prerelease = "-" in version' not in workflow
+    assert workflow.count('--source-sha "$SOURCE_SHA"') == 2
+
+    contributing = (ROOT / "CONTRIBUTING.md").read_text()
+    assert "Manual release workflow dispatches are candidate-only" in contributing
+    assert "Release candidate install update rollback smoke" in contributing
+    assert "Leave the release marked as a prerelease if any platform fails" in contributing
+    assert "prerelease=false" in contributing
+    assert "make_latest=true" in contributing
+    assert "do not retag or re-upload" in contributing
+
+
+def test_release_candidate_smoke_uses_public_assets_and_default_user_paths():
+    workflow_path = ROOT / ".github" / "workflows" / "release-candidate-smoke.yml"
+    assert workflow_path.exists()
+    workflow = workflow_path.read_text()
+
+    assert "workflow_dispatch:" in workflow
+    assert "contents: read" in workflow
+    assert "group: release-publication" in workflow
+    assert "ubuntu-latest" in workflow
+    assert "macos-latest" in workflow
+    assert "windows-latest" in workflow
+    assert "fail-fast: false" in workflow
+    assert 'default: \'v0.8.0\'' in workflow
+    assert "Candidate is not the requested published prerelease" in workflow
+    assert "Candidate assets are not the exact expected set" in workflow
+    assert "gh release download" in workflow
+    assert "persist-credentials: false" in workflow
+    assert "unset GH_TOKEN" in workflow
+    assert '--source-sha "$TAG_SHA" --capability posix-shell-v1' in workflow
+    assert 'test ! -e "$HOME/.image-prompt-library"' in workflow
+    assert 'test ! -e "$HOME/ImagePromptLibrary"' in workflow
+    assert 'bash "$installer" --version "$BASELINE_VERSION"' in workflow
+    assert '"$app" update --version "$CANDIDATE_VERSION"' in workflow
+    assert 'if "$app" rollback; then' in workflow
+    assert 'Join-Path $env:LOCALAPPDATA "ImagePromptLibrary"' in workflow
+    assert 'Join-Path $env:USERPROFILE "ImagePromptLibrary"' in workflow
+    assert "-NoStart -NoBrowser" in workflow
+    assert 'Invoke-App -Arguments @("update", "--version", $env:CANDIDATE_VERSION)' in workflow
+    assert 'Invoke-App -Arguments @("rollback")' in workflow
+    assert "release-smoke-sentinel.txt" in workflow
+    assert "IMAGE_PROMPT_LIBRARY_PREFIX" not in workflow
+    assert "IMAGE_PROMPT_LIBRARY_PATH" not in workflow
+    assert "The promotable candidate must use a bare SemVer tag" in workflow
+    assert "contents: write" not in workflow
+    assert "prerelease=false" not in workflow
+
+
+def test_v081_release_notes_describe_safety_and_legacy_posix_boundary():
+    notes_path = ROOT / "docs" / "releases" / "v0.8.1.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text(encoding="utf-8")
+
+    assert "GenerationJob.metadata.error_kind" in notes
+    assert "Config → Providers" in notes
+    assert "OAuth and provider configuration paths" in notes
+    assert "atomic pointer replacement" in notes
+    assert "exact source commit" in notes
+    assert "posix-shell-v1" in notes
+    assert "fails closed" in notes
+    assert "legacy shell-evaluated `.env`" in notes
+    assert "windows-latest" in notes
+    assert "macos-latest" in notes
+    assert "ubuntu-latest" in notes
+    assert "paid image-generation request" in notes
 
 
 def test_v04_release_notes_describe_chatgpt_oauth_generation_and_installer():
