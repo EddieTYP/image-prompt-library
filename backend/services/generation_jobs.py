@@ -1045,6 +1045,21 @@ class GenerationJobRepository:
             raise GenerationJobConflict(f"Only queued or running generation jobs can be cancelled; current status is {current.status}")
         return self.get_job(job_id)
 
+    def cancel_active_jobs(self) -> int:
+        """Cancel every queued or running job in one database update."""
+        timestamp = now()
+        with connect(self.library_path) as conn:
+            cursor = conn.execute(
+                """
+                UPDATE generation_jobs
+                SET status='cancelled', cancelled_at=?, completed_at=?, updated_at=?
+                WHERE status IN ('queued', 'running')
+                """,
+                (timestamp, timestamp, timestamp),
+            )
+            conn.commit()
+        return int(cursor.rowcount)
+
     def next_queued_provider_jobs(self, provider: str, *, limit: int) -> list[GenerationJobRecord]:
         with connect(self.library_path) as conn:
             rows = conn.execute(
