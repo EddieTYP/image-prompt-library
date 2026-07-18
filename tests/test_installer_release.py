@@ -88,6 +88,8 @@ _subprocess_check_output = subprocess.check_output
 
 
 def _rewrite_bash_args(args: object, kwargs: dict[str, object]) -> tuple[object, dict[str, object]]:
+    if os.name != "nt":
+        return args, kwargs
     if not isinstance(args, (list, tuple)) or not args or args[0] != "bash":
         return args, kwargs
     if len(args) > 1 and args[1] == "-lc":
@@ -1016,6 +1018,58 @@ def test_posix_installer_reconciles_owned_remnants_and_same_version_is_safe(tmp_
     assert not lock.exists()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink replacement is covered by the Ubuntu CI job")
+def test_posix_installer_update_swaps_existing_symlink_pointers(tmp_path):
+    old_version = "v9.9.2-test"
+    new_version = "v9.9.3-test"
+    old_release_root = tmp_path / "old-release"
+    new_release_root = tmp_path / "new-release"
+    old_release_root.mkdir()
+    new_release_root.mkdir()
+    old_release = package_release(old_release_root, old_version)
+    new_release = package_release(new_release_root, new_version)
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library-data"
+    env = {
+        **os.environ,
+        "IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL": old_release.as_uri(),
+        "IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP": "1",
+        "PYTHON": sys.executable,
+    }
+    command = [
+        "bash", "scripts/install.sh", "--prefix", str(prefix),
+        "--library-path", str(library), "--no-shim",
+    ]
+
+    first = subprocess.run(
+        [*command, "--version", old_version],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert first.returncode == 0, first.stdout + first.stderr
+
+    env["IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL"] = new_release.as_uri()
+    second = subprocess.run(
+        [*command, "--version", new_version],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert second.returncode == 0, second.stdout + second.stderr
+
+    versions = prefix / "app" / "versions"
+    current = prefix / "app" / "current"
+    previous = prefix / "app" / "previous"
+    assert current.resolve() == (versions / new_version).resolve()
+    assert previous.resolve() == (versions / old_version).resolve()
+    assert not list((versions / old_version).glob(".*.tmp.*"))
+
+
 @pytest.mark.skipif(os.name == "nt", reason="POSIX lock symlink behavior is covered by the Ubuntu CI job")
 def test_posix_installer_refuses_symlinked_transaction_lock_without_external_mutation(tmp_path):
     version = "v9.9.7-test"
@@ -1156,7 +1210,7 @@ def test_posix_rollback_refuses_symlinked_versions_parent_without_external_mutat
     )
 
     assert result.returncode != 0
-    assert "versions path contains a symlink" in result.stderr.lower()
+    assert "managed path contains a symlink" in result.stderr.lower()
     assert sentinel.read_text(encoding="utf-8") == "keep"
 
 

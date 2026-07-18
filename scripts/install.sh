@@ -602,7 +602,12 @@ atomic_symlink() {
   temporary="$(dirname "$link")/.$(basename "$link").tmp.$$"
   rm -f "$temporary"
   ln -s "$target" "$temporary"
-  mv -f "$temporary" "$link"
+  "$PYTHON_BIN" - "$temporary" "$link" <<'PY'
+import os
+import sys
+
+os.replace(sys.argv[1], sys.argv[2])
+PY
 }
 
 remove_pointer() {

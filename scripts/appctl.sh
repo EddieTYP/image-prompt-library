@@ -369,7 +369,12 @@ atomic_installed_pointer() {
   temporary="$(dirname "$link")/.$(basename "$link").tmp.$$"
   rm -f "$temporary"
   ln -s "$target" "$temporary"
-  mv -f "$temporary" "$link"
+  "$(python_bin)" - "$temporary" "$link" <<'PY'
+import os
+import sys
+
+os.replace(sys.argv[1], sys.argv[2])
+PY
 }
 
 resolve_installed_pointer() {
