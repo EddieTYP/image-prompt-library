@@ -428,14 +428,15 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
         assert excluded in package
 
 
-def test_release_assets_workflow_builds_and_uploads_tagged_artifacts():
+def test_release_assets_workflow_builds_and_uploads_candidate_artifacts():
     workflow_path = ROOT / ".github" / "workflows" / "release-assets.yml"
     assert workflow_path.exists()
     workflow = workflow_path.read_text()
 
-    assert "tags:" in workflow
-    assert "v*" in workflow
+    assert "tags:" not in workflow
+    assert "push:" not in workflow
     assert "workflow_dispatch:" in workflow
+    assert "publish as a prerelease candidate" in workflow
     assert "actions/checkout@v5" in workflow
     assert "actions/setup-python@v6" in workflow
     assert "actions/setup-node@v5" in workflow
@@ -445,6 +446,9 @@ def test_release_assets_workflow_builds_and_uploads_tagged_artifacts():
     assert "softprops/action-gh-release" in workflow or "gh release upload" in workflow
     assert "contents: write" in workflow
     assert "draft: true" in workflow
+    assert "IS_PRERELEASE=true" in workflow
+    assert "MAKE_LATEST=false" in workflow
+    assert 'gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs"' in workflow
     assert "fail_on_unmatched_files: true" in workflow
     assert "releases/assets/$asset_id" in workflow
     assert "dist-release-readback" in workflow
