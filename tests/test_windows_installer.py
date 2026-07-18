@@ -70,6 +70,43 @@ def test_native_windows_smoke_and_ci_contract():
     assert "tests/windows-installer-smoke.ps1" in windows_job
 
 
+@pytest.mark.parametrize("dirty_kind", ("tracked", "untracked"))
+def test_native_windows_smoke_refuses_dirty_packaged_source(tmp_path: Path, dirty_kind: str):
+    source_root = tmp_path / "source"
+    backend = source_root / "backend"
+    backend.mkdir(parents=True)
+    tracked = backend / "main.py"
+    tracked.write_text("clean = True\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=source_root, check=True, capture_output=True)
+    subprocess.run(["git", "add", "backend/main.py"], cwd=source_root, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-m", "fixture"],
+        cwd=source_root,
+        check=True,
+        capture_output=True,
+    )
+    if dirty_kind == "tracked":
+        tracked.write_text("clean = False\n", encoding="utf-8")
+    else:
+        (backend / "source-canary.py").write_text("canary = True\n", encoding="utf-8")
+
+    smoke = powershell_literal(ROOT / "tests" / "windows-installer-smoke.ps1")
+    script = f"""
+$source = [IO.File]::ReadAllText({smoke})
+$functionStart = $source.IndexOf('function ConvertTo-BashPath')
+$functionEnd = $source.IndexOf('function Build-Release')
+if ($functionStart -lt 0 -or $functionEnd -lt 0) {{ throw 'Smoke source-binding functions were not found.' }}
+$repoRoot = {powershell_literal(source_root)}
+Invoke-Expression $source.Substring($functionStart, $functionEnd - $functionStart)
+$bash = Find-GitBash
+Get-ControlledSourceSha -Bash $bash | Out-Null
+"""
+    result = run_powershell(script)
+
+    assert result.returncode != 0
+    assert "Packaged source inputs are dirty" in result.stdout + result.stderr
+
+
 def test_native_windows_smoke_embeds_a_loadable_sample_png():
     smoke = (ROOT / "tests" / "windows-installer-smoke.ps1").read_text(encoding="ascii")
     encoded = re.search(r'FromBase64String\("([A-Za-z0-9+/=]+)"\)', smoke)
