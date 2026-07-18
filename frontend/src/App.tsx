@@ -138,9 +138,29 @@ export default function App() {
     if (!status.update_available) setRestartRequiredVersion(undefined);
     return status;
   }).catch(() => {
-    setUpdateStatus(undefined);
+    setUpdateStatus(current => current
+      ? { ...current, error: 'Could not check for updates', update_available: false }
+      : {
+        current_version: 'unknown',
+        latest_version: null,
+        update_available: false,
+        checked_at: new Date().toISOString(),
+        error: 'Could not check for updates',
+        update_capability: 'unknown',
+        update_reason: 'request_failed',
+        service_mode: 'unknown',
+        active_generation_jobs: { running: 0, queued: 0 },
+        can_restart: false,
+        requires_manual_restart: true,
+      });
     return undefined;
   }), []);
+  const handleUpdateInstalled = useCallback((targetVersion: string, requiresManualRestart: boolean) => {
+    setRestartRequiredVersion(requiresManualRestart ? targetVersion : undefined);
+    if (!requiresManualRestart) {
+      setUpdateStatus(current => current ? { ...current, update_available: false } : current);
+    }
+  }, []);
   useEffect(() => { refreshClusters(); refreshTags(); refreshGenerationAvailability(); refreshAppConfig(); refreshUpdateStatus(); }, [refreshUpdateStatus]);
   useEffect(() => {
     if (isDemoMode || !FRONTEND_BUILD_VERSION || FRONTEND_BUILD_VERSION === 'demo') return;
@@ -307,7 +327,9 @@ export default function App() {
   const focusedItemGenerationJobId = pendingGenerationSourceItemId ? focusedGenerationJobId : undefined;
   const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
   const showFloatingActions = Boolean(emptyMode !== 'first-run' && !selectionMode && !filtersOpen && !configOpen && !detailId && !editorOpen && !standaloneGenerationOpen);
-  const updateBadgeLabel = restartRequiredVersion ? 'Restart required' : (updateStatus?.update_available ? 'Update available' : undefined);
+  const updateBadgeLabel = restartRequiredVersion
+    ? 'Restart required'
+    : (updateStatus?.update_available && updateStatus.update_capability !== 'source' ? 'Update available' : undefined);
   return <div className={`app ${view === 'explore' ? 'explore-mode' : 'cards-mode'}`}>
     {!hasChosenUiLanguage && (
       <div className="first-run-language-overlay" role="dialog" aria-modal="true" aria-labelledby="first-run-language-title">
@@ -334,7 +356,7 @@ export default function App() {
       </div>
     )}
     <FiltersPanel t={t} open={filtersOpen} clusters={localizedClusters} selected={clusterId} onSelect={handleFilterSelect} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
-    <ConfigPanel t={t} open={configOpen} focusProviders={focusConfigProviders} onClose={closeConfig} uiLanguage={uiLanguage} onUiLanguage={updateUiLanguage} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} updateStatus={updateStatus} onRefreshUpdateStatus={refreshUpdateStatus} onUpdateInstalled={setRestartRequiredVersion} onProvidersChanged={refreshGenerationAvailability} onLibraryCleanup={saved} />
+    <ConfigPanel t={t} open={configOpen} focusProviders={focusConfigProviders} onClose={closeConfig} uiLanguage={uiLanguage} onUiLanguage={updateUiLanguage} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} updateStatus={updateStatus} onRefreshUpdateStatus={refreshUpdateStatus} onUpdateInstalled={handleUpdateInstalled} onProvidersChanged={refreshGenerationAvailability} onLibraryCleanup={saved} />
     {/* Static-test compatibility marker: <main className="app-main"> */}
     <main className={`app-main ${refreshing ? 'is-refreshing' : ''}`} aria-busy={refreshing}>
       {refreshing && <div className="refresh-indicator" role="status">{t('loading')}</div>}

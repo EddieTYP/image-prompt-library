@@ -1168,6 +1168,14 @@ def test_queued_and_running_generation_jobs_can_be_cancelled(tmp_path):
     assert repo.cancel_job(running.id).status == "cancelled"
 
 
+def test_bulk_cancel_cancels_more_than_default_list_page(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    jobs = [repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text=f"queued {index}")) for index in range(1005)]
+
+    assert repo.cancel_active_jobs() == 1005
+    assert all(repo.get_job(job.id).status == "cancelled" for job in jobs)
+
+
 def test_recover_interrupted_generation_jobs_marks_only_provider_running_failed(tmp_path):
     from backend.services.generation_queue import INTERRUPTED_BY_BACKEND_RESTART_ERROR, recover_interrupted_generation_jobs
     from backend.services.openai_codex_native import PROVIDER_ID

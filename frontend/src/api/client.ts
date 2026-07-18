@@ -113,7 +113,7 @@ export const mediaUrl = (path?: string) => {
 export const api = isDemoMode ? {
   health: () => Promise.resolve({ ok: true, version: 'demo' }),
   config: () => Promise.resolve<AppConfig>({ version: 'demo', library_path: 'GitHub Pages read-only sandbox', database_path: 'Static JSON bundle', preferred_prompt_language: 'en', features: { camelot: { percival: true } } }),
-  updateStatus: () => Promise.resolve<AppUpdateStatus>({ current_version: 'demo', latest_version: null, update_available: false, checked_at: new Date().toISOString(), service_mode: 'not_applicable', active_generation_jobs: { running: 0, queued: 0 }, can_restart: false, requires_manual_restart: true }),
+  updateStatus: () => Promise.resolve<AppUpdateStatus>({ current_version: 'demo', latest_version: null, update_available: false, checked_at: new Date().toISOString(), error: null, update_capability: 'command_only', update_reason: 'demo_mode', service_mode: 'not_applicable', active_generation_jobs: { running: 0, queued: 0 }, can_restart: false, requires_manual_restart: true }),
   startAppUpdate: (_payload: AppUpdateRequest) => demoReadOnly(),
   cleanupPreview: () => Promise.resolve<CleanupPreview>({ broken_image_records: [], unreferenced_files: [], total_bytes: 0, preview_token: 'demo' }),
   applyCleanup: (_payload: CleanupApplyRequest) => demoReadOnly(),

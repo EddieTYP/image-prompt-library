@@ -22,7 +22,20 @@ def init_db(library_path=None) -> Path:
         for migration in MIGRATIONS:
             if migration not in done:
                 sql = (Path(__file__).parent / "migrations" / migration).read_text(encoding="utf-8")
-                conn.executescript(sql)
-                conn.execute("INSERT INTO schema_migrations(version, applied_at) VALUES (?, datetime('now'))", (migration,))
+                migration_literal = conn.execute("SELECT quote(?)", (migration,)).fetchone()[0]
+                # Keep the migration and its ledger row in the same explicit
+                # transaction. sqlite quote() makes the controlled filename a
+                # safe SQL literal without maintaining a custom script parser.
+                try:
+                    conn.executescript(
+                        "BEGIN;\n"
+                        f"{sql}\n"
+                        "INSERT INTO schema_migrations(version, applied_at) VALUES ("
+                        f"{migration_literal}, datetime('now'));\n"
+                        "COMMIT;"
+                    )
+                except Exception:
+                    conn.rollback()
+                    raise
         conn.commit()
     return db_path

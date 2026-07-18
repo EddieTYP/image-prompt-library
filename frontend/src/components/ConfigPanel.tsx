@@ -95,7 +95,7 @@ export default function ConfigPanel({
   onFocusThumbnailBudget: (budget: number) => void;
   updateStatus?: AppUpdateStatus;
   onRefreshUpdateStatus: () => Promise<AppUpdateStatus | undefined>;
-  onUpdateInstalled: (targetVersion: string) => void;
+  onUpdateInstalled: (targetVersion: string, requiresManualRestart: boolean) => void;
   onProvidersChanged?: () => void;
   onLibraryCleanup?: () => void;
 }) {
@@ -109,7 +109,7 @@ export default function ConfigPanel({
   const [providerBusy, setProviderBusy] = useState(false);
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string>();
-  const [updateInstalled, setUpdateInstalled] = useState<{ targetVersion: string; requiresManualRestart: boolean }>();
+  const [updateInstalled, setUpdateInstalled] = useState<{ targetVersion: string; requiresManualRestart: boolean; message: string }>();
   const [showActiveUpdateConfirm, setShowActiveUpdateConfirm] = useState(false);
   const drawerRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
@@ -225,7 +225,11 @@ export default function ConfigPanel({
   const readyProviderCount = providers.filter(provider => provider.can_generate ?? Boolean(provider.available && provider.authenticated && provider.configured)).length;
   const generationSetupLabel = readyProviderCount > 0 ? `${readyProviderCount} ready` : 'Optional; not connected';
   const updateSetupLabel = updateStatus
-    ? (updateStatus.update_available ? `Update available: ${updateStatus.latest_version}` : `Up to date: ${updateStatus.current_version}`)
+    ? (updateStatus.error
+      ? 'Could not check for updates'
+      : updateStatus.update_capability === 'source'
+        ? 'Managed outside app'
+        : (updateStatus.update_available ? `Update available: ${updateStatus.latest_version}` : `Up to date: ${updateStatus.current_version}`))
     : 'Unavailable';
   const refreshUpdateStatus = () => onRefreshUpdateStatus().catch(() => {
     setUpdateMessage('Could not check app updates.');
@@ -238,10 +242,10 @@ export default function ConfigPanel({
     try {
       const result = await api.startAppUpdate({ target_version: updateStatus.latest_version, cancel_active_generation_jobs: cancelActiveGenerationJobs });
       setShowActiveUpdateConfirm(false);
-      setUpdateInstalled({ targetVersion: result.target_version, requiresManualRestart: result.requires_manual_restart });
-      onUpdateInstalled(result.target_version);
+      setUpdateInstalled({ targetVersion: result.target_version, requiresManualRestart: result.requires_manual_restart, message: result.message });
       setUpdateMessage(undefined);
       await refreshUpdateStatus();
+      onUpdateInstalled(result.target_version, result.requires_manual_restart);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not install update.';
       if (message.includes('active_generation_jobs')) setShowActiveUpdateConfirm(true);
@@ -398,9 +402,20 @@ export default function ConfigPanel({
         {updateInstalled ? (
           <div className="update-card update-complete-card" role="status">
             <p className="update-kicker">Update installed</p>
-            <p className="update-title">Restart required to finish updating to <code>{updateInstalled.targetVersion}</code>.</p>
+            <p className="update-title">{updateInstalled.requiresManualRestart ? <>Restart required to finish updating to <code>{updateInstalled.targetVersion}</code>.</> : updateInstalled.message}</p>
             <p className="provider-help">{restartInstruction}</p>
             {updateInstalled.requiresManualRestart && <p className="update-command-hint"><code>image-prompt-library start</code></p>}
+          </div>
+        ) : updateStatus?.error ? (
+          <p className="muted">Could not check for updates.</p>
+        ) : updateStatus?.update_capability === 'source' ? (
+          <p className="muted">This source checkout is managed outside the app. Update it with your development workflow.</p>
+        ) : updateStatus?.update_capability === 'command_only' && updateStatus.update_available ? (
+          <div className="update-card">
+            <p className="muted"><strong>Update available</strong>: <code>{updateStatus.latest_version}</code></p>
+            <p className="muted">Windows updates run from PowerShell. Use:</p>
+            {updateStatus.update_command && <p className="update-command-hint"><code>{updateStatus.update_command}</code></p>}
+            {updateStatus.release_url && <a className="secondary" href={updateStatus.release_url} target="_blank" rel="noreferrer">View release</a>}
           </div>
         ) : updateStatus && !updateStatus.update_available ? (
           <p className="muted">Image Prompt Library is up to date. Current version: <code>{updateStatus.current_version}</code></p>

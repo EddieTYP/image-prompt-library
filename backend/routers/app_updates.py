@@ -10,7 +10,8 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname, urlopen
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -21,10 +22,21 @@ from backend.services.generation_jobs import GenerationJobRepository
 
 router = APIRouter(tags=["app-updates"])
 
-RELEASE_RE = re.compile(r"^v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
+SEMVER_NUMBER = r"(?:0|[1-9]\d*)"
+SEMVER_PRERELEASE_ID = rf"(?:{SEMVER_NUMBER}|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+RELEASE_RE = re.compile(
+    rf"^v?({SEMVER_NUMBER})\.({SEMVER_NUMBER})\.({SEMVER_NUMBER})"
+    rf"(?:-({SEMVER_PRERELEASE_ID}(?:\.{SEMVER_PRERELEASE_ID})*))?"
+    r"(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$"
+)
+SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 DEFAULT_RELEASE_BASE_URL = "https://github.com/EddieTYP/image-prompt-library/releases/download"
 UPDATE_TIMEOUT_SECONDS = 180
 UPDATE_LOCK = threading.Lock()
+
+
+class ReleaseCheckError(RuntimeError):
+    """The release source could not be checked or its metadata was incomplete."""
 
 
 class ActiveGenerationJobs(BaseModel):
@@ -44,6 +56,8 @@ class UpdateStatus(BaseModel):
     update_command: str | None = None
     checked_at: str
     error: str | None = None
+    update_capability: str = "unknown"
+    update_reason: str | None = None
     service_mode: str = "unknown"
     active_generation_jobs: ActiveGenerationJobs = Field(default_factory=ActiveGenerationJobs)
     can_restart: bool = False
@@ -115,43 +129,77 @@ def validate_version(version: str) -> str:
     return version
 
 
-def version_sort_key(version: str) -> tuple[int, int, int, str]:
-    match = re.match(r"^v?(\d+)\.(\d+)\.(\d+)(.*)$", version)
+def version_sort_key(version: str) -> tuple[int, int, int, int, tuple[tuple[int, int | str], ...]]:
+    match = RELEASE_RE.match(version)
     if not match:
-        return (0, 0, 0, version)
-    return (int(match.group(1)), int(match.group(2)), int(match.group(3)), match.group(4) or "")
+        return (0, 0, 0, 0, ((1, version),))
+    prerelease = match.group(4)
+    if not prerelease:
+        return (int(match.group(1)), int(match.group(2)), int(match.group(3)), 1, ())
+    segments: list[tuple[int, int | str]] = []
+    for segment in prerelease.split("."):
+        segments.append((0, int(segment)) if segment.isdigit() else (1, segment))
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3)), 0, tuple(segments))
+
+
+def is_stable_version(version: str) -> bool:
+    return "-" not in version.split("+", 1)[0]
+
+
+def local_release_root() -> Path | None:
+    base = release_base_url()
+    parsed = urlparse(base)
+    if parsed.scheme != "file":
+        return None
+    path = unquote(parsed.path)
+    if parsed.netloc and parsed.netloc.lower() not in {"", "localhost"}:
+        path = f"//{parsed.netloc}{path}"
+    return Path(url2pathname(path))
 
 
 def local_release_versions() -> list[str]:
-    base = release_base_url()
-    if not base.startswith("file://"):
+    root = local_release_root()
+    if root is None:
         return []
-    root = Path(base.removeprefix("file://"))
     if not root.is_dir():
-        return []
+        raise ReleaseCheckError("Local release directory is unavailable")
     versions: list[str] = []
+    failures: list[str] = []
     for manifest in root.glob("image-prompt-library-*.manifest.json"):
         version = manifest.name.removeprefix("image-prompt-library-").removesuffix(".manifest.json")
+        if not RELEASE_RE.match(version) or not is_stable_version(version):
+            continue
         try:
             verify_complete_release(version)
-        except Exception:
+        except Exception as exc:
+            failures.append(str(exc))
             continue
         versions.append(version)
+    if failures and not versions:
+        raise ReleaseCheckError("Local release assets failed verification")
     return sorted(versions, key=version_sort_key, reverse=True)
 
 
 def github_release_versions(limit: int = 10) -> list[str]:
-    api_url = "https://api.github.com/repos/EddieTYP/image-prompt-library/releases"
+    api_url = "https://api.github.com/repos/EddieTYP/image-prompt-library/releases?per_page=100"
     try:
         data = json.loads(open_url_text(api_url, timeout=5))
-    except Exception:
-        return []
+    except Exception as exc:
+        raise ReleaseCheckError("Release check failed") from exc
+    if not isinstance(data, list):
+        raise ReleaseCheckError("Release check returned invalid data")
     versions: list[str] = []
-    for release in data[:limit]:
-        tag = str(release.get("tag_name") or "").strip()
-        if not tag or not RELEASE_RE.match(tag):
+    accepted = 0
+    for release in data:
+        if not isinstance(release, dict) or release.get("draft") or release.get("prerelease"):
             continue
-        asset_names = {str(asset.get("name")) for asset in release.get("assets", []) if isinstance(asset, dict)}
+        tag = str(release.get("tag_name") or "").strip()
+        if not tag or not RELEASE_RE.match(tag) or not is_stable_version(tag):
+            continue
+        assets = release.get("assets")
+        if not isinstance(assets, list):
+            raise ReleaseCheckError("Release check returned invalid asset data")
+        asset_names = {str(asset.get("name")) for asset in assets if isinstance(asset, dict)}
         required = {
             f"image-prompt-library-{tag}.tar.gz",
             f"image-prompt-library-{tag}.tar.gz.sha256",
@@ -159,13 +207,16 @@ def github_release_versions(limit: int = 10) -> list[str]:
         }
         if required.issubset(asset_names):
             versions.append(tag)
-    return versions
+            accepted += 1
+            if accepted >= limit:
+                break
+    return sorted(set(versions), key=version_sort_key, reverse=True)
 
 
 def latest_complete_release() -> str | None:
-    local_versions = local_release_versions()
-    if local_versions:
-        return local_versions[0]
+    if local_release_root() is not None:
+        local_versions = local_release_versions()
+        return local_versions[0] if local_versions else None
     versions = github_release_versions()
     return versions[0] if versions else None
 
@@ -175,15 +226,33 @@ def verify_complete_release(version: str) -> dict[str, str]:
     urls = release_asset_urls(version)
     manifest_raw = open_url_text(urls["manifest"])
     checksum_raw = open_url_text(urls["checksum"])
-    manifest = json.loads(manifest_raw)
+    try:
+        manifest = json.loads(manifest_raw)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=409, detail="Release manifest is not valid JSON") from exc
+    if not isinstance(manifest, dict):
+        raise HTTPException(status_code=409, detail="Release manifest is not an object")
+    expected_artifact = f"image-prompt-library-{version}.tar.gz"
+    if (
+        manifest.get("name") != "image-prompt-library"
+        or manifest.get("version") != version
+        or manifest.get("artifact") != expected_artifact
+    ):
+        raise HTTPException(status_code=409, detail="Release manifest identity mismatch")
     artifact_bytes = open_url_bytes(urls["artifact"])
     actual_sha = hashlib.sha256(artifact_bytes).hexdigest()
     expected_sha = str(manifest.get("sha256") or "").strip()
-    checksum_sha = checksum_raw.strip().split()[0] if checksum_raw.strip() else ""
-    if expected_sha and expected_sha != actual_sha:
+    checksum_lines = [line.strip() for line in checksum_raw.splitlines() if line.strip()]
+    checksum_match = re.match(r"^([0-9a-fA-F]{64})(?:\s+.*)?$", checksum_lines[0]) if len(checksum_lines) == 1 else None
+    if not SHA256_RE.match(expected_sha):
+        raise HTTPException(status_code=409, detail="Release manifest SHA256 is invalid")
+    if checksum_match is None:
+        raise HTTPException(status_code=409, detail="Release checksum sidecar is invalid")
+    checksum_sha = checksum_match.group(1)
+    if expected_sha.lower() != checksum_sha.lower():
+        raise HTTPException(status_code=409, detail="Release checksum sidecar mismatch")
+    if expected_sha.lower() != actual_sha.lower():
         raise HTTPException(status_code=409, detail="Release manifest checksum mismatch")
-    if checksum_sha and checksum_sha != actual_sha:
-        raise HTTPException(status_code=409, detail="Release sha256 checksum mismatch")
     return {"artifact_url": urls["artifact"], "sha256": actual_sha}
 
 
@@ -196,13 +265,7 @@ def active_generation_jobs(library_path: Path) -> ActiveGenerationJobs:
 
 def cancel_active_generation_jobs(library_path: Path) -> int:
     repo = GenerationJobRepository(library_path)
-    jobs = repo.list_jobs(limit=1000).jobs
-    cancelled = 0
-    for job in jobs:
-        if job.status in {"queued", "running"}:
-            repo.cancel_job(job.id)
-            cancelled += 1
-    return cancelled
+    return repo.cancel_active_jobs()
 
 
 def launchd_candidate_labels() -> list[str]:
@@ -233,7 +296,23 @@ def detect_service_mode() -> str:
     return "launchd" if detected_launchd_service_label() else "foreground"
 
 
+def detect_update_capability() -> tuple[str, str | None]:
+    """Return the truthful update path for this app checkout."""
+    root = app_root()
+    if (root / ".git").exists() or not (root / "VERSION").is_file():
+        return "source", "source_checkout_managed_outside_app"
+    if sys.platform == "win32":
+        return "command_only", "windows_requires_powershell_cli"
+    return "in_app", None
+
+
 def run_installer_update(*, target_version: str) -> dict[str, str | bool]:
+    update_capability, update_reason = detect_update_capability()
+    if update_capability != "in_app":
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "update_unavailable", "update_capability": update_capability, "reason": update_reason},
+        )
     env = os.environ.copy()
     env.setdefault("PYTHON", sys.executable)
     command = ["bash", str(appctl_path()), "update", "--version", target_version]
@@ -245,22 +324,42 @@ def run_installer_update(*, target_version: str) -> dict[str, str | bool]:
 
 def schedule_launchd_restart() -> None:
     label = os.environ.get("IMAGE_PROMPT_LIBRARY_SERVICE_LABEL") or detected_launchd_service_label() or "com.eddietyp.image-prompt-library"
-    command = f"sleep 1; exec {str(appctl_path())!r} service restart --label {label!r}"
-    subprocess.Popen(["/bin/sh", "-c", command], cwd=str(app_root()), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    command = 'sleep 1; exec "$1" service restart --label "$2"'
+    subprocess.Popen(
+        ["/bin/sh", "-c", command, "image-prompt-library-restart", str(appctl_path()), label],
+        cwd=str(app_root()),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
 
 
 @router.get("/update-status", response_model=UpdateStatus)
 def get_update_status(request: Request):
     current = os.environ.get("IMAGE_PROMPT_LIBRARY_VERSION") or resolve_app_version(app_root())
     active = active_generation_jobs(request.app.state.library_path)
+    update_capability, update_reason = detect_update_capability()
     service_mode = detect_service_mode()
+    if update_capability == "source":
+        return UpdateStatus(
+            current_version=current,
+            checked_at=utc_now(),
+            update_capability=update_capability,
+            update_reason=update_reason,
+            service_mode=service_mode,
+            active_generation_jobs=active,
+            can_restart=service_mode == "launchd",
+            requires_manual_restart=service_mode != "launchd",
+        )
     try:
         latest = latest_complete_release()
-    except (HTTPException, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
+    except (ReleaseCheckError, HTTPException, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
         return UpdateStatus(
             current_version=current,
             checked_at=utc_now(),
             error="Could not check for updates",
+            update_capability=update_capability,
+            update_reason=update_reason,
             service_mode=service_mode,
             active_generation_jobs=active,
             can_restart=service_mode == "launchd",
@@ -272,8 +371,10 @@ def get_update_status(request: Request):
         latest_version=latest,
         update_available=update_available,
         release_url=f"https://github.com/EddieTYP/image-prompt-library/releases/tag/{latest}" if latest else None,
-        update_command=f"image-prompt-library update --version {latest}" if latest else None,
+        update_command=f"image-prompt-library update --version {latest}" if latest and update_capability != "source" else None,
         checked_at=utc_now(),
+        update_capability=update_capability,
+        update_reason=update_reason,
         service_mode=service_mode,
         active_generation_jobs=active,
         can_restart=service_mode == "launchd",
@@ -283,15 +384,34 @@ def get_update_status(request: Request):
 
 @router.post("/app-update/jobs", response_model=AppUpdateResult)
 def start_app_update(payload: AppUpdateRequest, request: Request):
+    update_capability, update_reason = detect_update_capability()
+    if update_capability != "in_app":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "update_unavailable",
+                "update_capability": update_capability,
+                "reason": update_reason,
+            },
+        )
     if not UPDATE_LOCK.acquire(blocking=False):
         raise HTTPException(status_code=409, detail={"error": "update_in_progress"})
     try:
-        target_version = validate_version(payload.target_version or latest_complete_release() or "")
+        if payload.target_version:
+            target_version = validate_version(payload.target_version)
+        else:
+            try:
+                target_version = validate_version(latest_complete_release() or "")
+            except (ReleaseCheckError, HTTPException, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
+                raise HTTPException(status_code=503, detail={"error": "release_check_failed"}) from exc
         active = active_generation_jobs(request.app.state.library_path)
         if active.total and not payload.cancel_active_generation_jobs:
             raise HTTPException(status_code=409, detail={"error": "active_generation_jobs", "running_count": active.running, "queued_count": active.queued})
         verify_complete_release(target_version)
         cancelled = cancel_active_generation_jobs(request.app.state.library_path) if payload.cancel_active_generation_jobs else 0
+        active = active_generation_jobs(request.app.state.library_path)
+        if active.total:
+            raise HTTPException(status_code=409, detail={"error": "active_generation_jobs", "running_count": active.running, "queued_count": active.queued})
         update_result = run_installer_update(target_version=target_version)
         service_mode = detect_service_mode()
         restart_mode = "launchd" if service_mode == "launchd" else "manual"
