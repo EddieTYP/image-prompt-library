@@ -197,6 +197,34 @@ def test_release_candidate_smoke_uses_public_assets_and_default_user_paths():
     assert "prerelease=false" not in workflow
 
 
+def test_v082_release_docs_and_smoke_cover_exact_v080_posix_migration():
+    workflow = (ROOT / ".github" / "workflows" / "release-candidate-smoke.yml").read_text()
+    installation = (ROOT / "docs" / "INSTALLATION.md").read_text()
+    notes_path = ROOT / "docs" / "releases" / "v0.8.2.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text(encoding="utf-8")
+
+    for document in (installation, notes):
+        assert "exactly `v0.8.0`" in document
+        assert "scripts/load-env.sh" in document
+        assert "scripts/install-sample-data.sh" in document
+        assert "appctl.sh" in document
+        assert "backend" in document.lower()
+        assert "frontend" in document.lower()
+        assert "private library" in document.lower()
+        assert "auth/config" in document.lower()
+    assert "does not retag or replace v0.8.1" in notes
+    assert "source controller version" in notes
+    assert "SHA256" in notes
+    assert "backup.sh" in notes
+    assert 'if [ "$BASELINE_VERSION" = "v0.8.0" ]; then' in workflow
+    assert 'cat "$HOME/.image-prompt-library/app/previous/VERSION"' in workflow
+    assert 'cmp "$HOME/.image-prompt-library/app/current/$script" "$HOME/.image-prompt-library/app/previous/$script"' in workflow
+    assert ".rollback-migration.json" in workflow
+    assert "source_controller_version" in workflow
+    assert 'marker.get("state") != "complete"' in workflow
+
+
 def test_v081_release_notes_describe_safety_and_legacy_posix_boundary():
     notes_path = ROOT / "docs" / "releases" / "v0.8.1.md"
     assert notes_path.exists()

@@ -131,6 +131,38 @@ jobs:
 
           if "$app" rollback; then
             test "$("$app" version)" = "$BASELINE_VERSION"
+            test "$(cat "$HOME/.image-prompt-library/app/previous/VERSION")" = "$CANDIDATE_VERSION"
+            if [ "$BASELINE_VERSION" = "v0.8.0" ]; then
+              for script in scripts/install.sh scripts/load-env.sh scripts/install-sample-data.sh scripts/appctl.sh; do
+                cmp "$HOME/.image-prompt-library/app/current/$script" "$HOME/.image-prompt-library/app/previous/$script"
+              done
+              test -f "$HOME/.image-prompt-library/app/current/scripts/load-env.sh"
+              python - "$HOME/.image-prompt-library/app/current/.rollback-migration.json" "$CANDIDATE_VERSION" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import sys
+
+          marker_path = pathlib.Path(sys.argv[1])
+          marker = json.loads(marker_path.read_text(encoding="utf-8"))
+          if marker.get("schema") != 1 or marker.get("target_version") != "v0.8.0":
+              raise SystemExit("v0.8.0 rollback migration marker is invalid.")
+          if marker.get("state") != "complete":
+              raise SystemExit("v0.8.0 rollback migration did not complete.")
+          if marker.get("source_controller_version") != sys.argv[2]:
+              raise SystemExit("v0.8.0 rollback migration source version is invalid.")
+          expected = {
+              "scripts/install.sh", "scripts/load-env.sh",
+              "scripts/install-sample-data.sh", "scripts/appctl.sh",
+          }
+          if set(marker.get("files", {})) != expected:
+              raise SystemExit("v0.8.0 rollback migration marker files are invalid.")
+          for relative, digest in marker["files"].items():
+              path = marker_path.parent / relative
+              if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+                  raise SystemExit(f"v0.8.0 rollback migration hash mismatch: {relative}")
+          PY
+            fi
             "$app" status
             "$app" doctor
             test "$(cat "$HOME/ImagePromptLibrary/release-smoke-sentinel.txt")" = "release-smoke"

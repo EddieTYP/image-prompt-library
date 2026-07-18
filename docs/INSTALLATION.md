@@ -4,7 +4,7 @@ This guide keeps operational details out of the main README.
 
 ## Native Windows PowerShell (v0.8.0+)
 
-Native Windows support begins with v0.8.0.
+Native Windows support begins with v0.8.0. The Windows controller and rollback behavior remain unchanged in v0.8.2.
 
 ### Prerequisites
 
@@ -223,6 +223,8 @@ image-prompt-library rollback
 Install, update, and rollback share a per-prefix lock. The updater keeps the selected old runtime available until the candidate payload, version-local Python, and an offline health check pass. It publishes `current` and `previous` with atomic symlink replacements and restores their prior values after a handled error, `HUP`, `INT`, or `TERM`. Exact installer-owned staging and backup remnants are reconciled on retry; ambiguous names, symlinks, or paths outside `app/versions` are retained and rejected.
 
 This is deliberately not a durable journal. `SIGKILL`, an OS crash, or power loss between the two pointer replacements can still require `image-prompt-library doctor`, followed by a normal update retry or a validated rollback. The updater never treats a similarly named user directory as safe cleanup work.
+
+When a POSIX rollback target is exactly `v0.8.0`, v0.8.2 first checks the legacy files and runtime. A first migration is allowed only when `scripts/load-env.sh` is absent and the three public v0.8.0 management scripts match their shipped SHA256 fingerprints; an existing migration is allowed only when its marker and file hashes prove a valid complete or safely resumable state. The controller then overlays only the four installed-command management scripts (`scripts/install.sh`, `scripts/load-env.sh`, `scripts/install-sample-data.sh`, and `scripts/appctl.sh`). Writes stay anchored to already-open physical directories, use no-follow same-directory temporaries and atomic replacement, and replace `appctl.sh` last. A `prepared` marker is fsynced before the first overlay write so an interrupted migration can safely reconcile on retry; it becomes `complete` only after all four files are durable. The app backend, frontend, `VERSION`, `.venv`, private library, auth/config files, and `current`/`previous` pointers are unchanged by this compatibility migration. The literal allow-listed environment loader prevents controller `.env` values from being evaluated as shell code. Other incomplete, modified, or ambiguous targets fail closed, and the migration does not copy `backup.sh` or development-only scripts.
 
 ## macOS launchd service
 
