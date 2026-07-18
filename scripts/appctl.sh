@@ -463,6 +463,299 @@ if not python.is_file() or not os.access(python, os.X_OK):
 PY
 }
 
+validate_legacy_v080_rollback_runtime() {
+  local target="$1" runtime_python directory
+  runtime_python="$(python_bin)"
+  for directory in \
+    "$target/backend" \
+    "$target/frontend" \
+    "$target/frontend/dist" \
+    "$target/scripts" \
+    "$target/.venv" \
+    "$target/.venv/bin"; do
+    assert_physical_managed_path "$directory"
+  done
+  "$runtime_python" - "$target" <<'PY'
+import os
+import pathlib
+import stat
+import sys
+
+root = pathlib.Path(sys.argv[1]).resolve(strict=True)
+if root.name != "v0.8.0":
+    raise SystemExit("Legacy rollback migration target is not v0.8.0.")
+required = (
+    "VERSION", "pyproject.toml", "backend/main.py", "frontend/dist/index.html",
+    "scripts/appctl.sh", "scripts/install.sh", "scripts/install-sample-data.sh", "scripts/setup-runtime.sh",
+)
+for relative in required:
+    path = root / relative
+    try:
+        mode = os.lstat(path).st_mode
+    except FileNotFoundError:
+        raise SystemExit(f"Legacy v0.8.0 rollback target is incomplete: {relative}")
+    if stat.S_ISLNK(mode) or not stat.S_ISREG(mode):
+        raise SystemExit(f"Legacy v0.8.0 rollback payload is not a regular file: {relative}")
+if (root / "VERSION").read_text(encoding="utf-8").strip() != "v0.8.0":
+    raise SystemExit("Legacy v0.8.0 rollback target VERSION does not match its directory.")
+python = root / ".venv" / "bin" / "python"
+if not python.is_file() or not os.access(python, os.X_OK):
+    raise SystemExit("Legacy v0.8.0 rollback target runtime is missing; reinstall that version before rollback.")
+PY
+}
+
+migrate_legacy_v080_management() {
+  local target="$1" source_dir="$SCRIPT_DIR" source_root runtime_python
+  source_root="$(cd -P "$source_dir/.." && pwd -P)"
+  runtime_python="$(python_bin)"
+  assert_physical_managed_path "$source_dir"
+  assert_physical_managed_path "$target"
+  assert_physical_managed_path "$target/scripts"
+  "$runtime_python" - "$source_dir" "$source_root" "$target" "$APP_PREFIX" <<'PY'
+import hashlib
+import json
+import os
+import pathlib
+import stat
+import sys
+
+source_dir, source_root, target, prefix = map(pathlib.Path, sys.argv[1:])
+source_dir = source_dir.resolve(strict=True)
+source_root = source_root.resolve(strict=True)
+target = target.resolve(strict=True)
+prefix = prefix.resolve(strict=True)
+
+def assert_in_prefix(path: pathlib.Path, label: str) -> pathlib.Path:
+    resolved = path.resolve(strict=True)
+    try:
+        resolved.relative_to(prefix)
+    except ValueError:
+        raise SystemExit(f"Legacy rollback migration {label} is outside the install prefix: {resolved}")
+    return resolved
+
+assert_in_prefix(source_dir, "source scripts directory")
+assert_in_prefix(source_root, "source root")
+assert_in_prefix(target, "target")
+assert_in_prefix(target / "scripts", "target scripts directory")
+
+management = (
+    "scripts/install.sh",
+    "scripts/load-env.sh",
+    "scripts/install-sample-data.sh",
+    "scripts/appctl.sh",
+)
+legacy_sha256 = {
+    "scripts/install.sh": "baa71e8f21eb314ad56fd7d70d43ccd5965168020c0ef9c26216c76342ad8bae",
+    "scripts/install-sample-data.sh": "476b44b8ae677420407d25325e6fd9a73f6571f1c07cdc31220fac317633f662",
+    "scripts/appctl.sh": "df7db6025605e503696134dc26f2915db813793ffa4b502e3bcb147d4a46e76b",
+}
+
+if not hasattr(os, "O_NOFOLLOW") or any(
+    function not in os.supports_dir_fd for function in (os.open, os.stat, os.unlink, os.rename)
+):
+    raise SystemExit("Legacy rollback migration requires confined POSIX directory operations.")
+
+def identity(details: os.stat_result) -> tuple[int, int]:
+    return details.st_dev, details.st_ino
+
+def open_directory(path: pathlib.Path, label: str) -> int:
+    before = os.stat(path, follow_symlinks=False)
+    if not stat.S_ISDIR(before.st_mode):
+        raise SystemExit(f"Legacy rollback migration {label} is not a physical directory.")
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    opened = os.fstat(descriptor)
+    current = os.stat(path, follow_symlinks=False)
+    if not stat.S_ISDIR(opened.st_mode) or identity(before) != identity(opened) or identity(opened) != identity(current):
+        os.close(descriptor)
+        raise SystemExit(f"Legacy rollback migration {label} changed during validation.")
+    return descriptor
+
+def read_regular(directory: int, name: str, label: str, *, optional: bool = False) -> tuple[bytes, int] | None:
+    try:
+        before = os.stat(name, dir_fd=directory, follow_symlinks=False)
+    except FileNotFoundError:
+        if optional:
+            return None
+        raise SystemExit(f"Legacy rollback migration {label} is missing: {name}")
+    if not stat.S_ISREG(before.st_mode):
+        raise SystemExit(f"Legacy rollback migration {label} is not a regular file: {name}")
+    descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory)
+    try:
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode) or identity(before) != identity(opened):
+            raise SystemExit(f"Legacy rollback migration {label} changed during validation: {name}")
+        with os.fdopen(descriptor, "rb") as stream:
+            descriptor = -1
+            return stream.read(), stat.S_IMODE(opened.st_mode)
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
+
+def require_same_directory(parent: int, name: str, child: int, label: str) -> None:
+    details = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    if not stat.S_ISDIR(details.st_mode) or identity(details) != identity(os.fstat(child)):
+        raise SystemExit(f"Legacy rollback migration {label} is not anchored to its validated parent.")
+
+def remove_exact_temporary(directory: int, name: str) -> None:
+    try:
+        details = os.stat(name, dir_fd=directory, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if not stat.S_ISREG(details.st_mode):
+        raise SystemExit(f"Legacy rollback migration exact temporary is not a regular file: {name}")
+    os.unlink(name, dir_fd=directory)
+    os.fsync(directory)
+
+def atomic_write(directory: int, name: str, temporary: str, payload: bytes, mode: int) -> None:
+    descriptor = os.open(
+        temporary,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+        mode,
+        dir_fd=directory,
+    )
+    try:
+        os.fchmod(descriptor, mode)
+        with os.fdopen(descriptor, "wb") as stream:
+            descriptor = -1
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, name, src_dir_fd=directory, dst_dir_fd=directory)
+        os.fsync(directory)
+    finally:
+        if descriptor != -1:
+            os.close(descriptor)
+        try:
+            os.unlink(temporary, dir_fd=directory)
+        except FileNotFoundError:
+            pass
+
+source_root_fd = open_directory(source_root, "source root")
+source_scripts_fd = open_directory(source_dir, "source scripts directory")
+target_root_fd = open_directory(target, "target")
+target_scripts_fd = open_directory(target / "scripts", "target scripts directory")
+try:
+    require_same_directory(source_root_fd, "scripts", source_scripts_fd, "source scripts directory")
+    require_same_directory(target_root_fd, "scripts", target_scripts_fd, "target scripts directory")
+
+    source_payloads: dict[str, tuple[bytes, int]] = {}
+    for relative in management:
+        basename = pathlib.Path(relative).name
+        value = read_regular(source_scripts_fd, basename, "source")
+        assert value is not None
+        source_payloads[relative] = value
+    version_value = read_regular(source_root_fd, "VERSION", "source VERSION")
+    assert version_value is not None
+    source_controller_version = version_value[0].decode("utf-8").strip()
+    if not source_controller_version:
+        raise SystemExit("Legacy rollback migration source VERSION is empty.")
+
+    for relative in (
+        "VERSION", "pyproject.toml", "backend/main.py", "frontend/dist/index.html",
+        "scripts/appctl.sh", "scripts/install.sh", "scripts/install-sample-data.sh", "scripts/setup-runtime.sh",
+    ):
+        value = read_regular(target_root_fd, relative, "target")
+        assert value is not None
+
+    desired_sha256 = {
+        relative: hashlib.sha256(payload).hexdigest()
+        for relative, (payload, _) in source_payloads.items()
+    }
+    marker_value = read_regular(
+        target_root_fd, ".rollback-migration.json", "provenance marker", optional=True
+    )
+    existing: dict[str, bytes | None] = {}
+    for relative in management:
+        basename = pathlib.Path(relative).name
+        value = read_regular(
+            target_scripts_fd, basename, "target", optional=relative == "scripts/load-env.sh"
+        )
+        existing[relative] = None if value is None else value[0]
+
+    if marker_value is None:
+        if existing["scripts/load-env.sh"] is not None:
+            raise SystemExit("Legacy v0.8.0 rollback target has an unprovenanced scripts/load-env.sh.")
+        for relative, expected in legacy_sha256.items():
+            payload = existing[relative]
+            if payload is None or hashlib.sha256(payload).hexdigest() != expected:
+                raise SystemExit(f"Legacy v0.8.0 rollback target does not match the public payload: {relative}")
+        marker_state = "new"
+    else:
+        try:
+            marker_data = json.loads(marker_value[0].decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise SystemExit(f"Legacy rollback migration provenance marker is invalid: {exc}")
+        if (
+            not isinstance(marker_data, dict)
+            or marker_data.get("schema") != 1
+            or marker_data.get("target_version") != "v0.8.0"
+            or marker_data.get("source_controller_version") != source_controller_version
+            or marker_data.get("files") != desired_sha256
+            or marker_data.get("state") not in {"prepared", "complete"}
+        ):
+            raise SystemExit("Legacy rollback migration provenance marker does not match this controller.")
+        marker_state = marker_data["state"]
+        for relative, payload in existing.items():
+            if payload is None:
+                if marker_state == "prepared" and relative == "scripts/load-env.sh":
+                    continue
+                raise SystemExit(f"Legacy rollback migration marked target is incomplete: {relative}")
+            actual = hashlib.sha256(payload).hexdigest()
+            allowed = {desired_sha256[relative]}
+            if marker_state == "prepared" and relative in legacy_sha256:
+                allowed.add(legacy_sha256[relative])
+            if actual not in allowed:
+                raise SystemExit(f"Legacy rollback migration marked target was modified: {relative}")
+
+    for relative in management:
+        basename = pathlib.Path(relative).name
+        remove_exact_temporary(target_scripts_fd, f".{basename}.rollback-migration.tmp")
+    remove_exact_temporary(target_root_fd, ".rollback-migration.json.tmp")
+
+    def marker_payload(state: str) -> bytes:
+        return (json.dumps({
+            "schema": 1,
+            "state": state,
+            "target_version": "v0.8.0",
+            "source_controller_version": source_controller_version,
+            "files": desired_sha256,
+        }, sort_keys=True) + "\n").encode("utf-8")
+
+    if marker_state == "new":
+        atomic_write(
+            target_root_fd,
+            ".rollback-migration.json",
+            ".rollback-migration.json.tmp",
+            marker_payload("prepared"),
+            0o644,
+        )
+
+    for relative in management:
+        basename = pathlib.Path(relative).name
+        payload, mode = source_payloads[relative]
+        atomic_write(
+            target_scripts_fd,
+            basename,
+            f".{basename}.rollback-migration.tmp",
+            payload,
+            mode,
+        )
+    atomic_write(
+        target_root_fd,
+        ".rollback-migration.json",
+        ".rollback-migration.json.tmp",
+        marker_payload("complete"),
+        0o644,
+    )
+finally:
+    os.close(target_scripts_fd)
+    os.close(target_root_fd)
+    os.close(source_scripts_fd)
+    os.close(source_root_fd)
+PY
+  echo "Migrated v0.8.0 management scripts for rollback (backend, frontend, data, and pointers unchanged)."
+}
+
 remove_rollback_health() {
   local target="$1"
   "$(python_bin)" - "$target" "$APP_PREFIX" <<'PY'
@@ -556,6 +849,11 @@ rollback_app() {
   if [ "$current_target" = "$previous_target" ]; then
     echo "Current and previous point to the same version; refusing a no-op rollback." >&2
     exit 1
+  fi
+  if [ "$(basename "$previous_target")" = "v0.8.0" ]; then
+    validate_legacy_v080_rollback_runtime "$previous_target"
+    health_check_rollback_runtime "$previous_target"
+    migrate_legacy_v080_management "$previous_target"
   fi
   validate_rollback_runtime "$previous_target"
   health_check_rollback_runtime "$previous_target"

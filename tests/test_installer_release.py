@@ -411,6 +411,17 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "~/ImagePromptLibrary" in appctl
     assert "uvicorn backend.main:app" in appctl
     assert "app/previous" in appctl
+    assert "validate_legacy_v080_rollback_runtime" in appctl
+    assert "migrate_legacy_v080_management" in appctl
+    assert ".rollback-migration.json" in appctl
+    assert "scripts/load-env.sh" in appctl
+    assert "source_controller_version" in appctl
+    assert "legacy_sha256" in appctl
+    assert "os.O_NOFOLLOW" in appctl
+    assert "src_dir_fd=directory" in appctl
+    assert '"$target/.venv/bin"' in appctl
+    assert 'marker_payload("prepared")' in appctl
+    assert 'marker_payload("complete")' in appctl
 
     assert "python -m pip install ." in setup_runtime
     assert "choose_python()" in setup_runtime
@@ -1186,6 +1197,294 @@ def test_posix_rollback_validates_runtime_and_swaps_managed_pointers(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert (prefix / "app" / "current").resolve() == previous_target.resolve()
     assert previous_link.resolve() == current_target.resolve()
+    assert not (prefix / ".transaction.lock").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX v0.8.0 rollback migration is covered by the Ubuntu CI job")
+def test_posix_rollback_migrates_pristine_v080_management_plane_and_records_provenance(tmp_path):
+    import shutil
+
+    current_version = "v9.9.5-test"
+    release_dir = package_release(tmp_path, current_version)
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library-data"
+    env = {
+        **os.environ,
+        "IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL": release_dir.as_uri(),
+        "IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP": "1",
+        "PYTHON": sys.executable,
+    }
+    install = subprocess.run(
+        [
+            "bash", "scripts/install.sh", "--version", current_version,
+            "--prefix", str(prefix), "--library-path", str(library), "--no-shim",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert install.returncode == 0, install.stdout + install.stderr
+
+    versions = prefix / "app" / "versions"
+    current_target = versions / current_version
+    previous_target = versions / "v0.8.0"
+    shutil.copytree(current_target, previous_target)
+    (previous_target / "VERSION").write_text("v0.8.0\n", encoding="utf-8")
+    (previous_target / "scripts" / "load-env.sh").unlink()
+    for target in (current_target, previous_target):
+        runtime = target / ".venv" / "bin"
+        runtime.mkdir(parents=True)
+        (runtime / "python").symlink_to(Path(sys.executable))
+    legacy_management = {
+        relative: subprocess.check_output(
+            ["git", "cat-file", "blob", f"v0.8.0:{relative}"], cwd=ROOT
+        )
+        for relative in ("scripts/install.sh", "scripts/install-sample-data.sh", "scripts/appctl.sh")
+    }
+    for relative, payload in legacy_management.items():
+        path = previous_target / relative
+        path.write_bytes(payload)
+        path.chmod(0o755)
+    (previous_target / "scripts" / "backup.sh").write_text("legacy-backup\n", encoding="utf-8")
+    backup_before = (previous_target / "scripts" / "backup.sh").read_bytes()
+    backend_before = (previous_target / "backend" / "main.py").read_bytes()
+    frontend_before = (previous_target / "frontend" / "dist" / "index.html").read_bytes()
+    version_before = (previous_target / "VERSION").read_bytes()
+    runtime_before = os.readlink(previous_target / ".venv" / "bin" / "python")
+    (library / "private-sentinel.txt").write_text("unchanged\n", encoding="utf-8")
+    (prefix / ".env").write_text(
+        "BACKEND_HOST=$(touch should-not-run)\nBACKEND_PORT=8000\n",
+        encoding="utf-8",
+    )
+    previous_link = prefix / "app" / "previous"
+    previous_link.symlink_to(previous_target, target_is_directory=True)
+    exact_stale = previous_target / "scripts" / ".install.sh.rollback-migration.tmp"
+    near_match = previous_target / "scripts" / ".install.sh.rollback-migration.tmp.keep"
+    exact_stale.write_text("stale\n", encoding="utf-8")
+    near_match.write_text("preserve\n", encoding="utf-8")
+
+    result = subprocess.run(
+        ["bash", str(current_target / "scripts" / "appctl.sh"), "rollback"],
+        cwd=tmp_path,
+        env={**env, "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix), "IMAGE_PROMPT_LIBRARY_PATH": str(library)},
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Migrated v0.8.0 management scripts" in result.stdout
+    assert (prefix / "app" / "current").resolve() == previous_target.resolve()
+    assert previous_link.resolve() == current_target.resolve()
+    for relative in ("scripts/install.sh", "scripts/load-env.sh", "scripts/install-sample-data.sh", "scripts/appctl.sh"):
+        assert (previous_target / relative).read_bytes() == (current_target / relative).read_bytes()
+    assert (previous_target / "scripts" / "backup.sh").read_bytes() == backup_before
+    assert (previous_target / "backend" / "main.py").read_bytes() == backend_before
+    assert (previous_target / "frontend" / "dist" / "index.html").read_bytes() == frontend_before
+    assert (previous_target / "VERSION").read_bytes() == version_before
+    assert os.readlink(previous_target / ".venv" / "bin" / "python") == runtime_before
+    assert (library / "private-sentinel.txt").read_text(encoding="utf-8") == "unchanged\n"
+    assert not (tmp_path / "should-not-run").exists()
+    marker = json.loads((previous_target / ".rollback-migration.json").read_text(encoding="utf-8"))
+    assert marker["schema"] == 1
+    assert marker["state"] == "complete"
+    assert marker["target_version"] == "v0.8.0"
+    assert marker["source_controller_version"] == current_version
+    assert set(marker["files"]) == {
+        "scripts/install.sh", "scripts/load-env.sh", "scripts/install-sample-data.sh", "scripts/appctl.sh",
+    }
+    for relative, digest in marker["files"].items():
+        assert hashlib.sha256((previous_target / relative).read_bytes()).hexdigest() == digest
+    assert not list((previous_target / "scripts").glob(".*.rollback-migration.tmp"))
+    assert not (previous_target / ".rollback-migration.json.tmp").exists()
+    assert near_match.read_text(encoding="utf-8") == "preserve\n"
+
+    installed_appctl = prefix / "app" / "current" / "scripts" / "appctl.sh"
+    post_rollback_env = {
+        **env,
+        "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix),
+        "IMAGE_PROMPT_LIBRARY_PATH": str(library),
+    }
+    for command in ("version", "status", "doctor"):
+        check = subprocess.run(
+            ["bash", str(installed_appctl), command],
+            cwd=tmp_path,
+            env=post_rollback_env,
+            text=True,
+            capture_output=True,
+            timeout=120,
+        )
+        assert check.returncode == 0, check.stdout + check.stderr
+    assert not (tmp_path / "should-not-run").exists()
+    first_marker = (previous_target / ".rollback-migration.json").read_bytes()
+
+    repeat = subprocess.run(
+        ["bash", str(current_target / "scripts" / "appctl.sh"), "rollback"],
+        cwd=tmp_path,
+        env={**env, "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix), "IMAGE_PROMPT_LIBRARY_PATH": str(library)},
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert repeat.returncode == 0, repeat.stdout + repeat.stderr
+    assert (prefix / "app" / "current").resolve() == current_target.resolve()
+
+    prepared = dict(marker)
+    prepared["state"] = "prepared"
+    (previous_target / ".rollback-migration.json").write_text(
+        json.dumps(prepared, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    (previous_target / "scripts" / "install.sh").write_bytes(legacy_management["scripts/install.sh"])
+    (previous_target / "scripts" / "load-env.sh").unlink()
+
+    migrate_again = subprocess.run(
+        ["bash", str(current_target / "scripts" / "appctl.sh"), "rollback"],
+        cwd=tmp_path,
+        env=post_rollback_env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert migrate_again.returncode == 0, migrate_again.stdout + migrate_again.stderr
+    assert (prefix / "app" / "current").resolve() == previous_target.resolve()
+    assert (previous_target / ".rollback-migration.json").read_bytes() == first_marker
+
+    switch_forward = subprocess.run(
+        ["bash", str(current_target / "scripts" / "appctl.sh"), "rollback"],
+        cwd=tmp_path,
+        env=post_rollback_env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert switch_forward.returncode == 0, switch_forward.stdout + switch_forward.stderr
+    assert (prefix / "app" / "current").resolve() == current_target.resolve()
+
+    outside = tmp_path / "outside-migration-temp"
+    outside.write_text("keep\n", encoding="utf-8")
+    exact_stale.symlink_to(outside)
+    management_before = {
+        relative: (previous_target / relative).read_bytes()
+        for relative in marker["files"]
+    }
+    refused = subprocess.run(
+        ["bash", str(current_target / "scripts" / "appctl.sh"), "rollback"],
+        cwd=tmp_path,
+        env=post_rollback_env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert refused.returncode != 0
+    assert "exact temporary is not a regular file" in refused.stderr
+    assert (prefix / "app" / "current").resolve() == current_target.resolve()
+    assert previous_link.resolve() == previous_target.resolve()
+    assert outside.read_text(encoding="utf-8") == "keep\n"
+    assert management_before == {
+        relative: (previous_target / relative).read_bytes()
+        for relative in marker["files"]
+    }
+    assert not (prefix / ".transaction.lock").exists()
+
+    exact_stale.unlink()
+    (previous_target / ".rollback-migration.json").unlink()
+    (previous_target / "scripts" / "load-env.sh").unlink()
+    for relative, payload in legacy_management.items():
+        (previous_target / relative).write_bytes(payload)
+    with (previous_target / "scripts" / "appctl.sh").open("ab") as stream:
+        stream.write(b"\n# local modification\n")
+    modified = subprocess.run(
+        ["bash", str(current_target / "scripts" / "appctl.sh"), "rollback"],
+        cwd=tmp_path,
+        env=post_rollback_env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert modified.returncode != 0
+    assert "does not match the public payload: scripts/appctl.sh" in modified.stderr
+    assert (prefix / "app" / "current").resolve() == current_target.resolve()
+    assert previous_link.resolve() == previous_target.resolve()
+    assert not (previous_target / ".rollback-migration.json").exists()
+    assert not (prefix / ".transaction.lock").exists()
+
+    (previous_target / "scripts" / "appctl.sh").write_bytes(legacy_management["scripts/appctl.sh"])
+    external_backend = tmp_path / "external-backend"
+    external_backend.mkdir()
+    external_code_ran = tmp_path / "external-code-ran"
+    (external_backend / "main.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(external_code_ran)!r}).write_text('unsafe', encoding='utf-8')\n"
+        "raise RuntimeError('external backend must not run')\n",
+        encoding="utf-8",
+    )
+    (previous_target / "backend").rename(previous_target / "backend-preserved")
+    (previous_target / "backend").symlink_to(external_backend, target_is_directory=True)
+    symlinked_backend = subprocess.run(
+        ["bash", str(current_target / "scripts" / "appctl.sh"), "rollback"],
+        cwd=tmp_path,
+        env=post_rollback_env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert symlinked_backend.returncode != 0
+    assert "Managed path contains a symlink" in symlinked_backend.stderr
+    assert not external_code_ran.exists()
+    assert (prefix / "app" / "current").resolve() == current_target.resolve()
+    assert previous_link.resolve() == previous_target.resolve()
+    assert not (prefix / ".transaction.lock").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX rollback migration boundaries are covered by the Ubuntu CI job")
+def test_posix_rollback_non_v080_missing_load_env_fails_without_mutation(tmp_path):
+    import shutil
+
+    current_version = "v9.9.5-test"
+    release_dir = package_release(tmp_path, current_version)
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library-data"
+    env = {
+        **os.environ,
+        "IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL": release_dir.as_uri(),
+        "IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP": "1",
+        "PYTHON": sys.executable,
+    }
+    install = subprocess.run(
+        [
+            "bash", "scripts/install.sh", "--version", current_version,
+            "--prefix", str(prefix), "--library-path", str(library), "--no-shim",
+        ], cwd=ROOT, env=env, text=True, capture_output=True, timeout=120,
+    )
+    assert install.returncode == 0, install.stdout + install.stderr
+    versions = prefix / "app" / "versions"
+    current_target = versions / current_version
+    previous_target = versions / "v9.9.4"
+    shutil.copytree(current_target, previous_target)
+    (previous_target / "VERSION").write_text("v9.9.4\n", encoding="utf-8")
+    (previous_target / "scripts" / "load-env.sh").unlink()
+    for target in (current_target, previous_target):
+        runtime = target / ".venv" / "bin"
+        runtime.mkdir(parents=True)
+        (runtime / "python").symlink_to(Path(sys.executable))
+    previous_link = prefix / "app" / "previous"
+    previous_link.symlink_to(previous_target, target_is_directory=True)
+    before = previous_target / "scripts" / "appctl.sh"
+    before_bytes = before.read_bytes()
+    result = subprocess.run(
+        ["bash", str(current_target / "scripts" / "appctl.sh"), "rollback"],
+        cwd=tmp_path,
+        env={**env, "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix), "IMAGE_PROMPT_LIBRARY_PATH": str(library)},
+        text=True, capture_output=True, timeout=120,
+    )
+    assert result.returncode != 0
+    assert "Rollback target is incomplete: scripts/load-env.sh" in result.stderr
+    assert before.read_bytes() == before_bytes
+    assert not (previous_target / "scripts" / "load-env.sh").exists()
+    assert not (previous_target / ".rollback-migration.json").exists()
+    assert (prefix / "app" / "current").resolve() == current_target.resolve()
+    assert previous_link.resolve() == previous_target.resolve()
     assert not (prefix / ".transaction.lock").exists()
 
 
