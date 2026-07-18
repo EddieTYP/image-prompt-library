@@ -7,18 +7,118 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version tag to package'
-        required: false
+        description: 'Exact SemVer tag to package (for example, v1.2.3)'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-assets-${{ github.event.inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   release-assets:
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Checkout
+      - name: Checkout exact release tag
         uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.inputs.version || github.ref }}
+          fetch-depth: 0
+
+      - name: Validate tag and source identity
+        env:
+          REQUESTED_VERSION: ${{ github.event.inputs.version || github.ref_name }}
+        run: |
+          python - "$REQUESTED_VERSION" <<'PY'
+          import re
+          import sys
+          value = sys.argv[1]
+          pattern = re.compile(r"^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?")
+          match = pattern.fullmatch(value)
+          if not match or any(part.isdigit() and len(part) > 1 and part.startswith("0") for part in (match.group(4) or "").split(".") if part):
+              raise SystemExit(f"Release tag is not strict SemVer: {value}")
+          PY
+          TAG_SHA="$(git rev-parse "refs/tags/$REQUESTED_VERSION^{commit}")"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          test "$TAG_SHA" = "$HEAD_SHA"
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then test "$GITHUB_SHA" = "$TAG_SHA"; fi
+          case "$REQUESTED_VERSION" in *-*) IS_PRERELEASE=true; MAKE_LATEST=false ;; *) IS_PRERELEASE=false; MAKE_LATEST=true ;; esac
+
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$RUNNER_TEMP/existing-release-pages.json"
+          python - "$RUNNER_TEMP/existing-release-pages.json" "$REQUESTED_VERSION" "$RUNNER_TEMP/existing-release.json" <<'PY'
+          import json
+          import pathlib
+          import sys
+          pages_path, version, output_path = sys.argv[1:]
+          pages = json.loads(pathlib.Path(pages_path).read_text(encoding="utf-8"))
+          releases = [release for page in pages for release in page]
+          matches = [release for release in releases if release.get("tag_name") == version]
+          if len(matches) > 1:
+              raise SystemExit(f"Multiple GitHub releases use tag {version}; refusing to choose one.")
+          if matches:
+              pathlib.Path(output_path).write_text(json.dumps(matches[0]), encoding="utf-8")
+          PY
+          if [ -f "$RUNNER_TEMP/existing-release.json" ]; then
+            python - "$RUNNER_TEMP/existing-release.json" "$REQUESTED_VERSION" "$IS_PRERELEASE" "$RUNNER_TEMP/existing-assets.tsv" "$RUNNER_TEMP/existing-state.json" <<'PY'
+          import json
+          import pathlib
+          import sys
+          release_path, version, prerelease_value, output_path, state_path = sys.argv[1:]
+          release = json.loads(pathlib.Path(release_path).read_text(encoding="utf-8"))
+          expected_prerelease = prerelease_value.lower() == "true"
+          expected_names = {
+              f"image-prompt-library-{version}.tar.gz",
+              f"image-prompt-library-{version}.tar.gz.sha256",
+              f"image-prompt-library-{version}.manifest.json",
+          }
+          if release.get("tag_name") != version:
+              raise SystemExit("Existing release tag does not match the requested version.")
+          if release.get("prerelease") != expected_prerelease:
+              raise SystemExit("Existing release prerelease state does not match the requested version.")
+          assets = release.get("assets") or []
+          names = [asset.get("name") for asset in assets]
+          if len(names) != len(set(names)) or any(name not in expected_names for name in names):
+              raise SystemExit(f"Existing release contains unknown or duplicate assets; retained for review: {names}")
+          state = "draft" if release.get("draft") else "published"
+          if state == "published" and set(names) != expected_names:
+              raise SystemExit(f"Published release assets are incomplete; retained for review: {names}")
+          pathlib.Path(output_path).write_text(
+              "".join(f"{asset['id']}\t{asset['name']}\n" for asset in assets) if state == "draft" else "",
+              encoding="utf-8",
+          )
+          pathlib.Path(state_path).write_text(
+              json.dumps({"state": state, "id": release.get("id")}),
+              encoding="utf-8",
+          )
+          PY
+            EXISTING_STATE="$(python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["state"])' "$RUNNER_TEMP/existing-state.json")"
+            EXISTING_RELEASE_ID="$(python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8"))["id"])' "$RUNNER_TEMP/existing-state.json")"
+            if [ "$EXISTING_STATE" = "draft" ]; then
+              while IFS=$'\t' read -r asset_id asset_name; do
+                [ -n "$asset_id" ] || continue
+                echo "Removing incomplete draft asset before retry: $asset_name"
+                gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+              done < "$RUNNER_TEMP/existing-assets.tsv"
+              RESUME_PUBLISHED=false
+            else
+              RESUME_PUBLISHED=true
+            fi
+          else
+            EXISTING_RELEASE_ID=""
+            RESUME_PUBLISHED=false
+          fi
+          echo "VERSION=$REQUESTED_VERSION" >> "$GITHUB_ENV"
+          echo "SOURCE_SHA=$HEAD_SHA" >> "$GITHUB_ENV"
+          echo "IS_PRERELEASE=$IS_PRERELEASE" >> "$GITHUB_ENV"
+          echo "MAKE_LATEST=$MAKE_LATEST" >> "$GITHUB_ENV"
+          echo "EXISTING_RELEASE_ID=$EXISTING_RELEASE_ID" >> "$GITHUB_ENV"
+          echo "RESUME_PUBLISHED=$RESUME_PUBLISHED" >> "$GITHUB_ENV"
+
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
@@ -36,18 +136,103 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
       - name: Run tests
-        run: python -m pytest -q
-      - name: Build local app
-        run: VITE_APP_VERSION="${{ github.event.inputs.version || github.ref_name }}" npm run build
-      - name: Package release asset
         run: |
-          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          python -m pytest -q
+          npm run test:frontend
+      - name: Build local app
+        run: VITE_APP_VERSION="$VERSION" npm run build
+      - name: Package and verify release assets
+        run: |
           rm -rf dist-release
-          scripts/package-release.sh "$VERSION" --skip-build
-      - name: Upload release assets
+          IMAGE_PROMPT_LIBRARY_SOURCE_SHA="$SOURCE_SHA" scripts/package-release.sh "$VERSION" --skip-build
+          python scripts/verify-release-assets.py dist-release "$VERSION" --source-sha "$SOURCE_SHA" --capability posix-shell-v1
+
+      - name: Upload assets to a draft release
+        id: draft_release
+        if: env.RESUME_PUBLISHED != 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.VERSION }}
+          draft: true
+          prerelease: ${{ env.IS_PRERELEASE }}
+          make_latest: false
+          generate_release_notes: true
+          fail_on_unmatched_files: true
           files: |
-            dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.tar.gz
-            dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.tar.gz.sha256
-            dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.manifest.json
+            dist-release/image-prompt-library-${{ env.VERSION }}.tar.gz
+            dist-release/image-prompt-library-${{ env.VERSION }}.tar.gz.sha256
+            dist-release/image-prompt-library-${{ env.VERSION }}.manifest.json
+
+      - name: Download and reverify uploaded assets
+        env:
+          RELEASE_ID: ${{ steps.draft_release.outputs.id || env.EXISTING_RELEASE_ID }}
+        run: |
+          test -n "$RELEASE_ID"
+          mkdir -p dist-release-readback
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" > "$RUNNER_TEMP/release.json"
+          python - "$RUNNER_TEMP/release.json" "$VERSION" "$RESUME_PUBLISHED" "$RUNNER_TEMP/assets.tsv" <<'PY'
+          import json
+          import pathlib
+          import sys
+          release_path, version, resume_published, output_path = sys.argv[1:]
+          release = json.loads(pathlib.Path(release_path).read_text(encoding="utf-8"))
+          expected = {
+              f"image-prompt-library-{version}.tar.gz",
+              f"image-prompt-library-{version}.tar.gz.sha256",
+              f"image-prompt-library-{version}.manifest.json",
+          }
+          assets = release.get("assets") or []
+          names = [asset.get("name") for asset in assets]
+          expected_prerelease = "-" in version
+          expected_draft = resume_published.lower() != "true"
+          if (
+              release.get("tag_name") != version
+              or bool(release.get("draft")) != expected_draft
+              or release.get("prerelease") != expected_prerelease
+          ):
+              raise SystemExit("Release identity does not match the requested release state.")
+          if len(assets) != 3 or set(names) != expected or len(names) != len(set(names)):
+              raise SystemExit(f"Release assets are not the exact expected set: {names}")
+          lines = [f"{asset['id']}\t{asset['name']}" for asset in assets]
+          pathlib.Path(output_path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+          PY
+          while IFS=$'\t' read -r asset_id asset_name; do
+            gh api -H 'Accept: application/octet-stream' "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id" > "dist-release-readback/$asset_name"
+          done < "$RUNNER_TEMP/assets.tsv"
+          python scripts/verify-release-assets.py dist-release-readback "$VERSION" --source-sha "$SOURCE_SHA" --capability posix-shell-v1
+
+      - name: Publish verified release
+        run: |
+          RELEASE_ID="$(python -c 'import json, os; print(json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "release.json"), encoding="utf-8"))["id"])')"
+          PUBLISHED=0
+          for attempt in 1 2 3 4 5; do
+            if gh api --method PATCH "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+              -F draft=false \
+              -F prerelease="$IS_PRERELEASE" \
+              -f make_latest="$MAKE_LATEST" > "$RUNNER_TEMP/published-release.json"; then
+              PUBLISHED=1
+              break
+            fi
+            sleep "$attempt"
+          done
+          if [ "$PUBLISHED" -ne 1 ]; then echo "GitHub release publication did not complete after retries." >&2; exit 1; fi
+          python - "$RUNNER_TEMP/published-release.json" "$VERSION" "$IS_PRERELEASE" <<'PY'
+          import json
+          import pathlib
+          import sys
+          payload = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+          expected_prerelease = sys.argv[3].lower() == "true"
+          if payload.get("tag_name") != sys.argv[2] or payload.get("draft") or payload.get("prerelease") != expected_prerelease:
+              raise SystemExit("GitHub did not publish the verified release in the expected state.")
+          PY
+          if [ "$IS_PRERELEASE" = "false" ]; then
+            LATEST_OK=0
+            for attempt in 1 2 3 4 5; do
+              if gh api "repos/$GITHUB_REPOSITORY/releases/latest" > "$RUNNER_TEMP/latest-release.json"; then
+                LATEST_ID="$(python -c 'import json,sys; print(json.load(open(sys.argv[1], encoding="utf-8")).get("id", ""))' "$RUNNER_TEMP/latest-release.json")"
+                if [ "$LATEST_ID" = "$RELEASE_ID" ]; then LATEST_OK=1; break; fi
+              fi
+              sleep "$attempt"
+            done
+            if [ "$LATEST_OK" -ne 1 ]; then echo "Published stable release was not promoted as GitHub Latest." >&2; exit 1; fi
+          fi

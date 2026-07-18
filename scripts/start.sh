@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd "$(dirname "$0")/.."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+cd "$SCRIPT_DIR/.."
+source "$SCRIPT_DIR/load-env.sh"
 
 INCOMING_IMAGE_PROMPT_LIBRARY_PATH="${IMAGE_PROMPT_LIBRARY_PATH-}"
 INCOMING_BACKEND_HOST="${BACKEND_HOST-}"
 INCOMING_BACKEND_PORT="${BACKEND_PORT-}"
 
-if [ -f .env ]; then
-  set -a
-  # shellcheck disable=SC1091
-  source .env
-  set +a
-fi
+image_prompt_library_load_env_file .env
 
 if [ -n "$INCOMING_IMAGE_PROMPT_LIBRARY_PATH" ]; then IMAGE_PROMPT_LIBRARY_PATH="$INCOMING_IMAGE_PROMPT_LIBRARY_PATH"; fi
 if [ -n "$INCOMING_BACKEND_HOST" ]; then BACKEND_HOST="$INCOMING_BACKEND_HOST"; fi

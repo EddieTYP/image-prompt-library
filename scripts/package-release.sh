@@ -17,11 +17,45 @@ done
 
 cd "$(dirname "$0")/.."
 
+VERSION="$(python3 - "$VERSION" <<'PY'
+import runpy
+import sys
+module = runpy.run_path("scripts/verify-release-assets.py")
+try:
+    print(module["normalize_version"](sys.argv[1]))
+except module["VerificationError"] as exc:
+    raise SystemExit(str(exc))
+PY
+)"
+SOURCE_SHA="${IMAGE_PROMPT_LIBRARY_SOURCE_SHA:-}"
+if [ -z "$SOURCE_SHA" ]; then
+  if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+    echo "Set IMAGE_PROMPT_LIBRARY_SOURCE_SHA for a controlled source snapshot." >&2
+    exit 2
+  fi
+  DIRTY_SOURCE="$(git status --porcelain --untracked-files=normal -- \
+    backend frontend package.json package-lock.json pyproject.toml vite.config.ts tsconfig.json \
+    sample-data/manifests scripts README.md LICENSE NOTICE SECURITY.md)"
+  if [ -n "$DIRTY_SOURCE" ]; then
+    echo "Packaged source inputs are dirty; commit them or set IMAGE_PROMPT_LIBRARY_SOURCE_SHA only for a controlled source snapshot." >&2
+    exit 2
+  fi
+  if [ "$SKIP_BUILD" -eq 1 ]; then
+    echo "--skip-build requires IMAGE_PROMPT_LIBRARY_SOURCE_SHA for a controlled source snapshot." >&2
+    exit 2
+  fi
+  SOURCE_SHA="$(git rev-parse HEAD)"
+fi
+if ! [[ "$SOURCE_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+  echo "Release source SHA must be the exact 40-character commit id." >&2
+  exit 2
+fi
+
 if [ "$SKIP_BUILD" -eq 0 ]; then
   VITE_APP_VERSION="$VERSION" npm run build
 elif [ ! -f frontend/dist/index.html ]; then
-  mkdir -p frontend/dist/assets
-  printf '<!doctype html><html><body><div id="root"></div><script type="module" src="/assets/test.js"></script></body></html>\n' > frontend/dist/index.html
+  echo "frontend/dist is missing; building local app assets before packaging." >&2
+  VITE_APP_VERSION="$VERSION" npm run build
 elif grep -q '/image-prompt-library/assets/' frontend/dist/index.html; then
   echo "Existing frontend/dist is a GitHub Pages demo build; rebuilding local app assets for release." >&2
   VITE_APP_VERSION="$VERSION" npm run build
@@ -54,6 +88,8 @@ for path in \
   backend \
   scripts/appctl.sh \
   scripts/install.sh \
+  scripts/load-env.sh \
+  scripts/verify-release-assets.py \
   scripts/install-sample-data.sh \
   scripts/setup-runtime.sh \
   scripts/appctl.ps1 \
@@ -75,10 +111,15 @@ cp -R frontend/dist "$STAGING/frontend/dist"
 printf '%s\n' "$VERSION" > "$STAGING/VERSION"
 
 # Explicitly keep private/runtime/generated paths out of release artifacts:
-# .env .local-work library node_modules .venv backups
+# .env* .codex* .qa-* and other local/private runtime paths
 find "$STAGING" \( \
-  -name '.env' -o \
+  -name '.env*' -o \
+  -name '.agents' -o \
+  -name '.codebase-memory' -o \
+  -name '.codex*' -o \
   -name '.local-work' -o \
+  -name '.qa-*' -o \
+  -name '.superpowers' -o \
   -name 'library' -o \
   -name 'node_modules' -o \
   -name '.venv' -o \
@@ -126,18 +167,19 @@ else
 fi
 printf '%s  %s\n' "$SHA256" "$ARTIFACT" > "$RELEASE_DIR/$CHECKSUM_FILE"
 
-python3 - "$VERSION" "$ARTIFACT" "$SHA256" "$RELEASE_DIR/$MANIFEST" <<'PY'
+python3 - "$VERSION" "$ARTIFACT" "$SHA256" "$SOURCE_SHA" "$RELEASE_DIR/$MANIFEST" <<'PY'
 import json
 import sys
 from datetime import datetime, timezone
-version, artifact, sha256, manifest_path = sys.argv[1:]
+version, artifact, sha256, source_sha, manifest_path = sys.argv[1:]
 manifest = {
     "name": "image-prompt-library",
     "version": version,
-    "schema_version": 1,
-    "capabilities": ["windows-powershell-v1"],
+    "schema_version": 2,
+    "capabilities": ["windows-powershell-v1", "posix-shell-v1"],
     "artifact": artifact,
     "sha256": sha256,
+    "source_sha": source_sha,
     "python": ">=3.10",
     "node_required_for_runtime": False,
     "built_frontend": True,
@@ -147,6 +189,8 @@ with open(manifest_path, "w", encoding="utf-8") as handle:
     json.dump(manifest, handle, indent=2)
     handle.write("\n")
 PY
+
+python3 scripts/verify-release-assets.py "$RELEASE_DIR" "$VERSION" --source-sha "$SOURCE_SHA" --capability posix-shell-v1
 
 rm -rf "$STAGING_ROOT"
 echo "Created $RELEASE_DIR/$ARTIFACT"

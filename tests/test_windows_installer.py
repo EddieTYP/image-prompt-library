@@ -36,6 +36,7 @@ def test_native_windows_smoke_and_ci_contract():
         "v0.8.0-test-a",
         "v0.8.0-test-b",
         "v0.8.0-test-broken",
+        "IMAGE_PROMPT_LIBRARY_SOURCE_SHA",
         "missing-python.exe",
         "Automatic recovery restored",
         "process_start_time_utc_ticks",
@@ -67,6 +68,43 @@ def test_native_windows_smoke_and_ci_contract():
     assert "npm run build" in windows_job
     assert "tests/test_windows_installer.py" in windows_job
     assert "tests/windows-installer-smoke.ps1" in windows_job
+
+
+@pytest.mark.parametrize("dirty_kind", ("tracked", "untracked"))
+def test_native_windows_smoke_refuses_dirty_packaged_source(tmp_path: Path, dirty_kind: str):
+    source_root = tmp_path / "source"
+    backend = source_root / "backend"
+    backend.mkdir(parents=True)
+    tracked = backend / "main.py"
+    tracked.write_text("clean = True\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=source_root, check=True, capture_output=True)
+    subprocess.run(["git", "add", "backend/main.py"], cwd=source_root, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-m", "fixture"],
+        cwd=source_root,
+        check=True,
+        capture_output=True,
+    )
+    if dirty_kind == "tracked":
+        tracked.write_text("clean = False\n", encoding="utf-8")
+    else:
+        (backend / "source-canary.py").write_text("canary = True\n", encoding="utf-8")
+
+    smoke = powershell_literal(ROOT / "tests" / "windows-installer-smoke.ps1")
+    script = f"""
+$source = [IO.File]::ReadAllText({smoke})
+$functionStart = $source.IndexOf('function ConvertTo-BashPath')
+$functionEnd = $source.IndexOf('function Build-Release')
+if ($functionStart -lt 0 -or $functionEnd -lt 0) {{ throw 'Smoke source-binding functions were not found.' }}
+$repoRoot = {powershell_literal(source_root)}
+Invoke-Expression $source.Substring($functionStart, $functionEnd - $functionStart)
+$bash = Find-GitBash
+Get-ControlledSourceSha -Bash $bash | Out-Null
+"""
+    result = run_powershell(script)
+
+    assert result.returncode != 0
+    assert "Packaged source inputs are dirty" in result.stdout + result.stderr
 
 
 def test_native_windows_smoke_embeds_a_loadable_sample_png():
@@ -522,8 +560,10 @@ def test_real_release_package_extracts_with_hardened_windows_installer(tmp_path:
         "sample-data/manifests",
         "scripts/appctl.sh",
         "scripts/install.sh",
+        "scripts/load-env.sh",
         "scripts/install-sample-data.sh",
         "scripts/setup-runtime.sh",
+        "scripts/verify-release-assets.py",
         "scripts/appctl.ps1",
         "scripts/install.ps1",
         "scripts/install-sample-data.ps1",
@@ -549,7 +589,7 @@ def test_real_release_package_extracts_with_hardened_windows_installer(tmp_path:
         [
             git_bash,
             "-lc",
-            f"python3() {{ '{bash_python}' \"$@\"; }}; export -f python3; cd '{bash_root}' && scripts/package-release.sh '{version}' --skip-build",
+            f"python3() {{ '{bash_python}' \"$@\"; }}; export -f python3; cd '{bash_root}' && IMAGE_PROMPT_LIBRARY_SOURCE_SHA='{'a' * 40}' scripts/package-release.sh '{version}' --skip-build",
         ],
         cwd=source_root,
         capture_output=True,
@@ -1825,48 +1865,64 @@ def test_windows_installer_requires_python_and_a_capable_verified_release():
     assert '"User"' in script
 
 
-def test_windows_installer_enumerates_stable_api_releases_in_powershell_51():
-    def release(tag: str) -> dict[str, object]:
-        names = (
-            f"image-prompt-library-{tag}.tar.gz",
-            f"image-prompt-library-{tag}.tar.gz.sha256",
-            f"image-prompt-library-{tag}.manifest.json",
-        )
-        return {
-            "tag_name": tag,
-            "draft": False,
-            "prerelease": False,
-            "html_url": f"https://github.com/EddieTYP/image-prompt-library/releases/tag/{tag}",
-            "assets": [
-                {
-                    "name": name,
-                    "browser_download_url": (
-                        "https://github.com/EddieTYP/image-prompt-library/"
-                        f"releases/download/{tag}/{name}"
-                    ),
-                }
-                for name in names
-            ],
-        }
+@pytest.mark.parametrize(
+    ("version", "expected"),
+    [
+        ("v1.2.3", True),
+        ("v1.2.3-rc.1", True),
+        ("1.2.3", False),
+        ("v01.2.3", False),
+        ("v1.2.3-01", False),
+        ("v1.2.3+build.1", False),
+        ("v1٢.2.3", False),
+        ("v1.2.3\n", False),
+        ("v1_2", False),
+    ],
+)
+def test_windows_installer_accepts_only_supported_semver_release_tokens(version: str, expected: bool):
+    result = run_installer_function(
+        f"[bool](Test-VersionToken -Value {powershell_literal(version)}) | ConvertTo-Json -Compress"
+    )
 
-    releases = powershell_literal(json.dumps([release("v0.7.10"), release("v0.8.0")]))
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.strip().splitlines()[-1]) is expected
+
+
+def test_windows_installer_enumerates_stable_api_releases_in_powershell_51():
     result = run_installer_function(
         f"""
 $ReleaseBaseUrl = ''
 $Version = 'latest'
 $Repo = 'EddieTYP/image-prompt-library'
 $Capability = 'windows-powershell-v1'
-function Get-ApiJson {{ {releases} | ConvertFrom-Json }}
+$script:RequestedPages = @()
+function Get-ApiJson {{
+    param([string]$Uri)
+    $script:RequestedPages += $Uri
+    if ($Uri -like '*page=1') {{ return 1..100 | ForEach-Object {{ [pscustomobject]@{{ draft = $true; prerelease = $false }} }} }}
+    return @(
+        [pscustomobject]@{{ tag_name = 'v0.7.10'; draft = $false; prerelease = $false; html_url = ''; assets = @() }},
+        [pscustomobject]@{{ tag_name = 'v0.8.0'; draft = $false; prerelease = $false; html_url = ''; assets = @() }}
+    )
+}}
+function New-ReleaseSpec {{
+    param([string]$Tag, [string]$BaseUrl, [object[]]$Assets)
+    return [pscustomobject]@{{ Version = $Tag }}
+}}
 function Test-ApiReleaseCompatibility {{
     param([object]$Release)
     return $Release.Version -eq 'v0.8.0'
 }}
-(Resolve-Release).Version
+$resolved = (Resolve-Release).Version
+$script:RequestedPages -join ','
+$resolved
 """
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout.strip().splitlines()[-1] == "v0.8.0"
+    assert "page=2" in result.stdout
+    assert "per_page=100&page=$page" in read("scripts/install.ps1")
 
 
 def test_windows_installer_rejects_overlapping_app_and_library_paths():
@@ -2524,6 +2580,23 @@ def test_windows_installer_removes_replaced_target_backup_after_child_runtime_se
     assert not (app / "versions" / "v1.2.3.backup").exists()
 
 
+def test_windows_installer_updates_from_legacy_safe_version_pointer(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_test_release(release_dir)
+    app = prefix / "app"
+    legacy_version = "2026.07.11"
+    write_installed_version_payload(app / "versions" / legacy_version, legacy_version)
+    (app / "current-version").write_text(legacy_version + "\n", encoding="ascii")
+
+    result = run_installer(release_dir, prefix, library)
+
+    assert result.returncode == 0, result.stderr
+    assert (app / "current-version").read_text(encoding="ascii") == "v1.2.3\n"
+    assert (app / "previous-version").read_text(encoding="ascii") == legacy_version + "\n"
+
+
 def test_windows_installer_same_version_reinstall_preserves_previous_pointer(tmp_path: Path):
     release_dir = tmp_path / "release"
     prefix = tmp_path / "prefix"
@@ -2666,6 +2739,9 @@ def write_test_release(
     extra_members: tuple[tuple[str, str], ...] = (),
     manifest_sha: str | None = None,
     checksum_sha: str | None = None,
+    checksum_artifact: str | None = None,
+    schema_version: int | None = 2,
+    source_sha: str | None = "a" * 40,
     start_failure: bool = False,
     locked_start_failure: bool = False,
     lock_backup_during_setup: bool = False,
@@ -2740,11 +2816,15 @@ def write_test_release(
         "capabilities": list(capabilities),
         "sha256": manifest_sha or calculated_sha,
     }
+    if schema_version is not None:
+        manifest["schema_version"] = schema_version
+    if source_sha is not None:
+        manifest["source_sha"] = source_sha
     (release_dir / f"image-prompt-library-{version}.manifest.json").write_text(
         json.dumps(manifest), encoding="utf-8"
     )
     (release_dir / f"{artifact_name}.sha256").write_text(
-        f"{checksum_sha or calculated_sha}  {artifact_name}\n", encoding="ascii"
+        f"{checksum_sha or calculated_sha}  {checksum_artifact or artifact_name}\n", encoding="ascii"
     )
 
 
@@ -3314,6 +3394,70 @@ def test_windows_installer_places_runtime_then_publishes_shim_and_pointers(tmp_p
     ]
 
 
+def test_windows_installer_reconciles_exact_interrupted_remnants_before_retry(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    write_test_release(release_dir)
+    versions = prefix / "app" / "versions"
+    current = versions / "v1.0.0"
+    candidate = versions / "v1.2.3"
+    backup = versions / "v1.2.3.backup"
+    write_installed_version_payload(current, "v1.0.0")
+    write_installed_version_payload(candidate, "v1.2.3")
+    write_installed_version_payload(backup, "v1.2.3")
+    (candidate / "candidate-only.txt").write_text("discard", encoding="ascii")
+    (backup / "preimage.txt").write_text("restore", encoding="ascii")
+    (prefix / "app" / "current-version").write_text("v1.0.0\n", encoding="ascii")
+    exact_staging = versions / (".staging-" + "a" * 32)
+    exact_staging.mkdir()
+    near_match = versions / ".staging-user-data"
+    near_match.mkdir()
+
+    result = run_installer(release_dir, prefix, library)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (prefix / "app" / "current-version").read_text(encoding="ascii").strip() == "v1.2.3"
+    assert (prefix / "app" / "previous-version").read_text(encoding="ascii").strip() == "v1.0.0"
+    assert not backup.exists()
+    assert not exact_staging.exists()
+    assert near_match.is_dir()
+    assert not (candidate / "candidate-only.txt").exists()
+
+
+def test_windows_installer_retains_dangling_exact_backup_junction(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    prefix = tmp_path / "prefix"
+    versions = prefix / "app" / "versions"
+    versions.mkdir(parents=True)
+    outside = tmp_path / "outside"
+    missing_target = outside / "missing-target"
+    missing_target.mkdir(parents=True)
+    sentinel = outside / "keep.txt"
+    sentinel.write_text("keep", encoding="ascii")
+    backup = versions / "v1.2.3.backup"
+    created = run_powershell(
+        f"New-Item -ItemType Junction -Path {powershell_literal(backup)} "
+        f"-Target {powershell_literal(missing_target)} -ErrorAction Stop | Out-Null"
+    )
+    if created.returncode != 0:
+        pytest.skip(f"Directory junctions are unavailable: {created.stderr}")
+    missing_target.rmdir()
+    write_test_release(release_dir)
+
+    result = run_installer(release_dir, prefix, tmp_path / "library")
+
+    assert result.returncode == 1
+    assert "reparse" in result.stderr.lower()
+    assert sentinel.read_text(encoding="ascii") == "keep"
+    retained = run_powershell(
+        f"$item = Get-ChildItem -LiteralPath {powershell_literal(versions)} -Force | "
+        "Where-Object { $_.Name -eq 'v1.2.3.backup' }; "
+        "if ($null -eq $item -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0) { exit 1 }"
+    )
+    assert retained.returncode == 0, retained.stderr
+
+
 def test_windows_installer_environment_round_trips_unicode_paths(tmp_path: Path):
     release_dir = tmp_path / "release"
     prefix = tmp_path / "app-應用程式"
@@ -3361,6 +3505,56 @@ def test_windows_installer_requires_three_way_checksum_agreement(
     assert not (tmp_path / "prefix" / "app" / "versions" / "v1.2.3").exists()
 
 
+def test_windows_installer_requires_v2_source_sha_but_accepts_legacy_v1_manifest(tmp_path: Path):
+    missing = tmp_path / "missing-source"
+    write_test_release(missing, source_sha=None)
+    rejected = run_installer(missing, tmp_path / "rejected-prefix", tmp_path / "rejected-library")
+
+    assert rejected.returncode == 1
+    assert "missing source_sha" in rejected.stderr
+
+    legacy = tmp_path / "legacy"
+    write_test_release(legacy, schema_version=None, source_sha=None)
+    accepted = run_installer(legacy, tmp_path / "legacy-prefix", tmp_path / "legacy-library")
+
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+
+    invalid_legacy = tmp_path / "invalid-legacy"
+    write_test_release(invalid_legacy, schema_version=1, source_sha="not-a-commit")
+    invalid = run_installer(
+        invalid_legacy,
+        tmp_path / "invalid-legacy-prefix",
+        tmp_path / "invalid-legacy-library",
+    )
+
+    assert invalid.returncode == 1
+    assert "source_sha is invalid" in invalid.stderr
+
+
+def test_windows_installer_rejects_scalar_manifest_capabilities(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    write_test_release(release_dir)
+    manifest_path = release_dir / "image-prompt-library-v1.2.3.manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["capabilities"] = "windows-powershell-v1"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    result = run_installer(release_dir, tmp_path / "prefix", tmp_path / "library")
+
+    assert result.returncode == 1
+    assert "capabilities are invalid" in result.stderr
+
+
+def test_windows_installer_rejects_checksum_for_a_different_artifact(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    write_test_release(release_dir, checksum_artifact="different.tar.gz")
+
+    result = run_installer(release_dir, tmp_path / "prefix", tmp_path / "library")
+
+    assert result.returncode == 1
+    assert "artifact name" in result.stderr.lower()
+
+
 def test_windows_installer_rejects_legacy_release_without_native_capability(tmp_path: Path):
     release_dir = tmp_path / "legacy release"
     write_test_release(release_dir, version="v0.7.10", capabilities=())
@@ -3385,6 +3579,9 @@ def test_windows_installer_rejects_legacy_release_without_native_capability(tmp_
         ("hardlink", "hard-linked.txt"),
         ("fifo", "reparse-like"),
         ("file", ".venv/Scripts/python.exe"),
+        ("file", "backend/.env.local"),
+        ("file", "backend/.codex-session.json"),
+        ("file", "frontend/.qa-release/session.json"),
     ],
 )
 def test_windows_installer_rejects_unsafe_archive_members(
@@ -3400,6 +3597,18 @@ def test_windows_installer_rejects_unsafe_archive_members(
     assert "refusing" in result.stderr.lower()
     assert not (tmp_path / "escaped.txt").exists()
     assert not (prefix / "app" / "versions" / "v1.2.3").exists()
+
+
+def test_windows_installer_accepts_regular_directory_entries_in_verified_archive(tmp_path: Path):
+    release_dir = tmp_path / "release"
+    write_test_release(
+        release_dir,
+        extra_members=(("directory", "backend/"), ("directory", "frontend/")),
+    )
+
+    result = run_installer(release_dir, tmp_path / "prefix", tmp_path / "library")
+
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_windows_installer_restores_existing_target_when_runtime_setup_fails(tmp_path: Path):
@@ -3519,13 +3728,16 @@ def test_windows_appctl_update_invokes_installer_with_exact_context(
     current = prefix / "app" / "versions" / "v1.0.0"
     scripts = current / "scripts"
     scripts.mkdir(parents=True)
+    runtime_python = current / ".venv" / "Scripts" / "python.exe"
+    runtime_python.parent.mkdir(parents=True)
+    runtime_python.write_text("fixture", encoding="ascii")
     (prefix / "app" / "current-version").write_text("v1.0.0\n", encoding="ascii")
     prefix.mkdir(exist_ok=True)
     (prefix / ".env").write_text(f"IMAGE_PROMPT_LIBRARY_PATH={library}\n", encoding="ascii")
     (scripts / "install.ps1").write_text(
         "[CmdletBinding()]\n"
         "param([string]$Version,[string]$Prefix,[string]$LibraryPath,[string]$ReleaseBaseUrl,[string]$PythonExe='',[string[]]$PythonPrefixArgs=@(),[switch]$NoStart,[switch]$SkipPath,[switch]$NoBrowser)\n"
-        "[ordered]@{ Version=$Version; Prefix=$Prefix; LibraryPath=$LibraryPath; ReleaseBaseUrl=$ReleaseBaseUrl } | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $env:IMAGE_PROMPT_LIBRARY_PREFIX 'update-args.json') -Encoding UTF8\n"
+        "[ordered]@{ Version=$Version; Prefix=$Prefix; LibraryPath=$LibraryPath; ReleaseBaseUrl=$ReleaseBaseUrl; PythonExe=$PythonExe } | ConvertTo-Json -Compress | Set-Content -LiteralPath (Join-Path $env:IMAGE_PROMPT_LIBRARY_PREFIX 'update-args.json') -Encoding UTF8\n"
         "$global:LASTEXITCODE = 0\n",
         encoding="ascii",
     )
@@ -3539,6 +3751,7 @@ def test_windows_appctl_update_invokes_installer_with_exact_context(
         "Prefix": str(prefix),
         "LibraryPath": str(library),
         "ReleaseBaseUrl": str(release),
+        "PythonExe": str(runtime_python),
     }
 
 
@@ -3644,6 +3857,28 @@ def test_windows_appctl_doctor_validates_previous_pointer_target(tmp_path: Path)
     assert result.returncode == 0, result.stderr
     assert "Previous version: ERROR" in result.stdout
     assert "version-local Python" in result.stdout
+
+
+def test_windows_appctl_doctor_reports_exact_installer_remnants_without_mutation(tmp_path: Path):
+    prefix = tmp_path / "prefix"
+    app = prefix / "app"
+    current_root = app / "versions" / "v2.0.0"
+    write_installed_version_payload(current_root, "v2.0.0")
+    (app / "current-version").write_text("v2.0.0\n", encoding="ascii")
+    backup = app / "versions" / "v1.2.3.backup"
+    staging = app / "versions" / (".staging-" + "b" * 32)
+    near_match = app / "versions" / ".staging-user-data"
+    backup.mkdir()
+    staging.mkdir()
+    near_match.mkdir()
+
+    result = run_appctl(prefix, "doctor")
+
+    assert result.returncode == 0, result.stderr
+    assert "Installer backup remnants: WARN - v1.2.3.backup" in result.stdout
+    assert f"Installer staging remnants: WARN - {staging.name}" in result.stdout
+    assert ".staging-user-data" not in result.stdout
+    assert backup.is_dir() and staging.is_dir() and near_match.is_dir()
 
 
 def test_windows_appctl_rollback_target_failure_restores_runtime_and_pointer_pair(tmp_path: Path):

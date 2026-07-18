@@ -47,6 +47,8 @@ Copy `.env.example` to `.env` and edit if needed:
 cp .env.example .env
 ```
 
+The POSIX scripts read supported `.env` entries as literal `KEY=value` data; they do not execute shell syntax or expand quotes, variables, or command substitutions. Write paths and values directly, including spaces when needed.
+
 Important settings:
 
 ```bash

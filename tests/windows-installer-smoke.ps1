@@ -230,9 +230,32 @@ function Find-GitBash {
     throw "Git Bash is required for the existing release packager."
 }
 
+function Get-ControlledSourceSha {
+    param([string]$Bash)
+    $repo = Quote-Bash (ConvertTo-BashPath $repoRoot)
+    $inputs = @(
+        "backend", "frontend", "package.json", "package-lock.json", "pyproject.toml",
+        "vite.config.ts", "tsconfig.json", "sample-data/manifests", "scripts",
+        "README.md", "LICENSE", "NOTICE", "SECURITY.md"
+    )
+    $inputArgs = (($inputs | ForEach-Object { Quote-Bash $_ }) -join " ")
+    $statusCommand = "git -C $repo status --porcelain --untracked-files=normal -- $inputArgs"
+    $statusOutput = @(& $Bash -lc $statusCommand 2>&1 | ForEach-Object { $_.ToString() })
+    $statusExit = $LASTEXITCODE
+    if ($statusExit -ne 0) { throw "Could not inspect the controlled source snapshot: $($statusOutput -join [Environment]::NewLine)" }
+    if ($statusOutput.Count -ne 0) { throw "Packaged source inputs are dirty; commit or clean them before running the smoke." }
+
+    $shaOutput = @(& $Bash -lc "git -C $repo rev-parse --verify HEAD" 2>&1 | ForEach-Object { $_.ToString() })
+    $shaExit = $LASTEXITCODE
+    $sourceSha = [string]($shaOutput | Select-Object -Last 1)
+    $sourceSha = $sourceSha.Trim()
+    if ($shaExit -ne 0 -or $sourceSha -notmatch '^[0-9a-fA-F]{40}$') { throw "Could not identify the controlled source snapshot." }
+    return $sourceSha
+}
+
 function Build-Release {
-    param([string]$Version, [string]$Bash, [string]$Python)
-    $command = "python3() { " + (Quote-Bash (ConvertTo-BashPath $Python)) + " `"`$@`"; }; export -f python3; cd " + (Quote-Bash (ConvertTo-BashPath $packagerSource)) + "; scripts/package-release.sh " + (Quote-Bash $Version) + " --skip-build"
+    param([string]$Version, [string]$Bash, [string]$Python, [string]$SourceSha)
+    $command = "python3() { " + (Quote-Bash (ConvertTo-BashPath $Python)) + " `"`$@`"; }; export -f python3; cd " + (Quote-Bash (ConvertTo-BashPath $packagerSource)) + "; IMAGE_PROMPT_LIBRARY_SOURCE_SHA=" + (Quote-Bash $SourceSha) + " scripts/package-release.sh " + (Quote-Bash $Version) + " --skip-build"
     $output = @(& $Bash -lc $command 2>&1 | ForEach-Object { $_.ToString() })
     if ($LASTEXITCODE -ne 0) { throw "Packaging $Version failed: $($output -join [Environment]::NewLine)" }
     foreach ($suffix in @(".tar.gz", ".tar.gz.sha256", ".manifest.json")) {
@@ -450,6 +473,7 @@ try {
     New-Item -ItemType Directory -Path $workRoot, $releaseBase, $sampleRoot | Out-Null
     $python = Find-Python
     $bash = Find-GitBash
+    $sourceSha = Get-ControlledSourceSha -Bash $bash
     $installer = Join-Path $repoRoot "scripts\install.ps1"
 
     $missingPrefix = Join-Path $workRoot "Missing Python Prefix"
@@ -459,8 +483,8 @@ try {
     Assert-True (-not (Test-Path -LiteralPath $missingPrefix)) "Missing-Python install must not create its prefix."
 
     Copy-PackagerSource
-    Build-Release -Version $versionA -Bash $bash -Python $python
-    Build-Release -Version $versionB -Bash $bash -Python $python
+    Build-Release -Version $versionA -Bash $bash -Python $python -SourceSha $sourceSha
+    Build-Release -Version $versionB -Bash $bash -Python $python -SourceSha $sourceSha
 
     $badChecksumRelease = Join-Path $workRoot "Bad Checksum Release"
     New-Item -ItemType Directory -Path $badChecksumRelease | Out-Null
