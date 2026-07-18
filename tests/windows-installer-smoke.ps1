@@ -231,8 +231,8 @@ function Find-GitBash {
 }
 
 function Build-Release {
-    param([string]$Version, [string]$Bash, [string]$Python)
-    $command = "python3() { " + (Quote-Bash (ConvertTo-BashPath $Python)) + " `"`$@`"; }; export -f python3; cd " + (Quote-Bash (ConvertTo-BashPath $packagerSource)) + "; scripts/package-release.sh " + (Quote-Bash $Version) + " --skip-build"
+    param([string]$Version, [string]$Bash, [string]$Python, [string]$SourceSha)
+    $command = "python3() { " + (Quote-Bash (ConvertTo-BashPath $Python)) + " `"`$@`"; }; export -f python3; cd " + (Quote-Bash (ConvertTo-BashPath $packagerSource)) + "; IMAGE_PROMPT_LIBRARY_SOURCE_SHA=" + (Quote-Bash $SourceSha) + " scripts/package-release.sh " + (Quote-Bash $Version) + " --skip-build"
     $output = @(& $Bash -lc $command 2>&1 | ForEach-Object { $_.ToString() })
     if ($LASTEXITCODE -ne 0) { throw "Packaging $Version failed: $($output -join [Environment]::NewLine)" }
     foreach ($suffix in @(".tar.gz", ".tar.gz.sha256", ".manifest.json")) {
@@ -450,6 +450,9 @@ try {
     New-Item -ItemType Directory -Path $workRoot, $releaseBase, $sampleRoot | Out-Null
     $python = Find-Python
     $bash = Find-GitBash
+    $sourceSha = [string](& git.exe -C $repoRoot rev-parse HEAD 2>$null | Select-Object -Last 1)
+    $sourceSha = $sourceSha.Trim()
+    Assert-True ($LASTEXITCODE -eq 0 -and $sourceSha -match '^[0-9a-fA-F]{40}$') "Could not identify the controlled source snapshot."
     $installer = Join-Path $repoRoot "scripts\install.ps1"
 
     $missingPrefix = Join-Path $workRoot "Missing Python Prefix"
@@ -459,8 +462,8 @@ try {
     Assert-True (-not (Test-Path -LiteralPath $missingPrefix)) "Missing-Python install must not create its prefix."
 
     Copy-PackagerSource
-    Build-Release -Version $versionA -Bash $bash -Python $python
-    Build-Release -Version $versionB -Bash $bash -Python $python
+    Build-Release -Version $versionA -Bash $bash -Python $python -SourceSha $sourceSha
+    Build-Release -Version $versionB -Bash $bash -Python $python -SourceSha $sourceSha
 
     $badChecksumRelease = Join-Path $workRoot "Bad Checksum Release"
     New-Item -ItemType Directory -Path $badChecksumRelease | Out-Null

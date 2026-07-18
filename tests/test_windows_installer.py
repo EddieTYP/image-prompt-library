@@ -36,6 +36,7 @@ def test_native_windows_smoke_and_ci_contract():
         "v0.8.0-test-a",
         "v0.8.0-test-b",
         "v0.8.0-test-broken",
+        "IMAGE_PROMPT_LIBRARY_SOURCE_SHA",
         "missing-python.exe",
         "Automatic recovery restored",
         "process_start_time_utc_ticks",
