@@ -224,6 +224,22 @@ function Test-WindowsPathComponent {
 
 function Test-VersionToken {
     param([string]$Value)
+    if (-not $Value -or -not (Test-WindowsPathComponent -Value $Value)) { return $false }
+    $match = [regex]::Match(
+        $Value,
+        '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?\z'
+    )
+    if (-not $match.Success) { return $false }
+    foreach ($identifier in @($match.Groups[4].Value -split '\.')) {
+        if ($identifier -match '^[0-9]+\z' -and $identifier.Length -gt 1 -and $identifier.StartsWith('0')) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Test-InstalledVersionToken {
+    param([string]$Value)
     return $Value -match '^[A-Za-z0-9][A-Za-z0-9._-]*$' -and
         $Value -notmatch '(?i)\.backup$' -and
         (Test-WindowsPathComponent -Value $Value)
@@ -279,6 +295,73 @@ function Remove-ValidatedTree {
     }
     Assert-NoReparseAncestors -Path $validated -Name "Installer cleanup path" -ExcludeLeaf | Out-Null
     Remove-Item -LiteralPath $validated -Force
+}
+
+function Remove-InstallerStagingRemnants {
+    param([string]$VersionsPath, [string]$AppPrefix)
+    if (-not (Test-Path -LiteralPath $VersionsPath -PathType Container)) { return }
+    $versionsIdentity = Get-PhysicalPathIdentity -Path $VersionsPath
+    foreach ($item in @(Get-ChildItem -LiteralPath $VersionsPath -Force)) {
+        if ($item.Name -notmatch '^\.staging-[0-9a-fA-F]{32}$') { continue }
+        if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Refusing ambiguous installer staging remnant: $($item.FullName)"
+        }
+        $itemParent = [IO.Path]::GetDirectoryName($item.FullName)
+        if (-not [string]::Equals((Get-PhysicalPathIdentity -Path $itemParent), $versionsIdentity, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Refusing installer staging remnant outside the managed versions directory."
+        }
+        Remove-ValidatedTree -Target $item.FullName -AppPrefix $AppPrefix
+    }
+}
+
+function Get-LiteralPathEntry {
+    param([string]$Path)
+    $parent = [IO.Path]::GetDirectoryName((Get-NormalizedPath -Path $Path))
+    $leaf = [IO.Path]::GetFileName($Path)
+    if (-not [IO.Directory]::Exists($parent)) { return $null }
+    foreach ($item in @(Get-ChildItem -LiteralPath $parent -Force)) {
+        if ([string]::Equals($item.Name, $leaf, [StringComparison]::OrdinalIgnoreCase)) {
+            return $item
+        }
+    }
+    return $null
+}
+
+function Repair-InterruptedVersionPublication {
+    param(
+        [string]$FinalTarget,
+        [string]$BackupTarget,
+        [string]$CurrentVersion,
+        [string]$ReleaseVersion,
+        [string]$AppPrefix
+    )
+    $backupItem = Get-LiteralPathEntry -Path $BackupTarget
+    if ($null -eq $backupItem) { return }
+    if (-not $backupItem.PSIsContainer -or ($backupItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Refusing ambiguous installer backup remnant: $BackupTarget"
+    }
+    Assert-VersionPayload -Root $BackupTarget -ExpectedVersion $ReleaseVersion
+    if (-not (Test-Path -LiteralPath (Join-Path $BackupTarget '.venv\Scripts\python.exe') -PathType Leaf)) {
+        throw "Installer backup remnant is missing its version-local Python runtime: $BackupTarget"
+    }
+    $targetItem = Get-LiteralPathEntry -Path $FinalTarget
+    if ($null -eq $targetItem) {
+        Move-Item -LiteralPath $BackupTarget -Destination $FinalTarget
+        return
+    }
+    if (-not $targetItem.PSIsContainer -or ($targetItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Refusing ambiguous version target beside installer backup: $FinalTarget"
+    }
+    if ($CurrentVersion -eq $ReleaseVersion) {
+        Assert-VersionPayload -Root $FinalTarget -ExpectedVersion $ReleaseVersion
+        if (-not (Test-Path -LiteralPath (Join-Path $FinalTarget '.venv\Scripts\python.exe') -PathType Leaf)) {
+            throw "Selected version target is missing its version-local Python runtime: $FinalTarget"
+        }
+        Remove-ValidatedTree -Target $BackupTarget -AppPrefix $AppPrefix
+        return
+    }
+    Remove-ValidatedTree -Target $FinalTarget -AppPrefix $AppPrefix
+    Move-Item -LiteralPath $BackupTarget -Destination $FinalTarget
 }
 
 function Publish-AtomicBytes {
@@ -499,15 +582,20 @@ function Resolve-Release {
         }
         return $release
     }
-    $candidates = Get-ApiJson -Uri "$apiBase`?per_page=20"
-    foreach ($candidate in $candidates) {
-        if ($candidate.draft -or $candidate.prerelease) { continue }
-        try {
-            $release = New-ReleaseSpec -Tag ([string]$candidate.tag_name) -BaseUrl ([string]$candidate.html_url) -Assets @($candidate.assets)
-            if (Test-ApiReleaseCompatibility -Release $release) { return $release }
-        } catch {
-            continue
+    $page = 1
+    while ($true) {
+        $candidates = @(Get-ApiJson -Uri "$apiBase`?per_page=100&page=$page")
+        foreach ($candidate in $candidates) {
+            if ($candidate.draft -or $candidate.prerelease) { continue }
+            try {
+                $release = New-ReleaseSpec -Tag ([string]$candidate.tag_name) -BaseUrl ([string]$candidate.html_url) -Assets @($candidate.assets)
+                if (Test-ApiReleaseCompatibility -Release $release) { return $release }
+            } catch {
+                continue
+            }
         }
+        if ($candidates.Count -lt 100) { break }
+        $page += 1
     }
     throw "No published stable release currently supports native Windows PowerShell installation."
 }
@@ -528,22 +616,44 @@ function Read-CompatibleManifest {
         $manifest.artifact -ne $Release.Artifact) {
         throw "Release manifest identity does not match the selected release."
     }
+    if (-not ($manifest.capabilities -is [Array]) -or
+        @($manifest.capabilities | Where-Object { $_ -isnot [string] }).Count -gt 0) {
+        throw "Release manifest capabilities are invalid."
+    }
     if (@($manifest.capabilities) -notcontains $Capability) {
         throw "Release manifest does not advertise required capability $Capability."
     }
     if ([string]$manifest.sha256 -notmatch '^[0-9a-fA-F]{64}$') {
         throw "Release manifest SHA256 is invalid."
     }
+    $schemaVersion = 1
+    if ($names -contains "schema_version") {
+        if (-not ($manifest.schema_version -is [int] -or $manifest.schema_version -is [long]) -or
+            [int64]$manifest.schema_version -notin @(1, 2)) {
+            throw "Release manifest schema_version is unsupported."
+        }
+        $schemaVersion = [int64]$manifest.schema_version
+    }
+    if ($schemaVersion -ge 2 -and $names -notcontains "source_sha") {
+        throw "Release manifest is missing source_sha."
+    }
+    if ($names -contains "source_sha" -and [string]$manifest.source_sha -notmatch '^[0-9a-fA-F]{40}$') {
+        throw "Release manifest source_sha is invalid."
+    }
     return $manifest
 }
 
 function Confirm-ArtifactChecksum {
-    param([string]$ChecksumPath, [object]$Manifest)
+    param([string]$ChecksumPath, [object]$Manifest, [string]$ExpectedArtifact)
     $lines = @(Get-Content -LiteralPath $ChecksumPath | Where-Object { $_.Trim() })
-    if ($lines.Count -ne 1 -or $lines[0] -notmatch '^([0-9a-fA-F]{64})(?:\s+.*)?$') {
-        throw "Checksum file must contain exactly one leading SHA256 value."
+    if ($lines.Count -ne 1 -or $lines[0] -notmatch '^([0-9a-fA-F]{64})\s+\*?([^\s]+)$') {
+        throw "Checksum file must contain exactly one SHA256 and artifact filename."
     }
     $checksumSha = $Matches[1]
+    $checksumArtifact = $Matches[2]
+    if (-not $checksumArtifact.Equals($ExpectedArtifact, [StringComparison]::Ordinal)) {
+        throw "Checksum file artifact name does not match the selected release."
+    }
     $manifestSha = [string]$Manifest.sha256
     if (-not $checksumSha.Equals($manifestSha, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Checksum file SHA256 does not match the release manifest."
@@ -598,14 +708,29 @@ with open(archive_path, "rb") as artifact_file:
             raw_name = member.name.replace("\\", "/")
             if not raw_name or raw_name.startswith("/") or raw_name.startswith("//") or re.match(r"^[A-Za-z]:", raw_name):
                 raise SystemExit(f"Refusing unsafe archive member: {member.name}")
+            if raw_name.endswith("/"):
+                raw_name = raw_name.rstrip("/")
             parts = raw_name.split("/")
             if any(not part or part in {".", ".."} or ":" in part or part.endswith((".", " ")) for part in parts):
                 raise SystemExit(f"Refusing unsafe archive member: {member.name}")
             if any(part.split(".", 1)[0].upper() in reserved for part in parts):
                 raise SystemExit(f"Refusing unsafe archive member: {member.name}")
             canonical_parts = tuple(part.casefold() for part in parts)
-            if any(part == ".venv" for part in canonical_parts):
-                raise SystemExit(f"Refusing staged Python environment: {member.name}")
+            private_components = {
+                ".agents", ".codebase-memory", ".git", ".local-work", ".superpowers", ".venv",
+                "backups", "library", "logs", "node_modules", "reports", "__pycache__",
+            }
+            private = any(
+                part in private_components
+                or part == ".env"
+                or part.startswith(".env.")
+                or part.startswith(".codex")
+                or part.startswith(".qa-")
+                for part in canonical_parts
+            )
+            private_docs = len(canonical_parts) >= 2 and canonical_parts[0] == "docs" and canonical_parts[1] in {"plans", "qa"}
+            if private or private_docs or raw_name.casefold().endswith(".pyc"):
+                raise SystemExit(f"Refusing private or runtime archive member: {member.name}")
             if member.issym() or member.islnk() or member.isdev():
                 raise SystemExit(f"Refusing unsupported archive member: {member.name}")
             if not (member.isfile() or member.isdir()):
@@ -671,7 +796,7 @@ function Get-CurrentPointerState {
     $current = if (Test-Path -LiteralPath $currentPath -PathType Leaf) { (Get-Content -LiteralPath $currentPath -Raw).Trim() } else { "" }
     $previous = if (Test-Path -LiteralPath $previousPath -PathType Leaf) { (Get-Content -LiteralPath $previousPath -Raw).Trim() } else { "" }
     foreach ($value in @($current, $previous)) {
-        if ($value -and -not (Test-VersionToken -Value $value)) { throw "A version pointer is invalid." }
+        if ($value -and -not (Test-InstalledVersionToken -Value $value)) { throw "A version pointer is invalid." }
     }
     return [pscustomobject]@{ Current = $current; Previous = $previous }
 }
@@ -991,8 +1116,10 @@ function Invoke-Install {
         $currentVersion = ''
         if (Test-Path -LiteralPath $currentPointer -PathType Leaf) {
             $currentVersion = (Get-Content -LiteralPath $currentPointer -Raw).Trim()
-            if ($currentVersion -and -not (Test-VersionToken -Value $currentVersion)) { throw 'The current version pointer is invalid.' }
+            if ($currentVersion -and -not (Test-InstalledVersionToken -Value $currentVersion)) { throw 'The current version pointer is invalid.' }
         }
+        Remove-InstallerStagingRemnants -VersionsPath $versionsPath -AppPrefix $normalizedPrefix
+        Repair-InterruptedVersionPublication -FinalTarget $finalTarget -BackupTarget $backupTarget -CurrentVersion $currentVersion -ReleaseVersion $release.Version -AppPrefix $normalizedPrefix
 
         $publishedState = [pscustomobject]@{
             Environment = Get-FileState -Path $environmentPath
@@ -1013,7 +1140,7 @@ function Invoke-Install {
             $manifest = Read-CompatibleManifest -Release $release -ManifestPath $manifestPath
             Invoke-Download -Uri $release.ArtifactUri -Destination $artifactPath
             Invoke-Download -Uri $release.ChecksumUri -Destination $checksumPath
-            Confirm-ArtifactChecksum -ChecksumPath $checksumPath -Manifest $manifest
+            Confirm-ArtifactChecksum -ChecksumPath $checksumPath -Manifest $manifest -ExpectedArtifact $release.Artifact
 
             New-Item -ItemType Directory -Path $versionsPath -Force | Out-Null
             $staging = Join-Path $versionsPath ('.staging-' + [Guid]::NewGuid().ToString('N'))
@@ -1021,7 +1148,7 @@ function Invoke-Install {
             Expand-SafeTar -ArtifactPath $artifactPath -Destination $staging -Python $python -ExpectedSha ([string]$manifest.sha256)
             Assert-VersionPayload -Root $staging -ExpectedVersion $release.Version
             if (Test-Path -LiteralPath $finalTarget) {
-                if (Test-Path -LiteralPath $backupTarget) { throw "A previous backup exists at $backupTarget." }
+                if ($null -ne (Get-LiteralPathEntry -Path $backupTarget)) { throw "A previous backup exists at $backupTarget." }
                 Move-Item -LiteralPath $finalTarget -Destination $backupTarget
                 $backupCreated = $true
             }
@@ -1153,10 +1280,15 @@ function Invoke-Install {
         }
         throw $installFailure
     } finally {
-        if ($staging -and (Test-Path -LiteralPath $staging)) {
-            Remove-ValidatedTree -Target $staging -AppPrefix $normalizedPrefix
+        try {
+            if ($staging -and (Test-Path -LiteralPath $staging)) {
+                Remove-ValidatedTree -Target $staging -AppPrefix $normalizedPrefix
+            }
+        } catch {
+            Write-Warning "Installer staging cleanup failed and will be retried on the next install: $($_.Exception.Message)"
+        } finally {
+            Exit-InstallLock -Mutex $installLock
         }
-        Exit-InstallLock -Mutex $installLock
     }
 }
 

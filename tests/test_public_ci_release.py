@@ -112,9 +112,20 @@ def test_release_assets_workflow_packages_only_current_version_assets():
 
     assert "rm -rf dist-release" in workflow
     assert 'scripts/package-release.sh "$VERSION" --skip-build' in workflow
-    assert "dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.tar.gz" in workflow
-    assert "dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.tar.gz.sha256" in workflow
-    assert "dist-release/image-prompt-library-${{ github.event.inputs.version || github.ref_name }}.manifest.json" in workflow
+    assert "dist-release/image-prompt-library-${{ env.VERSION }}.tar.gz" in workflow
+    assert "dist-release/image-prompt-library-${{ env.VERSION }}.tar.gz.sha256" in workflow
+    assert "dist-release/image-prompt-library-${{ env.VERSION }}.manifest.json" in workflow
+    assert 'test "$GITHUB_SHA" = "$TAG_SHA"' in workflow
+    assert 'gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100"' in workflow
+    assert 'releases/$RELEASE_ID' in workflow
+    assert "Existing release contains unknown or duplicate assets" in workflow
+    assert "RESUME_PUBLISHED" in workflow
+    assert "if: env.RESUME_PUBLISHED != 'true'" in workflow
+    assert "for attempt in 1 2 3 4 5" in workflow
+    assert "target_commitish:" not in workflow
+    assert "npm run test:frontend" in workflow
+    assert 'releases/latest' in workflow
+    assert "Published stable release was not promoted as GitHub Latest" in workflow
 
 
 def test_v04_release_notes_describe_chatgpt_oauth_generation_and_installer():

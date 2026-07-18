@@ -22,15 +22,11 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+source "$SCRIPT_DIR/load-env.sh"
 if [[ -z "${IMAGE_PROMPT_LIBRARY_PATH:-}" && -f "$REPO_ROOT/VERSION" ]]; then
   INSTALL_PREFIX="$(cd "$REPO_ROOT/../../.." && pwd -P)"
   ENV_FILE="$INSTALL_PREFIX/.env"
-  if [[ -f "$ENV_FILE" ]]; then
-    set -a
-    # shellcheck disable=SC1090
-    source "$ENV_FILE"
-    set +a
-  fi
+  image_prompt_library_load_env_file "$ENV_FILE"
 fi
 LIBRARY_PATH="${IMAGE_PROMPT_LIBRARY_PATH:-$REPO_ROOT/library}"
 if [[ -n "${SAMPLE_DATA_MANIFEST:-}" ]]; then

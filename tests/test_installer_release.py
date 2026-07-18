@@ -1,3 +1,5 @@
+import hashlib
+import io
 import json
 import os
 import shlex
@@ -122,6 +124,7 @@ def package_release(tmp_path: Path, version: str) -> Path:
     release_dir = tmp_path / "dist-release"
     env = os.environ.copy()
     env["IMAGE_PROMPT_LIBRARY_RELEASE_DIR"] = git_bash_path(release_dir)
+    env["IMAGE_PROMPT_LIBRARY_SOURCE_SHA"] = "a" * 40
     result = subprocess.run(
         ["bash", "scripts/package-release.sh", version, "--skip-build"],
         cwd=ROOT,
@@ -132,6 +135,85 @@ def package_release(tmp_path: Path, version: str) -> Path:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     return release_dir
+
+
+def write_synthetic_release(
+    release_dir: Path,
+    version: str = "v1.2.3",
+    *,
+    extra_member: tarfile.TarInfo | None = None,
+    extra_payload: bytes = b"fixture",
+) -> None:
+    release_dir.mkdir(parents=True, exist_ok=True)
+    artifact_name = f"image-prompt-library-{version}.tar.gz"
+    artifact = release_dir / artifact_name
+    required = {
+        "VERSION",
+        "pyproject.toml",
+        "backend/main.py",
+        "frontend/dist/index.html",
+        "scripts/appctl.sh",
+        "scripts/install.sh",
+        "scripts/load-env.sh",
+        "scripts/install-sample-data.sh",
+        "scripts/setup-runtime.sh",
+        "scripts/verify-release-assets.py",
+        "scripts/appctl.ps1",
+        "scripts/install.ps1",
+        "scripts/install-sample-data.ps1",
+        "scripts/setup-runtime.ps1",
+    }
+    with tarfile.open(artifact, "w:gz") as archive:
+        for name in sorted(required):
+            payload = (version + "\n").encode() if name == "VERSION" else b"fixture\n"
+            info = tarfile.TarInfo(name)
+            info.size = len(payload)
+            info.mode = 0o755 if name.endswith(".sh") else 0o644
+            archive.addfile(info, io.BytesIO(payload))
+        if extra_member is not None:
+            extra_member.size = len(extra_payload)
+            archive.addfile(extra_member, io.BytesIO(extra_payload))
+    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    (release_dir / f"{artifact_name}.sha256").write_text(
+        f"{digest}  {artifact_name}\n", encoding="utf-8"
+    )
+    (release_dir / f"image-prompt-library-{version}.manifest.json").write_text(
+        json.dumps({
+            "name": "image-prompt-library",
+            "version": version,
+            "schema_version": 2,
+            "artifact": artifact_name,
+            "sha256": digest,
+            "source_sha": "a" * 40,
+            "capabilities": ["windows-powershell-v1", "posix-shell-v1"],
+        }),
+        encoding="utf-8",
+    )
+
+
+def run_release_verifier(
+    release_dir: Path,
+    version: str = "v1.2.3",
+    *,
+    expected_source_sha: str | None = "a" * 40,
+) -> subprocess.CompletedProcess:
+    command = [
+        sys.executable,
+        "scripts/verify-release-assets.py",
+        str(release_dir),
+        version,
+        "--capability",
+        "posix-shell-v1",
+    ]
+    if expected_source_sha is not None:
+        command.extend(["--source-sha", expected_source_sha])
+    return subprocess.run(
+        command,
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
 
 
 def test_backup_archive_excludes_external_auth_and_config_files(tmp_path):
@@ -286,14 +368,14 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "choose_python()" in install
     assert "python3.13 python3.12 python3.11 python3.10 python3 python" in install
     assert "PYTHON=/path/to/python3.10" in install
-    assert "api.github.com/repos/{repo}/releases?per_page=20" in install
+    assert "api.github.com/repos/{repo}/releases?per_page=100&page={page}" in install
     assert "releases/latest" not in install
-    assert "image-prompt-library-{tag}.manifest.json" in install
-    assert "image-prompt-library-{tag}.tar.gz" in install
+    assert "image-prompt-library-{canonical}.manifest.json" in install
+    assert "image-prompt-library-{canonical}.tar.gz" in install
     assert "sha256" in install.lower()
     assert "~/.image-prompt-library" in install
-    assert "app/versions" in install
-    assert "app/current" in install
+    assert 'VERSIONS_DIR="$APP_DIR/versions"' in install
+    assert 'CURRENT_LINK="$APP_DIR/current"' in install
     assert "~/ImagePromptLibrary" in install
     assert "git pull" not in install
     assert "git clone" not in install
@@ -360,6 +442,15 @@ def test_release_assets_workflow_builds_and_uploads_tagged_artifacts():
     assert "scripts/package-release.sh" in workflow
     assert "softprops/action-gh-release" in workflow or "gh release upload" in workflow
     assert "contents: write" in workflow
+    assert "draft: true" in workflow
+    assert "fail_on_unmatched_files: true" in workflow
+    assert "releases/assets/$asset_id" in workflow
+    assert "dist-release-readback" in workflow
+    assert "scripts/verify-release-assets.py" in workflow
+    assert "draft=false" in workflow
+    assert "cancel-in-progress: false" in workflow
+    assert "RESUME_PUBLISHED" in workflow
+    assert "EXISTING_RELEASE_ID" in workflow
 
 
 def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developers():
@@ -408,7 +499,9 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     assert manifest["name"] == "image-prompt-library"
     assert manifest["version"] == "v9.9.9-test"
     assert manifest["artifact"] == tarball_path.name
-    assert manifest["capabilities"] == ["windows-powershell-v1"]
+    assert manifest["capabilities"] == ["windows-powershell-v1", "posix-shell-v1"]
+    assert manifest["schema_version"] == 2
+    assert len(manifest["source_sha"]) == 40
     assert manifest["sha256"] in checksum_path.read_text()
     assert manifest["node_required_for_runtime"] is False
     assert manifest["built_frontend"] is True
@@ -425,8 +518,10 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     assert "frontend/dist/assets/" in listing
     assert "scripts/appctl.sh" in listing
     assert "scripts/install.sh" in listing
+    assert "scripts/load-env.sh" in listing
     assert "scripts/setup-runtime.sh" in listing
     assert "scripts/install-sample-data.sh" in listing
+    assert "scripts/verify-release-assets.py" in listing
     for windows_script in (
         "scripts/appctl.ps1",
         "scripts/install.ps1",
@@ -443,7 +538,7 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
             if name.startswith("scripts/")
         }
     assert all(
-        member.mode & 0o777 == (0o755 if name.endswith(".sh") else 0o644)
+        member.mode & 0o777 in ({0o644, 0o755} if name == "scripts/verify-release-assets.py" else {(0o755 if name.endswith(".sh") else 0o644)})
         for name, member in script_members.items()
     )
     for dev_script in (
@@ -481,6 +576,241 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     assert "backups/" not in listing
     assert "__pycache__" not in listing
     assert ".pyc" not in listing
+
+
+@pytest.mark.parametrize("dirty_relative", ("backend/main.py", "vite.config.ts", "tsconfig.json"))
+def test_package_release_rejects_implicit_source_sha_for_dirty_packaged_input(tmp_path, dirty_relative):
+    source = tmp_path / "source"
+    (source / "scripts").mkdir(parents=True)
+    for relative in ("scripts/package-release.sh", "scripts/verify-release-assets.py"):
+        target = source / relative
+        target.write_bytes((ROOT / relative).read_bytes())
+    dirty_path = source / dirty_relative
+    dirty_path.parent.mkdir(parents=True, exist_ok=True)
+    dirty_path.write_text("clean = True\n", encoding="utf-8")
+    subprocess.run(["git", "init"], cwd=source, check=True, capture_output=True)
+    subprocess.run(["git", "add", dirty_relative, "scripts/package-release.sh", "scripts/verify-release-assets.py"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-m", "fixture"],
+        cwd=source,
+        check=True,
+        capture_output=True,
+    )
+    dirty_path.write_text("clean = False\n", encoding="utf-8")
+    env = os.environ.copy()
+    env.pop("IMAGE_PROMPT_LIBRARY_SOURCE_SHA", None)
+
+    result = subprocess.run(
+        ["bash", "scripts/package-release.sh", "v1.2.3", "--skip-build"],
+        cwd=source,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 2
+    assert "Packaged source inputs are dirty" in result.stderr
+
+
+def test_package_release_requires_explicit_source_sha_when_skipping_build(tmp_path):
+    source = tmp_path / "source"
+    (source / "scripts").mkdir(parents=True)
+    for relative in ("scripts/package-release.sh", "scripts/verify-release-assets.py"):
+        (source / relative).write_bytes((ROOT / relative).read_bytes())
+    subprocess.run(["git", "init"], cwd=source, check=True, capture_output=True)
+    subprocess.run(["git", "add", "scripts/package-release.sh", "scripts/verify-release-assets.py"], cwd=source, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-m", "fixture"],
+        cwd=source,
+        check=True,
+        capture_output=True,
+    )
+    env = os.environ.copy()
+    env.pop("IMAGE_PROMPT_LIBRARY_SOURCE_SHA", None)
+
+    result = subprocess.run(
+        ["bash", "scripts/package-release.sh", "v1.2.3", "--skip-build"],
+        cwd=source,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 2
+    assert "--skip-build requires IMAGE_PROMPT_LIBRARY_SOURCE_SHA" in result.stderr
+
+
+def test_release_verifier_rejects_tamper_traversal_and_private_members(tmp_path):
+    valid = tmp_path / "valid"
+    write_synthetic_release(valid)
+    assert run_release_verifier(valid).returncode == 0
+
+    artifact = valid / "image-prompt-library-v1.2.3.tar.gz"
+    artifact.write_bytes(artifact.read_bytes() + b"tampered")
+    tampered = run_release_verifier(valid)
+    assert tampered.returncode != 0
+    assert "SHA256" in tampered.stderr
+
+    traversal = tmp_path / "traversal"
+    write_synthetic_release(traversal, extra_member=tarfile.TarInfo("../escape.txt"))
+    unsafe = run_release_verifier(traversal)
+    assert unsafe.returncode != 0
+    assert "unsafe archive member" in unsafe.stderr
+
+    private = tmp_path / "private"
+    write_synthetic_release(private, extra_member=tarfile.TarInfo(".agents/session.txt"))
+    leaked = run_release_verifier(private)
+    assert leaked.returncode != 0
+    assert "forbidden private/runtime" in leaked.stderr
+
+    env_local = tmp_path / "env-local"
+    write_synthetic_release(env_local, extra_member=tarfile.TarInfo("backend/.env.local"))
+    leaked_env = run_release_verifier(env_local)
+    assert leaked_env.returncode != 0
+    assert "forbidden private/runtime" in leaked_env.stderr
+
+
+def test_release_manifest_v2_requires_source_sha_but_legacy_v1_remains_readable(tmp_path):
+    release_dir = tmp_path / "release"
+    write_synthetic_release(release_dir)
+    manifest_path = release_dir / "image-prompt-library-v1.2.3.manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("source_sha")
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    missing = run_release_verifier(release_dir)
+    assert missing.returncode != 0
+    assert "missing source_sha" in missing.stderr
+
+    manifest["schema_version"] = 1
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    legacy = run_release_verifier(release_dir, expected_source_sha=None)
+    assert legacy.returncode == 0, legacy.stdout + legacy.stderr
+
+
+@pytest.mark.parametrize(
+    "version",
+    [
+        " v1.2.3", "v1.2.3 ", "../v1.2.3", "v01.2.3", "v1.2",
+        "v1.2.3-01", "v1.2.3+build.1", "v1٢.2.3", "v1.2.3\n",
+    ],
+)
+def test_posix_installer_rejects_invalid_version_before_creating_prefix(tmp_path, version):
+    prefix = tmp_path / "prefix"
+    result = subprocess.run(
+        ["bash", "scripts/install.sh", "--version", version, "--prefix", str(prefix), "--no-shim"],
+        cwd=ROOT,
+        env={**os.environ, "PYTHON": sys.executable},
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    assert result.returncode != 0
+    assert "invalid" in result.stderr.lower()
+    assert not prefix.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink boundary is covered by the Ubuntu CI job")
+def test_posix_installer_refuses_symlinked_versions_parent_without_external_cleanup(tmp_path):
+    prefix = tmp_path / "prefix"
+    outside = tmp_path / "outside"
+    versions = prefix / "app" / "versions"
+    outside.mkdir()
+    versions.parent.mkdir(parents=True)
+    versions.symlink_to(outside, target_is_directory=True)
+    sentinel = outside / (".staging-" + "a" * 32)
+    sentinel.mkdir()
+    (sentinel / "keep.txt").write_text("keep", encoding="utf-8")
+
+    result = subprocess.run(
+        [
+            "bash", "scripts/install.sh", "--version", "v1.2.3",
+            "--prefix", str(prefix), "--library-path", str(tmp_path / "library"), "--no-shim",
+        ],
+        cwd=ROOT,
+        env={**os.environ, "PYTHON": sys.executable},
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "symlink" in result.stderr.lower()
+    assert (sentinel / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX dangling symlink behavior is covered by the Ubuntu CI job")
+def test_posix_installer_retains_dangling_exact_backup_symlink(tmp_path):
+    version = "v1.2.3"
+    prefix = tmp_path / "prefix"
+    versions = prefix / "app" / "versions"
+    versions.mkdir(parents=True)
+    backup = versions / f"{version}.backup"
+    backup.symlink_to(tmp_path / "missing-backup", target_is_directory=True)
+
+    result = subprocess.run(
+        [
+            "bash", "scripts/install.sh", "--version", version,
+            "--prefix", str(prefix), "--library-path", str(tmp_path / "library"), "--no-shim",
+        ],
+        cwd=ROOT,
+        env={**os.environ, "PYTHON": sys.executable},
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "backup remnant retained" in result.stderr.lower()
+    assert backup.is_symlink()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX private-path symlinks are covered by the Ubuntu CI job")
+def test_posix_installer_rejects_symlinked_private_library_without_external_writes(tmp_path):
+    prefix = tmp_path / "prefix"
+    outside = tmp_path / "outside-library"
+    outside.mkdir()
+    sentinel = outside / "keep.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+    library_alias = tmp_path / "library-alias"
+    library_alias.symlink_to(outside, target_is_directory=True)
+
+    result = subprocess.run(
+        [
+            "bash", "scripts/install.sh", "--version", "v1.2.3",
+            "--prefix", str(prefix), "--library-path", str(library_alias), "--no-shim",
+        ],
+        cwd=ROOT,
+        env={**os.environ, "PYTHON": sys.executable},
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "library path contains a symlink" in result.stderr.lower()
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
+def test_posix_installer_rejects_private_library_inside_install_prefix(tmp_path):
+    prefix = tmp_path / "prefix"
+    result = subprocess.run(
+        [
+            "bash", "scripts/install.sh", "--version", "v1.2.3",
+            "--prefix", str(prefix), "--library-path", str(prefix / "private-library"), "--no-shim",
+        ],
+        cwd=ROOT,
+        env={**os.environ, "PYTHON": sys.executable},
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "must not contain each other" in result.stderr.lower()
+    assert not (prefix / "app").exists()
 
 
 def test_installer_supports_file_release_base_and_installs_without_git(tmp_path):
@@ -528,6 +858,7 @@ def test_installer_supports_file_release_base_and_installs_without_git(tmp_path)
     assert env_file.exists()
     env_text = env_file.read_text()
     assert f"IMAGE_PROMPT_LIBRARY_PATH={git_bash_arg(library)}" in env_text
+    assert f"BACKUP_DIR={git_bash_arg(prefix)}/backups" in env_text
     assert "BACKEND_PORT=8000" in env_text
     assert "IMAGE_PROMPT_LIBRARY_AUTH_PATH" not in env_text
     assert "IMAGE_PROMPT_LIBRARY_CONFIG_PATH" not in env_text
@@ -539,6 +870,376 @@ def test_installer_supports_file_release_base_and_installs_without_git(tmp_path)
         timeout=30,
     ).strip()
     assert "v9.9.8-test" in version
+
+
+def test_posix_latest_release_skips_prerelease_and_installs_stable(tmp_path):
+    stable_version = "v1.2.3"
+    incompatible_version = "v9.1.0"
+    release_dir = package_release(tmp_path, stable_version)
+    mock_python = tmp_path / "mock-python"
+    mock_python.mkdir()
+    stable_assets = [
+        f"image-prompt-library-{stable_version}.manifest.json",
+        f"image-prompt-library-{stable_version}.tar.gz",
+        f"image-prompt-library-{stable_version}.tar.gz.sha256",
+    ]
+
+    def api_assets(version: str):
+        return [
+            {
+                "name": name.replace(stable_version, version),
+                "browser_download_url": (
+                    "https://github.com/EddieTYP/image-prompt-library/"
+                    f"releases/download/{version}/{name.replace(stable_version, version)}"
+                ),
+            }
+            for name in stable_assets
+        ]
+
+    releases = [
+        {
+            "draft": False,
+            "prerelease": True,
+            "tag_name": "v9.0.0-rc.1",
+            "assets": api_assets("v9.0.0-rc.1"),
+        },
+        {
+            "draft": False,
+            "prerelease": False,
+            "tag_name": stable_version,
+            "assets": api_assets(stable_version),
+        },
+    ]
+    first_page = [
+        {
+            "draft": False,
+            "prerelease": False,
+            "tag_name": incompatible_version,
+            "assets": api_assets(incompatible_version),
+        },
+        *({"draft": True, "prerelease": False} for _ in range(99)),
+    ]
+    (mock_python / "sitecustomize.py").write_text(
+        "import io, json, os, pathlib, urllib.parse, urllib.request\n"
+        f"FIRST_PAGE = {first_page!r}\n"
+        f"RELEASES = {releases!r}\n"
+        "_original = urllib.request.urlopen\n"
+        "def _open(url, *args, **kwargs):\n"
+        "    value = getattr(url, 'full_url', str(url))\n"
+        "    if '/releases?per_page=' in value:\n"
+        "        page = urllib.parse.parse_qs(urllib.parse.urlparse(value).query).get('page', ['1'])[0]\n"
+        "        return io.BytesIO(json.dumps(FIRST_PAGE if page == '1' else RELEASES).encode())\n"
+        "    if '/releases/download/' in value:\n"
+        f"        if value.endswith('image-prompt-library-{incompatible_version}.manifest.json'):\n"
+        f"            return io.BytesIO(json.dumps({{'name': 'image-prompt-library', 'version': '{incompatible_version}', 'artifact': 'image-prompt-library-{incompatible_version}.tar.gz', 'capabilities': ['windows-powershell-v1']}}).encode())\n"
+        "        return open(pathlib.Path(os.environ['MOCK_RELEASE_DIR']) / value.rsplit('/', 1)[-1], 'rb')\n"
+        "    return _original(url, *args, **kwargs)\n"
+        "urllib.request.urlopen = _open\n",
+        encoding="utf-8",
+    )
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library"
+    env = {
+        **os.environ,
+        "PYTHON": sys.executable,
+        "PYTHONPATH": str(mock_python),
+        "MOCK_RELEASE_DIR": str(release_dir),
+        "IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP": "1",
+    }
+    env.pop("IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL", None)
+
+    result = subprocess.run(
+        [
+            "bash", "scripts/install.sh", "--prefix", str(prefix),
+            "--library-path", str(library), "--no-shim",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (prefix / "app" / "versions" / stable_version).is_dir()
+    assert not (prefix / "app" / "versions" / "v9.0.0-rc.1").exists()
+
+
+def test_posix_installer_reconciles_owned_remnants_and_same_version_is_safe(tmp_path):
+    version = "v9.9.7-test"
+    release_dir = package_release(tmp_path, version)
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library-data"
+    env = {
+        **os.environ,
+        "IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL": release_dir.as_uri(),
+        "IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP": "1",
+        "PYTHON": sys.executable,
+    }
+    command = [
+        "bash", "scripts/install.sh", "--version", version,
+        "--prefix", str(prefix), "--library-path", str(library), "--no-shim",
+    ]
+    first = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True, timeout=120)
+    assert first.returncode == 0, first.stdout + first.stderr
+
+    versions = prefix / "app" / "versions"
+    installed = versions / version
+    backup = versions / f"{version}.backup"
+    staging = versions / (".staging-" + "a" * 32)
+    staging.mkdir()
+    import shutil
+    shutil.copytree(installed, backup)
+    (installed / "same-version-sentinel").write_text("keep", encoding="utf-8")
+    previous = prefix / "app" / "previous"
+    older = versions / "v9.9.6-test"
+    shutil.copytree(installed, older)
+    (older / "VERSION").write_text("v9.9.6-test\n", encoding="utf-8")
+    if previous.exists() or previous.is_symlink():
+        previous.unlink()
+    try:
+        previous.symlink_to(older, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"Host cannot create POSIX installer symlinks: {exc}")
+
+    second = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True, timeout=120)
+    assert second.returncode == 0, second.stdout + second.stderr
+    assert (installed / "same-version-sentinel").read_text(encoding="utf-8") == "keep"
+    assert not backup.exists()
+    assert not staging.exists()
+    assert previous.resolve() == older.resolve()
+
+    lock = prefix / ".transaction.lock"
+    lock.mkdir()
+    (lock / "owner").write_text("99999999\n", encoding="utf-8")
+    retry = subprocess.run(command, cwd=ROOT, env=env, text=True, capture_output=True, timeout=120)
+    assert retry.returncode == 0, retry.stdout + retry.stderr
+    assert not lock.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX lock symlink behavior is covered by the Ubuntu CI job")
+def test_posix_installer_refuses_symlinked_transaction_lock_without_external_mutation(tmp_path):
+    version = "v9.9.7-test"
+    release_dir = package_release(tmp_path, version)
+    prefix = tmp_path / "prefix"
+    outside = tmp_path / "outside-lock"
+    prefix.mkdir()
+    outside.mkdir()
+    owner = outside / "owner"
+    owner.write_text("99999999\n", encoding="utf-8")
+    (prefix / ".transaction.lock").symlink_to(outside, target_is_directory=True)
+
+    result = subprocess.run(
+        [
+            "bash", "scripts/install.sh", "--version", version,
+            "--prefix", str(prefix), "--library-path", str(tmp_path / "library"), "--no-shim",
+        ],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL": release_dir.as_uri(),
+            "IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP": "1",
+            "PYTHON": sys.executable,
+        },
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    assert result.returncode != 0
+    assert "managed installer path contains a symlink" in result.stderr.lower()
+    assert owner.read_text(encoding="utf-8") == "99999999\n"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX lock symlink behavior is covered by the Ubuntu CI job")
+def test_posix_rollback_refuses_symlinked_transaction_lock_without_external_mutation(tmp_path):
+    prefix = tmp_path / "prefix"
+    outside = tmp_path / "outside-lock"
+    prefix.mkdir()
+    outside.mkdir()
+    owner = outside / "owner"
+    owner.write_text("99999999\n", encoding="utf-8")
+    (prefix / ".transaction.lock").symlink_to(outside, target_is_directory=True)
+
+    result = subprocess.run(
+        ["bash", "scripts/appctl.sh", "rollback"],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "PYTHON": sys.executable,
+            "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix),
+        },
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "managed path contains a symlink" in result.stderr.lower()
+    assert owner.read_text(encoding="utf-8") == "99999999\n"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX runtime symlink behavior is covered by the Ubuntu CI job")
+def test_posix_rollback_validates_runtime_and_swaps_managed_pointers(tmp_path):
+    import shutil
+
+    current_version = "v9.9.5-test"
+    previous_version = "v9.9.4-test"
+    release_dir = package_release(tmp_path, current_version)
+    prefix = tmp_path / "prefix"
+    library = tmp_path / "library-data"
+    env = {
+        **os.environ,
+        "IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL": release_dir.as_uri(),
+        "IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP": "1",
+        "PYTHON": sys.executable,
+    }
+    install = subprocess.run(
+        [
+            "bash", "scripts/install.sh", "--version", current_version,
+            "--prefix", str(prefix), "--library-path", str(library), "--no-shim",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert install.returncode == 0, install.stdout + install.stderr
+    versions = prefix / "app" / "versions"
+    current_target = versions / current_version
+    previous_target = versions / previous_version
+    shutil.copytree(current_target, previous_target)
+    (previous_target / "VERSION").write_text(previous_version + "\n", encoding="utf-8")
+    for target in (current_target, previous_target):
+        runtime = target / ".venv" / "bin"
+        runtime.mkdir(parents=True)
+        (runtime / "python").symlink_to(Path(sys.executable))
+    previous_link = prefix / "app" / "previous"
+    previous_link.symlink_to(previous_target, target_is_directory=True)
+
+    result = subprocess.run(
+        ["bash", str(current_target / "scripts" / "appctl.sh"), "rollback"],
+        cwd=tmp_path,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (prefix / "app" / "current").resolve() == previous_target.resolve()
+    assert previous_link.resolve() == current_target.resolve()
+    assert not (prefix / ".transaction.lock").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX rollback symlink boundary is covered by the Ubuntu CI job")
+def test_posix_rollback_refuses_symlinked_versions_parent_without_external_mutation(tmp_path):
+    prefix = tmp_path / "prefix"
+    outside = tmp_path / "outside-versions"
+    outside.mkdir()
+    sentinel = outside / "keep.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+    versions = prefix / "app" / "versions"
+    versions.parent.mkdir(parents=True)
+    versions.symlink_to(outside, target_is_directory=True)
+
+    result = subprocess.run(
+        ["bash", "scripts/appctl.sh", "rollback"],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "PYTHON": sys.executable,
+            "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix),
+        },
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "versions path contains a symlink" in result.stderr.lower()
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX signal recovery is covered by the Ubuntu CI job")
+def test_posix_installer_term_during_setup_restores_target_and_pointer_pair(tmp_path):
+    import shutil
+
+    version = "v1.2.4"
+    release_dir = package_release(tmp_path, version)
+    artifact = release_dir / f"image-prompt-library-{version}.tar.gz"
+    rewritten = release_dir / "rewritten.tar.gz"
+    with tarfile.open(artifact, "r:gz") as source, tarfile.open(rewritten, "w:gz") as output:
+        for member in source.getmembers():
+            if member.isfile():
+                extracted = source.extractfile(member)
+                payload = extracted.read() if extracted is not None else b""
+                if member.name == "scripts/setup-runtime.sh":
+                    payload = b'#!/usr/bin/env bash\nkill -TERM "$PPID"\nsleep 1\nexit 1\n'
+                member.size = len(payload)
+                output.addfile(member, io.BytesIO(payload))
+            else:
+                output.addfile(member)
+    rewritten.replace(artifact)
+    digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+    manifest_path = release_dir / f"image-prompt-library-{version}.manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["sha256"] = digest
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (release_dir / f"image-prompt-library-{version}.tar.gz.sha256").write_text(
+        f"{digest}  {artifact.name}\n", encoding="utf-8"
+    )
+
+    prefix = tmp_path / "prefix"
+    versions = prefix / "app" / "versions"
+    old_current = versions / "v1.2.3"
+    extracted = subprocess.run(
+        [
+            sys.executable, "scripts/verify-release-assets.py", str(release_dir), version,
+            "--source-sha", manifest["source_sha"], "--extract-to", str(old_current),
+        ],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    assert extracted.returncode == 0, extracted.stdout + extracted.stderr
+    (old_current / "VERSION").write_text("v1.2.3\n", encoding="utf-8")
+    old_previous = versions / "v1.2.2"
+    shutil.copytree(old_current, old_previous)
+    (old_previous / "VERSION").write_text("v1.2.2\n", encoding="utf-8")
+    preimage = versions / version
+    shutil.copytree(old_current, preimage)
+    (preimage / "VERSION").write_text(version + "\n", encoding="utf-8")
+    (preimage / "preimage-sentinel").write_text("restore", encoding="utf-8")
+    current_link = prefix / "app" / "current"
+    previous_link = prefix / "app" / "previous"
+    current_link.symlink_to(old_current, target_is_directory=True)
+    previous_link.symlink_to(old_previous, target_is_directory=True)
+    library = tmp_path / "library"
+    env = {
+        **os.environ,
+        "PYTHON": sys.executable,
+        "IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL": release_dir.as_uri(),
+    }
+
+    result = subprocess.run(
+        [
+            "bash", "scripts/install.sh", "--version", version,
+            "--prefix", str(prefix), "--library-path", str(library), "--no-shim",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    assert result.returncode != 0
+    assert (preimage / "preimage-sentinel").read_text(encoding="utf-8") == "restore"
+    assert current_link.resolve() == old_current.resolve()
+    assert previous_link.resolve() == old_previous.resolve()
+    assert not (versions / f"{version}.backup").exists()
+    assert not list(versions.glob(".staging-*"))
+    assert not (prefix / ".transaction.lock").exists()
 
 
 def test_installer_auto_detects_supported_python_when_python3_is_too_old(tmp_path):
@@ -1039,6 +1740,198 @@ def test_installed_uninstall_can_delete_library_with_explicit_flag(tmp_path):
     assert "Private library deleted" in uninstall.stdout
     assert not prefix.exists()
     assert not library.exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX prefix symlinks are covered by the Ubuntu CI job")
+def test_posix_uninstall_refuses_symlinked_prefix_without_deleting_target(tmp_path):
+    physical_prefix = tmp_path / "physical-prefix"
+    physical_prefix.mkdir()
+    sentinel = physical_prefix / "keep.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+    prefix_alias = tmp_path / "prefix-alias"
+    prefix_alias.symlink_to(physical_prefix, target_is_directory=True)
+
+    result = subprocess.run(
+        ["bash", "scripts/appctl.sh", "uninstall"],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "PYTHON": sys.executable,
+            "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix_alias),
+            "IMAGE_PROMPT_LIBRARY_PATH": str(tmp_path / "library"),
+        },
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "symlinked install prefix" in result.stderr.lower()
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX home-ancestor paths are covered by the Ubuntu CI job")
+def test_posix_installer_refuses_prefix_containing_user_home(tmp_path):
+    version = "v9.9.7-test"
+    release_dir = package_release(tmp_path, version)
+    home = tmp_path / "home-parent" / "user"
+    home.mkdir(parents=True)
+    parent = home.parent
+
+    result = subprocess.run(
+        [
+            "bash", "scripts/install.sh", "--version", version,
+            "--prefix", str(home / ".."), "--library-path", str(tmp_path / "library"), "--no-shim",
+        ],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "PYTHON": sys.executable,
+            "IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL": release_dir.as_uri(),
+            "IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP": "1",
+        },
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    assert result.returncode != 0
+    assert "unsafe install prefix" in result.stderr.lower()
+    assert not (parent / "app").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX home-ancestor paths are covered by the Ubuntu CI job")
+def test_posix_uninstall_refuses_prefix_containing_user_home(tmp_path):
+    home = tmp_path / "home-parent" / "user"
+    home.mkdir(parents=True)
+    sentinel = home / "keep.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+
+    result = subprocess.run(
+        ["bash", "scripts/appctl.sh", "uninstall", "--yes"],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "PYTHON": sys.executable,
+            "IMAGE_PROMPT_LIBRARY_PREFIX": str(home / ".."),
+            "IMAGE_PROMPT_LIBRARY_PATH": str(tmp_path / "library"),
+        },
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "unsafe install prefix" in result.stderr.lower()
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX home-ancestor paths are covered by the Ubuntu CI job")
+def test_posix_uninstall_refuses_library_containing_user_home(tmp_path):
+    home = tmp_path / "home-parent" / "user"
+    home.mkdir(parents=True)
+    prefix = tmp_path / "install-prefix"
+    prefix.mkdir()
+    sentinel = prefix / "keep.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+
+    result = subprocess.run(
+        ["bash", "scripts/appctl.sh", "uninstall", "--delete-library", "--yes"],
+        cwd=ROOT,
+        env={
+            **os.environ,
+            "HOME": str(home),
+            "PYTHON": sys.executable,
+            "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix),
+            "IMAGE_PROMPT_LIBRARY_PATH": str(home / ".."),
+        },
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode != 0
+    assert "unsafe private library" in result.stderr.lower()
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
+def test_posix_appctl_treats_env_values_as_literal_data(tmp_path):
+    prefix = tmp_path / "prefix"
+    prefix.mkdir()
+    library = tmp_path / "library with spaces"
+    marker = tmp_path / "should-not-run"
+    (prefix / ".env").write_text(
+        f"IMAGE_PROMPT_LIBRARY_PATH={library}\n"
+        "BACKEND_HOST=$(touch should-not-run)\n"
+        "BACKEND_PORT=8000\n",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        ["bash", str(ROOT / "scripts" / "appctl.sh"), "doctor"],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PYTHON": sys.executable,
+            "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix),
+            "IMAGE_PROMPT_LIBRARY_AUTH_PATH": str(tmp_path / "auth.json"),
+            "IMAGE_PROMPT_LIBRARY_CONFIG_PATH": str(tmp_path / "config.json"),
+        },
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert f"OK Library path: {library}" in result.stdout
+    assert not marker.exists()
+
+
+def test_posix_env_consumers_share_literal_allowlisted_parser(tmp_path):
+    for relative in (
+        "scripts/appctl.sh",
+        "scripts/backup.sh",
+        "scripts/dev.sh",
+        "scripts/install-sample-data.sh",
+        "scripts/start.sh",
+    ):
+        script = read(relative)
+        assert 'source "$SCRIPT_DIR/load-env.sh"' in script
+        assert "source .env" not in script
+        assert 'source "$ENV_FILE"' not in script
+
+    env_file = tmp_path / ".env"
+    marker = tmp_path / "should-not-run"
+    env_file.write_text(
+        "IMAGE_PROMPT_LIBRARY_PATH=C:/Library With Spaces\n"
+        "BACKEND_HOST=$(touch should-not-run)\n"
+        "BACKEND_PORT=8123\n"
+        "UNSUPPORTED=$(touch should-not-run)\n",
+        encoding="utf-8",
+    )
+    command = (
+        f"source {shlex.quote(git_bash_path(ROOT / 'scripts' / 'load-env.sh'))}; "
+        f"image_prompt_library_load_env_file {shlex.quote(git_bash_path(env_file))}; "
+        "printf '%s\\n' \"$IMAGE_PROMPT_LIBRARY_PATH\" \"$BACKEND_HOST\" \"$BACKEND_PORT\""
+    )
+
+    result = subprocess.run(
+        [GIT_BASH, "-lc", command],
+        cwd=tmp_path,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.splitlines() == [
+        "C:/Library With Spaces",
+        "$(touch should-not-run)",
+        "8123",
+    ]
+    assert not marker.exists()
 
 
 def test_installed_sample_data_script_imports_into_installer_library_by_default(tmp_path):

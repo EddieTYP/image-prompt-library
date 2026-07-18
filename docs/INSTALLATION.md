@@ -84,7 +84,7 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 image-prompt-library uninstall
 ```
 
-Update, rollback, start, stop, and uninstall operations share one per-prefix transaction lock. An update switches version pointers transactionally and restores the prior version and runtime after a handled setup, switch, or health failure. This is not durable power-loss recovery: an OS or power interruption can still require `image-prompt-library doctor` followed by a manual retry or rollback. `rollback` validates the previous payload and version-local Python before changing either pointer. Default uninstall removes only the app state and preserves `%USERPROFILE%\ImagePromptLibrary`; use `image-prompt-library uninstall --delete-library` only to remove the private library too, and add `--yes` for non-interactive use.
+Update, rollback, start, stop, and uninstall operations share one per-prefix transaction lock. An update switches version pointers transactionally and restores the prior version and runtime after a handled setup, switch, or health failure. A retry also reconciles exact installer-owned `.staging-<GUID>` and `<version>.backup` remnants while preserving near-match or ambiguous paths; `doctor` reports any exact remnants that still need attention. This is not durable power-loss recovery: an OS or power interruption can still require `image-prompt-library doctor` followed by a retry or rollback. `rollback` validates the previous payload and version-local Python before changing either pointer. Default uninstall removes only the app state and preserves `%USERPROFILE%\ImagePromptLibrary`; use `image-prompt-library uninstall --delete-library` only to remove the private library too, and add `--yes` for non-interactive use.
 
 ## Unix and WSL 2
 
@@ -150,7 +150,9 @@ The selected release must have matching GitHub Release assets:
 - `image-prompt-library-<version>.tar.gz.sha256`
 - `image-prompt-library-<version>.manifest.json`
 
-The installer verifies SHA256 before switching `app/current` to the new version.
+Release tags use `v<major>.<minor>.<patch>` with an optional SemVer prerelease suffix; build-metadata suffixes (`+...`) are not accepted so GitHub asset filenames stay exact. The release workflow binds a schema-v2 manifest to the exact tag commit. The installer verifies the manifest identity and schema, exact checksum sidecar filename, archive SHA256, required payload, and safe archive-member rules before switching `app/current` to the new version.
+
+On Unix/WSL, custom install-prefix and private-library paths must be dedicated Image Prompt Library directories. The private library must be a physical directory separate from the install prefix; a symlinked path, either directory nested inside the other, filesystem root, or any delete target that contains your home directory is rejected. If an older local configuration uses one of those layouts, move the app and library to separate dedicated physical directories, update `IMAGE_PROMPT_LIBRARY_PATH`, and rerun the update. Uninstall also refuses an `IMAGE_PROMPT_LIBRARY_PREFIX` symlink; invoke it through the physical installed path instead.
 
 ## Data locations
 
@@ -217,6 +219,10 @@ Rollback to the previous installed version:
 ```bash
 image-prompt-library rollback
 ```
+
+Install, update, and rollback share a per-prefix lock. The updater keeps the selected old runtime available until the candidate payload, version-local Python, and an offline health check pass. It publishes `current` and `previous` with atomic symlink replacements and restores their prior values after a handled error, `HUP`, `INT`, or `TERM`. Exact installer-owned staging and backup remnants are reconciled on retry; ambiguous names, symlinks, or paths outside `app/versions` are retained and rejected.
+
+This is deliberately not a durable journal. `SIGKILL`, an OS crash, or power loss between the two pointer replacements can still require `image-prompt-library doctor`, followed by a normal update retry or a validated rollback. The updater never treats a similarly named user directory as safe cleanup work.
 
 ## macOS launchd service
 

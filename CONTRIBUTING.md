@@ -41,6 +41,12 @@ If you have a running local server, also run:
 ./scripts/smoke-test.sh
 ```
 
+## Release assets
+
+Release tags must use `v<major>.<minor>.<patch>` with an optional SemVer prerelease suffix, such as `v1.2.3` or `v1.2.3-rc.1`. Build-metadata suffixes (`+...`) are not accepted because release asset filenames must remain exact. The release workflow checks out that exact tag, binds the schema-v2 manifest to its commit SHA, verifies the package locally, uploads the three expected assets to a draft release, downloads them back through the GitHub API, and verifies them again before publishing. If a run stops after creating the draft, rerunning the same tag removes only those exact expected draft assets and resumes the gate. If publication completed, an exact three-asset published release is reverified idempotently; incomplete, duplicate, or unknown assets are retained and rejected for manual review. Do not publish a draft manually without completing the same verification.
+
+Manual `scripts/package-release.sh --skip-build` runs must set `IMAGE_PROMPT_LIBRARY_SOURCE_SHA` to the exact 40-character commit for the controlled frontend build being packaged; normal release workflow runs set this automatically after building.
+
 ## Development guidelines
 
 - Keep runtime data out of git:

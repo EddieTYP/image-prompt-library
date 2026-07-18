@@ -627,6 +627,21 @@ function Show-Doctor {
         else { Write-Output "  Version-local Python: MISSING" }
     } catch { Write-Output ("  Version-local Python: ERROR - " + $_.Exception.Message) }
     try {
+        $versionsPath = Join-Path $Context.AppDir "versions"
+        $backupRemnants = @()
+        $stagingRemnants = @()
+        if (Test-Path -LiteralPath $versionsPath -PathType Container) {
+            foreach ($item in @(Get-ChildItem -LiteralPath $versionsPath -Force)) {
+                if ($item.Name -match '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?\.backup$') { $backupRemnants += $item.Name }
+                elseif ($item.Name -match '^\.staging-[0-9a-fA-F]{32}$') { $stagingRemnants += $item.Name }
+            }
+        }
+        if ($backupRemnants.Count) { Write-Output ("  Installer backup remnants: WARN - " + (($backupRemnants | Sort-Object) -join ", ")) }
+        else { Write-Output "  Installer backup remnants: OK" }
+        if ($stagingRemnants.Count) { Write-Output ("  Installer staging remnants: WARN - " + (($stagingRemnants | Sort-Object) -join ", ")) }
+        else { Write-Output "  Installer staging remnants: OK" }
+    } catch { Write-Output ("  Installer remnants: ERROR - " + $_.Exception.Message) }
+    try {
         $shim = Join-Path $Context.BinDir "image-prompt-library.cmd"
         if (Test-Path -LiteralPath $shim -PathType Leaf) { Write-Output "  Command shim: OK" }
         else { Write-Output ("  Command shim: MISSING - " + $shim) }
@@ -1002,6 +1017,7 @@ function Update-App {
         $installParameters.ReleaseBaseUrl = $env:IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL
     }
     $installArguments = @("-Version", $installParameters.Version, "-Prefix", $installParameters.Prefix, "-LibraryPath", $installParameters.LibraryPath)
+    if (Test-Path -LiteralPath $current.Python -PathType Leaf) { $installArguments += @("-PythonExe", $current.Python) }
     if ($installParameters.ContainsKey("ReleaseBaseUrl")) { $installArguments += @("-ReleaseBaseUrl", $installParameters.ReleaseBaseUrl) }
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer @installArguments
     if ($LASTEXITCODE -ne 0) { throw "Update failed." }
