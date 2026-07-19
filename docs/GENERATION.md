@@ -7,6 +7,7 @@ Local installs can optionally connect **ChatGPT / Codex OAuth** for image genera
 Once connected, you can:
 
 - Generate a new image from a fresh prompt.
+- Queue a `Generation set` of 3, 5, or 10 independent variations from the same prompt and settings.
 - Generate a variant from an existing reference.
 - Review generated results before saving them into the library.
 - Attach a result to the current item.
@@ -52,7 +53,9 @@ After approval, the provider card should show **Connected** and list the availab
 
 ## Generate and review results
 
-Open the local generation composer, type a prompt, choose the desired controls, and run **Generate**. Use double braces for reusable fields, for example `A portrait of {{subject}} in {{style}}`; the composer shows fields for each variable and previews the resolved prompt before sending.
+Open the local generation composer, type a prompt, choose the desired controls, and run **Generate** for one image. The adjacent choice offers **Generate ×3**, **Generate ×5**, and **Generate ×10**; each option states how many generation requests it will use. Manual result upload remains single-image. Use double braces for reusable fields, for example `A portrait of {{subject}} in {{style}}`; the composer shows fields for each variable and previews the resolved prompt before sending.
+
+A multi-image choice is created atomically: either the whole `Generation set` is queued or none of it is. The composer and Generation queue show exact finished, running, queued, ready, failed, and cancelled counts. **Cancel remaining** cancels only queued or running members; completed results stay available for the existing individual review, save, discard, provenance, and reference flows. Failed members are retried individually rather than with a set-wide retry.
 
 <p align="center">
   <img src="assets/screenshots/generation-composer-running.png" alt="Local generation composer showing an image job in progress" width="100%" />
@@ -75,7 +78,7 @@ If you save a result as a new library item, review and edit the metadata first. 
 The composer and Generation queue use the job's classified `metadata.error_kind` rather than trying to infer a new category from provider text:
 
 - `policy_violation`: edit the prompt, or retry the unchanged job if appropriate.
-- `rate_limited`: wait briefly, then retry.
+- `rate_limited`: the failed job stays failed for manual retry, while the app pauses that provider's queue and later continues untouched queued jobs automatically.
 - `provider_unavailable`: retry shortly; the existing prompt and references remain with the job.
 - `auth_required`: open **Config → Providers**, reconnect, then retry.
 - `unknown`: retry, or edit the prompt before creating another job.
@@ -88,9 +91,20 @@ The current stable release includes the `openai_codex_oauth_native` provider pat
 
 The current local composer supports attached input images for reference/edit-style generation jobs. Current operational notes include:
 
+- The persisted queue has no artificial submission cap. A single local app process runs up to five native-provider jobs concurrently; the 10-worker live experiment is QA-only and does not change this production limit.
+- On HTTP 429, the provider queue honours a valid `Retry-After` delay up to five minutes. Without one, it uses 60, 120, 240, then at most 300 seconds across repeated incidents. The failed request is not retried automatically.
+- Generation requests ask only for the final image (`partial_images: 0`); partial previews are intentionally deferred.
 - Normal OAuth token renewal is coordinated locally and should not interrupt Config or generation. If the provider is temporarily unreachable, try again shortly; reconnect only when the app explicitly says OAuth needs attention.
 - Failed-job retry, stalled-job recovery, and backend-restart recovery preserve their existing semantics.
 - Final live-provider QA remains useful for fresh OAuth onboarding, an expired/revoked session, a temporary provider outage, and one low-cost generation request.
+
+Maintainers can run the separate, opt-in 10-worker experiment against an isolated QA library without changing the product limit:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\codex_native_oauth_smoke.py experiment-10 --library <isolated-qa-library> --prompt "A simple blue circle on white" --quality low --confirm-live
+```
+
+This sends 10 real generation requests. Its worker count measures only the local test harness; provider-side scheduling and rate-limit behaviour remain authoritative.
 
 ## Benchmark note
 

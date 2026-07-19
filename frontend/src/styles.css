@@ -418,3 +418,41 @@ main{max-width:1680px;margin:0 auto;padding:26px 30px 88px}.app.explore-mode{hei
   .generation-queue-failure-actions{display:grid;grid-template-columns:1fr}
   .generation-queue-failure-actions button{width:100%}
 }
+
+/* Generation variations and authoritative queue progress */
+.generation-generate-split{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 44px;min-width:0}
+.generation-generate-split.is-single{grid-template-columns:1fr}
+.generation-generate-split .generation-primary-action{grid-column:auto;min-width:0;border-radius:14px 0 0 14px}
+.generation-generate-split.is-single .generation-primary-action{border-radius:14px}
+.generation-count-trigger{display:grid;place-items:center;min-width:44px;min-height:44px;padding:0;border-left:1px solid rgba(255,255,255,.34);border-radius:0 14px 14px 0;cursor:pointer}
+.generation-count-trigger:focus-visible,.generation-generate-split .generation-primary-action:focus-visible{position:relative;z-index:2;outline:3px solid rgba(109,93,252,.34);outline-offset:2px}
+.generation-count-menu{position:absolute;right:0;bottom:calc(100% + 8px);z-index:30;display:grid;gap:4px;width:220px;max-width:calc(100vw - 24px);padding:6px;border:1px solid rgba(122,108,145,.18);border-radius:16px;background:rgba(255,255,255,.97);box-shadow:0 18px 52px rgba(54,42,76,.22);backdrop-filter:blur(18px)}
+.generation-count-menu button{display:grid;gap:2px;min-height:52px;padding:8px 11px;border:0;border-radius:11px;background:transparent;color:#493a68;text-align:left;cursor:pointer}
+.generation-count-menu button:hover,.generation-count-menu button:focus-visible{background:rgba(109,93,252,.10);outline:0}
+.generation-count-menu strong{font-size:13px}.generation-count-menu small{color:#7a6c91;font-size:11px}
+.generation-provider-pause,.generation-set-progress,.generation-set-card{display:grid;gap:8px;border:1px solid rgba(214,140,0,.26);border-radius:16px;background:rgba(255,249,230,.88);padding:11px 12px;color:#594313}
+.generation-provider-pause strong,.generation-set-progress strong,.generation-set-card strong{font-size:13px}.generation-provider-pause span{font-size:12px}
+.generation-set-progress,.generation-set-card{border-color:rgba(109,93,252,.20);background:rgba(250,248,255,.92);color:#493a68}
+.generation-set-progress-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.generation-set-progress-head span{font-size:12px;font-weight:850;color:#6f657d}
+.generation-set-progress progress,.generation-set-card progress{width:100%;height:8px;overflow:hidden;border:0;border-radius:999px;background:rgba(109,93,252,.12);accent-color:#6d5dfc}
+.generation-set-progress progress::-webkit-progress-bar,.generation-set-card progress::-webkit-progress-bar{background:rgba(109,93,252,.12);border-radius:999px}
+.generation-set-progress progress::-webkit-progress-value,.generation-set-card progress::-webkit-progress-value{background:#6d5dfc;border-radius:999px}
+.generation-set-progress p,.generation-set-card p{margin:0;color:#6f657d;font-size:12px;line-height:1.45}
+.generation-cancel-remaining{justify-self:start;min-height:44px;padding:0 14px;border:1px solid rgba(180,35,24,.22);border-radius:999px;background:#fff;color:#9b2c2c;font-weight:850;cursor:pointer}
+.generation-cancel-remaining:disabled{opacity:.5;cursor:not-allowed}.generation-cancel-remaining:focus-visible{outline:2px solid #6d5dfc;outline-offset:2px}
+.generation-provider-pause.queue{margin-top:10px}.generation-set-section{display:grid;gap:8px}.generation-set-section h3{margin-bottom:0}.generation-set-card{background:#fff}
+
+@media(max-width:760px){
+  .generation-compact-controls{grid-template-columns:40px 40px 40px minmax(0,1fr) 44px;gap:5px}
+  .generation-provider-readiness{grid-column:1/-1;grid-row:2;max-width:none}
+  .generation-generate-split{grid-column:4;grid-row:1;min-width:0}
+  .generation-generate-split .generation-primary-action{width:100%;height:44px;min-height:44px;margin:0;padding:0 8px}
+  .generation-history-control{grid-column:5;grid-row:1;width:44px;min-width:44px;height:44px;min-height:44px}
+  .generation-count-menu{right:0;width:min(236px,calc(100vw - 24px))}
+  .generation-provider-pause,.generation-set-progress,.generation-set-card{padding:10px}
+  .generation-cancel-remaining{width:100%;justify-content:center}
+}
+@media(max-width:340px){
+  .generation-generate-split{grid-column:1/-1;grid-row:2}
+  .generation-provider-readiness{grid-row:3}
+}

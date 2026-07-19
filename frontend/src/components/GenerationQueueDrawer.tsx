@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { Bell, CheckCircle2, Clock3, ImagePlus, Maximize2, Trash2, X, XCircle } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
-import type { GenerationJobRecord } from '../types';
+import type { GenerationJobRecord, GenerationJobSetRecord, GenerationJobStatusCounts, GenerationProviderQueueState } from '../types';
 import { generationFailure } from '../utils/generationFailures';
+import { generationSetProgressText, providerPauseSeconds } from '../utils/generationSets';
 import type { Translator } from '../utils/i18n';
 
 function isActive(job: GenerationJobRecord) {
@@ -88,6 +89,11 @@ function isStaleRunningJob(job: GenerationJobRecord) {
   return Number.isFinite(started) && Date.now() - started > STALE_RUNNING_JOB_MS;
 }
 
+function mergeGenerationJobs(current: GenerationJobRecord[], incoming: GenerationJobRecord[]) {
+  const updates = new Map(incoming.map(job => [job.id, job]));
+  return current.map(job => updates.get(job.id) || job);
+}
+
 export default function GenerationQueueDrawer({
   t,
   open,
@@ -104,16 +110,26 @@ export default function GenerationQueueDrawer({
   onOpenProviders: () => void;
 }) {
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
+  const [generationSets, setGenerationSets] = useState<GenerationJobSetRecord[]>([]);
+  const [providerQueueStates, setProviderQueueStates] = useState<GenerationProviderQueueState[]>([]);
+  const [statusCounts, setStatusCounts] = useState<GenerationJobStatusCounts>();
+  const [jobTotal, setJobTotal] = useState(0);
   const [loadError, setLoadError] = useState('');
   const [cancelBusyIds, setCancelBusyIds] = useState<Set<string>>(() => new Set());
   const [retryBusyIds, setRetryBusyIds] = useState<Set<string>>(() => new Set());
   const [markFailedBusyIds, setMarkFailedBusyIds] = useState<Set<string>>(() => new Set());
   const [discardBusyIds, setDiscardBusyIds] = useState<Set<string>>(() => new Set());
+  const [cancelSetBusyIds, setCancelSetBusyIds] = useState<Set<string>>(() => new Set());
+  const [queueClock, setQueueClock] = useState(() => Date.now());
 
   const refresh = async () => {
     try {
       const result = await api.generationJobs({ limit: 100 });
       setJobs(result.jobs);
+      setJobTotal(result.total);
+      setStatusCounts(result.status_counts);
+      setGenerationSets(result.generation_sets || []);
+      setProviderQueueStates(result.provider_queue_states || []);
       setLoadError('');
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Could not load generation queue.');
@@ -125,6 +141,13 @@ export default function GenerationQueueDrawer({
     const timer = window.setInterval(() => refresh().catch(() => undefined), 6000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!open || !providerQueueStates.some(state => providerPauseSeconds(state) > 0)) return undefined;
+    setQueueClock(Date.now());
+    const timer = window.setInterval(() => setQueueClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [open, providerQueueStates]);
 
   const cancelJob = async (job: GenerationJobRecord) => {
     if (!isActive(job) || cancelBusyIds.has(job.id)) return;
@@ -226,6 +249,26 @@ export default function GenerationQueueDrawer({
     }
   };
 
+  const cancelRemainingGenerationSet = async (set: GenerationJobSetRecord) => {
+    if (!set.remaining || cancelSetBusyIds.has(set.generation_group_id)) return;
+    setCancelSetBusyIds(current => new Set(current).add(set.generation_group_id));
+    try {
+      const updated = await api.cancelRemainingGenerationSet(set.generation_group_id);
+      setGenerationSets(current => current.map(candidate => candidate.generation_group_id === updated.generation_group_id ? updated : candidate));
+      setJobs(current => mergeGenerationJobs(current, updated.jobs));
+      setLoadError('');
+      void refresh();
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Could not cancel remaining generations.');
+    } finally {
+      setCancelSetBusyIds(current => {
+        const next = new Set(current);
+        next.delete(set.generation_group_id);
+        return next;
+      });
+    }
+  };
+
   const renderFailedJob = (job: GenerationJobRecord) => {
     const failure = generationFailure(job);
     const retryId = retriedByJobId(job);
@@ -260,14 +303,23 @@ export default function GenerationQueueDrawer({
     );
   };
 
-  const counts = useMemo(() => ({
-    running: jobs.filter(job => job.status === 'running').length,
-    queued: jobs.filter(job => job.status === 'queued').length,
-    active: jobs.filter(isActive).length,
-    ready: jobs.filter(job => job.status === 'succeeded').length,
-    failed: jobs.filter(job => job.status === 'failed').length,
-  }), [jobs]);
-  const hasSignal = counts.active + counts.ready + counts.failed > 0;
+  const counts = useMemo(() => {
+    const running = statusCounts?.running ?? jobs.filter(job => job.status === 'running').length;
+    const queued = statusCounts?.queued ?? jobs.filter(job => job.status === 'queued').length;
+    return {
+      running,
+      queued,
+      active: running + queued,
+      ready: statusCounts?.succeeded ?? jobs.filter(job => job.status === 'succeeded').length,
+      failed: statusCounts?.failed ?? jobs.filter(job => job.status === 'failed').length,
+    };
+  }, [jobs, statusCounts]);
+  const visibleGenerationSets = generationSets.filter(set => set.total > 1);
+  const hasActiveGenerationSet = visibleGenerationSets.some(set => set.remaining > 0);
+  const hasSignal = counts.active + counts.ready + counts.failed > 0 || hasActiveGenerationSet;
+  const pausedProviderQueues = providerQueueStates
+    .map(state => ({ state, seconds: providerPauseSeconds(state, queueClock) }))
+    .filter(entry => entry.seconds > 0);
 
   const sections = [
     { key: 'active', title: 'In progress', jobs: jobs.filter(isActive) },
@@ -280,7 +332,7 @@ export default function GenerationQueueDrawer({
     <>
       <button className={`generation-queue-trigger ${hasSignal ? 'has-signal' : ''}`} onClick={open ? onClose : onOpen} aria-label="Generation work queue">
         <Bell size={18} />
-        {counts.active > 0 && <span className="queue-dot active" aria-label="Active generation jobs" />}
+        {(counts.active > 0 || hasActiveGenerationSet) && <span className="queue-dot active" aria-label="Active generation jobs" />}
         {counts.ready > 0 && <span className="queue-dot ready" aria-label="Generation results ready" />}
         {counts.failed > 0 && <span className="queue-dot failed" aria-label="Failed generation jobs" />}
       </button>
@@ -295,6 +347,37 @@ export default function GenerationQueueDrawer({
           </div>
           {loadError && <p className="error" role="alert">{loadError}</p>}
           <p className="muted queue-summary">{counts.running} running · {counts.queued} queued · {counts.ready} ready</p>
+          {jobTotal > jobs.length && <p className="muted queue-window-note">Showing latest {jobs.length} of {jobTotal} jobs.</p>}
+          {pausedProviderQueues.map(({ state, seconds }) => (
+            <section className="generation-provider-pause queue" key={state.provider} aria-label={`${state.provider} queue paused until ${state.paused_until}`}>
+              <strong>Provider queue paused</strong>
+              <span aria-hidden="true">Rate limited · resumes in about {seconds}s</span>
+              {state.paused_until && <time className="sr-only" dateTime={state.paused_until}>Paused until {state.paused_until}</time>}
+            </section>
+          ))}
+          {visibleGenerationSets.length > 0 && (
+            <section className="generation-queue-section generation-set-section">
+              <h3>Generation sets</h3>
+              {visibleGenerationSets.map(set => (
+                <article className="generation-set-card" key={set.generation_group_id}>
+                  <div className="generation-set-progress-head">
+                    <strong>Generation set</strong>
+                    <span>{set.completed} / {set.total} finished</span>
+                  </div>
+                  <progress max={set.total} value={set.completed} aria-label={`${set.completed} of ${set.total} generations finished`} />
+                  <p>{generationSetProgressText(set)}</p>
+                  {set.remaining > 0 && (
+                    <button
+                      type="button"
+                      className="generation-cancel-remaining"
+                      onClick={() => cancelRemainingGenerationSet(set).catch(() => undefined)}
+                      disabled={cancelSetBusyIds.has(set.generation_group_id)}
+                    >Cancel remaining ({set.remaining})</button>
+                  )}
+                </article>
+              ))}
+            </section>
+          )}
           {sections.map(section => (
             <section className="generation-queue-section" key={section.key}>
               <h3>{section.title}</h3>
