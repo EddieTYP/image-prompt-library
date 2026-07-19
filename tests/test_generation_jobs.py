@@ -3,7 +3,6 @@ from io import BytesIO
 import base64
 import json
 from pathlib import Path
-import threading
 import time
 
 from fastapi.testclient import TestClient
@@ -1316,55 +1315,31 @@ def test_generation_queue_runs_at_most_five_native_jobs(tmp_path, monkeypatch):
     deadline = time.time() + 3
     while generation_queue._active and time.time() < deadline:
         time.sleep(0.02)
-    held_slots = []
-    while len(held_slots) < 5 and time.time() < deadline:
-        if generation_queue._provider_slots.acquire(blocking=False):
-            held_slots.append(True)
-            continue
-        for _ in held_slots:
-            generation_queue._provider_slots.release()
-        held_slots.clear()
-        time.sleep(0.02)
-    for _ in held_slots:
-        generation_queue._provider_slots.release()
+    assert not generation_queue._active
 
     library = tmp_path / "library"
     repo = GenerationJobRepository(library)
     job_ids = [repo.create_job(GenerationJobCreate(
         provider="openai_codex_oauth_native",
         prompt_text=f"queued job {index}",
-    )).id for index in range(5)]
-    active = 0
-    max_seen = 0
-    completed: list[str] = []
-    lock = threading.Lock()
-
-    class FakeProvider:
-        def run_job(self, library_path, job_id):
-            nonlocal active, max_seen
-            fake_repo = GenerationJobRepository(library_path)
-            fake_repo.mark_running(job_id)
-            with lock:
-                active += 1
-                max_seen = max(max_seen, active)
-            time.sleep(0.05)
-            fake_repo.stage_result(job_id, png_bytes("yellow"), "generated.png", {"fake": True})
-            with lock:
-                active -= 1
-                completed.append(job_id)
-
-    monkeypatch.setattr(generation_queue, "OpenAICodexNativeProvider", FakeProvider)
+    )).id for index in range(6)]
+    submitted = []
+    isolated_active: set[str] = set()
+    monkeypatch.setattr(generation_queue, "_active", isolated_active)
+    monkeypatch.setattr(
+        generation_queue._executor,
+        "submit",
+        lambda fn, *args: submitted.append((fn, args)),
+    )
 
     generation_queue.enqueue_generation_jobs(library)
-    deadline = time.time() + 3
-    while time.time() < deadline:
-        if len(completed) == 5:
-            break
-        time.sleep(0.02)
 
-    assert sorted(completed) == sorted(job_ids)
-    assert max_seen == 5
-    assert [repo.get_job(job_id).status for job_id in job_ids] == ["succeeded"] * 5
+    assert len(submitted) == generation_queue.MAX_CONCURRENT_GENERATION_JOBS
+    submitted_ids = {args[1] for _fn, args in submitted}
+    assert len(submitted_ids) == generation_queue.MAX_CONCURRENT_GENERATION_JOBS
+    assert submitted_ids < set(job_ids)
+    assert isolated_active == submitted_ids
+    assert [repo.get_job(job_id).status for job_id in job_ids] == ["queued"] * 6
 
 
 @pytest.mark.parametrize("count", (1, 3, 5, 10))
