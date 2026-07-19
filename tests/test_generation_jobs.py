@@ -1401,6 +1401,41 @@ def test_generation_job_set_keeps_manual_upload_single(tmp_path):
     assert c.get("/api/generation-jobs").json()["total"] == 0
 
 
+def test_generation_job_set_create_and_cancel_retry_after_queue_database_lock(tmp_path, monkeypatch):
+    import sqlite3
+    from backend.services import generation_queue
+
+    scheduled = []
+    monkeypatch.setattr(
+        generation_queue,
+        "enqueue_generation_jobs",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")),
+    )
+    monkeypatch.setattr(
+        generation_queue,
+        "_schedule_pause_wake",
+        lambda library_path, provider, delay: scheduled.append((library_path, provider, delay)),
+    )
+    c = client(tmp_path)
+
+    created = c.post("/api/generation-jobs/sets", json={
+        "job": {"provider": "openai_codex_oauth_native", "prompt_text": "locked set"},
+        "count": 3,
+    })
+    assert created.status_code == 200
+    payload = created.json()
+    assert payload["total"] == 3
+    assert c.get("/api/generation-jobs").json()["total"] == 3
+
+    cancelled = c.post(f"/api/generation-jobs/sets/{payload['generation_group_id']}/cancel-remaining")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["cancelled"] == 3
+    assert scheduled == [
+        (tmp_path / "library", "openai_codex_oauth_native", generation_queue.QUEUE_RESUME_RETRY_SECONDS),
+        (tmp_path / "library", "openai_codex_oauth_native", generation_queue.QUEUE_RESUME_RETRY_SECONDS),
+    ]
+
+
 def test_generation_job_set_rolls_back_rows_and_reference_clones(tmp_path, monkeypatch):
     library = tmp_path / "library"
     repo = GenerationJobRepository(library)

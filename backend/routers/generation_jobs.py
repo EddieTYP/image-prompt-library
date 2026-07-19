@@ -102,7 +102,7 @@ def create_generation_job_set(payload: GenerationJobSetCreate, request: Request)
     except GenerationJobConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if created.provider == CODEX_NATIVE_PROVIDER_ID:
-        enqueue_generation_jobs(request.app.state.library_path, provider=created.provider)
+        _continue_generation_queue(request.app.state.library_path, created.provider)
     return GenerationJobSetRecord(
         **{**created.model_dump(), "jobs": [_sanitize_generation_job_record(job) for job in created.jobs]}
     )
@@ -134,7 +134,7 @@ def cancel_remaining_generation_job_set(generation_group_id: str, request: Reque
     try:
         created = repo(request).cancel_generation_set(generation_group_id)
         if created.provider == CODEX_NATIVE_PROVIDER_ID:
-            enqueue_generation_jobs(request.app.state.library_path, provider=created.provider)
+            _continue_generation_queue(request.app.state.library_path, created.provider)
         return GenerationJobSetRecord(
             **{**created.model_dump(), "jobs": [_sanitize_generation_job_record(job) for job in created.jobs]}
         )
