@@ -1464,10 +1464,66 @@ def test_retry_after_parser_accepts_seconds_and_http_date_and_clamps():
 
     reference = datetime(2026, 7, 19, 7, 0, tzinfo=timezone.utc)
     http_date = (reference + timedelta(seconds=12)).strftime("%a, %d %b %Y %H:%M:%S GMT")
+    assert parse_retry_after_seconds("0") == 0
     assert parse_retry_after_seconds("12") == 12
     assert parse_retry_after_seconds("999") == 300
     assert parse_retry_after_seconds(http_date, now=reference) == 12
     assert parse_retry_after_seconds("not-a-duration") is None
+
+
+def test_codex_native_http_429_retry_after_zero_is_recorded_once(tmp_path, monkeypatch):
+    import httpx
+    from backend.services import openai_codex_native
+    from backend.services.generation_jobs import GenerationJobRepository
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda *args, **kwargs: None)
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh-secret"})
+
+    def rate_limited(_request):
+        return httpx.Response(
+            429,
+            headers={"Retry-After": "0"},
+            json={"error": {"code": "rate_limit_exceeded", "message": "Too many requests"}},
+        )
+
+    transport = httpx.MockTransport(rate_limited)
+    real_client = httpx.Client
+
+    def mock_client(*args, **kwargs):
+        return real_client(*args, **{**kwargs, "transport": transport})
+
+    monkeypatch.setattr(openai_codex_native.httpx, "Client", mock_client)
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "text_to_image",
+        "provider": "openai_codex_oauth_native",
+        "model": "gpt-image-2",
+        "prompt_text": "A neon library in the rain",
+    }).json()
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+    assert response.status_code == 409
+    assert "Too many requests" in response.json()["detail"]
+    assert "refresh-secret" not in response.text
+
+    failed = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert failed["status"] == "failed"
+    assert failed["metadata"]["error_kind"] == "rate_limited"
+    assert failed["metadata"]["retry_after_seconds"] == 0
+    state = GenerationJobRepository(tmp_path / "library").get_provider_queue_state("openai_codex_oauth_native")
+    assert state.paused is False
+    assert state.retry_after_seconds == 0
+    assert state.backoff_seconds == 0
+    with connect(tmp_path / "library") as conn:
+        assert conn.execute(
+            "SELECT incident_count FROM provider_queue_states WHERE provider=?",
+            ("openai_codex_oauth_native",),
+        ).fetchone()[0] == 1
 
 
 def test_codex_image_tool_requests_only_final_image(tmp_path, monkeypatch):

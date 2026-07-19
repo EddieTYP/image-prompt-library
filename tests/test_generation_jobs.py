@@ -1573,6 +1573,54 @@ def test_synchronous_success_continues_queued_provider_jobs(tmp_path, monkeypatc
     assert enqueued == [(tmp_path / "library", "openai_codex_oauth_native")]
 
 
+def test_synchronous_rate_limit_preserves_409_when_queue_database_is_locked(tmp_path, monkeypatch):
+    import sqlite3
+    from backend.routers import generation_jobs as generation_jobs_router
+    from backend.services.openai_codex_native import CodexNativeRateLimitError
+
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "rate limited with locked queue",
+    }).json()
+
+    def raise_rate_limit(_library_path, _job_id):
+        raise CodexNativeRateLimitError("Generation is temporarily rate limited", retry_after_seconds=0)
+
+    monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", raise_rate_limit)
+    monkeypatch.setattr(
+        generation_jobs_router,
+        "enqueue_generation_jobs",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")),
+    )
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Generation is temporarily rate limited"
+
+
+def test_synchronous_success_preserves_result_when_queue_database_is_locked(tmp_path, monkeypatch):
+    import sqlite3
+    from backend.routers import generation_jobs as generation_jobs_router
+
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "completed with locked queue",
+    }).json()
+    repo = GenerationJobRepository(tmp_path / "library")
+    monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", lambda *_args: repo.get_job(job["id"]))
+    monkeypatch.setattr(
+        generation_jobs_router,
+        "enqueue_generation_jobs",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")),
+    )
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+    assert response.status_code == 200
+    assert response.json()["id"] == job["id"]
+
+
 def test_queue_resume_retries_after_transient_database_error(tmp_path, monkeypatch):
     import sqlite3
     from backend.services import generation_queue

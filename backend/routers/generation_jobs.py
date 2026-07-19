@@ -1,4 +1,5 @@
 import json
+import sqlite3
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from PIL import UnidentifiedImageError
@@ -185,7 +186,10 @@ async def upload_generation_result(
 def run_generation_job(job_id: str, request: Request):
     try:
         result = _sanitize_generation_job_record(run_generation_job_now(request.app.state.library_path, job_id))
-        enqueue_generation_jobs(request.app.state.library_path, provider=CODEX_NATIVE_PROVIDER_ID)
+        try:
+            enqueue_generation_jobs(request.app.state.library_path, provider=CODEX_NATIVE_PROVIDER_ID)
+        except (OSError, sqlite3.Error):
+            pass
         return result
     except KeyError as exc:
         raise HTTPException(status_code=404) from exc
@@ -194,7 +198,7 @@ def run_generation_job(job_id: str, request: Request):
     except CodexNativeRateLimitError as exc:
         try:
             enqueue_generation_jobs(request.app.state.library_path, provider=CODEX_NATIVE_PROVIDER_ID)
-        except OSError:
+        except (OSError, sqlite3.Error):
             pass
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except CodexNativeAuthError as exc:
