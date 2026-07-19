@@ -8,7 +8,6 @@ from threading import BoundedSemaphore, RLock, Timer
 from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository
 from backend.services.openai_codex_native import (
     PROVIDER_ID,
-    CodexNativeRateLimitError,
     OpenAICodexNativeProvider,
 )
 
@@ -71,8 +70,6 @@ def _run_job_and_continue(library_path: Path, job_id: str, provider: str) -> Non
             OpenAICodexNativeProvider().run_job(library_path, job_id)
         finally:
             _provider_slots.release()
-    except CodexNativeRateLimitError as exc:
-        GenerationJobRepository(library_path).record_provider_rate_limit(provider, exc.retry_after_seconds)
     except Exception:
         # Provider/repository code records failed/cancelled state where possible.
         # The queue runner must never die because one job failed.

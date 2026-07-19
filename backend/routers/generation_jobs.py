@@ -193,7 +193,6 @@ def run_generation_job(job_id: str, request: Request):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except CodexNativeRateLimitError as exc:
         try:
-            repo(request).record_provider_rate_limit(CODEX_NATIVE_PROVIDER_ID, exc.retry_after_seconds)
             enqueue_generation_jobs(request.app.state.library_path, provider=CODEX_NATIVE_PROVIDER_ID)
         except OSError:
             pass

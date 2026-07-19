@@ -1478,7 +1478,45 @@ def test_synchronous_generation_guard_shares_production_cap(tmp_path):
                 generation_queue._provider_slots.release()
 
 
-def test_synchronous_rate_limit_schedules_provider_queue_resume(tmp_path, monkeypatch):
+def test_queue_worker_does_not_record_same_rate_limit_twice(tmp_path, monkeypatch):
+    from backend.services import generation_queue
+    from backend.services.openai_codex_native import CodexNativeRateLimitError
+
+    library = tmp_path / "library"
+    provider = "openai_codex_oauth_native"
+    repo = GenerationJobRepository(library)
+    job = repo.create_job(GenerationJobCreate(provider=provider, prompt_text="rate limited"))
+    continued = []
+
+    def raise_recorded_rate_limit(_self, library_path, job_id):
+        worker_repo = GenerationJobRepository(library_path)
+        worker_repo.mark_running(job_id)
+        worker_repo.mark_failed(job_id, "429 too many requests", retry_after_seconds=0)
+        worker_repo.record_provider_rate_limit(provider, 0)
+        raise CodexNativeRateLimitError("Generation is temporarily rate limited", retry_after_seconds=0)
+
+    monkeypatch.setattr(generation_queue.OpenAICodexNativeProvider, "run_job", raise_recorded_rate_limit)
+    monkeypatch.setattr(
+        generation_queue,
+        "_continue_generation_queue",
+        lambda library_path, queued_provider: continued.append((library_path, queued_provider)),
+    )
+
+    generation_queue._run_job_and_continue(library, job.id, provider)
+
+    state = repo.get_provider_queue_state(provider)
+    assert state.paused is False
+    assert state.retry_after_seconds == 0
+    assert state.backoff_seconds == 0
+    with connect(library) as conn:
+        assert conn.execute(
+            "SELECT incident_count FROM provider_queue_states WHERE provider=?",
+            (provider,),
+        ).fetchone()[0] == 1
+    assert continued == [(library, provider)]
+
+
+def test_synchronous_rate_limit_is_not_recorded_twice_and_schedules_resume(tmp_path, monkeypatch):
     from backend.routers import generation_jobs as generation_jobs_router
     from backend.services.openai_codex_native import CodexNativeRateLimitError
 
@@ -1489,8 +1527,9 @@ def test_synchronous_rate_limit_schedules_provider_queue_resume(tmp_path, monkey
     }).json()
     enqueued = []
 
-    def raise_rate_limit(*_args, **_kwargs):
-        raise CodexNativeRateLimitError("Generation is temporarily rate limited", retry_after_seconds=60)
+    def raise_rate_limit(library_path, _job_id):
+        GenerationJobRepository(library_path).record_provider_rate_limit("openai_codex_oauth_native", 0)
+        raise CodexNativeRateLimitError("Generation is temporarily rate limited", retry_after_seconds=0)
 
     monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", raise_rate_limit)
     monkeypatch.setattr(
@@ -1501,6 +1540,15 @@ def test_synchronous_rate_limit_schedules_provider_queue_resume(tmp_path, monkey
     response = c.post(f"/api/generation-jobs/{job['id']}/run")
     assert response.status_code == 409
     assert enqueued == [(tmp_path / "library", "openai_codex_oauth_native")]
+    state = GenerationJobRepository(tmp_path / "library").get_provider_queue_state("openai_codex_oauth_native")
+    assert state.paused is False
+    assert state.retry_after_seconds == 0
+    assert state.backoff_seconds == 0
+    with connect(tmp_path / "library") as conn:
+        assert conn.execute(
+            "SELECT incident_count FROM provider_queue_states WHERE provider=?",
+            ("openai_codex_oauth_native",),
+        ).fetchone()[0] == 1
 
 
 def test_synchronous_success_continues_queued_provider_jobs(tmp_path, monkeypatch):
