@@ -1534,8 +1534,8 @@ def test_synchronous_rate_limit_is_not_recorded_twice_and_schedules_resume(tmp_p
     monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", raise_rate_limit)
     monkeypatch.setattr(
         generation_jobs_router,
-        "enqueue_generation_jobs",
-        lambda library_path, *, provider: enqueued.append((library_path, provider)),
+        "_continue_generation_queue",
+        lambda library_path, provider: enqueued.append((library_path, provider)),
     )
     response = c.post(f"/api/generation-jobs/{job['id']}/run")
     assert response.status_code == 409
@@ -1564,8 +1564,8 @@ def test_synchronous_success_continues_queued_provider_jobs(tmp_path, monkeypatc
     monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", lambda *_args: repo.get_job(job["id"]))
     monkeypatch.setattr(
         generation_jobs_router,
-        "enqueue_generation_jobs",
-        lambda library_path, *, provider: enqueued.append((library_path, provider)),
+        "_continue_generation_queue",
+        lambda library_path, provider: enqueued.append((library_path, provider)),
     )
 
     response = c.post(f"/api/generation-jobs/{job['id']}/run")
@@ -1576,6 +1576,7 @@ def test_synchronous_success_continues_queued_provider_jobs(tmp_path, monkeypatc
 def test_synchronous_rate_limit_preserves_409_when_queue_database_is_locked(tmp_path, monkeypatch):
     import sqlite3
     from backend.routers import generation_jobs as generation_jobs_router
+    from backend.services import generation_queue
     from backend.services.openai_codex_native import CodexNativeRateLimitError
 
     c = client(tmp_path)
@@ -1587,21 +1588,33 @@ def test_synchronous_rate_limit_preserves_409_when_queue_database_is_locked(tmp_
     def raise_rate_limit(_library_path, _job_id):
         raise CodexNativeRateLimitError("Generation is temporarily rate limited", retry_after_seconds=0)
 
+    scheduled = []
     monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", raise_rate_limit)
     monkeypatch.setattr(
-        generation_jobs_router,
+        generation_queue,
         "enqueue_generation_jobs",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")),
+    )
+    monkeypatch.setattr(
+        generation_queue,
+        "_schedule_pause_wake",
+        lambda library_path, provider, delay: scheduled.append((library_path, provider, delay)),
     )
 
     response = c.post(f"/api/generation-jobs/{job['id']}/run")
     assert response.status_code == 409
     assert response.json()["detail"] == "Generation is temporarily rate limited"
+    assert scheduled == [(
+        tmp_path / "library",
+        "openai_codex_oauth_native",
+        generation_queue.QUEUE_RESUME_RETRY_SECONDS,
+    )]
 
 
 def test_synchronous_success_preserves_result_when_queue_database_is_locked(tmp_path, monkeypatch):
     import sqlite3
     from backend.routers import generation_jobs as generation_jobs_router
+    from backend.services import generation_queue
 
     c = client(tmp_path)
     job = c.post("/api/generation-jobs", json={
@@ -1609,16 +1622,27 @@ def test_synchronous_success_preserves_result_when_queue_database_is_locked(tmp_
         "prompt_text": "completed with locked queue",
     }).json()
     repo = GenerationJobRepository(tmp_path / "library")
+    scheduled = []
     monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", lambda *_args: repo.get_job(job["id"]))
     monkeypatch.setattr(
-        generation_jobs_router,
+        generation_queue,
         "enqueue_generation_jobs",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")),
+    )
+    monkeypatch.setattr(
+        generation_queue,
+        "_schedule_pause_wake",
+        lambda library_path, provider, delay: scheduled.append((library_path, provider, delay)),
     )
 
     response = c.post(f"/api/generation-jobs/{job['id']}/run")
     assert response.status_code == 200
     assert response.json()["id"] == job["id"]
+    assert scheduled == [(
+        tmp_path / "library",
+        "openai_codex_oauth_native",
+        generation_queue.QUEUE_RESUME_RETRY_SECONDS,
+    )]
 
 
 def test_queue_resume_retries_after_transient_database_error(tmp_path, monkeypatch):

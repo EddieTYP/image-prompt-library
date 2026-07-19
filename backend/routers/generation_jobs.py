@@ -1,5 +1,4 @@
 import json
-import sqlite3
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from PIL import UnidentifiedImageError
@@ -15,7 +14,7 @@ from backend.schemas import (
     GenerationJobRetryResult,
 )
 from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository, sanitize_generation_error
-from backend.services.generation_queue import enqueue_generation_jobs, run_generation_job_now
+from backend.services.generation_queue import _continue_generation_queue, enqueue_generation_jobs, run_generation_job_now
 from backend.services.openai_codex_native import (
     PROVIDER_ID as CODEX_NATIVE_PROVIDER_ID,
     CodexNativeAuthError,
@@ -186,20 +185,14 @@ async def upload_generation_result(
 def run_generation_job(job_id: str, request: Request):
     try:
         result = _sanitize_generation_job_record(run_generation_job_now(request.app.state.library_path, job_id))
-        try:
-            enqueue_generation_jobs(request.app.state.library_path, provider=CODEX_NATIVE_PROVIDER_ID)
-        except (OSError, sqlite3.Error):
-            pass
+        _continue_generation_queue(request.app.state.library_path, CODEX_NATIVE_PROVIDER_ID)
         return result
     except KeyError as exc:
         raise HTTPException(status_code=404) from exc
     except GenerationJobConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except CodexNativeRateLimitError as exc:
-        try:
-            enqueue_generation_jobs(request.app.state.library_path, provider=CODEX_NATIVE_PROVIDER_ID)
-        except (OSError, sqlite3.Error):
-            pass
+        _continue_generation_queue(request.app.state.library_path, CODEX_NATIVE_PROVIDER_ID)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except CodexNativeAuthError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
