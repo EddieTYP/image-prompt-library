@@ -6,6 +6,7 @@ import sys
 import threading
 import time
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
 from pathlib import Path
@@ -165,6 +166,40 @@ def test_codex_native_smoke_parser_preserves_global_library_argument():
 
     args = build_parser().parse_args(["generate", "--library", ".local-work/smoke", "--prompt", "hello"])
     assert args.library == ".local-work/smoke"
+
+
+def test_codex_native_live_experiment_requires_explicit_opt_in_and_library():
+    from scripts.codex_native_oauth_smoke import build_parser, experiment_10
+
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["experiment-10", "--prompt", "hello", "--confirm-live"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["experiment-10", "--library", ".local-work/live", "--prompt", "hello"])
+
+    args = parser.parse_args([
+        "experiment-10",
+        "--library",
+        ".local-work/live",
+        "--prompt",
+        "hello",
+        "--confirm-live",
+    ])
+    assert args.func is experiment_10
+    assert args.library == ".local-work/live"
+    assert args.quality == "low"
+
+
+def test_codex_native_live_experiment_rejects_nonempty_library(tmp_path):
+    from scripts.codex_native_oauth_smoke import _require_isolated_experiment_library
+
+    library = tmp_path / "active-library"
+    library.mkdir()
+    canary = library / "keep.txt"
+    canary.write_text("user data", encoding="utf-8")
+    with pytest.raises(ValueError, match="new or empty isolated QA library"):
+        _require_isolated_experiment_library(library)
+    assert canary.read_text(encoding="utf-8") == "user data"
 
 
 def test_codex_native_smoke_script_reports_optional_status_without_tokens(tmp_path):
@@ -1405,6 +1440,7 @@ def test_generation_job_api_sanitizes_legacy_provider_errors_on_read(tmp_path):
         "provider": "manual_upload",
         "prompt_text": "A legacy failed job",
     }).json()
+
     legacy_error = "UPSTREAM ACCESS_TOKEN=legacy-secret"
     with connect(tmp_path / "library") as conn:
         conn.execute(
@@ -1421,3 +1457,167 @@ def test_generation_job_api_sanitizes_legacy_provider_errors_on_read(tmp_path):
     assert detail.json()["error"] == "Generation failed; provider returned a credential-related error"
     assert "legacy-secret" not in detail.text
     assert "legacy-secret" not in listed.text
+
+
+def test_retry_after_parser_accepts_seconds_and_http_date_and_clamps():
+    from backend.services.openai_codex_native import parse_retry_after_seconds
+
+    reference = datetime(2026, 7, 19, 7, 0, tzinfo=timezone.utc)
+    http_date = (reference + timedelta(seconds=12)).strftime("%a, %d %b %Y %H:%M:%S GMT")
+    assert parse_retry_after_seconds("0") == 0
+    assert parse_retry_after_seconds("12") == 12
+    assert parse_retry_after_seconds("999") == 300
+    assert parse_retry_after_seconds(http_date, now=reference) == 12
+    assert parse_retry_after_seconds("not-a-duration") is None
+
+
+def test_codex_native_http_429_retry_after_zero_is_recorded_once(tmp_path, monkeypatch):
+    import httpx
+    from backend.services import openai_codex_native
+    from backend.services.generation_jobs import GenerationJobRepository
+    from backend.services.openai_codex_native import CodexNativeAuthStore
+
+    auth_path = tmp_path / "auth" / "auth.json"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda *args, **kwargs: None)
+    CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh-secret"})
+
+    def rate_limited(_request):
+        return httpx.Response(
+            429,
+            headers={"Retry-After": "0"},
+            json={"error": {"code": "rate_limit_exceeded", "message": "Too many requests"}},
+        )
+
+    transport = httpx.MockTransport(rate_limited)
+    real_client = httpx.Client
+
+    def mock_client(*args, **kwargs):
+        return real_client(*args, **{**kwargs, "transport": transport})
+
+    monkeypatch.setattr(openai_codex_native.httpx, "Client", mock_client)
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    job = c.post("/api/generation-jobs", json={
+        "source_item_id": source_item["id"],
+        "mode": "text_to_image",
+        "provider": "openai_codex_oauth_native",
+        "model": "gpt-image-2",
+        "prompt_text": "A neon library in the rain",
+    }).json()
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+    assert response.status_code == 409
+    assert "Too many requests" in response.json()["detail"]
+    assert "refresh-secret" not in response.text
+
+    failed = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert failed["status"] == "failed"
+    assert failed["metadata"]["error_kind"] == "rate_limited"
+    assert failed["metadata"]["retry_after_seconds"] == 0
+    state = GenerationJobRepository(tmp_path / "library").get_provider_queue_state("openai_codex_oauth_native")
+    assert state.paused is False
+    assert state.retry_after_seconds == 0
+    assert state.backoff_seconds == 0
+    with connect(tmp_path / "library") as conn:
+        assert conn.execute(
+            "SELECT incident_count FROM provider_queue_states WHERE provider=?",
+            ("openai_codex_oauth_native",),
+        ).fetchone()[0] == 1
+
+
+def test_codex_image_tool_requests_only_final_image(tmp_path, monkeypatch):
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import CodexNativeAuthStore, OpenAICodexNativeProvider
+
+    auth_store = CodexNativeAuthStore(tmp_path / "auth.json")
+    auth_store.save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh"})
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        headers = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def iter_lines(self):
+            yield "data: " + json.dumps({
+                "type": "response.output_item.done",
+                "item": {"type": "image_generation_call", "result": base64.b64encode(b"image").decode()},
+            })
+            yield "data: [DONE]"
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def stream(self, method, url, **kwargs):
+            captured.update(kwargs)
+            return FakeResponse()
+
+    monkeypatch.setattr(openai_codex_native.httpx, "Client", lambda *args, **kwargs: FakeClient())
+    result = OpenAICodexNativeProvider(auth_store=auth_store)._collect_image_b64(
+        "A test image",
+        size=None,
+        quality="high",
+        image_model="gpt-image-2",
+        orchestrator_model="gpt-5.6-luna",
+    )
+    assert result == base64.b64encode(b"image").decode()
+    assert captured["json"]["tools"][0]["partial_images"] == 0
+
+
+def test_codex_image_tool_never_promotes_partial_event_to_final_result(tmp_path, monkeypatch):
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import (
+        CodexNativeAuthError,
+        CodexNativeAuthStore,
+        OpenAICodexNativeProvider,
+    )
+
+    auth_store = CodexNativeAuthStore(tmp_path / "auth.json")
+    auth_store.save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh"})
+
+    class FakeResponse:
+        status_code = 200
+        headers = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def iter_lines(self):
+            yield "data: " + json.dumps({
+                "type": "response.image_generation_call.partial_image",
+                "partial_image_b64": base64.b64encode(b"preview-only").decode(),
+            })
+            yield "data: [DONE]"
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def stream(self, *_args, **_kwargs):
+            return FakeResponse()
+
+    monkeypatch.setattr(openai_codex_native.httpx, "Client", lambda *args, **kwargs: FakeClient())
+    with pytest.raises(CodexNativeAuthError, match="no image_generation result"):
+        OpenAICodexNativeProvider(auth_store=auth_store)._collect_image_b64(
+            "A test image",
+            size=None,
+            quality="high",
+            image_model="gpt-image-2",
+            orchestrator_model="gpt-5.6-luna",
+        )

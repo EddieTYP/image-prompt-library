@@ -5,12 +5,14 @@ import binascii
 import errno
 import hashlib
 import json
+import math
 import os
 import time
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -142,6 +144,31 @@ def _codex_response_error_message(response: httpx.Response) -> str:
     prefix = f"Codex Responses API returned status {response.status_code}"
     return f"{prefix}: {detail[:500]}" if detail else prefix
 
+
+def parse_retry_after_seconds(value: str | None, *, now: datetime | None = None) -> int | None:
+    """Parse a safe Retry-After value and clamp it to the provider pause limit."""
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    seconds: float | None = None
+    try:
+        seconds = float(raw)
+        if not math.isfinite(seconds) or seconds < 0:
+            return None
+    except ValueError:
+        try:
+            parsed = parsedate_to_datetime(raw)
+        except (TypeError, ValueError, OverflowError):
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        reference = now or datetime.now(timezone.utc)
+        seconds = max(0.0, (parsed.astimezone(timezone.utc) - reference.astimezone(timezone.utc)).total_seconds())
+    return min(300, int(math.ceil(seconds)))
+
+
+_parse_retry_after_seconds = parse_retry_after_seconds
+
 SIZES = {
     "square": "1024x1024",
     "1:1": "1024x1024",
@@ -186,6 +213,12 @@ class CodexNativeAuthError(RuntimeError):
 
 class CodexNativeTemporaryError(CodexNativeAuthError):
     pass
+
+
+class CodexNativeRateLimitError(CodexNativeAuthError):
+    def __init__(self, message: str, *, retry_after_seconds: int | None = None):
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
 
 
 def _utc_now() -> str:
@@ -783,6 +816,13 @@ class OpenAICodexNativeProvider:
         except GenerationJobConflict as exc:
             repo.mark_failed(job_id, str(exc))
             raise
+        except CodexNativeRateLimitError as exc:
+            failed = repo.mark_failed(job_id, str(exc), exc.retry_after_seconds)
+            repo.record_provider_rate_limit(PROVIDER_ID, exc.retry_after_seconds)
+            raise CodexNativeRateLimitError(
+                failed.error or "Generation is temporarily rate limited",
+                retry_after_seconds=exc.retry_after_seconds,
+            ) from exc
         except Exception as exc:
             failed = repo.mark_failed(job_id, str(exc))
             raise CodexNativeAuthError(failed.error or "Codex native generation failed") from exc
@@ -842,7 +882,7 @@ class OpenAICodexNativeProvider:
             "quality": quality,
             "output_format": "png",
             "background": "opaque",
-            "partial_images": 1,
+            "partial_images": 0,
         }
         if size:
             image_tool["size"] = size
@@ -866,12 +906,18 @@ class OpenAICodexNativeProvider:
             },
             "stream": True,
         }
-        image_b64: str | None = None
+        final_image_b64: str | None = None
         url = f"{CODEX_BASE_URL}/responses"
         with httpx.Client(timeout=httpx.Timeout(self.timeout)) as client:
             with client.stream("POST", url, headers=codex_cloudflare_headers(access_token), json=payload) as response:
                 if response.status_code != 200:
                     response.read()
+                    if response.status_code == 429:
+                        retry_after_seconds = parse_retry_after_seconds(response.headers.get("Retry-After"))
+                        raise CodexNativeRateLimitError(
+                            _codex_response_error_message(response),
+                            retry_after_seconds=retry_after_seconds,
+                        )
                     raise CodexNativeAuthError(_codex_response_error_message(response))
                 for line in response.iter_lines():
                     if not line or not line.startswith("data:"):
@@ -884,16 +930,12 @@ class OpenAICodexNativeProvider:
                     except json.JSONDecodeError:
                         continue
                     event_type = event.get("type")
-                    if event_type == "response.image_generation_call.partial_image":
-                        partial = event.get("partial_image_b64")
-                        if isinstance(partial, str) and partial:
-                            image_b64 = partial
-                    elif event_type == "response.output_item.done":
+                    if event_type == "response.output_item.done":
                         item = event.get("item")
                         if isinstance(item, dict) and item.get("type") == "image_generation_call":
                             result = item.get("result")
                             if isinstance(result, str) and result:
-                                image_b64 = result
-        if not image_b64:
+                                final_image_b64 = result
+        if not final_image_b64:
             raise CodexNativeAuthError("Codex response contained no image_generation result")
-        return image_b64
+        return final_image_b64

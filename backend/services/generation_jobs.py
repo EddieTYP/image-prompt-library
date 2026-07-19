@@ -4,6 +4,7 @@ import hashlib
 import base64
 import binascii
 import json
+import math
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -21,7 +22,9 @@ from backend.schemas import (
     GenerationJobCreate,
     GenerationJobList,
     GenerationJobRecord,
+    GenerationJobSetRecord,
     GenerationJobRetryResult,
+    GenerationProviderQueueState,
     ItemCreate,
     PromptIn,
 )
@@ -431,16 +434,161 @@ class GenerationJobRepository:
             raise KeyError(job_id)
         return self._record_from_row(row)
 
+    def get_generation_set(self, generation_group_id: str) -> GenerationJobSetRecord:
+        with connect(self.library_path) as conn:
+            group = conn.execute(
+                "SELECT * FROM generation_sets WHERE generation_group_id=?",
+                (generation_group_id,),
+            ).fetchone()
+            if group is None:
+                raise KeyError(generation_group_id)
+            rows = conn.execute(
+                "SELECT * FROM generation_jobs WHERE generation_group_id=? ORDER BY generation_group_index ASC",
+                (generation_group_id,),
+            ).fetchall()
+        return self._generation_set_from_rows(group, rows)
+
+    def cancel_generation_set(self, generation_group_id: str) -> GenerationJobSetRecord:
+        timestamp = now()
+        with connect(self.library_path) as conn:
+            group = conn.execute(
+                "SELECT * FROM generation_sets WHERE generation_group_id=?",
+                (generation_group_id,),
+            ).fetchone()
+            if group is None:
+                raise KeyError(generation_group_id)
+            conn.execute(
+                """
+                UPDATE generation_jobs
+                SET status='cancelled', cancelled_at=?, completed_at=?, updated_at=?
+                WHERE generation_group_id=? AND status IN ('queued', 'running')
+                """,
+                (timestamp, timestamp, timestamp, generation_group_id),
+            )
+            conn.execute(
+                "UPDATE generation_sets SET updated_at=? WHERE generation_group_id=?",
+                (timestamp, generation_group_id),
+            )
+            conn.commit()
+        return self.get_generation_set(generation_group_id)
+
+    def _generation_set_from_rows(self, group, rows) -> GenerationJobSetRecord:
+        counts = {status: 0 for status in ("queued", "running", "succeeded", "failed", "accepted", "discarded", "cancelled")}
+        jobs = []
+        for row in rows:
+            record = self._record_from_row(row)
+            jobs.append(record)
+            counts[record.status] = counts.get(record.status, 0) + 1
+        total = int(group["total"])
+        completed = counts["succeeded"] + counts["failed"] + counts["accepted"] + counts["discarded"] + counts["cancelled"]
+        return GenerationJobSetRecord(
+            generation_group_id=group["generation_group_id"],
+            provider=group["provider"],
+            created_at=group["created_at"],
+            total=total,
+            queued=counts["queued"],
+            running=counts["running"],
+            succeeded=counts["succeeded"],
+            failed=counts["failed"],
+            accepted=counts["accepted"],
+            discarded=counts["discarded"],
+            cancelled=counts["cancelled"],
+            completed=completed,
+            remaining=max(0, total - completed),
+            jobs=jobs,
+        )
+
+    def _generation_set_summary_from_row(self, row) -> GenerationJobSetRecord:
+        total = int(row["total"])
+        completed = sum(int(row[status]) for status in ("succeeded", "failed", "accepted", "discarded", "cancelled"))
+        return GenerationJobSetRecord(
+            generation_group_id=row["generation_group_id"],
+            provider=row["provider"],
+            created_at=row["created_at"],
+            total=total,
+            queued=int(row["queued"]),
+            running=int(row["running"]),
+            succeeded=int(row["succeeded"]),
+            failed=int(row["failed"]),
+            accepted=int(row["accepted"]),
+            discarded=int(row["discarded"]),
+            cancelled=int(row["cancelled"]),
+            completed=completed,
+            remaining=max(0, total - completed),
+            jobs=[],
+        )
+
     def list_jobs(self, *, status: str | None = None, limit: int = 100, offset: int = 0) -> GenerationJobList:
         where = "WHERE status=?" if status else ""
         params: list[object] = [status] if status else []
         with connect(self.library_path) as conn:
             total = conn.execute(f"SELECT COUNT(*) FROM generation_jobs {where}", params).fetchone()[0]
+            status_rows = conn.execute(
+                "SELECT status, COUNT(*) AS count FROM generation_jobs GROUP BY status"
+            ).fetchall()
             rows = conn.execute(
                 f"SELECT * FROM generation_jobs {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 (*params, limit, offset),
             ).fetchall()
-        return GenerationJobList(jobs=[self._record_from_row(row) for row in rows], total=total, limit=limit, offset=offset)
+            page_group_ids = list(dict.fromkeys(
+                row["generation_group_id"] for row in rows if row["generation_group_id"]
+            ))
+            visibility = []
+            summary_params: list[object] = []
+            if status is None:
+                visibility.append("SUM(CASE WHEN jobs.status IN ('queued', 'running') THEN 1 ELSE 0 END) > 0")
+            if page_group_ids:
+                visibility.append(f"sets.generation_group_id IN ({','.join('?' for _ in page_group_ids)})")
+                summary_params.extend(page_group_ids)
+            if visibility:
+                set_rows = conn.execute(
+                    f"""
+                    SELECT
+                        sets.generation_group_id,
+                        sets.provider,
+                        sets.created_at,
+                        sets.total,
+                        SUM(CASE WHEN jobs.status='queued' THEN 1 ELSE 0 END) AS queued,
+                        SUM(CASE WHEN jobs.status='running' THEN 1 ELSE 0 END) AS running,
+                        SUM(CASE WHEN jobs.status='succeeded' THEN 1 ELSE 0 END) AS succeeded,
+                        SUM(CASE WHEN jobs.status='failed' THEN 1 ELSE 0 END) AS failed,
+                        SUM(CASE WHEN jobs.status='accepted' THEN 1 ELSE 0 END) AS accepted,
+                        SUM(CASE WHEN jobs.status='discarded' THEN 1 ELSE 0 END) AS discarded,
+                        SUM(CASE WHEN jobs.status='cancelled' THEN 1 ELSE 0 END) AS cancelled
+                    FROM generation_sets AS sets
+                    JOIN generation_jobs AS jobs
+                      ON jobs.generation_group_id = sets.generation_group_id
+                    GROUP BY sets.generation_group_id, sets.provider, sets.created_at, sets.total
+                    HAVING {' OR '.join(visibility)}
+                    ORDER BY sets.created_at DESC
+                    """,
+                    summary_params,
+                ).fetchall()
+            else:
+                set_rows = []
+        jobs = [self._record_from_row(row) for row in rows]
+        generation_sets = [self._generation_set_summary_from_row(row) for row in set_rows]
+        status_counts = {
+            "queued": 0,
+            "running": 0,
+            "succeeded": 0,
+            "failed": 0,
+            "accepted": 0,
+            "discarded": 0,
+            "cancelled": 0,
+        }
+        for row in status_rows:
+            if row["status"] in status_counts:
+                status_counts[row["status"]] = int(row["count"])
+        return GenerationJobList(
+            jobs=jobs,
+            total=total,
+            limit=limit,
+            offset=offset,
+            status_counts=status_counts,
+            generation_sets=generation_sets,
+            provider_queue_states=self.list_provider_queue_states(),
+        )
 
     def mark_running(self, job_id: str) -> GenerationJobRecord:
         timestamp = now()
@@ -459,12 +607,14 @@ class GenerationJobRepository:
             raise GenerationJobConflict(f"Generation job must be queued or failed before run; current status is {current.status}")
         return self.get_job(job_id)
 
-    def mark_failed(self, job_id: str, error: str) -> GenerationJobRecord:
+    def mark_failed(self, job_id: str, error: str, retry_after_seconds: int | None = None) -> GenerationJobRecord:
         timestamp = now()
         redacted_error = sanitize_generation_error(error)
         existing = self.get_job(job_id)
         metadata = dict(existing.metadata or {})
         metadata["error_kind"] = _classify_error(str(error or ""))
+        if retry_after_seconds is not None:
+            metadata["retry_after_seconds"] = max(0, min(300, int(retry_after_seconds)))
         with connect(self.library_path) as conn:
             conn.execute(
                 """
@@ -1045,6 +1195,96 @@ class GenerationJobRepository:
             raise GenerationJobConflict(f"Only queued or running generation jobs can be cancelled; current status is {current.status}")
         return self.get_job(job_id)
 
+    def create_job_set(self, payload: GenerationJobCreate, count: int) -> GenerationJobSetRecord:
+        if count not in {1, 3, 5, 10}:
+            raise GenerationJobConflict("Generation set count must be one of 1, 3, 5, or 10")
+        if payload.provider == "manual_upload" and count != 1:
+            raise GenerationJobConflict("Manual result upload supports one image at a time")
+        if payload.source_item_id:
+            self.items.get_item(payload.source_item_id)
+        parameters = dict(payload.parameters or {})
+        input_images = parameters.get("input_images")
+        if isinstance(input_images, list) and len(input_images) > MAX_GENERATION_INPUT_IMAGES:
+            raise GenerationJobConflict(f"Generation edit supports up to {MAX_GENERATION_INPUT_IMAGES} input images")
+        generation_group_id = new_id("gen-group")
+        prepared_rows = []
+        job_ids: list[str] = []
+        preexisting_reference_paths: dict[str, set[Path]] = {}
+        timestamp = now()
+        try:
+            for index in range(1, count + 1):
+                job_id = new_id("gen")
+                job_ids.append(job_id)
+                reference_root = self.library_path / GENERATION_REFERENCE_ROOT / job_id
+                if reference_root.is_dir() and not reference_root.is_symlink():
+                    preexisting_reference_paths[job_id] = {
+                        path for path in reference_root.rglob("*")
+                    }
+                else:
+                    preexisting_reference_paths[job_id] = set()
+                prepared_parameters, library_reference_ids = self._prepare_library_reference_inputs(job_id, parameters)
+                prepared_parameters, reference_image_copies = self._prepare_reference_input_clones(job_id, prepared_parameters)
+                metadata = {"reference_image_copies": reference_image_copies} if reference_image_copies else {}
+                prepared_rows.append((
+                    job_id,
+                    payload.source_item_id,
+                    payload.mode,
+                    payload.provider,
+                    payload.model,
+                    "queued",
+                    payload.prompt_language,
+                    payload.prompt_text,
+                    payload.edited_prompt_text,
+                    _to_json(library_reference_ids or payload.reference_image_ids),
+                    _to_json(prepared_parameters),
+                    _to_json(metadata),
+                    generation_group_id,
+                    index,
+                    count,
+                    timestamp,
+                    timestamp,
+                ))
+            with connect(self.library_path) as conn:
+                conn.execute(
+                    "INSERT INTO generation_sets(generation_group_id, provider, total, created_at, updated_at) VALUES(?,?,?,?,?)",
+                    (generation_group_id, payload.provider, count, timestamp, timestamp),
+                )
+                conn.executemany(
+                    """
+                    INSERT INTO generation_jobs(
+                        id, source_item_id, mode, provider, model, status, prompt_language,
+                        prompt_text, edited_prompt_text, reference_image_ids, parameters,
+                        metadata, generation_group_id, generation_group_index, generation_group_size,
+                        created_at, updated_at
+                    ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """,
+                    prepared_rows,
+                )
+                conn.commit()
+        except Exception:
+            for job_id in job_ids:
+                self._cleanup_generation_reference_clones(job_id, preserve_paths=preexisting_reference_paths.get(job_id, set()))
+            raise
+        return self.get_generation_set(generation_group_id)
+
+    def _cleanup_generation_reference_clones(self, job_id: str, *, preserve_paths: set[Path] | None = None) -> None:
+        preserved = preserve_paths or set()
+        root = self.library_path / GENERATION_REFERENCE_ROOT / job_id
+        if not root.is_dir() or root.is_symlink():
+            return
+        for path in sorted(root.rglob("*"), key=lambda value: len(value.parts), reverse=True):
+            if path in preserved or path.is_symlink() or not path.is_file():
+                continue
+            with suppress(OSError):
+                path.unlink()
+        for path in sorted(root.rglob("*"), key=lambda value: len(value.parts), reverse=True):
+            if path in preserved or path.is_symlink() or not path.is_dir():
+                continue
+            with suppress(OSError):
+                path.rmdir()
+        with suppress(OSError):
+            root.rmdir()
+
     def cancel_active_jobs(self) -> int:
         """Cancel every queued or running job in one database update."""
         timestamp = now()
@@ -1059,6 +1299,112 @@ class GenerationJobRepository:
             )
             conn.commit()
         return int(cursor.rowcount)
+
+    def get_provider_queue_state(self, provider: str) -> GenerationProviderQueueState:
+        with connect(self.library_path) as conn:
+            row = conn.execute("SELECT * FROM provider_queue_states WHERE provider=?", (provider,)).fetchone()
+        return self._provider_queue_state_from_row(provider, row)
+
+    def list_provider_queue_states(self, providers: list[str] | None = None) -> list[GenerationProviderQueueState]:
+        requested = list(dict.fromkeys(str(provider) for provider in (providers or []) if provider))
+        with connect(self.library_path) as conn:
+            rows = conn.execute("SELECT * FROM provider_queue_states ORDER BY provider ASC").fetchall()
+        by_provider = {row["provider"]: row for row in rows}
+        names = requested or list(by_provider)
+        return [self._provider_queue_state_from_row(provider, by_provider.get(provider)) for provider in names]
+
+    def record_provider_rate_limit(self, provider: str, retry_after_seconds: int | None = None) -> GenerationProviderQueueState:
+        timestamp = now()
+        current_time = datetime.now(timezone.utc)
+        with connect(self.library_path) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute("SELECT * FROM provider_queue_states WHERE provider=?", (provider,)).fetchone()
+            existing_until = _parse_timestamp(row["paused_until"]) if row else None
+            if existing_until and existing_until > current_time:
+                if retry_after_seconds is not None:
+                    delay = max(0, min(300, int(retry_after_seconds)))
+                    extended_until = current_time + timedelta(seconds=delay)
+                    if extended_until > existing_until:
+                        conn.execute(
+                            """
+                            UPDATE provider_queue_states
+                            SET paused_until=?, retry_after_seconds=?, backoff_seconds=?, updated_at=?
+                            WHERE provider=?
+                            """,
+                            (extended_until.isoformat(), delay, delay, timestamp, provider),
+                        )
+                conn.commit()
+                return self.get_provider_queue_state(provider)
+            incident_count = (int(row["incident_count"]) if row else 0) + 1
+            fallback = (60, 120, 240, 300)[min(incident_count - 1, 3)]
+            delay = max(0, min(300, int(retry_after_seconds))) if retry_after_seconds is not None else fallback
+            paused_until = (current_time + timedelta(seconds=delay)).isoformat()
+            conn.execute(
+                """
+                INSERT INTO provider_queue_states(
+                    provider, paused_until, retry_after_seconds, backoff_seconds,
+                    incident_count, wave_active, updated_at
+                ) VALUES(?,?,?,?,?,?,?)
+                ON CONFLICT(provider) DO UPDATE SET
+                    paused_until=excluded.paused_until,
+                    retry_after_seconds=excluded.retry_after_seconds,
+                    backoff_seconds=excluded.backoff_seconds,
+                    incident_count=excluded.incident_count,
+                    wave_active=0,
+                    updated_at=excluded.updated_at
+                """,
+                (provider, paused_until, delay, delay, incident_count, 0, timestamp),
+            )
+            conn.commit()
+        return self.get_provider_queue_state(provider)
+
+    def mark_provider_wave_started(self, provider: str) -> None:
+        timestamp = now()
+        with connect(self.library_path) as conn:
+            conn.execute(
+                "UPDATE provider_queue_states SET wave_active=1, updated_at=? WHERE provider=? AND backoff_seconds > 0",
+                (timestamp, provider),
+            )
+            conn.commit()
+
+    def clear_provider_backoff_if_drained(self, provider: str, *, active_count: int) -> None:
+        if active_count:
+            return
+        timestamp = now()
+        with connect(self.library_path) as conn:
+            row = conn.execute("SELECT * FROM provider_queue_states WHERE provider=?", (provider,)).fetchone()
+            if row is None or not row["wave_active"]:
+                return
+            queued = conn.execute(
+                "SELECT COUNT(*) FROM generation_jobs WHERE provider=? AND status='queued'",
+                (provider,),
+            ).fetchone()[0]
+            if queued:
+                return
+            conn.execute(
+                """
+                UPDATE provider_queue_states
+                SET paused_until=NULL, retry_after_seconds=0, backoff_seconds=0,
+                    incident_count=0, wave_active=0, updated_at=?
+                WHERE provider=?
+                """,
+                (timestamp, provider),
+            )
+            conn.commit()
+
+    def _provider_queue_state_from_row(self, provider: str, row) -> GenerationProviderQueueState:
+        if row is None:
+            return GenerationProviderQueueState(provider=provider)
+        paused_until = row["paused_until"]
+        expiry = _parse_timestamp(paused_until)
+        remaining = max(0, math.ceil((expiry - datetime.now(timezone.utc)).total_seconds())) if expiry else 0
+        return GenerationProviderQueueState(
+            provider=provider,
+            paused=bool(expiry and expiry > datetime.now(timezone.utc)),
+            paused_until=paused_until,
+            retry_after_seconds=remaining,
+            backoff_seconds=int(row["backoff_seconds"] or 0),
+        )
 
     def next_queued_provider_jobs(self, provider: str, *, limit: int) -> list[GenerationJobRecord]:
         with connect(self.library_path) as conn:

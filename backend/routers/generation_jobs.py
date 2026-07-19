@@ -9,14 +9,16 @@ from backend.schemas import (
     GenerationJobCreate,
     GenerationJobList,
     GenerationJobRecord,
+    GenerationJobSetCreate,
+    GenerationJobSetRecord,
     GenerationJobRetryResult,
 )
 from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository, sanitize_generation_error
-from backend.services.generation_queue import enqueue_generation_jobs
+from backend.services.generation_queue import _continue_generation_queue, enqueue_generation_jobs, run_generation_job_now
 from backend.services.openai_codex_native import (
     PROVIDER_ID as CODEX_NATIVE_PROVIDER_ID,
     CodexNativeAuthError,
-    OpenAICodexNativeProvider,
+    CodexNativeRateLimitError,
 )
 
 router = APIRouter(prefix="/generation-jobs", tags=["generation-jobs"])
@@ -63,6 +65,14 @@ def _sanitize_generation_job_list(jobs: GenerationJobList) -> GenerationJobList:
         total=jobs.total,
         limit=jobs.limit,
         offset=jobs.offset,
+        status_counts=jobs.status_counts,
+        generation_sets=[
+            GenerationJobSetRecord(
+                **{**group.model_dump(), "jobs": [_sanitize_generation_job_record(job) for job in group.jobs]}
+            )
+            for group in jobs.generation_sets
+        ],
+        provider_queue_states=jobs.provider_queue_states,
     )
 
 
@@ -83,6 +93,21 @@ def create_generation_job(payload: GenerationJobCreate, request: Request):
     return _sanitize_generation_job_record(created)
 
 
+@router.post("/sets", response_model=GenerationJobSetRecord)
+def create_generation_job_set(payload: GenerationJobSetCreate, request: Request):
+    try:
+        created = repo(request).create_job_set(payload.job, payload.count)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Source item not found") from exc
+    except GenerationJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if created.provider == CODEX_NATIVE_PROVIDER_ID:
+        _continue_generation_queue(request.app.state.library_path, created.provider)
+    return GenerationJobSetRecord(
+        **{**created.model_dump(), "jobs": [_sanitize_generation_job_record(job) for job in created.jobs]}
+    )
+
+
 @router.get("", response_model=GenerationJobList)
 def list_generation_jobs(
     request: Request,
@@ -91,6 +116,30 @@ def list_generation_jobs(
     offset: int = Query(0, ge=0),
 ):
     return _sanitize_generation_job_list(repo(request).list_jobs(status=status, limit=limit, offset=offset))
+
+
+@router.get("/sets/{generation_group_id}", response_model=GenerationJobSetRecord)
+def get_generation_job_set(generation_group_id: str, request: Request):
+    try:
+        created = repo(request).get_generation_set(generation_group_id)
+        return GenerationJobSetRecord(
+            **{**created.model_dump(), "jobs": [_sanitize_generation_job_record(job) for job in created.jobs]}
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404) from exc
+
+
+@router.post("/sets/{generation_group_id}/cancel-remaining", response_model=GenerationJobSetRecord)
+def cancel_remaining_generation_job_set(generation_group_id: str, request: Request):
+    try:
+        created = repo(request).cancel_generation_set(generation_group_id)
+        if created.provider == CODEX_NATIVE_PROVIDER_ID:
+            _continue_generation_queue(request.app.state.library_path, created.provider)
+        return GenerationJobSetRecord(
+            **{**created.model_dump(), "jobs": [_sanitize_generation_job_record(job) for job in created.jobs]}
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404) from exc
 
 
 @router.get("/{job_id}", response_model=GenerationJobRecord)
@@ -135,10 +184,15 @@ async def upload_generation_result(
 @router.post("/{job_id}/run", response_model=GenerationJobRecord)
 def run_generation_job(job_id: str, request: Request):
     try:
-        return _sanitize_generation_job_record(OpenAICodexNativeProvider().run_job(request.app.state.library_path, job_id))
+        result = _sanitize_generation_job_record(run_generation_job_now(request.app.state.library_path, job_id))
+        _continue_generation_queue(request.app.state.library_path, CODEX_NATIVE_PROVIDER_ID)
+        return result
     except KeyError as exc:
         raise HTTPException(status_code=404) from exc
     except GenerationJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except CodexNativeRateLimitError as exc:
+        _continue_generation_queue(request.app.state.library_path, CODEX_NATIVE_PROVIDER_ID)
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except CodexNativeAuthError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

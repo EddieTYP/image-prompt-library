@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ChevronLeft, ChevronRight, Clipboard, Clock3, Download, FilePlus2, Images, Maximize2, Paperclip, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, Clipboard, Clock3, Download, FilePlus2, Images, Maximize2, Paperclip, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react';
 import aspectRatioIcon from '../assets/generation-controls/aspect-ratio.png';
 import brainAiIcon from '../assets/generation-controls/model.png';
 import qualityIcon from '../assets/generation-controls/quality.png';
 import { api, mediaUrl } from '../api/client';
-import type { ClusterRecord, GenerationJobAcceptAsNewItemPayload, GenerationJobRecord, GenerationProviderStatus, ImageRecord, ItemDetail, ItemSummary, TagRecord } from '../types';
+import type { ClusterRecord, GenerationJobAcceptAsNewItemPayload, GenerationJobCreate, GenerationJobRecord, GenerationJobSetRecord, GenerationProviderQueueState, GenerationProviderStatus, GenerationSetCount, ImageRecord, ItemDetail, ItemSummary, TagRecord } from '../types';
 import type { Translator } from '../utils/i18n';
+import { generationSetProgressText, providerPauseSeconds } from '../utils/generationSets';
 import { downloadFileName } from '../utils/images';
 import { generationFailure } from '../utils/generationFailures';
 import { resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage } from '../utils/prompts';
@@ -186,6 +187,13 @@ function optionLabel(options: { value: string; label: string }[], value: string)
   return options.find(option => option.value === value)?.label || value;
 }
 
+function mergeGenerationJobs(current: GenerationJobRecord[], incoming: GenerationJobRecord[]) {
+  const incomingIds = new Set(incoming.map(job => job.id));
+  return [...incoming, ...current.filter(job => !incomingIds.has(job.id))];
+}
+
+const GENERATION_SET_OPTIONS: Exclude<GenerationSetCount, 1>[] = [3, 5, 10];
+
 export default function GenerationPanel({
   item,
   preferredLanguage,
@@ -214,11 +222,16 @@ export default function GenerationPanel({
   const defaultPrompt = item ? resolvePromptText(item.prompts, preferredLanguage, item.title) : '';
   const [providers, setProviders] = useState<GenerationProviderStatus[]>([]);
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
+  const [activeGenerationSet, setActiveGenerationSet] = useState<GenerationJobSetRecord>();
+  const [providerQueueStates, setProviderQueueStates] = useState<GenerationProviderQueueState[]>([]);
   const [provider, setProvider] = useState('manual_upload');
   const [orchestratorModel, setOrchestratorModel] = useState('gpt-5.6-luna');
   const [aspectRatio, setAspectRatio] = useState('auto');
   const [quality, setQuality] = useState('high');
   const [openControl, setOpenControl] = useState<'aspect' | 'quality' | 'model' | null>(null);
+  const [generationCountMenuOpen, setGenerationCountMenuOpen] = useState(false);
+  const [cancelSetBusy, setCancelSetBusy] = useState(false);
+  const [queueClock, setQueueClock] = useState(() => Date.now());
   const [promptText, setPromptText] = useState(defaultPrompt);
   const [editAttachments, setEditAttachments] = useState<EditAttachment[]>([]);
   const [referenceMenuOpen, setReferenceMenuOpen] = useState(false);
@@ -246,6 +259,9 @@ export default function GenerationPanel({
   const stageRef = useRef<HTMLElement | null>(null);
   const resultImageRef = useRef<HTMLImageElement | null>(null);
   const fullscreenFrameRef = useRef<HTMLDivElement | null>(null);
+  const generationCountMenuRef = useRef<HTMLDivElement | null>(null);
+  const generationCountTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const generationCountFocusOnOpenRef = useRef(false);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const promptInputRef = useRef<HTMLTextAreaElement | null>(null);
   const initialFocusAppliedRef = useRef(false);
@@ -258,6 +274,8 @@ export default function GenerationPanel({
   const selectedProviderCanGenerate = providerCanGenerate(selectedProvider);
   const selectedProviderMessage = providerReadinessLabel(selectedProvider);
   const compactProviderMessage = compactProviderReadinessLabel(selectedProvider);
+  const selectedProviderQueueState = providerQueueStates.find(state => state.provider === provider);
+  const selectedProviderPauseSeconds = selectedProviderQueueState ? providerPauseSeconds(selectedProviderQueueState, queueClock) : 0;
   const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.6-luna'];
   const templateVariables = useMemo(() => promptVariablesEnabled ? extractPromptTemplateVariableRecords(promptText) : [], [promptVariablesEnabled, promptText]);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
@@ -301,7 +319,15 @@ export default function GenerationPanel({
     const result = await api.generationJobs({ limit: 100 });
     const nextJobs = result.jobs.filter(job => item ? job.source_item_id === item.id : !job.source_item_id);
     setJobs(nextJobs);
+    setProviderQueueStates(result.provider_queue_states || []);
     const focusedJob = initialJobId && !initialFocusAppliedRef.current ? nextJobs.find(job => job.id === initialJobId) : undefined;
+    const trackedSetId = activeGenerationSet?.generation_group_id
+      || focusedJob?.generation_group_id
+      || nextJobs.find(job => job.generation_group_id && ['queued', 'running'].includes(job.status))?.generation_group_id;
+    const refreshedSet = trackedSetId
+      ? (result.generation_sets || []).find(set => set.generation_group_id === trackedSetId)
+      : undefined;
+    if (refreshedSet) setActiveGenerationSet(refreshedSet);
     if (focusedJob) {
       initialFocusAppliedRef.current = true;
       setActiveJobId(focusedJob.id);
@@ -309,6 +335,13 @@ export default function GenerationPanel({
       if (!historyReviewJobId) setHistoryReviewJobId(focusedJob.id);
     }
     return nextJobs;
+  };
+
+  const refreshGenerationSet = async (generationGroupId: string) => {
+    const refreshed = await api.generationSet(generationGroupId);
+    setActiveGenerationSet(refreshed);
+    setJobs(current => mergeGenerationJobs(current, refreshed.jobs));
+    return refreshed;
   };
 
   useEffect(() => {
@@ -346,10 +379,55 @@ export default function GenerationPanel({
   }, [initialJobId]);
 
   useEffect(() => {
-    if (!jobs.some(job => ['queued', 'running'].includes(job.status))) return undefined;
-    const timer = window.setInterval(() => refreshJobs({ preserveActive: true }).catch(() => undefined), 2500);
+    if (!activeGenerationSet?.remaining && !jobs.some(job => ['queued', 'running'].includes(job.status))) return undefined;
+    const refreshActiveWork = async () => {
+      await refreshJobs({ preserveActive: true });
+      if (activeGenerationSet?.generation_group_id) {
+        await refreshGenerationSet(activeGenerationSet.generation_group_id);
+      }
+    };
+    const timer = window.setInterval(() => refreshActiveWork().catch(() => undefined), 2500);
     return () => window.clearInterval(timer);
-  }, [jobs, item?.id, initialJobId]);
+  }, [jobs, item?.id, initialJobId, activeGenerationSet?.generation_group_id, activeGenerationSet?.remaining]);
+
+  useEffect(() => {
+    if (!providerQueueStates.some(state => providerPauseSeconds(state) > 0)) return undefined;
+    setQueueClock(Date.now());
+    const timer = window.setInterval(() => setQueueClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [providerQueueStates]);
+
+  useEffect(() => {
+    if (!generationCountMenuOpen || !generationCountFocusOnOpenRef.current) return;
+    generationCountFocusOnOpenRef.current = false;
+    generationCountMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+  }, [generationCountMenuOpen]);
+
+  useEffect(() => {
+    if (!generationCountMenuOpen) return undefined;
+    const closeOutside = (event: PointerEvent) => {
+      if (!generationCountMenuRef.current?.contains(event.target as Node)) setGenerationCountMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    return () => document.removeEventListener('pointerdown', closeOutside);
+  }, [generationCountMenuOpen]);
+
+  const handleGenerationCountMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(generationCountMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') || []);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setGenerationCountMenuOpen(false);
+      generationCountTriggerRef.current?.focus();
+      return;
+    }
+    if (!items.length || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const currentIndex = items.findIndex(item => item === document.activeElement);
+    if (event.key === 'Home') items[0].focus();
+    else if (event.key === 'End') items[items.length - 1]?.focus();
+    else if (event.key === 'ArrowDown') items[(currentIndex + 1 + items.length) % items.length].focus();
+    else items[(currentIndex - 1 + items.length) % items.length].focus();
+  };
 
   useEffect(() => {
     if (!focusedJobHighlightId) return undefined;
@@ -384,11 +462,12 @@ export default function GenerationPanel({
     setIsStageFullscreen(false);
   };
 
-  const createJob = async () => {
+  const createJob = async (count: GenerationSetCount = 1) => {
     const prompt = promptText.trim();
-    if (!prompt || hasMissingTemplateValues || !resolvedPrompt || !selectedProviderCanGenerate) return;
+    if (!prompt || hasMissingTemplateValues || !resolvedPrompt || !selectedProviderCanGenerate || (provider === 'manual_upload' && count !== 1)) return;
     setBusy(true);
     setMessage('');
+    setGenerationCountMenuOpen(false);
     setHistoryReviewJobId(undefined);
     window.requestAnimationFrame(() => stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
     try {
@@ -400,7 +479,7 @@ export default function GenerationPanel({
         prompt_template_values: promptTemplateValues,
         prompt_template_resolved_text: resolvedPrompt,
       } : {};
-      const created = await api.createGenerationJob({
+      const jobPayload: GenerationJobCreate = {
         source_item_id: item?.id,
         mode: attachments.length > 0 ? 'image_edit' : 'text_to_image',
         provider,
@@ -417,15 +496,46 @@ export default function GenerationPanel({
           input_images: attachments,
           ...templateParameters,
         },
-      });
-      setJobs(current => [created, ...current.filter(job => job.id !== created.id)]);
-      setActiveJobId(created.id);
+      };
+      let createdJobs: GenerationJobRecord[];
+      if (count === 1) {
+        const created = await api.createGenerationJob(jobPayload);
+        createdJobs = [created];
+        setActiveGenerationSet(undefined);
+      } else {
+        const createdSet = await api.createGenerationSet({ job: jobPayload, count });
+        createdJobs = createdSet.jobs;
+        setActiveGenerationSet(createdSet);
+      }
+      setJobs(current => mergeGenerationJobs(current, createdJobs));
+      setActiveJobId(createdJobs[0]?.id);
       window.requestAnimationFrame(() => stageRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-      setMessage(provider === 'manual_upload' ? 'Job created. Upload a generated result when ready.' : attachments.length > 0 ? 'Edit queued. It will start automatically.' : 'Generation queued. It will start automatically.');
+      setMessage(provider === 'manual_upload'
+        ? 'Job created. Upload a generated result when ready.'
+        : count > 1
+          ? `Generation set queued · ${count} generations.`
+          : attachments.length > 0
+            ? 'Edit queued. It will start automatically.'
+            : 'Generation queued. It will start automatically.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not create generation job.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const cancelRemainingGenerationSet = async () => {
+    if (!activeGenerationSet?.remaining || cancelSetBusy) return;
+    setCancelSetBusy(true);
+    try {
+      const cancelled = await api.cancelRemainingGenerationSet(activeGenerationSet.generation_group_id);
+      setActiveGenerationSet(cancelled);
+      setJobs(current => mergeGenerationJobs(current, cancelled.jobs));
+      setMessage('Remaining generations cancelled. Completed results are still available.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not cancel remaining generations.');
+    } finally {
+      setCancelSetBusy(false);
     }
   };
 
@@ -1045,9 +1155,83 @@ export default function GenerationPanel({
                   <span className={`generation-provider-readiness ${selectedProviderCanGenerate ? 'is-ready' : 'needs-attention'}`} title={selectedProviderMessage} aria-label={selectedProviderMessage}>
                     {compactProviderMessage}
                   </span>
-                  <button className="primary generation-primary-action" onClick={createJob} disabled={busy || !selectedProviderCanGenerate || !promptText.trim() || hasMissingTemplateValues}>Generate</button>
+                  <div
+                    ref={generationCountMenuRef}
+                    className={`generation-generate-split${provider === 'manual_upload' ? ' is-single' : ''}`}
+                    onMouseEnter={() => {
+                      generationCountFocusOnOpenRef.current = false;
+                      if (provider !== 'manual_upload' && window.matchMedia('(hover: hover)').matches) setGenerationCountMenuOpen(true);
+                    }}
+                    onMouseLeave={() => setGenerationCountMenuOpen(false)}
+                    onKeyDown={handleGenerationCountMenuKeyDown}
+                    onBlur={event => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setGenerationCountMenuOpen(false);
+                    }}
+                  >
+                    <button
+                      className="primary generation-primary-action"
+                      type="button"
+                      onClick={() => createJob(1)}
+                      disabled={busy || !selectedProviderCanGenerate || !promptText.trim() || hasMissingTemplateValues}
+                      aria-label="Generate 1 image; uses 1 generation"
+                    >Generate</button>
+                    {provider !== 'manual_upload' && (
+                      <button
+                        ref={generationCountTriggerRef}
+                        className="primary generation-count-trigger"
+                        type="button"
+                        aria-label="Choose number of generations"
+                        aria-haspopup="menu"
+                        aria-expanded={generationCountMenuOpen}
+                        aria-controls="generation-count-menu"
+                        onClick={() => {
+                          generationCountFocusOnOpenRef.current = true;
+                          setGenerationCountMenuOpen(open => !open);
+                        }}
+                        onKeyDown={event => {
+                          if (!['ArrowDown', 'Enter', ' '].includes(event.key)) return;
+                          event.preventDefault();
+                          generationCountFocusOnOpenRef.current = true;
+                          setGenerationCountMenuOpen(true);
+                        }}
+                        disabled={busy || !selectedProviderCanGenerate || !promptText.trim() || hasMissingTemplateValues}
+                      ><ChevronDown size={17} aria-hidden="true" /></button>
+                    )}
+                    {generationCountMenuOpen && provider !== 'manual_upload' && (
+                      <div id="generation-count-menu" className="generation-count-menu" role="menu" aria-label="Generate variations">
+                        {GENERATION_SET_OPTIONS.map(count => (
+                          <button key={count} type="button" role="menuitem" onClick={() => createJob(count)}>
+                            <strong>Generate ×{count}</strong>
+                            <small>Uses {count} generations</small>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <button className="generation-history-control" onClick={() => setShowHistoryDrawer(true)} aria-label="History" title="History" type="button"><Clock3 size={17} /></button>
                 </div>
+                {selectedProviderQueueState && selectedProviderPauseSeconds > 0 && (
+                  <section className="generation-provider-pause" aria-label={`Provider queue paused until ${selectedProviderQueueState.paused_until}`}>
+                    <strong>Provider queue paused</strong>
+                    <span aria-hidden="true">Rate limited · resumes in about {selectedProviderPauseSeconds}s</span>
+                    {selectedProviderQueueState.paused_until && <time className="sr-only" dateTime={selectedProviderQueueState.paused_until}>Paused until {selectedProviderQueueState.paused_until}</time>}
+                  </section>
+                )}
+                {activeGenerationSet && (
+                  <section className="generation-set-progress" aria-live="polite">
+                    <div className="generation-set-progress-head">
+                      <strong>Generation set</strong>
+                      <span>{activeGenerationSet.completed} / {activeGenerationSet.total} finished</span>
+                    </div>
+                    <progress max={activeGenerationSet.total} value={activeGenerationSet.completed} aria-label={`${activeGenerationSet.completed} of ${activeGenerationSet.total} generations finished`} />
+                    <p>{generationSetProgressText(activeGenerationSet)}</p>
+                    {activeGenerationSet.remaining > 0 && (
+                      <button type="button" className="generation-cancel-remaining" onClick={cancelRemainingGenerationSet} disabled={cancelSetBusy}>
+                        Cancel remaining ({activeGenerationSet.remaining})
+                      </button>
+                    )}
+                  </section>
+                )}
               </>
             ) : historyReviewJob && (
               <div className="generation-history-prompt-preview">

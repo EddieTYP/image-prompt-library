@@ -1,4 +1,4 @@
-import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationProviderStatus, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemList, ItemSortMode, ItemSummary, TagRecord, UploadImageRole } from '../types';
+import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationJobSetCreate, GenerationJobSetRecord, GenerationProviderStatus, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemList, ItemSortMode, ItemSummary, TagRecord, UploadImageRole } from '../types';
 import { DEFAULT_ITEM_SORT } from '../utils/searchSort';
 
 const API = '';
@@ -161,8 +161,19 @@ export const api = isDemoMode ? {
   codexNativeAuthStart: () => demoReadOnly(),
   codexNativeAuthPoll: (_payload: CodexNativeAuthPollRequest) => demoReadOnly(),
   codexNativeAuthDisconnect: () => demoReadOnly(),
-  generationJobs: () => Promise.resolve<GenerationJobList>({ jobs: [], total: 0, limit: 100, offset: 0 }),
+  generationJobs: () => Promise.resolve<GenerationJobList>({
+    jobs: [],
+    total: 0,
+    limit: 100,
+    offset: 0,
+    status_counts: { queued: 0, running: 0, succeeded: 0, failed: 0, accepted: 0, discarded: 0, cancelled: 0 },
+    generation_sets: [],
+    provider_queue_states: [],
+  }),
   createGenerationJob: (_payload: GenerationJobCreate) => demoReadOnly(),
+  createGenerationSet: (_payload: GenerationJobSetCreate) => demoReadOnly(),
+  generationSet: (_id: string) => demoReadOnly(),
+  cancelRemainingGenerationSet: (_id: string) => demoReadOnly(),
   runGenerationJob: (_id: string) => demoReadOnly(),
   uploadGenerationResult: (_id: string, _file: File) => demoReadOnly(),
   acceptGenerationJob: (_id: string) => demoReadOnly(),
@@ -195,6 +206,9 @@ export const api = isDemoMode ? {
   codexNativeAuthDisconnect: () => json<GenerationProviderStatus>('/api/generation-providers/openai-codex-native/auth/disconnect', { method: 'POST' }),
   generationJobs: (params: Record<string, string | number | boolean | undefined> = {}) => { const qs = new URLSearchParams(); Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)); }); return json<GenerationJobList>(`/api/generation-jobs?${qs}`); },
   createGenerationJob: (payload: GenerationJobCreate) => json<GenerationJobRecord>('/api/generation-jobs', { method: 'POST', body: JSON.stringify(payload) }),
+  createGenerationSet: (payload: GenerationJobSetCreate) => json<GenerationJobSetRecord>('/api/generation-jobs/sets', { method: 'POST', body: JSON.stringify(payload) }),
+  generationSet: (id: string) => json<GenerationJobSetRecord>(`/api/generation-jobs/sets/${id}`),
+  cancelRemainingGenerationSet: (id: string) => json<GenerationJobSetRecord>(`/api/generation-jobs/sets/${id}/cancel-remaining`, { method: 'POST' }),
   runGenerationJob: (id: string) => json<GenerationJobRecord>(`/api/generation-jobs/${id}/run`, { method: 'POST' }),
   uploadGenerationResult: (id: string, file: File) => { const fd = new FormData(); fd.set('file', file); return json<GenerationJobRecord>(`/api/generation-jobs/${id}/result`, { method: 'POST', body: fd }); },
   acceptGenerationJob: (id: string) => json<GenerationJobAcceptResult>(`/api/generation-jobs/${id}/accept`, { method: 'POST' }),

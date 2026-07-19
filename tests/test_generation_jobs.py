@@ -3,7 +3,6 @@ from io import BytesIO
 import base64
 import json
 from pathlib import Path
-import threading
 import time
 
 from fastapi.testclient import TestClient
@@ -1310,43 +1309,413 @@ def test_app_startup_marks_interrupted_running_jobs_failed_and_drains_queued(tmp
     assert enqueue_calls == [(library, "openai_codex_oauth_native")]
 
 
-def test_generation_queue_runs_at_most_two_native_jobs(tmp_path, monkeypatch):
+def test_generation_queue_runs_at_most_five_native_jobs(tmp_path, monkeypatch):
     from backend.services import generation_queue
+
+    deadline = time.time() + 3
+    while generation_queue._active and time.time() < deadline:
+        time.sleep(0.02)
+    assert not generation_queue._active
 
     library = tmp_path / "library"
     repo = GenerationJobRepository(library)
     job_ids = [repo.create_job(GenerationJobCreate(
         provider="openai_codex_oauth_native",
         prompt_text=f"queued job {index}",
-    )).id for index in range(3)]
-    active = 0
-    max_seen = 0
-    completed: list[str] = []
-    lock = threading.Lock()
-
-    class FakeProvider:
-        def run_job(self, library_path, job_id):
-            nonlocal active, max_seen
-            fake_repo = GenerationJobRepository(library_path)
-            fake_repo.mark_running(job_id)
-            with lock:
-                active += 1
-                max_seen = max(max_seen, active)
-            time.sleep(0.05)
-            fake_repo.stage_result(job_id, png_bytes("yellow"), "generated.png", {"fake": True})
-            with lock:
-                active -= 1
-                completed.append(job_id)
-
-    monkeypatch.setattr(generation_queue, "OpenAICodexNativeProvider", FakeProvider)
+    )).id for index in range(6)]
+    submitted = []
+    isolated_active: set[str] = set()
+    monkeypatch.setattr(generation_queue, "_active", isolated_active)
+    monkeypatch.setattr(
+        generation_queue._executor,
+        "submit",
+        lambda fn, *args: submitted.append((fn, args)),
+    )
 
     generation_queue.enqueue_generation_jobs(library)
-    deadline = time.time() + 3
-    while time.time() < deadline:
-        if len(completed) == 3:
-            break
-        time.sleep(0.02)
 
-    assert sorted(completed) == sorted(job_ids)
-    assert max_seen == 2
-    assert [repo.get_job(job_id).status for job_id in job_ids] == ["succeeded", "succeeded", "succeeded"]
+    assert len(submitted) == generation_queue.MAX_CONCURRENT_GENERATION_JOBS
+    submitted_ids = {args[1] for _fn, args in submitted}
+    assert len(submitted_ids) == generation_queue.MAX_CONCURRENT_GENERATION_JOBS
+    assert submitted_ids < set(job_ids)
+    assert isolated_active == submitted_ids
+    assert [repo.get_job(job_id).status for job_id in job_ids] == ["queued"] * 6
+
+
+@pytest.mark.parametrize("count", (1, 3, 5, 10))
+def test_generation_job_set_accepts_supported_counts(tmp_path, count):
+    c = client(tmp_path)
+    response = c.post("/api/generation-jobs/sets", json={
+        "job": {"provider": "test_provider", "prompt_text": "variant"},
+        "count": count,
+    })
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total"] == count
+    assert [job["generation_group_index"] for job in payload["jobs"]] == list(range(1, count + 1))
+    assert {job["generation_group_size"] for job in payload["jobs"]} == {count}
+
+
+def test_generation_job_set_rejects_unsupported_count(tmp_path):
+    c = client(tmp_path)
+    response = c.post("/api/generation-jobs/sets", json={
+        "job": {"provider": "manual_upload", "prompt_text": "variant"},
+        "count": 2,
+    })
+    assert response.status_code == 422
+
+
+def test_generation_job_set_keeps_manual_upload_single(tmp_path):
+    c = client(tmp_path)
+    response = c.post("/api/generation-jobs/sets", json={
+        "job": {"provider": "manual_upload", "prompt_text": "manual result"},
+        "count": 3,
+    })
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Manual result upload supports one image at a time"
+    assert c.get("/api/generation-jobs").json()["total"] == 0
+
+
+def test_generation_job_set_create_and_cancel_retry_after_queue_database_lock(tmp_path, monkeypatch):
+    import sqlite3
+    from backend.services import generation_queue
+
+    scheduled = []
+    monkeypatch.setattr(
+        generation_queue,
+        "enqueue_generation_jobs",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")),
+    )
+    monkeypatch.setattr(
+        generation_queue,
+        "_schedule_pause_wake",
+        lambda library_path, provider, delay: scheduled.append((library_path, provider, delay)),
+    )
+    c = client(tmp_path)
+
+    created = c.post("/api/generation-jobs/sets", json={
+        "job": {"provider": "openai_codex_oauth_native", "prompt_text": "locked set"},
+        "count": 3,
+    })
+    assert created.status_code == 200
+    payload = created.json()
+    assert payload["total"] == 3
+    assert c.get("/api/generation-jobs").json()["total"] == 3
+
+    cancelled = c.post(f"/api/generation-jobs/sets/{payload['generation_group_id']}/cancel-remaining")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["cancelled"] == 3
+    assert scheduled == [
+        (tmp_path / "library", "openai_codex_oauth_native", generation_queue.QUEUE_RESUME_RETRY_SECONDS),
+        (tmp_path / "library", "openai_codex_oauth_native", generation_queue.QUEUE_RESUME_RETRY_SECONDS),
+    ]
+
+
+def test_generation_job_set_rolls_back_rows_and_reference_clones(tmp_path, monkeypatch):
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    calls = 0
+
+    def prepare(job_id, parameters):
+        nonlocal calls
+        calls += 1
+        job_root = library / "generation-references" / job_id
+        job_root.mkdir(parents=True, exist_ok=True)
+        (job_root / "clone.png").write_bytes(png_bytes())
+        if calls == 2:
+            raise GenerationJobConflict("clone failed")
+        return dict(parameters), []
+
+    monkeypatch.setattr(repo, "_prepare_reference_input_clones", prepare)
+    with pytest.raises(GenerationJobConflict, match="clone failed"):
+        repo.create_job_set(GenerationJobCreate(provider="test_provider", prompt_text="variant"), 3)
+    with connect(library) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM generation_jobs").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM generation_sets").fetchone()[0] == 0
+    assert not (library / "generation-references").exists() or not list((library / "generation-references").iterdir())
+
+
+def test_generation_job_set_progress_and_cancel_preserve_terminal_results(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    created = repo.create_job_set(GenerationJobCreate(provider="test_provider", prompt_text="variant"), 3)
+    repo.mark_running(created.jobs[0].id)
+    repo.mark_failed(created.jobs[0].id, "safe failure")
+    repo.stage_result(created.jobs[1].id, png_bytes(), "result.png")
+    progress = repo.get_generation_set(created.generation_group_id)
+    assert (progress.failed, progress.succeeded, progress.queued, progress.completed, progress.remaining) == (1, 1, 1, 2, 1)
+    cancelled = repo.cancel_generation_set(created.generation_group_id)
+    assert (cancelled.failed, cancelled.succeeded, cancelled.cancelled, cancelled.completed, cancelled.remaining) == (1, 1, 1, 3, 0)
+
+
+def test_provider_rate_limit_backoff_is_durable_and_simultaneous_incidents_do_not_multiply(tmp_path):
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    first = repo.record_provider_rate_limit("openai_codex_oauth_native")
+    second = repo.record_provider_rate_limit("openai_codex_oauth_native")
+    assert first.backoff_seconds == 60
+    assert second.backoff_seconds == 60
+    extended = repo.record_provider_rate_limit("openai_codex_oauth_native", 300)
+    assert extended.retry_after_seconds >= 299
+    assert extended.backoff_seconds == 300
+    with connect(library) as conn:
+        assert conn.execute(
+            "SELECT incident_count FROM provider_queue_states WHERE provider=?",
+            ("openai_codex_oauth_native",),
+        ).fetchone()[0] == 1
+    with connect(library) as conn:
+        conn.execute(
+            "UPDATE provider_queue_states SET paused_until=?, retry_after_seconds=0 WHERE provider=?",
+            ("2000-01-01T00:00:00+00:00", "openai_codex_oauth_native"),
+        )
+        conn.commit()
+    restarted = GenerationJobRepository(library)
+    assert restarted.get_provider_queue_state("openai_codex_oauth_native").backoff_seconds == 300
+    next_incident = restarted.record_provider_rate_limit("openai_codex_oauth_native")
+    assert next_incident.backoff_seconds == 120
+
+
+def test_synchronous_generation_guard_shares_production_cap(tmp_path):
+    from backend.services import generation_queue
+
+    held = [generation_queue._provider_slots.acquire(blocking=False) for _ in range(5)]
+    assert all(held)
+    try:
+        with pytest.raises(GenerationJobConflict, match="concurrency limit"):
+            generation_queue.run_generation_job_now(tmp_path / "library", "not-launched")
+    finally:
+        for acquired in held:
+            if acquired:
+                generation_queue._provider_slots.release()
+
+
+def test_queue_worker_does_not_record_same_rate_limit_twice(tmp_path, monkeypatch):
+    from backend.services import generation_queue
+    from backend.services.openai_codex_native import CodexNativeRateLimitError
+
+    library = tmp_path / "library"
+    provider = "openai_codex_oauth_native"
+    repo = GenerationJobRepository(library)
+    job = repo.create_job(GenerationJobCreate(provider=provider, prompt_text="rate limited"))
+    continued = []
+
+    def raise_recorded_rate_limit(_self, library_path, job_id):
+        worker_repo = GenerationJobRepository(library_path)
+        worker_repo.mark_running(job_id)
+        worker_repo.mark_failed(job_id, "429 too many requests", retry_after_seconds=0)
+        worker_repo.record_provider_rate_limit(provider, 0)
+        raise CodexNativeRateLimitError("Generation is temporarily rate limited", retry_after_seconds=0)
+
+    monkeypatch.setattr(generation_queue.OpenAICodexNativeProvider, "run_job", raise_recorded_rate_limit)
+    monkeypatch.setattr(
+        generation_queue,
+        "_continue_generation_queue",
+        lambda library_path, queued_provider: continued.append((library_path, queued_provider)),
+    )
+
+    generation_queue._run_job_and_continue(library, job.id, provider)
+
+    state = repo.get_provider_queue_state(provider)
+    assert state.paused is False
+    assert state.retry_after_seconds == 0
+    assert state.backoff_seconds == 0
+    with connect(library) as conn:
+        assert conn.execute(
+            "SELECT incident_count FROM provider_queue_states WHERE provider=?",
+            (provider,),
+        ).fetchone()[0] == 1
+    assert continued == [(library, provider)]
+
+
+def test_synchronous_rate_limit_is_not_recorded_twice_and_schedules_resume(tmp_path, monkeypatch):
+    from backend.routers import generation_jobs as generation_jobs_router
+    from backend.services.openai_codex_native import CodexNativeRateLimitError
+
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "rate limited",
+    }).json()
+    enqueued = []
+
+    def raise_rate_limit(library_path, _job_id):
+        GenerationJobRepository(library_path).record_provider_rate_limit("openai_codex_oauth_native", 0)
+        raise CodexNativeRateLimitError("Generation is temporarily rate limited", retry_after_seconds=0)
+
+    monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", raise_rate_limit)
+    monkeypatch.setattr(
+        generation_jobs_router,
+        "_continue_generation_queue",
+        lambda library_path, provider: enqueued.append((library_path, provider)),
+    )
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+    assert response.status_code == 409
+    assert enqueued == [(tmp_path / "library", "openai_codex_oauth_native")]
+    state = GenerationJobRepository(tmp_path / "library").get_provider_queue_state("openai_codex_oauth_native")
+    assert state.paused is False
+    assert state.retry_after_seconds == 0
+    assert state.backoff_seconds == 0
+    with connect(tmp_path / "library") as conn:
+        assert conn.execute(
+            "SELECT incident_count FROM provider_queue_states WHERE provider=?",
+            ("openai_codex_oauth_native",),
+        ).fetchone()[0] == 1
+
+
+def test_synchronous_success_continues_queued_provider_jobs(tmp_path, monkeypatch):
+    from backend.routers import generation_jobs as generation_jobs_router
+
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "completed synchronously",
+    }).json()
+    repo = GenerationJobRepository(tmp_path / "library")
+    enqueued = []
+    monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", lambda *_args: repo.get_job(job["id"]))
+    monkeypatch.setattr(
+        generation_jobs_router,
+        "_continue_generation_queue",
+        lambda library_path, provider: enqueued.append((library_path, provider)),
+    )
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+    assert response.status_code == 200
+    assert enqueued == [(tmp_path / "library", "openai_codex_oauth_native")]
+
+
+def test_synchronous_rate_limit_preserves_409_when_queue_database_is_locked(tmp_path, monkeypatch):
+    import sqlite3
+    from backend.routers import generation_jobs as generation_jobs_router
+    from backend.services import generation_queue
+    from backend.services.openai_codex_native import CodexNativeRateLimitError
+
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "rate limited with locked queue",
+    }).json()
+
+    def raise_rate_limit(_library_path, _job_id):
+        raise CodexNativeRateLimitError("Generation is temporarily rate limited", retry_after_seconds=0)
+
+    scheduled = []
+    monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", raise_rate_limit)
+    monkeypatch.setattr(
+        generation_queue,
+        "enqueue_generation_jobs",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")),
+    )
+    monkeypatch.setattr(
+        generation_queue,
+        "_schedule_pause_wake",
+        lambda library_path, provider, delay: scheduled.append((library_path, provider, delay)),
+    )
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Generation is temporarily rate limited"
+    assert scheduled == [(
+        tmp_path / "library",
+        "openai_codex_oauth_native",
+        generation_queue.QUEUE_RESUME_RETRY_SECONDS,
+    )]
+
+
+def test_synchronous_success_preserves_result_when_queue_database_is_locked(tmp_path, monkeypatch):
+    import sqlite3
+    from backend.routers import generation_jobs as generation_jobs_router
+    from backend.services import generation_queue
+
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "completed with locked queue",
+    }).json()
+    repo = GenerationJobRepository(tmp_path / "library")
+    scheduled = []
+    monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", lambda *_args: repo.get_job(job["id"]))
+    monkeypatch.setattr(
+        generation_queue,
+        "enqueue_generation_jobs",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(sqlite3.OperationalError("database is locked")),
+    )
+    monkeypatch.setattr(
+        generation_queue,
+        "_schedule_pause_wake",
+        lambda library_path, provider, delay: scheduled.append((library_path, provider, delay)),
+    )
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
+    assert response.status_code == 200
+    assert response.json()["id"] == job["id"]
+    assert scheduled == [(
+        tmp_path / "library",
+        "openai_codex_oauth_native",
+        generation_queue.QUEUE_RESUME_RETRY_SECONDS,
+    )]
+
+
+def test_queue_resume_retries_after_transient_database_error(tmp_path, monkeypatch):
+    import sqlite3
+    from backend.services import generation_queue
+
+    scheduled = []
+    def fail_enqueue(*_args, **_kwargs):
+        raise sqlite3.OperationalError("temporarily locked")
+
+    monkeypatch.setattr(
+        generation_queue,
+        "enqueue_generation_jobs",
+        fail_enqueue,
+    )
+    monkeypatch.setattr(
+        generation_queue,
+        "_schedule_pause_wake",
+        lambda library_path, provider, delay: scheduled.append((library_path, provider, delay)),
+    )
+
+    generation_queue._continue_generation_queue(tmp_path / "library", "openai_codex_oauth_native")
+    assert scheduled == [(
+        tmp_path / "library",
+        "openai_codex_oauth_native",
+        generation_queue.QUEUE_RESUME_RETRY_SECONDS,
+    )]
+
+
+def test_generation_job_list_includes_all_active_sets_and_paused_providers(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    created = [
+        repo.create_job_set(GenerationJobCreate(provider="test_provider", prompt_text=f"set {index}"), 10)
+        for index in range(11)
+    ]
+    repo.record_provider_rate_limit("openai_codex_oauth_native", 60)
+
+    listed = repo.list_jobs(limit=100)
+    assert len(listed.jobs) == 100
+    assert listed.status_counts.queued == 110
+    assert {item.generation_group_id for item in listed.generation_sets} == {
+        item.generation_group_id for item in created
+    }
+    assert all(item.jobs == [] for item in listed.generation_sets)
+    assert [state.provider for state in listed.provider_queue_states] == ["openai_codex_oauth_native"]
+
+
+def test_generation_job_api_preserves_exact_global_status_counts(tmp_path):
+    c = client(tmp_path)
+    created = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "queued result",
+    })
+    assert created.status_code == 200
+
+    listed = c.get("/api/generation-jobs?limit=1")
+    assert listed.status_code == 200
+    assert listed.json()["status_counts"] == {
+        "queued": 1,
+        "running": 0,
+        "succeeded": 0,
+        "failed": 0,
+        "accepted": 0,
+        "discarded": 0,
+        "cancelled": 0,
+    }

@@ -194,9 +194,16 @@ class GenerationJobCreate(BaseModel):
     reference_image_ids: List[str] = Field(default_factory=list)
     parameters: dict[str, Any] = Field(default_factory=dict)
 
+class GenerationJobSetCreate(BaseModel):
+    job: GenerationJobCreate
+    count: Literal[1, 3, 5, 10]
+
 class GenerationJobRecord(GenerationJobCreate):
     id: str
     status: str
+    generation_group_id: Optional[str] = None
+    generation_group_index: Optional[int] = None
+    generation_group_size: Optional[int] = None
     result_path: Optional[str] = None
     result_width: Optional[int] = None
     result_height: Optional[int] = None
@@ -211,6 +218,38 @@ class GenerationJobRecord(GenerationJobCreate):
     accepted_at: Optional[str] = None
     discarded_at: Optional[str] = None
     cancelled_at: Optional[str] = None
+
+class GenerationJobSetRecord(BaseModel):
+    generation_group_id: str
+    provider: str
+    created_at: str
+    total: int
+    queued: int = 0
+    running: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    accepted: int = 0
+    discarded: int = 0
+    cancelled: int = 0
+    completed: int = 0
+    remaining: int = 0
+    jobs: List[GenerationJobRecord] = Field(default_factory=list)
+
+class GenerationProviderQueueState(BaseModel):
+    provider: str
+    paused: bool = False
+    paused_until: Optional[str] = None
+    retry_after_seconds: int = 0
+    backoff_seconds: int = 0
+
+class GenerationJobStatusCounts(BaseModel):
+    queued: int = 0
+    running: int = 0
+    succeeded: int = 0
+    failed: int = 0
+    accepted: int = 0
+    discarded: int = 0
+    cancelled: int = 0
 
 class GenerationJobAcceptAsNewItemRequest(BaseModel):
     title: Optional[str] = None
@@ -228,6 +267,9 @@ class GenerationJobList(BaseModel):
     total: int
     limit: int
     offset: int
+    status_counts: GenerationJobStatusCounts = Field(default_factory=GenerationJobStatusCounts)
+    generation_sets: List[GenerationJobSetRecord] = Field(default_factory=list)
+    provider_queue_states: List[GenerationProviderQueueState] = Field(default_factory=list)
 
 class GenerationJobAcceptResult(BaseModel):
     job: GenerationJobRecord

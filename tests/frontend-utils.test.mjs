@@ -19,6 +19,7 @@ const {
 const { resolveOriginalPrompt, resolvePromptText } = await importTypescript('../frontend/src/utils/prompts.ts');
 const { downloadFileName, imageDisplayPath, selectPrimaryImage } = await importTypescript('../frontend/src/utils/images.ts');
 const { generationFailure } = await importTypescript('../frontend/src/utils/generationFailures.ts');
+const { generationSetProgressText, providerPauseSeconds } = await importTypescript('../frontend/src/utils/generationSets.ts');
 
 test('search helpers parse sort operators and supported filter chips', () => {
   assert.deepEqual(parseSearchSortQuery('  cats sort:title  tag:poster '), {
@@ -75,6 +76,26 @@ test('generation failure guidance never reclassifies diagnostic text', () => {
   }).kind, 'provider_unavailable');
   assert.equal(generationFailure({ metadata: { error_kind: 'not-a-kind' }, error: '429 rate limit' }).kind, 'unknown');
   assert.equal(generationFailure({ error: 'authentication required' }).kind, 'unknown');
+});
+
+test('generation set progress reports exact terminal and active counts', () => {
+  assert.equal(generationSetProgressText({
+    completed: 2,
+    total: 5,
+    running: 1,
+    queued: 2,
+    succeeded: 1,
+    failed: 1,
+    cancelled: 0,
+  }), '2 of 5 finished · 1 running · 2 queued · 1 ready · 1 failed');
+});
+
+test('provider pause countdown derives from the authoritative deadline', () => {
+  const currentTime = Date.parse('2026-07-19T00:00:00Z');
+  assert.equal(providerPauseSeconds({ paused: true, paused_until: '2026-07-19T00:01:05Z', retry_after_seconds: 65 }, currentTime), 65);
+  assert.equal(providerPauseSeconds({ paused: true, paused_until: 'invalid', retry_after_seconds: 60 }, currentTime), 60);
+  assert.equal(providerPauseSeconds({ paused: true, paused_until: '2026-07-18T23:59:59Z', retry_after_seconds: 60 }, currentTime), 0);
+  assert.equal(providerPauseSeconds({ paused: false, paused_until: '2026-07-19T00:01:05Z', retry_after_seconds: 65 }, currentTime), 0);
 });
 
 test('frontend shell declares a mobile viewport and root mount point', async () => {
