@@ -156,6 +156,32 @@ def test_corruption_and_legacy_archive_are_rejected(tmp_path):
         verify_backup(legacy)
 
 
+@pytest.mark.parametrize("trailer_damage", ("crc", "size", "truncated"))
+def test_gzip_trailer_corruption_is_rejected_before_restore(tmp_path, trailer_damage):
+    library = _library(tmp_path)
+    archive = backup_library(library, tmp_path / "backup.tar.gz")
+    corrupted = tmp_path / f"corrupt-{trailer_damage}.tar.gz"
+    data = bytearray(archive.read_bytes())
+    if trailer_damage == "crc":
+        data[-8] ^= 0xFF
+    elif trailer_damage == "size":
+        data[-4] ^= 0xFF
+    else:
+        del data[-4:]
+    corrupted.write_bytes(data)
+
+    sentinel = library / "originals" / "nested" / "originals.bin"
+    before = sentinel.read_bytes()
+    with pytest.raises(LibraryArchiveError, match="invalid or incomplete gzip data"):
+        verify_backup(corrupted)
+    with pytest.raises(LibraryArchiveError, match="invalid or incomplete gzip data"):
+        restore_library(corrupted, library, confirm=True)
+
+    assert sentinel.read_bytes() == before
+    assert library_archives.LAST_PRESERVED_PATH is None
+    assert not list(tmp_path.glob(".library.pre-restore-*"))
+
+
 def test_lock_is_nonblocking(tmp_path):
     library = _library(tmp_path)
     first = LibraryOperationLock(library).acquire()

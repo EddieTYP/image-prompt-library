@@ -60,7 +60,7 @@ Backup uses SQLite's snapshot API rather than copying a potentially live `db.sql
 
 ## Safe restore behavior
 
-Restore validates the complete archive and extracts it into a fresh sibling staging directory before touching the active library. It rejects unsupported format versions, old manifest-less archives, checksum mismatches, unknown or divergent database migrations, absolute or traversing paths, links, special files, duplicate/case-conflicting names, extra payload files, and missing referenced media.
+Restore validates the complete archive and extracts it into a fresh sibling staging directory before touching the active library. Validation reads the gzip stream through its CRC and size trailer, so truncated or container-corrupt archives fail before restore. It also rejects unsupported format versions, old manifest-less archives, checksum mismatches, unknown or divergent database migrations, absolute or traversing paths, links, special files, duplicate/case-conflicting names, extra payload files, and missing referenced media.
 
 If the archived database is an older known migration prefix, only the staged copy is migrated. The active library remains unchanged if validation or migration fails.
 

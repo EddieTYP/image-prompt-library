@@ -19,6 +19,7 @@ import tarfile
 import tempfile
 import unicodedata
 import uuid
+import zlib
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -731,8 +732,15 @@ def _read_archive_members(archive: Path) -> tuple[dict[str, tarfile.TarInfo], by
     with tar:
         try:
             all_members = tar.getmembers()
+            trailing = tar.fileobj.read(tarfile.RECORDSIZE + 1)
+        except (gzip.BadGzipFile, EOFError, zlib.error) as exc:
+            raise _error("Backup archive has invalid or incomplete gzip data") from exc
+        except OSError as exc:
+            raise _error(f"Could not read backup archive: {archive}") from exc
         except tarfile.TarError as exc:
             raise _error("Backup archive has invalid tar structure") from exc
+        if len(trailing) > tarfile.RECORDSIZE or any(trailing):
+            raise _error("Backup archive contains unexpected data after the tar end marker")
         if len(all_members) > MAX_MEMBER_COUNT:
             raise _error("Backup archive exceeds the member-count limit")
         for member in all_members:
