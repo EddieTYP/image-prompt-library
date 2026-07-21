@@ -149,14 +149,30 @@ jobs:
           "$app" backup --output "$backup"
           "$app" verify-backup "$backup"
           corrupt="$RUNNER_TEMP/image-prompt-library-$CANDIDATE_VERSION-corrupt.tar.gz"
-          cp "$backup" "$corrupt"
-          python - "$corrupt" <<'PY'
-          from pathlib import Path
+          python - "$backup" "$corrupt" <<'PY'
+          import io
           import sys
-          path = Path(sys.argv[1])
-          payload = bytearray(path.read_bytes())
-          payload[-1] ^= 0x01
-          path.write_bytes(payload)
+          import tarfile
+
+          source, destination = sys.argv[1:]
+          target = "library/originals/release-smoke-sentinel.txt"
+          mutated = False
+          with tarfile.open(source, "r:gz") as input_archive, tarfile.open(destination, "w:gz") as output_archive:
+              for member in input_archive:
+                  if not member.isfile():
+                      raise SystemExit(f"Unexpected non-file backup member: {member.name}")
+                  extracted = input_archive.extractfile(member)
+                  if extracted is None:
+                      raise SystemExit(f"Could not read backup member: {member.name}")
+                  payload = extracted.read()
+                  if member.name == target:
+                      if not payload:
+                          raise SystemExit("Release smoke sentinel is empty.")
+                      payload = bytes([payload[0] ^ 0x01]) + payload[1:]
+                      mutated = True
+                  output_archive.addfile(member, io.BytesIO(payload))
+          if not mutated:
+              raise SystemExit(f"Release smoke sentinel is missing: {target}")
           PY
           if "$app" verify-backup "$corrupt"; then
             echo "Corrupted backup unexpectedly passed verification." >&2
@@ -285,9 +301,34 @@ jobs:
           Invoke-App -Arguments @("backup", "--output", $backup) | Out-Null
           Invoke-App -Arguments @("verify-backup", $backup) | Out-Null
           $corrupt = Join-Path $env:RUNNER_TEMP "image-prompt-library-$env:CANDIDATE_VERSION-corrupt.tar.gz"
-          $bytes = [IO.File]::ReadAllBytes($backup)
-          $bytes[$bytes.Length - 1] = $bytes[$bytes.Length - 1] -bxor 1
-          [IO.File]::WriteAllBytes($corrupt, $bytes)
+          $corruptScript = Join-Path $env:RUNNER_TEMP "corrupt-backup-smoke.py"
+          @'
+          import io
+          import sys
+          import tarfile
+
+          source, destination = sys.argv[1:]
+          target = "library/originals/release-smoke-sentinel.txt"
+          mutated = False
+          with tarfile.open(source, "r:gz") as input_archive, tarfile.open(destination, "w:gz") as output_archive:
+              for member in input_archive:
+                  if not member.isfile():
+                      raise SystemExit(f"Unexpected non-file backup member: {member.name}")
+                  extracted = input_archive.extractfile(member)
+                  if extracted is None:
+                      raise SystemExit(f"Could not read backup member: {member.name}")
+                  payload = extracted.read()
+                  if member.name == target:
+                      if not payload:
+                          raise SystemExit("Release smoke sentinel is empty.")
+                      payload = bytes([payload[0] ^ 0x01]) + payload[1:]
+                      mutated = True
+                  output_archive.addfile(member, io.BytesIO(payload))
+          if not mutated:
+              raise SystemExit(f"Release smoke sentinel is missing: {target}")
+          '@ | Set-Content -LiteralPath $corruptScript -Encoding UTF8
+          & python $corruptScript $backup $corrupt
+          if ($LASTEXITCODE -ne 0) { throw "Could not create a deterministically corrupted backup fixture." }
           & $app verify-backup $corrupt 2>$null
           if ($LASTEXITCODE -eq 0) { throw "Corrupted backup unexpectedly passed verification." }
           [IO.File]::WriteAllText((Join-Path $originals "release-smoke-sentinel.txt"), "mutated`n", [Text.Encoding]::UTF8)
