@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import io
 import json
 import os
@@ -180,6 +181,22 @@ def test_gzip_trailer_corruption_is_rejected_before_restore(tmp_path, trailer_da
     assert sentinel.read_bytes() == before
     assert library_archives.LAST_PRESERVED_PATH is None
     assert not list(tmp_path.glob(".library.pre-restore-*"))
+
+
+@pytest.mark.parametrize("tail_damage", ("nonzero", "oversized"))
+def test_unexpected_post_tar_data_is_rejected(tmp_path, tail_damage):
+    library = _library(tmp_path)
+    archive = backup_library(library, tmp_path / "backup.tar.gz")
+    invalid = tmp_path / f"invalid-tail-{tail_damage}.tar.gz"
+    tar_data = bytearray(gzip.decompress(archive.read_bytes()))
+    if tail_damage == "nonzero":
+        tar_data[-1] = 1
+    else:
+        tar_data.append(0)
+    invalid.write_bytes(gzip.compress(bytes(tar_data), mtime=0))
+
+    with pytest.raises(LibraryArchiveError, match="unexpected data after the tar end marker"):
+        verify_backup(invalid)
 
 
 def test_lock_is_nonblocking(tmp_path):
