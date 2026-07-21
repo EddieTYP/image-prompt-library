@@ -7,12 +7,6 @@ import { getPromptCopyLanguageLabel, type PromptCopyLanguage } from '../utils/pr
 
 const LANGUAGE_OPTIONS: PromptCopyLanguage[] = ['origin', 'en', 'zh_hant', 'zh_hans'];
 const UI_LANGUAGE_OPTIONS: UiLanguage[] = ['zh_hant', 'zh_hans', 'en'];
-const GLOBAL_BUDGET_MIN = 50;
-const GLOBAL_BUDGET_MAX = 150;
-const GLOBAL_BUDGET_STEP = 5;
-const FOCUS_BUDGET_MIN = 24;
-const FOCUS_BUDGET_MAX = 100;
-const FOCUS_BUDGET_STEP = 4;
 
 function providerStateLabel(provider: GenerationProviderStatus) {
   if (provider.state === 'not_configured') return 'Not configured';
@@ -71,10 +65,6 @@ export default function ConfigPanel({
   onUiLanguage,
   preferredLanguage,
   onPreferredLanguage,
-  globalThumbnailBudget,
-  onGlobalThumbnailBudget,
-  focusThumbnailBudget,
-  onFocusThumbnailBudget,
   updateStatus,
   onRefreshUpdateStatus,
   onUpdateInstalled,
@@ -89,10 +79,6 @@ export default function ConfigPanel({
   onUiLanguage: (language: UiLanguage) => void;
   preferredLanguage: PromptCopyLanguage;
   onPreferredLanguage: (language: PromptCopyLanguage) => void;
-  globalThumbnailBudget: number;
-  onGlobalThumbnailBudget: (budget: number) => void;
-  focusThumbnailBudget: number;
-  onFocusThumbnailBudget: (budget: number) => void;
   updateStatus?: AppUpdateStatus;
   onRefreshUpdateStatus: () => Promise<AppUpdateStatus | undefined>;
   onUpdateInstalled: (targetVersion: string, requiresManualRestart: boolean) => void;
@@ -358,42 +344,6 @@ export default function ConfigPanel({
             </button>
           ))}
         </div>
-      </section>
-
-      <section className="setting-group range-setting">
-        <div className="setting-title-row">
-          <h3>{t('globalThumbnails')}</h3>
-          <strong>{globalThumbnailBudget}</strong>
-        </div>
-        <p className="muted">{t('globalThumbnailsHelp')}</p>
-        <input
-          type="range"
-          min={GLOBAL_BUDGET_MIN}
-          max={GLOBAL_BUDGET_MAX}
-          step={GLOBAL_BUDGET_STEP}
-          value={globalThumbnailBudget}
-          aria-label={t('globalThumbnailBudget')}
-          onChange={event => onGlobalThumbnailBudget(Number(event.currentTarget.value))}
-        />
-        <div className="range-ticks"><span>{t('calm')}</span><span>{t('balanced')}</span><span>{t('dense')}</span></div>
-      </section>
-
-      <section className="setting-group range-setting">
-        <div className="setting-title-row">
-          <h3>{t('focusThumbnails')}</h3>
-          <strong>{focusThumbnailBudget}</strong>
-        </div>
-        <p className="muted">{t('focusThumbnailsHelp')}</p>
-        <input
-          type="range"
-          min={FOCUS_BUDGET_MIN}
-          max={FOCUS_BUDGET_MAX}
-          step={FOCUS_BUDGET_STEP}
-          value={focusThumbnailBudget}
-          aria-label={t('focusThumbnailBudget')}
-          onChange={event => onFocusThumbnailBudget(Number(event.currentTarget.value))}
-        />
-        <div className="range-ticks"><span>{t('compact')}</span><span>{t('gallery')}</span><span>{t('full')}</span></div>
       </section>
 
       <section className="setting-group app-update-section">

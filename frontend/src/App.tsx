@@ -22,8 +22,6 @@ import { DEFAULT_ITEM_SORT, parseSearchSortQuery, parseStructuredSearchChips, re
 const UI_LANGUAGE_STORAGE_KEY = 'image-prompt-library.ui_language';
 const PROMPT_LANGUAGE_STORAGE_KEY = 'image-prompt-library.preferred_prompt_language';
 const VIEW_STORAGE_KEY = 'image-prompt-library.view_mode.v2';
-const GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY = 'image-prompt-library.global_thumbnail_budget';
-const FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY = 'image-prompt-library.focus_thumbnail_budget';
 const FRONTEND_BUILD_VERSION = import.meta.env.VITE_APP_VERSION || '';
 const FRONTEND_VERSION_RELOAD_STORAGE_KEY = 'image-prompt-library.frontend_version_reload_target.v1';
 
@@ -47,13 +45,6 @@ function loadPreferredView(): ViewMode {
   const savedView = window.localStorage.getItem(VIEW_STORAGE_KEY);
   if (savedView === 'explore' || savedView === 'cards') return savedView;
   return 'cards';
-}
-
-function loadNumberSetting(key: string, fallback: number, min: number, max: number) {
-  if (typeof window === 'undefined') return fallback;
-  const raw = Number(window.localStorage.getItem(key));
-  if (!Number.isFinite(raw)) return fallback;
-  return Math.min(max, Math.max(min, Math.round(raw)));
 }
 
 function selectedCollectionNameSizeClass(name: string) {
@@ -102,11 +93,6 @@ export default function App() {
   const [uiLanguage, setUiLanguage] = useState<UiLanguage>(loadUiLanguage);
   const [hasChosenUiLanguage, setHasChosenUiLanguage] = useState(loadHasChosenUiLanguage);
   const [preferredLanguage, setPreferredLanguage] = useState<PromptCopyLanguage>(loadPreferredLanguage);
-  const [globalThumbnailBudget, setGlobalThumbnailBudget] = useState(() => loadNumberSetting(GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 50, 150));
-  const [focusThumbnailBudget, setFocusThumbnailBudget] = useState(() => loadNumberSetting(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, 100, 24, 100));
-  const [exploreFitRequestKey, setExploreFitRequestKey] = useState(0);
-  const [pendingExploreUnfilterClusterId, setPendingExploreUnfilterClusterId] = useState<string>();
-  const [exploreUnfilterFadePhase, setExploreUnfilterFadePhase] = useState<'out' | 'pre-in' | 'in' | 'idle'>('idle');
   const [toast, setToast] = useState<{ title: string; tone: 'success' | 'error' }>();
   const [standaloneGenerationOpen, setStandaloneGenerationOpen] = useState(false);
   const [generationQueueOpen, setGenerationQueueOpen] = useState(false);
@@ -118,10 +104,11 @@ export default function App() {
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(() => new Set());
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>();
   const [restartRequiredVersion, setRestartRequiredVersion] = useState<string>();
-  const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, activeSort);
-  const exploreFocusedClusterId = view === 'explore'
-    ? (clusterId || (dataScope.clusterId === pendingExploreUnfilterClusterId ? pendingExploreUnfilterClusterId : undefined))
-    : clusterId;
+  const { data, initialLoading, refreshing, error, dataScope } = useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, activeSort);
+  const dataScopeMatches = dataScope.q === parsedSearchQuery.q
+    && dataScope.clusterId === clusterId
+    && dataScope.viewLimit === 1000
+    && dataScope.sort === activeSort;
   const selectedCluster = useMemo(() => clusters.find(c => c.id === clusterId), [clusters, clusterId]);
   const t = useMemo(() => makeTranslator(uiLanguage), [uiLanguage]);
   const localizedClusters = useMemo(() => clusters.map(cluster => localizeCluster(cluster, uiLanguage)), [clusters, uiLanguage]);
@@ -186,26 +173,10 @@ export default function App() {
     const timer = window.setTimeout(() => setToast(undefined), 2600);
     return () => window.clearTimeout(timer);
   }, [toast]);
-  useEffect(() => {
-    if (pendingExploreUnfilterClusterId && dataScope.clusterId !== pendingExploreUnfilterClusterId) {
-      setPendingExploreUnfilterClusterId(undefined);
-      setExploreUnfilterFadePhase('pre-in');
-      window.requestAnimationFrame(() => setExploreUnfilterFadePhase('in'));
-      const timer = window.setTimeout(() => setExploreUnfilterFadePhase('idle'), 180);
-      return () => window.clearTimeout(timer);
-    }
-    return undefined;
-  }, [dataScope.clusterId, pendingExploreUnfilterClusterId]);
-  const selectCluster = (c: ClusterRecord) => { setClusterId(c.id); updateView('cards'); setFiltersOpen(false); setPendingExploreUnfilterClusterId(undefined); setExploreUnfilterFadePhase('idle'); };
-  const focusCluster = (c: ClusterRecord) => { setClusterId(c.id); updateView('explore'); setFiltersOpen(false); setPendingExploreUnfilterClusterId(undefined); setExploreUnfilterFadePhase('idle'); setExploreFitRequestKey(key => key + 1); };
+  const selectCluster = (c: ClusterRecord) => { setClusterId(c.id); updateView('cards'); setFiltersOpen(false); };
+  const focusCluster = (c: ClusterRecord) => { setClusterId(c.id); updateView('explore'); setFiltersOpen(false); };
   const handleFilterSelect = (c: ClusterRecord) => { view === 'explore' ? focusCluster(c) : selectCluster(c); };
-  const clearCluster = () => {
-    if (view === 'explore' && clusterId) {
-      setPendingExploreUnfilterClusterId(clusterId);
-      setExploreUnfilterFadePhase('out');
-    }
-    setClusterId(undefined);
-  };
+  const clearCluster = () => setClusterId(undefined);
   const saved = () => { refreshClusters(); refreshTags(); setItemsReloadKey(k => k + 1); };
   const clearSelection = () => setSelectedItemIds(new Set());
   const exitSelectionMode = () => { setSelectionMode(false); clearSelection(); };
@@ -224,16 +195,9 @@ export default function App() {
     setHasChosenUiLanguage(true);
   };
   const updateView = (nextView: ViewMode) => {
+    if (nextView !== 'cards') exitSelectionMode();
     setView(nextView);
     window.localStorage.setItem(VIEW_STORAGE_KEY, nextView);
-  };
-  const updateGlobalThumbnailBudget = (budget: number) => {
-    setGlobalThumbnailBudget(budget);
-    window.localStorage.setItem(GLOBAL_THUMBNAIL_BUDGET_STORAGE_KEY, String(budget));
-  };
-  const updateFocusThumbnailBudget = (budget: number) => {
-    setFocusThumbnailBudget(budget);
-    window.localStorage.setItem(FOCUS_THUMBNAIL_BUDGET_STORAGE_KEY, String(budget));
   };
   const updateSort = (nextSort: ItemSortMode) => {
     setSort(nextSort);
@@ -325,7 +289,7 @@ export default function App() {
   };
   const editSummary = (item: { id: string }) => { api.item(item.id).then(full => { setEditing(full); setEditorOpen(true); }).catch(() => undefined); };
   const focusedItemGenerationJobId = pendingGenerationSourceItemId ? focusedGenerationJobId : undefined;
-  const showSelectedCollectionDock = Boolean(selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
+  const showSelectedCollectionDock = Boolean(view === 'cards' && selectedCluster && !filtersOpen && !configOpen && !detailId && !editorOpen);
   const showFloatingActions = Boolean(emptyMode !== 'first-run' && !selectionMode && !filtersOpen && !configOpen && !detailId && !editorOpen && !standaloneGenerationOpen);
   const updateBadgeLabel = restartRequiredVersion
     ? 'Restart required'
@@ -356,17 +320,17 @@ export default function App() {
       </div>
     )}
     <FiltersPanel t={t} open={filtersOpen} clusters={localizedClusters} selected={clusterId} onSelect={handleFilterSelect} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
-    <ConfigPanel t={t} open={configOpen} focusProviders={focusConfigProviders} onClose={closeConfig} uiLanguage={uiLanguage} onUiLanguage={updateUiLanguage} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} globalThumbnailBudget={globalThumbnailBudget} onGlobalThumbnailBudget={updateGlobalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusThumbnailBudget={updateFocusThumbnailBudget} updateStatus={updateStatus} onRefreshUpdateStatus={refreshUpdateStatus} onUpdateInstalled={handleUpdateInstalled} onProvidersChanged={refreshGenerationAvailability} onLibraryCleanup={saved} />
+    <ConfigPanel t={t} open={configOpen} focusProviders={focusConfigProviders} onClose={closeConfig} uiLanguage={uiLanguage} onUiLanguage={updateUiLanguage} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} updateStatus={updateStatus} onRefreshUpdateStatus={refreshUpdateStatus} onUpdateInstalled={handleUpdateInstalled} onProvidersChanged={refreshGenerationAvailability} onLibraryCleanup={saved} />
     {/* Static-test compatibility marker: <main className="app-main"> */}
     <main className={`app-main ${refreshing ? 'is-refreshing' : ''}`} aria-busy={refreshing}>
       {refreshing && <div className="refresh-indicator" role="status">{t('loading')}</div>}
-      {initialLoading && <div className="loading">{t('loading')}</div>}
+      {(initialLoading || (view === 'explore' && !dataScopeMatches && refreshing)) && <div className="loading">{t('loading')}</div>}
       {error && <div className="error">{error}</div>}
       {view === 'explore'
-        ? <ExploreView t={t} clusters={localizedClusters} items={localizedData.items} focusedClusterId={exploreFocusedClusterId} fitRequestKey={exploreFitRequestKey} unfilterTransitionPhase={exploreUnfilterFadePhase} globalThumbnailBudget={globalThumbnailBudget} focusThumbnailBudget={focusThumbnailBudget} onFocusCluster={focusCluster} onOpen={setDetailId} onAdd={isDemoMode ? undefined : openNewItemEditor} />
+        ? <ExploreView t={t} clusters={localizedClusters} items={localizedData.items} total={localizedData.total} focusedClusterId={clusterId} hasActiveSearch={Boolean(parsedSearchQuery.q.trim())} searchQuery={parsedSearchQuery.q} loading={!dataScopeMatches} onFocusCluster={focusCluster} onClearCluster={clearCluster} onOpen={setDetailId} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} />
         : <CardsView t={t} items={localizedData.items} emptyMode={emptyMode} onOpen={setDetailId} onFavorite={isDemoMode ? undefined : favorite} onEdit={isDemoMode ? undefined : editSummary} onToggleSelection={selectionMode ? toggleSelectedItem : undefined} selectedIds={selectedItemIds} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} onOpenConfig={openConfig} />}
     </main>
-    {selectionMode && !isDemoMode && (
+    {view === 'cards' && selectionMode && !isDemoMode && (
       <div className="selection-toolbar" role="toolbar" aria-label={t('selectReferences')}>
         <button type="button" className="selection-toolbar-button" onClick={exitSelectionMode}>{t('cancel')}</button>
         <span className="selection-toolbar-count">{selectedItemIds.size} {t('selectedReferences')}</span>

@@ -79,7 +79,7 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 
 ## 功能概覽
 
-- **圖片優先瀏覽：** 用 Cards view 或 Explore view 快速掃案例。
+- **圖片優先瀏覽：** 在 Explore 按 Collections 探索自然比例圖片，或在 Library 完整管理 prompt references。
 - **搜尋和篩選：** 搜尋 title、prompt、tag、collection、source 和 note，也可以配合 collection filter 使用。
 - **保存來源脈絡：** 原始 prompt、來源資料、翻譯或轉換後的 variant 可以放在同一張卡片。
 - **管理私人 library：** 新增 / 編輯自己的 prompt card、結果圖、reference image、tag、note、source URL 和 collection。
@@ -160,4 +160,4 @@ Privacy model：
 
 ## Project status
 
-Local-first library、versioned install/update/rollback workflow、唯讀 online demo，以及 optional ChatGPT / Codex OAuth generation 都已進入 stable 並可正常使用。如果上游 OAuth 或 generation service 有變，會以 maintenance release 跟進相容性。`v0.9.0` milestone 加入 portable backup 與 safe restore；其後只按實際需要處理 Explore、theme、batch 及 multi-image 改善。
+Local-first library、versioned install/update/rollback workflow、唯讀 online demo，以及 optional ChatGPT / Codex OAuth generation 都已進入 stable 並可正常使用。如果上游 OAuth 或 generation service 有變，會以 maintenance release 跟進相容性。`v0.9.0` milestone 已加入 portable backup 與 safe restore；目前 pre-v1 工作會先改善 Explore discovery，再處理聚焦嘅 theme 及 multi-image 改善。

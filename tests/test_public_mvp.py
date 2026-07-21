@@ -100,8 +100,8 @@ def test_public_readme_includes_product_story_and_screenshots():
 
     assert "Image Prompt Library is built for the moment when image-generation prompts become reusable knowledge" in readme
     assert "local SQLite, local image files" in readme
-    assert "Explore view" in readme
-    assert "Cards view" in readme
+    assert "discover Collections and natural-ratio image feeds in Explore" in readme
+    assert "Library" in readme
     assert "copy public sample prompts" in readme
     assert "Generate locally" in readme
     assert "v0.8.0" in readme

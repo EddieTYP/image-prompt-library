@@ -87,7 +87,7 @@ For update, rollback, service mode, uninstall, WSL, and source-development setup
 
 ## What you can do
 
-- **Browse visually:** scan prompt references in Cards view or Explore view.
+- **Browse visually:** discover Collections and natural-ratio image feeds in Explore, or manage prompt references in Library.
 - **Search and filter:** search titles, prompts, tags, collections, sources, and notes; combine search with collection filters.
 - **Preserve prompt provenance:** keep original/source prompt variants and translated or converted variants side by side.
 - **Manage a private library:** add/edit your own prompt cards, result images, optional reference images, tags, notes, source URLs, and collections.
@@ -172,4 +172,4 @@ Privacy model:
 
 ## Project status
 
-The local-first library, versioned install/update/rollback workflow, read-only online demo, and optional ChatGPT / Codex OAuth generation are stable and available today. If the upstream OAuth or generation service changes, compatibility updates will be handled as maintenance releases. The `v0.9.0` milestone adds portable backup and safe restore; later work remains limited to evidence-led Explore, theme, batch, and multi-image improvements.
+The local-first library, versioned install/update/rollback workflow, read-only online demo, and optional ChatGPT / Codex OAuth generation are stable and available today. If the upstream OAuth or generation service changes, compatibility updates will be handled as maintenance releases. The `v0.9.0` milestone added portable backup and safe restore; current pre-v1 work refines Explore discovery, followed by focused theme and multi-image improvements.
