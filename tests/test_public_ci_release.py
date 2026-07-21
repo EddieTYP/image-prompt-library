@@ -195,6 +195,15 @@ def test_release_candidate_smoke_uses_public_assets_and_default_user_paths():
     assert '"$app" restore "$backup" --yes' in workflow
     assert 'Invoke-App -Arguments @("backup", "--output", $backup)' in workflow
     assert 'Invoke-App -Arguments @("restore", $backup, "--yes")' in workflow
+    assert "app_root = Path(sys.argv[1]).resolve()" in workflow
+    assert "sys.path.insert(0, str(app_root))" in workflow
+    assert "library = Path(sys.argv[2])" in workflow
+    assert "& $candidatePython $fixtureScript $candidateRoot $library" in workflow
+    assert "& $candidatePython $fixtureScript $library" not in workflow
+    app_root_index = workflow.index("app_root = Path(sys.argv[1]).resolve()")
+    path_insert_index = workflow.index("sys.path.insert(0, str(app_root))", app_root_index)
+    backend_import_index = workflow.index("from backend.db import init_db", app_root_index)
+    assert app_root_index < path_insert_index < backend_import_index
     assert workflow.count('target = "library/originals/release-smoke-sentinel.txt"') == 2
     assert workflow.count('payload = bytes([payload[0] ^ 0x01]) + payload[1:]') == 2
     assert "payload[-1] ^= 0x01" not in workflow

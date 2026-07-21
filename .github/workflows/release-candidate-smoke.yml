@@ -285,9 +285,12 @@ jobs:
           @'
           import sys
           from pathlib import Path
+
+          app_root = Path(sys.argv[1]).resolve()
+          sys.path.insert(0, str(app_root))
           from backend.db import init_db
 
-          library = Path(sys.argv[1])
+          library = Path(sys.argv[2])
           init_db(library)
           for root in ("originals", "thumbs", "previews", "generation-results", "generation-references"):
               path = library / root
@@ -295,7 +298,7 @@ jobs:
               (path / f"{root}-roundtrip.txt").write_text(f"{root}-before\n", encoding="utf-8")
           '@ | Set-Content -LiteralPath $fixtureScript -Encoding UTF8
           Push-Location -LiteralPath $candidateRoot
-          try { & $candidatePython $fixtureScript $library } finally { Pop-Location }
+          try { & $candidatePython $fixtureScript $candidateRoot $library } finally { Pop-Location }
           if ($LASTEXITCODE -ne 0) { throw "Could not prepare the backup smoke fixture." }
           $backup = Join-Path $env:RUNNER_TEMP "image-prompt-library-$env:CANDIDATE_VERSION-smoke.tar.gz"
           Invoke-App -Arguments @("backup", "--output", $backup) | Out-Null
