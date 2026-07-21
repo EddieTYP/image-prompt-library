@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { mediaUrl } from '../api/client';
 import type { ClusterRecord, ImageRecord, ItemSummary } from '../types';
@@ -51,6 +51,7 @@ export default function ExploreView({
   const [visibleCount, setVisibleCount] = useState(EXPLORE_PAGE_SIZE);
   const loadMoreRef = useRef<HTMLButtonElement | null>(null);
   const directoryScrollRef = useRef(0);
+  const directoryScrollRestorePendingRef = useRef(false);
   const previousShowFeedRef = useRef(Boolean(focusedClusterId || hasActiveSearch));
   const previousFeedScopeRef = useRef(`${focusedClusterId || ''}\n${searchQuery}`);
   const nonEmptyClusters = useMemo(() => clusters.filter(cluster => cluster.count > 0), [clusters]);
@@ -69,13 +70,20 @@ export default function ExploreView({
   }, [focusedClusterId, hasActiveSearch, searchQuery, items]);
 
   useEffect(() => {
+    if (showFeed || loading) return undefined;
+    const rememberDirectoryScroll = () => { directoryScrollRef.current = window.scrollY; };
+    rememberDirectoryScroll();
+    window.addEventListener('scroll', rememberDirectoryScroll, { passive: true });
+    return () => window.removeEventListener('scroll', rememberDirectoryScroll);
+  }, [loading, showFeed]);
+
+  useLayoutEffect(() => {
     const previouslyShowingFeed = previousShowFeedRef.current;
     if (!previouslyShowingFeed && showFeed) {
-      directoryScrollRef.current = window.scrollY;
       window.scrollTo({ top: 0, behavior: 'auto' });
       previousShowFeedRef.current = true;
-    } else if (previouslyShowingFeed && !showFeed && !loading) {
-      window.requestAnimationFrame(() => window.scrollTo({ top: directoryScrollRef.current, behavior: 'auto' }));
+    } else if (previouslyShowingFeed && !showFeed) {
+      directoryScrollRestorePendingRef.current = true;
       previousShowFeedRef.current = false;
     }
 
@@ -84,6 +92,17 @@ export default function ExploreView({
       window.scrollTo({ top: 0, behavior: 'auto' });
     }
     previousFeedScopeRef.current = nextScope;
+
+    if (!showFeed && !loading && directoryScrollRestorePendingRef.current) {
+      const restore = () => window.scrollTo({ top: directoryScrollRef.current, behavior: 'auto' });
+      restore();
+      const frame = window.requestAnimationFrame(() => {
+        restore();
+        directoryScrollRestorePendingRef.current = false;
+      });
+      return () => window.cancelAnimationFrame(frame);
+    }
+    return undefined;
   }, [focusedClusterId, loading, searchQuery, showFeed]);
 
   useEffect(() => {

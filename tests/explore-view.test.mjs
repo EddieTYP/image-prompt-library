@@ -136,6 +136,7 @@ test('Explore wiring preserves internal cards compatibility and removes constell
   assert.doesNotMatch(config, /range-setting|ThumbnailBudget|globalThumbnails|focusThumbnails/);
   assert.doesNotMatch(styles, /constellation/);
   assert.match(styles, /\.explore-masonry \.card-image-frame img\{[^}]*height:auto;[^}]*object-fit:contain/);
+  assert.match(styles, /\.explore-masonry \.card-image-frame\.natural-ratio img\{min-height:0\}/);
   assert.equal((translations.match(/cards: 'Library'/g) || []).length, 3);
   assert.match(toggle, /onView\('cards'\)/);
 });
