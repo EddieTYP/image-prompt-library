@@ -30,12 +30,18 @@ source "$SCRIPT_DIR/load-env.sh"
 
 load_env() {
   local INCOMING_IMAGE_PROMPT_LIBRARY_PATH="${IMAGE_PROMPT_LIBRARY_PATH-}"
+  local INCOMING_IMAGE_PROMPT_LIBRARY_AUTH_PATH="${IMAGE_PROMPT_LIBRARY_AUTH_PATH-}"
+  local INCOMING_IMAGE_PROMPT_LIBRARY_CONFIG_PATH="${IMAGE_PROMPT_LIBRARY_CONFIG_PATH-}"
   local INCOMING_BACKEND_HOST="${BACKEND_HOST-}"
   local INCOMING_BACKEND_PORT="${BACKEND_PORT-}"
+  local INCOMING_BACKUP_DIR="${BACKUP_DIR-}"
   image_prompt_library_load_env_file "$ENV_FILE"
   export IMAGE_PROMPT_LIBRARY_PATH="${INCOMING_IMAGE_PROMPT_LIBRARY_PATH:-${IMAGE_PROMPT_LIBRARY_PATH:-$HOME/ImagePromptLibrary}}"
+  if [ -n "$INCOMING_IMAGE_PROMPT_LIBRARY_AUTH_PATH" ]; then export IMAGE_PROMPT_LIBRARY_AUTH_PATH="$INCOMING_IMAGE_PROMPT_LIBRARY_AUTH_PATH"; fi
+  if [ -n "$INCOMING_IMAGE_PROMPT_LIBRARY_CONFIG_PATH" ]; then export IMAGE_PROMPT_LIBRARY_CONFIG_PATH="$INCOMING_IMAGE_PROMPT_LIBRARY_CONFIG_PATH"; fi
   export BACKEND_HOST="${INCOMING_BACKEND_HOST:-${BACKEND_HOST:-127.0.0.1}}"
   export BACKEND_PORT="${INCOMING_BACKEND_PORT:-${BACKEND_PORT:-8000}}"
+  export BACKUP_DIR="${INCOMING_BACKUP_DIR:-${BACKUP_DIR:-$APP_PREFIX/backups}}"
 }
 
 is_wsl() {
@@ -307,6 +313,24 @@ update_app() {
   PYTHON="$PYTHON_BIN" bash "$SCRIPT_DIR/install.sh" --prefix "$APP_PREFIX" --version "$VERSION_ARG" --no-shim
 }
 
+library_archive_app() {
+  load_env
+  local PYTHON_BIN status=0
+  PYTHON_BIN="$(python_bin)"
+  if [ ! -f "$SCRIPT_DIR/library-archive.py" ]; then
+    echo "Portable backup support is missing from this installed version." >&2
+    exit 1
+  fi
+  lock_update_transaction
+  trap 'unlock_update_transaction' EXIT
+  trap 'exit 130' HUP INT TERM
+  cd "$APP_ROOT"
+  "$PYTHON_BIN" "$SCRIPT_DIR/library-archive.py" "$@" || status=$?
+  trap - EXIT HUP INT TERM
+  unlock_update_transaction
+  return "$status"
+}
+
 ROLLBACK_LOCK_HELD=0
 ROLLBACK_HEALTH_DIR=""
 ROLLBACK_MUTATED=0
@@ -346,7 +370,7 @@ PY
       return
     fi
   fi
-  echo "Another Image Prompt Library update or rollback is already running; retry later." >&2
+  echo "Another Image Prompt Library managed operation is already running; retry later." >&2
   exit 1
 }
 
@@ -1338,6 +1362,9 @@ Commands:
   version               Print installed app version
   update [--version V]  Install latest or selected release version
   rollback              Switch current app symlink back to app/previous
+  backup [options]      Create a validated portable backup while the app is stopped
+  verify-backup ARCHIVE Validate a portable backup without changing the library
+  restore ARCHIVE       Restore a validated backup; preserves the old library
   sample-data LANG [PKG] Import optional sample data into the private library
   uninstall [--delete-library] [--yes]
                         Remove installed app files; keeps private library by default
@@ -1354,6 +1381,9 @@ case "$COMMAND" in
   version) print_version ;;
   update) update_app "$@" ;;
   rollback) rollback_app "$@" ;;
+  backup) library_archive_app backup "$@" ;;
+  verify-backup) library_archive_app verify-backup "$@" ;;
+  restore) library_archive_app restore "$@" ;;
   sample-data) sample_data "$@" ;;
   uninstall) uninstall_app "$@" ;;
   -h|--help|help|"") usage ;;

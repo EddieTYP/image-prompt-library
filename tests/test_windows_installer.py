@@ -559,6 +559,7 @@ def test_real_release_package_extracts_with_hardened_windows_installer(tmp_path:
         "frontend/dist",
         "sample-data/manifests",
         "scripts/appctl.sh",
+        "scripts/library-archive.py",
         "scripts/install.sh",
         "scripts/load-env.sh",
         "scripts/install-sample-data.sh",
@@ -620,6 +621,7 @@ def test_real_release_package_extracts_with_hardened_windows_installer(tmp_path:
         f"""
 $python = [pscustomobject]@{{ Exe = {python}; PrefixArgs = @() }}
 Expand-SafeTar -ArtifactPath {powershell_literal(artifact)} -Destination {powershell_literal(destination)} -ExpectedSha '{manifest['sha256']}' -Python $python
+Assert-VersionPayload -Root {powershell_literal(destination)} -ExpectedVersion '{version}' -RequirePortableBackup
 """
     )
 
@@ -661,6 +663,10 @@ def test_windows_appctl_loads_known_config_and_exposes_diagnostics():
     assert '"version"' in script
     assert '"status"' in script
     assert '"doctor"' in script
+    assert '"backup"' in script
+    assert '"verify-backup"' in script
+    assert '"restore"' in script
+    assert "library-archive.py" in script
     assert ". $EnvFile" not in script
     assert "Invoke-Expression" not in script
 

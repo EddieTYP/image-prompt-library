@@ -760,8 +760,8 @@ with open(archive_path, "rb") as artifact_file:
 }
 
 function Assert-VersionPayload {
-    param([string]$Root, [string]$ExpectedVersion)
-    foreach ($relative in @(
+    param([string]$Root, [string]$ExpectedVersion, [switch]$RequirePortableBackup)
+    $required = @(
         "VERSION",
         "pyproject.toml",
         "backend\main.py",
@@ -770,7 +770,9 @@ function Assert-VersionPayload {
         "scripts\install.ps1",
         "scripts\install-sample-data.ps1",
         "scripts\setup-runtime.ps1"
-    )) {
+    )
+    if ($RequirePortableBackup) { $required += "scripts\library-archive.py" }
+    foreach ($relative in $required) {
         if (-not (Test-Path -LiteralPath (Join-Path $Root $relative) -PathType Leaf)) {
             throw "Release payload is missing required file $relative."
         }
@@ -1146,7 +1148,8 @@ function Invoke-Install {
             $staging = Join-Path $versionsPath ('.staging-' + [Guid]::NewGuid().ToString('N'))
             Assert-ManagedPath -Path $staging -AppPrefix $normalizedPrefix | Out-Null
             Expand-SafeTar -ArtifactPath $artifactPath -Destination $staging -Python $python -ExpectedSha ([string]$manifest.sha256)
-            Assert-VersionPayload -Root $staging -ExpectedVersion $release.Version
+            $requiresPortableBackup = @($manifest.capabilities) -contains "portable-backup-v1"
+            Assert-VersionPayload -Root $staging -ExpectedVersion $release.Version -RequirePortableBackup:$requiresPortableBackup
             if (Test-Path -LiteralPath $finalTarget) {
                 if ($null -ne (Get-LiteralPathEntry -Path $backupTarget)) { throw "A previous backup exists at $backupTarget." }
                 Move-Item -LiteralPath $finalTarget -Destination $backupTarget

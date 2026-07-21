@@ -70,6 +70,8 @@ library/db.sqlite       SQLite metadata and full-text search index
 library/originals/      original uploaded/imported images
 library/previews/       generated preview images
 library/thumbs/         generated thumbnail images
+library/generation-results/       generated results awaiting or retaining review
+library/generation-references/    library-owned copies used by generation jobs
 ```
 
 Do not commit runtime `library/` data to git. It is your private prompt/image collection.
@@ -82,12 +84,20 @@ Do not commit runtime `library/` data to git. It is your private prompt/image co
 4. Save the card.
 5. Use Cards/Explore, search, filters, and detail view to browse and copy prompts later.
 
-## Backup
+## Portable backup and safe restore
 
-Create a timestamped backup archive:
+Stop the app, then create a timestamped backup archive:
 
 ```bash
 ./scripts/backup.sh
+```
+
+Installed Windows, macOS, and Linux releases use the same engine through:
+
+```bash
+image-prompt-library backup
+image-prompt-library verify-backup /safe/place/backup.tar.gz
+image-prompt-library restore /safe/place/backup.tar.gz --yes
 ```
 
 The backup includes:
@@ -96,12 +106,16 @@ The backup includes:
 - `library/originals/`
 - `library/thumbs/`
 - `library/previews/`
+- `library/generation-results/`
+- `library/generation-references/`
 
-`backup.sh` archives only `db.sqlite`, `originals/`, `thumbs/`, and `previews/`. Before creating the archive it applies the same credential-path boundary as application startup, refuses an auth/config path inside the library, and rejects library media roots that resolve outside it through a symlink or junction. App-owned OAuth credentials, provider config, and device-login/session state stay outside the archive by construction.
+The archive uses a fixed `manifest.json` plus `library/...` layout with per-file sizes and SHA-256 checksums. Before creating it, the command applies the same credential-path boundary as application startup, refuses an auth/config path inside the library, and rejects unsafe library paths, links, or non-regular payload files. App-owned OAuth credentials, provider config, and device-login/session state stay outside the archive by construction.
 
 This is an allowlist, not a content scrubber. Prompts, notes, generation history, and images deliberately stored in the library are included; do not put secrets in library content.
 
-Restore by stopping the app, extracting the archive, and replacing the corresponding library directory contents. Keep backups somewhere outside the repo if the library matters to you.
+Stop the app before backup or restore. Restore validates and stages the complete archive before replacing the active path, preserves the previous library as a sibling, and rejects the former manifest-less `backup.sh` format instead of guessing how to import it.
+
+See [`BACKUP_AND_RESTORE.md`](BACKUP_AND_RESTORE.md) for the exact payload, credential boundary, commands, failure behavior, and non-goals. Keep backups somewhere outside the repo and outside the active library if the library matters to you.
 
 ## Tests and contribution workflow
 

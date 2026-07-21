@@ -78,13 +78,16 @@ The current logs are `%LOCALAPPDATA%\ImagePromptLibrary\logs\app.out.log` and `a
 image-prompt-library update
 image-prompt-library update --version v0.8.0
 image-prompt-library rollback
+image-prompt-library backup
+image-prompt-library verify-backup C:\path\to\backup.tar.gz
+image-prompt-library restore C:\path\to\backup.tar.gz --yes
 image-prompt-library sample-data en
 image-prompt-library sample-data zh_hans
 image-prompt-library sample-data zh_hant awesome-gpt-image-2
 image-prompt-library uninstall
 ```
 
-Update, rollback, start, stop, and uninstall operations share one per-prefix transaction lock. An update switches version pointers transactionally and restores the prior version and runtime after a handled setup, switch, or health failure. A retry also reconciles exact installer-owned `.staging-<GUID>` and `<version>.backup` remnants while preserving near-match or ambiguous paths; `doctor` reports any exact remnants that still need attention. This is not durable power-loss recovery: an OS or power interruption can still require `image-prompt-library doctor` followed by a retry or rollback. `rollback` validates the previous payload and version-local Python before changing either pointer. Default uninstall removes only the app state and preserves `%USERPROFILE%\ImagePromptLibrary`; use `image-prompt-library uninstall --delete-library` only to remove the private library too, and add `--yes` for non-interactive use.
+Update, rollback, start, stop, and uninstall operations share one per-prefix transaction lock. Backup and restore additionally share the active-library lock with the running app, so run `stop` first. An update switches version pointers transactionally and restores the prior version and runtime after a handled setup, switch, or health failure. A retry also reconciles exact installer-owned `.staging-<GUID>` and `<version>.backup` remnants while preserving near-match or ambiguous paths; `doctor` reports any exact remnants that still need attention. This is not durable power-loss recovery: an OS or power interruption can still require `image-prompt-library doctor` followed by a retry or rollback. `rollback` validates the previous payload and version-local Python before changing either pointer. Default uninstall removes only the app state and preserves `%USERPROFILE%\ImagePromptLibrary`; use `image-prompt-library uninstall --delete-library` only to remove the private library too, and add `--yes` for non-interactive use. See [`BACKUP_AND_RESTORE.md`](BACKUP_AND_RESTORE.md) before the first restore.
 
 ## Unix and WSL 2
 
@@ -169,6 +172,18 @@ Your private prompt library defaults to:
 ```
 
 That data directory is separate from app code, so updates or rollbacks should not overwrite your private SQLite database or images.
+
+## Portable backup and restore (v0.9.0+)
+
+Stop the app, then use the installed command on Windows, macOS, or Linux:
+
+```text
+image-prompt-library backup
+image-prompt-library verify-backup <archive>
+image-prompt-library restore <archive> --yes
+```
+
+Backup and restore fail if the same library is in use by the app or another archive operation. Restore validates and stages the complete archive before replacement and keeps the previous library as a sibling for review. It does not automatically stop or restart the app. See [`BACKUP_AND_RESTORE.md`](BACKUP_AND_RESTORE.md) for the payload, credential boundary, legacy-format behavior, and recovery limits.
 
 ## Sample data
 

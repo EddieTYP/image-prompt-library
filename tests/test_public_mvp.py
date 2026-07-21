@@ -196,6 +196,7 @@ def test_public_install_helper_files_exist_and_document_local_data():
     start_script = (ROOT / "scripts" / "start.sh").read_text()
     dev_script = (ROOT / "scripts" / "dev.sh").read_text()
     backup_script = (ROOT / "scripts" / "backup.sh").read_text()
+    archive_script = (ROOT / "backend" / "services" / "library_archives.py").read_text()
     smoke_script = (ROOT / "scripts" / "smoke-test.sh").read_text()
 
     for windows_script in (
@@ -243,11 +244,14 @@ def test_public_install_helper_files_exist_and_document_local_data():
     assert "'/api': backendProxyTarget" in vite_config
     assert "'/media': backendProxyTarget" in vite_config
 
-    assert "library/db.sqlite" in backup_script
-    assert "library/originals" in backup_script
-    assert "library/thumbs" in backup_script
-    assert "library/previews" in backup_script
-    assert "tar" in backup_script
+    assert "library-archive.py" in backup_script
+    assert "db.sqlite" in archive_script
+    assert '"originals"' in archive_script
+    assert '"thumbs"' in archive_script
+    assert '"previews"' in archive_script
+    assert '"generation-results"' in archive_script
+    assert '"generation-references"' in archive_script
+    assert "tarfile" in archive_script
 
     assert "/api/health" in smoke_script
     assert "/media/db.sqlite" in smoke_script

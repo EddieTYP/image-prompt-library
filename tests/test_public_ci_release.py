@@ -149,7 +149,8 @@ def test_release_assets_workflow_packages_only_current_version_assets():
     assert '"$IS_PRERELEASE" "$RUNNER_TEMP/assets.tsv"' in workflow
     assert 'expected_prerelease = prerelease_value.lower() == "true"' in workflow
     assert 'expected_prerelease = "-" in version' not in workflow
-    assert workflow.count('--source-sha "$SOURCE_SHA"') == 2
+    assert workflow.count('--source-sha "$SOURCE_SHA"') == 4
+    assert workflow.count("--capability portable-backup-v1") == 2
 
     contributing = (ROOT / "CONTRIBUTING.md").read_text()
     assert "Manual release workflow dispatches are candidate-only" in contributing
@@ -172,13 +173,13 @@ def test_release_candidate_smoke_uses_public_assets_and_default_user_paths():
     assert "macos-latest" in workflow
     assert "windows-latest" in workflow
     assert "fail-fast: false" in workflow
-    assert 'default: \'v0.8.0\'' in workflow
+    assert 'default: \'v0.8.2\'' in workflow
     assert "Candidate is not the requested published prerelease" in workflow
     assert "Candidate assets are not the exact expected set" in workflow
     assert "gh release download" in workflow
     assert "persist-credentials: false" in workflow
     assert "unset GH_TOKEN" in workflow
-    assert '--source-sha "$TAG_SHA" --capability posix-shell-v1' in workflow
+    assert '--source-sha "$TAG_SHA" --capability portable-backup-v1' in workflow
     assert 'test ! -e "$HOME/.image-prompt-library"' in workflow
     assert 'test ! -e "$HOME/ImagePromptLibrary"' in workflow
     assert 'bash "$installer" --version "$BASELINE_VERSION"' in workflow
@@ -190,6 +191,10 @@ def test_release_candidate_smoke_uses_public_assets_and_default_user_paths():
     assert 'Invoke-App -Arguments @("update", "--version", $env:CANDIDATE_VERSION)' in workflow
     assert 'Invoke-App -Arguments @("rollback")' in workflow
     assert "release-smoke-sentinel.txt" in workflow
+    assert '"$app" backup --output "$backup"' in workflow
+    assert '"$app" restore "$backup" --yes' in workflow
+    assert 'Invoke-App -Arguments @("backup", "--output", $backup)' in workflow
+    assert 'Invoke-App -Arguments @("restore", $backup, "--yes")' in workflow
     assert "IMAGE_PROMPT_LIBRARY_PREFIX" not in workflow
     assert "IMAGE_PROMPT_LIBRARY_PATH" not in workflow
     assert "The promotable candidate must use a bare SemVer tag" in workflow

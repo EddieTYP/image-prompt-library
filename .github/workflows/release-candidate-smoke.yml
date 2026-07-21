@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Exact prerelease tag under test (for example, v0.8.1)'
+        description: 'Exact prerelease tag under test (for example, v0.9.0)'
         required: true
         type: string
       baseline_version:
-        description: 'Existing release used for update and rollback (for example, v0.8.0)'
+        description: 'Current stable release used for update and rollback'
         required: true
-        default: 'v0.8.0'
+        default: 'v0.8.2'
         type: string
 
 permissions:
@@ -88,7 +88,7 @@ jobs:
             --pattern "image-prompt-library-$CANDIDATE_VERSION.manifest.json"
           unset GH_TOKEN
           python scripts/verify-release-assets.py "$RUNNER_TEMP/candidate-assets" "$CANDIDATE_VERSION" \
-            --source-sha "$TAG_SHA" --capability posix-shell-v1
+            --source-sha "$TAG_SHA" --capability portable-backup-v1
 
   posix-default-paths:
     needs: release-contract
@@ -119,15 +119,54 @@ jobs:
           app="$HOME/.local/bin/image-prompt-library"
           test -x "$app"
           test "$("$app" version)" = "$BASELINE_VERSION"
-          printf 'release-smoke\n' > "$HOME/ImagePromptLibrary/release-smoke-sentinel.txt"
+          mkdir -p "$HOME/ImagePromptLibrary/originals"
+          printf 'release-smoke\n' > "$HOME/ImagePromptLibrary/originals/release-smoke-sentinel.txt"
           printf '### %s default-path release smoke\n\n- install `%s`: PASS\n' "${{ runner.os }}" "$BASELINE_VERSION" >> "$GITHUB_STEP_SUMMARY"
 
           "$app" update --version "$CANDIDATE_VERSION"
           test "$("$app" version)" = "$CANDIDATE_VERSION"
           "$app" status
           "$app" doctor
-          test "$(cat "$HOME/ImagePromptLibrary/release-smoke-sentinel.txt")" = "release-smoke"
+          test "$(cat "$HOME/ImagePromptLibrary/originals/release-smoke-sentinel.txt")" = "release-smoke"
           printf '%s\n' "- update to \`$CANDIDATE_VERSION\`: PASS" >> "$GITHUB_STEP_SUMMARY"
+
+          candidate_root="$HOME/.image-prompt-library/app/current"
+          (
+            cd "$candidate_root"
+            .venv/bin/python - <<'PY'
+          from pathlib import Path
+          from backend.db import init_db
+
+          library = Path.home() / "ImagePromptLibrary"
+          init_db(library)
+          for root in ("originals", "thumbs", "previews", "generation-results", "generation-references"):
+              path = library / root
+              path.mkdir(parents=True, exist_ok=True)
+              (path / f"{root}-roundtrip.txt").write_text(f"{root}-before\n", encoding="utf-8")
+          PY
+          )
+          backup="$RUNNER_TEMP/image-prompt-library-$CANDIDATE_VERSION-smoke.tar.gz"
+          "$app" backup --output "$backup"
+          "$app" verify-backup "$backup"
+          corrupt="$RUNNER_TEMP/image-prompt-library-$CANDIDATE_VERSION-corrupt.tar.gz"
+          cp "$backup" "$corrupt"
+          python - "$corrupt" <<'PY'
+          from pathlib import Path
+          import sys
+          path = Path(sys.argv[1])
+          payload = bytearray(path.read_bytes())
+          payload[-1] ^= 0x01
+          path.write_bytes(payload)
+          PY
+          if "$app" verify-backup "$corrupt"; then
+            echo "Corrupted backup unexpectedly passed verification." >&2
+            exit 1
+          fi
+          printf 'mutated\n' > "$HOME/ImagePromptLibrary/originals/release-smoke-sentinel.txt"
+          "$app" restore "$backup" --yes
+          test "$(cat "$HOME/ImagePromptLibrary/originals/release-smoke-sentinel.txt")" = "release-smoke"
+          find "$HOME" -maxdepth 1 -type d -name '.ImagePromptLibrary.pre-restore-*' | grep -q .
+          printf '%s\n' "- portable backup, corruption rejection, and restore: PASS" >> "$GITHUB_STEP_SUMMARY"
 
           if "$app" rollback; then
             test "$("$app" version)" = "$BASELINE_VERSION"
@@ -165,7 +204,7 @@ jobs:
             fi
             "$app" status
             "$app" doctor
-            test "$(cat "$HOME/ImagePromptLibrary/release-smoke-sentinel.txt")" = "release-smoke"
+            test "$(cat "$HOME/ImagePromptLibrary/originals/release-smoke-sentinel.txt")" = "release-smoke"
             printf '%s\n' "- rollback to \`$BASELINE_VERSION\`: PASS" >> "$GITHUB_STEP_SUMMARY"
           else
             printf '%s\n' "- rollback to \`$BASELINE_VERSION\`: FAIL" >> "$GITHUB_STEP_SUMMARY"
@@ -209,7 +248,9 @@ jobs:
           }
           $installed = [string]((Invoke-App -Arguments @("version")) | Select-Object -Last 1)
           if ($installed.Trim() -ne $env:BASELINE_VERSION) { throw "Baseline version mismatch: $installed" }
-          [IO.File]::WriteAllText((Join-Path $library "release-smoke-sentinel.txt"), "release-smoke`n", [Text.Encoding]::UTF8)
+          $originals = Join-Path $library "originals"
+          New-Item -ItemType Directory -Path $originals -Force | Out-Null
+          [IO.File]::WriteAllText((Join-Path $originals "release-smoke-sentinel.txt"), "release-smoke`n", [Text.Encoding]::UTF8)
           "### Windows default-path release smoke`n`n- install ``$env:BASELINE_VERSION``: PASS" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 
           Invoke-App -Arguments @("update", "--version", $env:CANDIDATE_VERSION) | Out-Null
@@ -217,10 +258,46 @@ jobs:
           if ($updated.Trim() -ne $env:CANDIDATE_VERSION) { throw "Updated version mismatch: $updated" }
           Invoke-App -Arguments @("status") | Out-Null
           Invoke-App -Arguments @("doctor") | Out-Null
-          if ((Get-Content -LiteralPath (Join-Path $library "release-smoke-sentinel.txt") -Raw).Trim() -ne "release-smoke") {
+          if ((Get-Content -LiteralPath (Join-Path $originals "release-smoke-sentinel.txt") -Raw).Trim() -ne "release-smoke") {
               throw "Private-library sentinel changed during update."
           }
           "- update to ``$env:CANDIDATE_VERSION``: PASS" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
+
+          $candidateRoot = Join-Path $prefix ("app\versions\" + $env:CANDIDATE_VERSION)
+          $candidatePython = Join-Path $candidateRoot ".venv\Scripts\python.exe"
+          $fixtureScript = Join-Path $env:RUNNER_TEMP "prepare-backup-smoke.py"
+          @'
+          import sys
+          from pathlib import Path
+          from backend.db import init_db
+
+          library = Path(sys.argv[1])
+          init_db(library)
+          for root in ("originals", "thumbs", "previews", "generation-results", "generation-references"):
+              path = library / root
+              path.mkdir(parents=True, exist_ok=True)
+              (path / f"{root}-roundtrip.txt").write_text(f"{root}-before\n", encoding="utf-8")
+          '@ | Set-Content -LiteralPath $fixtureScript -Encoding UTF8
+          Push-Location -LiteralPath $candidateRoot
+          try { & $candidatePython $fixtureScript $library } finally { Pop-Location }
+          if ($LASTEXITCODE -ne 0) { throw "Could not prepare the backup smoke fixture." }
+          $backup = Join-Path $env:RUNNER_TEMP "image-prompt-library-$env:CANDIDATE_VERSION-smoke.tar.gz"
+          Invoke-App -Arguments @("backup", "--output", $backup) | Out-Null
+          Invoke-App -Arguments @("verify-backup", $backup) | Out-Null
+          $corrupt = Join-Path $env:RUNNER_TEMP "image-prompt-library-$env:CANDIDATE_VERSION-corrupt.tar.gz"
+          $bytes = [IO.File]::ReadAllBytes($backup)
+          $bytes[$bytes.Length - 1] = $bytes[$bytes.Length - 1] -bxor 1
+          [IO.File]::WriteAllBytes($corrupt, $bytes)
+          & $app verify-backup $corrupt 2>$null
+          if ($LASTEXITCODE -eq 0) { throw "Corrupted backup unexpectedly passed verification." }
+          [IO.File]::WriteAllText((Join-Path $originals "release-smoke-sentinel.txt"), "mutated`n", [Text.Encoding]::UTF8)
+          Invoke-App -Arguments @("restore", $backup, "--yes") | Out-Null
+          if ((Get-Content -LiteralPath (Join-Path $originals "release-smoke-sentinel.txt") -Raw).Trim() -ne "release-smoke") {
+              throw "Portable restore did not recover the original library."
+          }
+          $preserved = @(Get-ChildItem -LiteralPath (Split-Path -Parent $library) -Directory -Force | Where-Object { $_.Name -like ".ImagePromptLibrary.pre-restore-*" })
+          if (-not $preserved.Count) { throw "Portable restore did not preserve the pre-restore library." }
+          "- portable backup, corruption rejection, and restore: PASS" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
 
           try {
               Invoke-App -Arguments @("rollback") | Out-Null
@@ -228,7 +305,7 @@ jobs:
               if ($rolledBack.Trim() -ne $env:BASELINE_VERSION) { throw "Rollback version mismatch: $rolledBack" }
               Invoke-App -Arguments @("status") | Out-Null
               Invoke-App -Arguments @("doctor") | Out-Null
-              if ((Get-Content -LiteralPath (Join-Path $library "release-smoke-sentinel.txt") -Raw).Trim() -ne "release-smoke") {
+              if ((Get-Content -LiteralPath (Join-Path $library "originals\release-smoke-sentinel.txt") -Raw).Trim() -ne "release-smoke") {
                   throw "Private-library sentinel changed during rollback."
               }
               "- rollback to ``$env:BASELINE_VERSION``: PASS" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY

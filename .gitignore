@@ -3,6 +3,8 @@ library/db.sqlite-*
 library/originals/*
 library/thumbs/*
 library/previews/*
+library/generation-results/*
+library/generation-references/*
 !library/originals/.gitkeep
 !library/thumbs/.gitkeep
 !library/previews/.gitkeep
@@ -16,6 +18,8 @@ backups/
 .codex-qa-*
 .codebase-memory/
 .qa-*
+.*.library-operation.lock
+.image-prompt-library-backup-output.lock
 docs/superpowers/
 docs/plans/
 docs/qa/
