@@ -44,6 +44,7 @@ REQUIRED_FILES = {
     "backend/main.py",
     "frontend/dist/index.html",
     "scripts/appctl.sh",
+    "scripts/library-archive.py",
     "scripts/install.sh",
     "scripts/load-env.sh",
     "scripts/install-sample-data.sh",

@@ -1,3 +1,4 @@
+import gc
 import hashlib
 import io
 import json
@@ -13,6 +14,7 @@ from pathlib import Path
 from PIL import Image
 import pytest
 
+from backend.db import init_db
 from backend.repositories import ItemRepository
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -155,6 +157,7 @@ def write_synthetic_release(
         "backend/main.py",
         "frontend/dist/index.html",
         "scripts/appctl.sh",
+        "scripts/library-archive.py",
         "scripts/install.sh",
         "scripts/load-env.sh",
         "scripts/install-sample-data.sh",
@@ -220,9 +223,9 @@ def run_release_verifier(
 
 def test_backup_archive_excludes_external_auth_and_config_files(tmp_path):
     library = tmp_path / "library"
-    for directory in ("originals", "thumbs", "previews"):
+    for directory in ("originals", "thumbs", "previews", "generation-results", "generation-references"):
         (library / directory).mkdir(parents=True, exist_ok=True)
-    (library / "db.sqlite").write_bytes(b"fixture-database")
+    init_db(library)
     (library / "originals" / "image.txt").write_text("fixture-image", encoding="utf-8")
     auth_path = tmp_path / "app-state" / "auth.json"
     config_path = tmp_path / "app-state" / "config.json"
@@ -272,8 +275,7 @@ def test_backup_archive_excludes_external_auth_and_config_files(tmp_path):
 )
 def test_backup_refuses_app_owned_path_inside_library(tmp_path, env_name, relative_path):
     library = tmp_path / "library"
-    library.mkdir()
-    (library / "db.sqlite").write_bytes(b"fixture-database")
+    init_db(library)
     unsafe_path = library / relative_path
     unsafe_path.parent.mkdir(parents=True, exist_ok=True)
     unsafe_path.write_text("unsafe-backup-canary", encoding="utf-8")
@@ -305,13 +307,11 @@ def test_backup_refuses_app_owned_path_inside_library(tmp_path, env_name, relati
 
 def test_backup_refuses_external_resolving_library_storage_root(tmp_path):
     library = tmp_path / "library"
-    library.mkdir()
-    (library / "db.sqlite").write_bytes(b"fixture-database")
-    for directory in ("thumbs", "previews"):
-        (library / directory).mkdir()
+    init_db(library)
     external = tmp_path / "app-state"
     external.mkdir()
     (external / "auth.json").write_text("junction-auth-canary", encoding="utf-8")
+    (library / "originals").rmdir()
     try:
         (library / "originals").symlink_to(external, target_is_directory=True)
     except (NotImplementedError, OSError) as exc:
@@ -341,6 +341,61 @@ def test_backup_refuses_external_resolving_library_storage_root(tmp_path):
     assert not list(backup_dir.glob("*.tar.gz"))
 
 
+def test_posix_controller_backup_verify_restore_round_trip(tmp_path):
+    library = tmp_path / "library"
+    init_db(library)
+    for root in ("originals", "thumbs", "previews", "generation-results", "generation-references"):
+        path = library / root
+        path.mkdir(parents=True, exist_ok=True)
+        (path / f"{root}.txt").write_text(f"{root}-before", encoding="utf-8")
+    prefix = tmp_path / "prefix"
+    prefix.mkdir()
+    archive = tmp_path / "portable-backup.tar.gz"
+    env = {
+        **os.environ,
+        "PYTHON": sys.executable,
+        "PYTHONUTF8": "1",
+        "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix),
+        "IMAGE_PROMPT_LIBRARY_PATH": str(library),
+        "IMAGE_PROMPT_LIBRARY_AUTH_PATH": str(tmp_path / "state" / "auth.json"),
+        "IMAGE_PROMPT_LIBRARY_CONFIG_PATH": str(tmp_path / "state" / "config.json"),
+        "BACKUP_DIR": str(tmp_path / "backups"),
+    }
+    gc.collect()
+
+    backup = subprocess.run(
+        ["bash", "scripts/appctl.sh", "backup", "--output", str(archive)],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert backup.returncode == 0, backup.stdout + backup.stderr
+    verified = subprocess.run(
+        ["bash", "scripts/appctl.sh", "verify-backup", str(archive)],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert verified.returncode == 0, verified.stdout + verified.stderr
+
+    (library / "originals" / "originals.txt").write_text("mutated", encoding="utf-8")
+    restored = subprocess.run(
+        ["bash", "scripts/appctl.sh", "restore", str(archive), "--yes"],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=60,
+    )
+    assert restored.returncode == 0, restored.stdout + restored.stderr
+    assert (library / "originals" / "originals.txt").read_text(encoding="utf-8") == "originals-before"
+    assert list(tmp_path.glob(".library.pre-restore-*"))
+
+
 def test_installer_and_runtime_scripts_define_versioned_install_contract():
     install_script = ROOT / "scripts" / "install.sh"
     appctl_script = ROOT / "scripts" / "appctl.sh"
@@ -349,6 +404,7 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
 
     assert install_script.exists()
     assert appctl_script.exists()
+    assert "portable-backup-v1" in install_script.read_text(encoding="utf-8")
     assert setup_runtime_script.exists()
     assert package_script.exists()
 
@@ -404,6 +460,10 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "update)" in appctl
     assert "PYTHON=\"$PYTHON_BIN\" bash \"$SCRIPT_DIR/install.sh\"" in appctl
     assert "rollback)" in appctl
+    assert "backup)" in appctl
+    assert "verify-backup)" in appctl
+    assert "restore)" in appctl
+    assert "library-archive.py" in appctl
     assert "sample-data)" in appctl
     assert "uninstall)" in appctl
     assert "install-sample-data.sh" in appctl
@@ -464,6 +524,7 @@ def test_release_assets_workflow_builds_and_uploads_candidate_artifacts():
     assert "releases/assets/$asset_id" in workflow
     assert "dist-release-readback" in workflow
     assert "scripts/verify-release-assets.py" in workflow
+    assert workflow.count("--capability portable-backup-v1") == 2
     assert "draft=false" in workflow
     assert "cancel-in-progress: false" in workflow
     assert "RESUME_PUBLISHED" in workflow
@@ -516,7 +577,7 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     assert manifest["name"] == "image-prompt-library"
     assert manifest["version"] == "v9.9.9-test"
     assert manifest["artifact"] == tarball_path.name
-    assert manifest["capabilities"] == ["windows-powershell-v1", "posix-shell-v1"]
+    assert manifest["capabilities"] == ["windows-powershell-v1", "posix-shell-v1", "portable-backup-v1"]
     assert manifest["schema_version"] == 2
     assert len(manifest["source_sha"]) == 40
     assert manifest["sha256"] in checksum_path.read_text()
@@ -534,6 +595,7 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     assert '/assets/' in index_html
     assert "frontend/dist/assets/" in listing
     assert "scripts/appctl.sh" in listing
+    assert "scripts/library-archive.py" in listing
     assert "scripts/install.sh" in listing
     assert "scripts/load-env.sh" in listing
     assert "scripts/setup-runtime.sh" in listing

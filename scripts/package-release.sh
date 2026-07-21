@@ -87,6 +87,7 @@ copy_path() {
 for path in \
   backend \
   scripts/appctl.sh \
+  scripts/library-archive.py \
   scripts/install.sh \
   scripts/load-env.sh \
   scripts/verify-release-assets.py \
@@ -176,7 +177,7 @@ manifest = {
     "name": "image-prompt-library",
     "version": version,
     "schema_version": 2,
-    "capabilities": ["windows-powershell-v1", "posix-shell-v1"],
+    "capabilities": ["windows-powershell-v1", "posix-shell-v1", "portable-backup-v1"],
     "artifact": artifact,
     "sha256": sha256,
     "source_sha": source_sha,
@@ -191,6 +192,7 @@ with open(manifest_path, "w", encoding="utf-8") as handle:
 PY
 
 python3 scripts/verify-release-assets.py "$RELEASE_DIR" "$VERSION" --source-sha "$SOURCE_SHA" --capability posix-shell-v1
+python3 scripts/verify-release-assets.py "$RELEASE_DIR" "$VERSION" --source-sha "$SOURCE_SHA" --capability portable-backup-v1
 
 rm -rf "$STAGING_ROOT"
 echo "Created $RELEASE_DIR/$ARTIFACT"

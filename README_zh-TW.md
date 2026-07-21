@@ -140,6 +140,7 @@ Sample package details 和 checksums 請看 [`sample-data/README.md`](sample-dat
 
 - [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — install、update、rollback、service mode、uninstall、platform notes。
 - [`docs/GENERATION.md`](docs/GENERATION.md) — ChatGPT / Codex OAuth generation workflow、result review、目前限制、benchmark link。
+- [`docs/BACKUP_AND_RESTORE.md`](docs/BACKUP_AND_RESTORE.md) — portable backup payload、credential boundary、驗證及 safe restore 行為。
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — source setup、dev mode、configuration、data layout、backup。
 - [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — 常見 runtime 和 setup 問題。
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contributor setup、tests 和 project structure。
@@ -159,4 +160,4 @@ Privacy model：
 
 ## Project status
 
-Local-first library、versioned install/update/rollback workflow、唯讀 online demo，以及 optional ChatGPT / Codex OAuth generation 都已進入 stable 並可正常使用。如果上游 OAuth 或 generation service 有變，會以 maintenance release 跟進相容性。後續工作集中於 service/update resilience、import-review polish、batch image editing，以及更深入的 mobile Explore gestures。
+Local-first library、versioned install/update/rollback workflow、唯讀 online demo，以及 optional ChatGPT / Codex OAuth generation 都已進入 stable 並可正常使用。如果上游 OAuth 或 generation service 有變，會以 maintenance release 跟進相容性。`v0.9.0` milestone 加入 portable backup 與 safe restore；其後只按實際需要處理 Explore、theme、batch 及 multi-image 改善。

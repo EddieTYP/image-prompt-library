@@ -705,6 +705,16 @@ python_download "$CHECKSUM_URL" "$CHECKSUM_PATH"
 prepare_release_verifier "$MANIFEST_PATH" "$ARTIFACT_PATH" "$CHECKSUM_PATH" "$VERSION" "$VERIFY_SCRIPT"
 STAGING_DIR="$VERSIONS_DIR/.staging-$($PYTHON_BIN -c 'import uuid; print(uuid.uuid4().hex)')"
 "$PYTHON_BIN" "$VERIFY_SCRIPT" --version "$VERSION" --manifest "$MANIFEST_PATH" --artifact "$ARTIFACT_PATH" --checksum "$CHECKSUM_PATH" --capability posix-shell-v1 --extract-to "$STAGING_DIR"
+if "$PYTHON_BIN" - "$MANIFEST_PATH" <<'PY'
+import json
+import pathlib
+import sys
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
+raise SystemExit(0 if "portable-backup-v1" in manifest.get("capabilities", []) else 1)
+PY
+then
+  "$PYTHON_BIN" "$VERIFY_SCRIPT" --version "$VERSION" --manifest "$MANIFEST_PATH" --artifact "$ARTIFACT_PATH" --checksum "$CHECKSUM_PATH" --capability portable-backup-v1
+fi
 validate_target "$STAGING_DIR" "$VERSION"
 
 if [ -e "$INSTALL_DIR" ] || [ -L "$INSTALL_DIR" ]; then

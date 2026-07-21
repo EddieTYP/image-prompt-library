@@ -152,6 +152,7 @@ For sample package details and checksums, see [`sample-data/README.md`](sample-d
 
 - [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — install, update, rollback, service mode, uninstall, platform notes.
 - [`docs/GENERATION.md`](docs/GENERATION.md) — ChatGPT / Codex OAuth generation workflow, result review, current limitations, benchmark link.
+- [`docs/BACKUP_AND_RESTORE.md`](docs/BACKUP_AND_RESTORE.md) — portable backup payload, credential boundary, validation, and safe restore behavior.
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — source setup, dev mode, configuration, data layout, backups.
 - [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — common runtime and setup issues.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contributor setup, tests, and project structure.
@@ -171,4 +172,4 @@ Privacy model:
 
 ## Project status
 
-The local-first library, versioned install/update/rollback workflow, read-only online demo, and optional ChatGPT / Codex OAuth generation are stable and available today. If the upstream OAuth or generation service changes, compatibility updates will be handled as maintenance releases. Current follow-up work focuses on service/update resilience, import-review polish, batch image editing, and deeper mobile Explore gestures.
+The local-first library, versioned install/update/rollback workflow, read-only online demo, and optional ChatGPT / Codex OAuth generation are stable and available today. If the upstream OAuth or generation service changes, compatibility updates will be handled as maintenance releases. The `v0.9.0` milestone adds portable backup and safe restore; later work remains limited to evidence-led Explore, theme, batch, and multi-image improvements.

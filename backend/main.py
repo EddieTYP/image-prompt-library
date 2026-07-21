@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse
 from .config import APP_VERSION, resolve_hidden_features, resolve_library_path, resolve_library_storage_path, validate_app_owned_paths
 from .db import get_db_path, init_db
 from .routers import app_updates, cleanup, clusters, generation_jobs, generation_providers, images, import_drafts, items, tags
+from .services.library_archives import LibraryOperationLock
 from .services.generation_queue import PROVIDER_ID as NATIVE_GENERATION_PROVIDER_ID, enqueue_generation_jobs, recover_interrupted_generation_jobs
 
 DEFAULT_FRONTEND_DIST_PATH = Path(__file__).resolve().parents[1] / "frontend" / "dist"
@@ -27,13 +28,18 @@ def create_app(library_path: Path | str | None = None, frontend_dist_path: Path 
     library = resolve_library_path(library_path)
     validate_app_owned_paths(library)
     frontend_dist = Path(frontend_dist_path).resolve() if frontend_dist_path is not None else DEFAULT_FRONTEND_DIST_PATH.resolve()
-    init_db(library)
+    # Initialization and the running app share the same sibling lease as
+    # backup/restore. This keeps database and media replacement offline without
+    # introducing a second process-management system.
+    with LibraryOperationLock(library):
+        init_db(library)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        recover_interrupted_generation_jobs(library)
-        enqueue_generation_jobs(library, provider=NATIVE_GENERATION_PROVIDER_ID)
-        yield
+        with LibraryOperationLock(library):
+            recover_interrupted_generation_jobs(library)
+            enqueue_generation_jobs(library, provider=NATIVE_GENERATION_PROVIDER_ID)
+            yield
 
     app = FastAPI(title="Image Prompt Library", version=APP_VERSION, lifespan=lifespan)
     app.state.library_path = library

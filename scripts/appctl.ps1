@@ -33,15 +33,18 @@ function Read-AppEnvironment {
         foreach ($line in Get-Content -LiteralPath $Context.EnvFile -Encoding UTF8) {
             if (-not $line -or $line.TrimStart().StartsWith("#") -or -not $line.Contains("=")) { continue }
             $parts = $line.Split(@("="), 2, [StringSplitOptions]::None)
-            if ($parts[0] -in @("IMAGE_PROMPT_LIBRARY_PATH", "BACKEND_HOST", "BACKEND_PORT", "BACKUP_DIR")) {
+            if ($parts[0] -in @("IMAGE_PROMPT_LIBRARY_PATH", "IMAGE_PROMPT_LIBRARY_AUTH_PATH", "IMAGE_PROMPT_LIBRARY_CONFIG_PATH", "BACKEND_HOST", "BACKEND_PORT", "BACKUP_DIR")) {
                 $values[$parts[0]] = $parts[1]
             }
         }
     }
     $libraryPath = if ($env:IMAGE_PROMPT_LIBRARY_PATH) { $env:IMAGE_PROMPT_LIBRARY_PATH } elseif ($values["IMAGE_PROMPT_LIBRARY_PATH"]) { $values["IMAGE_PROMPT_LIBRARY_PATH"] } else { Join-Path $env:USERPROFILE "ImagePromptLibrary" }
+    $authPath = if ($env:IMAGE_PROMPT_LIBRARY_AUTH_PATH) { $env:IMAGE_PROMPT_LIBRARY_AUTH_PATH } elseif ($values["IMAGE_PROMPT_LIBRARY_AUTH_PATH"]) { $values["IMAGE_PROMPT_LIBRARY_AUTH_PATH"] } else { $null }
+    $configPath = if ($env:IMAGE_PROMPT_LIBRARY_CONFIG_PATH) { $env:IMAGE_PROMPT_LIBRARY_CONFIG_PATH } elseif ($values["IMAGE_PROMPT_LIBRARY_CONFIG_PATH"]) { $values["IMAGE_PROMPT_LIBRARY_CONFIG_PATH"] } else { $null }
     $hostName = if ($env:BACKEND_HOST) { $env:BACKEND_HOST } elseif ($values["BACKEND_HOST"]) { $values["BACKEND_HOST"] } else { "127.0.0.1" }
     $portText = if ($env:BACKEND_PORT) { $env:BACKEND_PORT } elseif ($values["BACKEND_PORT"]) { $values["BACKEND_PORT"] } else { "8000" }
-    [pscustomobject]@{ LibraryPath = $libraryPath; Host = $hostName; Port = [int]$portText }
+    $backupDir = if ($env:BACKUP_DIR) { $env:BACKUP_DIR } elseif ($values["BACKUP_DIR"]) { $values["BACKUP_DIR"] } else { Join-Path $Context.Prefix "backups" }
+    [pscustomobject]@{ LibraryPath = $libraryPath; AuthPath = $authPath; ConfigPath = $configPath; Host = $hostName; Port = [int]$portText; BackupDir = $backupDir }
 }
 
 function Get-CurrentVersion {
@@ -732,6 +735,8 @@ function Start-AppInternal {
         }
 
         $env:IMAGE_PROMPT_LIBRARY_PATH = [IO.Path]::GetFullPath($settings.LibraryPath)
+        if ($settings.AuthPath) { $env:IMAGE_PROMPT_LIBRARY_AUTH_PATH = $settings.AuthPath }
+        if ($settings.ConfigPath) { $env:IMAGE_PROMPT_LIBRARY_CONFIG_PATH = $settings.ConfigPath }
         $env:BACKEND_HOST = $hostName
         $env:BACKEND_PORT = [string]$port
         New-Item -ItemType Directory -Force -Path $Context.RunDir | Out-Null
@@ -1451,8 +1456,41 @@ function Invoke-Uninstall {
     }
 }
 
+function Invoke-LibraryArchive {
+    param($Context, [string]$Operation, [string[]]$Arguments)
+    $transactionLock = Enter-PrefixTransactionLock -Context $Context
+    $oldLibrary = $env:IMAGE_PROMPT_LIBRARY_PATH
+    $oldAuth = $env:IMAGE_PROMPT_LIBRARY_AUTH_PATH
+    $oldConfig = $env:IMAGE_PROMPT_LIBRARY_CONFIG_PATH
+    $oldBackup = $env:BACKUP_DIR
+    $locationPushed = $false
+    try {
+        $version = Get-CurrentVersion -Context $Context
+        $helper = Join-Path $version.Root "scripts\library-archive.py"
+        if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) {
+            throw "Portable backup support is missing from this installed version."
+        }
+        $settings = Read-AppEnvironment -Context $Context
+        $env:IMAGE_PROMPT_LIBRARY_PATH = [IO.Path]::GetFullPath($settings.LibraryPath)
+        $env:BACKUP_DIR = [IO.Path]::GetFullPath($settings.BackupDir)
+        if ($settings.AuthPath) { $env:IMAGE_PROMPT_LIBRARY_AUTH_PATH = $settings.AuthPath }
+        if ($settings.ConfigPath) { $env:IMAGE_PROMPT_LIBRARY_CONFIG_PATH = $settings.ConfigPath }
+        Push-Location -LiteralPath $version.Root
+        $locationPushed = $true
+        & $version.Python $helper $Operation @Arguments
+        if ($LASTEXITCODE -ne 0) { throw "Portable backup command failed with exit code $LASTEXITCODE." }
+    } finally {
+        if ($locationPushed) { Pop-Location }
+        if ($null -eq $oldLibrary) { Remove-Item Env:IMAGE_PROMPT_LIBRARY_PATH -ErrorAction SilentlyContinue } else { $env:IMAGE_PROMPT_LIBRARY_PATH = $oldLibrary }
+        if ($null -eq $oldAuth) { Remove-Item Env:IMAGE_PROMPT_LIBRARY_AUTH_PATH -ErrorAction SilentlyContinue } else { $env:IMAGE_PROMPT_LIBRARY_AUTH_PATH = $oldAuth }
+        if ($null -eq $oldConfig) { Remove-Item Env:IMAGE_PROMPT_LIBRARY_CONFIG_PATH -ErrorAction SilentlyContinue } else { $env:IMAGE_PROMPT_LIBRARY_CONFIG_PATH = $oldConfig }
+        if ($null -eq $oldBackup) { Remove-Item Env:BACKUP_DIR -ErrorAction SilentlyContinue } else { $env:BACKUP_DIR = $oldBackup }
+        Exit-PrefixTransactionLock -Mutex $transactionLock
+    }
+}
+
 function Show-Usage {
-    Write-Output "Usage: image-prompt-library <version|status|doctor|start|stop|update|rollback|sample-data|uninstall>"
+    Write-Output "Usage: image-prompt-library <version|status|doctor|start|stop|update|rollback|backup|verify-backup|restore|sample-data|uninstall>"
 }
 
 try {
@@ -1471,6 +1509,9 @@ try {
             Stop-App -Context $context
         }
         "update" { Update-App -Context $context -Arguments $rest }
+        "backup" { Invoke-LibraryArchive -Context $context -Operation "backup" -Arguments $rest }
+        "verify-backup" { Invoke-LibraryArchive -Context $context -Operation "verify-backup" -Arguments $rest }
+        "restore" { Invoke-LibraryArchive -Context $context -Operation "restore" -Arguments $rest }
         "sample-data" { Install-SampleData -Context $context -Arguments $rest }
         "uninstall" { Invoke-Uninstall -Context $context -Arguments $rest }
         "rollback" {
