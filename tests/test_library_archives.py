@@ -192,7 +192,7 @@ def test_unexpected_post_tar_data_is_rejected(tmp_path, tail_damage):
     if tail_damage == "nonzero":
         tar_data[-1] = 1
     else:
-        tar_data.append(0)
+        tar_data.extend(b"\0" * (tarfile.RECORDSIZE + 1))
     invalid.write_bytes(gzip.compress(bytes(tar_data), mtime=0))
 
     with pytest.raises(LibraryArchiveError, match="unexpected data after the tar end marker"):
