@@ -23,7 +23,7 @@ type TranslationKey =
   | 'collectionFilters' | 'itemActions' | 'promptLanguage' | 'promptText' | 'source' | 'defaultModel' | 'localReference'
   | 'imageGeneratedFrom' | 'author' | 'sourceUrl' | 'notes' | 'addNote' | 'origin' | 'markAsOriginal' | 'originalPromptHelp'
   | 'constellationGraph' | 'constellationControls' | 'zoomOut' | 'zoomIn' | 'resetView' | 'focusThumbnailsVisible' | 'thumbnailsVisible' | 'visible' | 'references' | 'more'
-  | 'onlineReadOnlyDemo' | 'runLocallyForPrivateLibrary' | 'localV06SupportsMobileGeneration' | 'viewOnGitHub'
+  | 'onlineReadOnlyDemo' | 'runLocallyForPrivateLibrary' | 'localInstallHighlights' | 'viewOnGitHub'
   | 'chooseLanguage' | 'chooseLanguageHelp' | 'changeLanguageLater';
 
 export const UI_LANGUAGE_LABELS: Record<UiLanguage, string> = {
@@ -58,7 +58,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     collectionFilters: 'Collection 篩選', itemActions: '項目操作', promptLanguage: 'Prompt 語言', promptText: 'Prompt 文字', source: '來源', defaultModel: 'ChatGPT Image', localReference: '本機參考',
     imageGeneratedFrom: 'Image generated from', author: '作者', sourceUrl: '來源 URL', notes: '備註', addNote: '新增備註', origin: '原文', markAsOriginal: '標記為原文', originalPromptHelp: '原文 prompt 通常最接近 sample image 的生成結果。',
     constellationGraph: 'Prompt clusters 縮圖星座圖', constellationControls: '星座圖控制', zoomOut: '縮小', zoomIn: '放大', resetView: '重設', focusThumbnailsVisible: '張焦點縮圖', thumbnailsVisible: '張縮圖顯示中', visible: '顯示中', references: '個參考', more: '更多',
-    onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: '新增／編輯／生成需要本機安裝，請在本機運行以建立你的私人 prompt library。', localV06SupportsMobileGeneration: '最新 v0.7 beta 加入 prompt variables 和 Template 標示', viewOnGitHub: '在 GitHub 查看',
+    onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: '新增／編輯／生成需要本機安裝，請在本機運行以建立你的私人 prompt library。', localInstallHighlights: '本機版提供私人編輯、generation sets 及 portable backup／restore', viewOnGitHub: '在 GitHub 查看',
     chooseLanguage: '選擇介面語言', chooseLanguageHelp: '請選擇你想使用的介面語言。', changeLanguageLater: '之後可在設定中更改。',
     firstRunEmptyTitle: '你的私人資料庫目前是空的',
     firstRunEmptyHelp: '這是全新本機安裝後的正常狀態。新增一個提示、可選地匯入範例資料，或在準備好時再連接生成。',
@@ -95,7 +95,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     collectionFilters: 'Collection 筛选', itemActions: '项目操作', promptLanguage: 'Prompt 语言', promptText: 'Prompt 文字', source: '来源', defaultModel: 'ChatGPT Image', localReference: '本地参考',
     imageGeneratedFrom: 'Image generated from', author: '作者', sourceUrl: '来源 URL', notes: '备注', addNote: '新增备注', origin: '原文', markAsOriginal: '标记为原文', originalPromptHelp: '原文 prompt 通常最接近 sample image 的生成结果。',
     constellationGraph: 'Prompt clusters 缩图星座图', constellationControls: '星座图控制', zoomOut: '缩小', zoomIn: '放大', resetView: '重置', focusThumbnailsVisible: '张焦点缩图', thumbnailsVisible: '张缩图显示中', visible: '显示中', references: '个参考', more: '更多',
-    onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: '新增／编辑／生成需要本机安装，请在本机运行以建立你的私人 prompt library。', localV06SupportsMobileGeneration: '最新 v0.6 beta 改善生成流程并支持附件改图', viewOnGitHub: '在 GitHub 查看',
+    onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: '新增／编辑／生成需要本机安装，请在本机运行以建立你的私人 prompt library。', localInstallHighlights: '本机版提供私人编辑、generation sets 及 portable backup／restore', viewOnGitHub: '在 GitHub 查看',
     chooseLanguage: '选择界面语言', chooseLanguageHelp: '请选择你想使用的界面语言。', changeLanguageLater: '之后可在设置中更改。',
     firstRunEmptyTitle: '你的私人资料库目前是空的',
     firstRunEmptyHelp: '这是全新本机安装后的正常状态。添加提示、可选导入示例，或在准备好后再连接生成。',
@@ -140,7 +140,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     collectionFilters: 'Collection filters', itemActions: 'Item actions', promptLanguage: 'Prompt language', promptText: 'Prompt text', source: 'Source', defaultModel: 'ChatGPT Image', localReference: 'Local reference',
     imageGeneratedFrom: 'Image generated from', author: 'Author', sourceUrl: 'Source URL', notes: 'Notes', addNote: 'Add note', origin: 'Origin', markAsOriginal: 'Mark as origin', originalPromptHelp: 'The source/original prompt is usually closest to the sample image result.',
     constellationGraph: 'Prompt clusters thumbnail constellation graph', constellationControls: 'Constellation controls', zoomOut: 'Zoom out', zoomIn: 'Zoom in', resetView: 'Reset', focusThumbnailsVisible: 'focus thumbnails', thumbnailsVisible: 'thumbnails visible', visible: 'visible', references: 'references', more: 'more',
-    onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: 'Add/edit/generation require local install; run locally to create your private prompt library.', localV06SupportsMobileGeneration: 'Latest v0.7 beta adds prompt variables and bulk delete', viewOnGitHub: 'View on GitHub',
+    onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: 'Add/edit/generation require local install; run locally to create your private prompt library.', localInstallHighlights: 'Local install adds private editing, generation sets, and portable backup/restore', viewOnGitHub: 'View on GitHub',
     chooseLanguage: 'Choose your language', chooseLanguageHelp: 'Choose the interface language you want to use.', changeLanguageLater: 'You can change this later in Config.',
   },
 };

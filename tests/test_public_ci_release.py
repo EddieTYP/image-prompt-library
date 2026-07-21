@@ -195,6 +195,10 @@ def test_release_candidate_smoke_uses_public_assets_and_default_user_paths():
     assert '"$app" restore "$backup" --yes' in workflow
     assert 'Invoke-App -Arguments @("backup", "--output", $backup)' in workflow
     assert 'Invoke-App -Arguments @("restore", $backup, "--yes")' in workflow
+    assert workflow.count('target = "library/originals/release-smoke-sentinel.txt"') == 2
+    assert workflow.count('payload = bytes([payload[0] ^ 0x01]) + payload[1:]') == 2
+    assert "payload[-1] ^= 0x01" not in workflow
+    assert "$bytes[$bytes.Length - 1]" not in workflow
     assert "IMAGE_PROMPT_LIBRARY_PREFIX" not in workflow
     assert "IMAGE_PROMPT_LIBRARY_PATH" not in workflow
     assert "The promotable candidate must use a bare SemVer tag" in workflow

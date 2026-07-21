@@ -55,6 +55,19 @@ def test_github_pages_demo_mode_uses_static_data_and_base_path():
     assert "VITE_BASE_PATH=/image-prompt-library/" in package_json
 
 
+def test_github_pages_demo_banner_uses_versionless_local_install_highlights():
+    app = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+    translations = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text(encoding="utf-8")
+
+    assert "t('localInstallHighlights')" in app
+    assert "portable backup/restore" in translations
+    assert "portable backup／restore" in translations
+    assert "localV06SupportsMobileGeneration" not in translations
+    assert "Latest v0.7" not in translations
+    assert "最新 v0.7" not in translations
+    assert "最新 v0.6" not in translations
+
+
 def test_github_pages_workflow_deploys_current_demo_with_legacy_redirects():
     workflow = (ROOT / ".github" / "workflows" / "pages.yml").read_text()
 
