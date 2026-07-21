@@ -20,7 +20,7 @@ import tempfile
 import unicodedata
 import uuid
 import zlib
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO, Iterator
@@ -72,8 +72,29 @@ class LibraryArchiveError(ValueError):
     """An actionable archive operation failure."""
 
 
+class _TrackedGzipReader(gzip.GzipFile):
+    """Remember the last tar-sized block read without replaying the gzip stream."""
+
+    last_tar_block: bytes | None = None
+
+    def read(self, size: int = -1) -> bytes:
+        data = super().read(size)
+        if size == tarfile.BLOCKSIZE:
+            self.last_tar_block = data
+        return data
+
+
 def _error(message: str) -> LibraryArchiveError:
     return LibraryArchiveError(message)
+
+
+def _validate_tar_end(first_end_block: bytes | None, trailing: bytes) -> None:
+    zero_block = b"\0" * tarfile.BLOCKSIZE
+    if first_end_block != zero_block or trailing[: tarfile.BLOCKSIZE] != zero_block:
+        raise _error("Backup archive has an invalid or incomplete tar end marker")
+    padding = trailing[tarfile.BLOCKSIZE :]
+    if len(trailing) > tarfile.RECORDSIZE or any(padding):
+        raise _error("Backup archive contains unexpected data after the tar end marker")
 
 
 def _path_identities(path: Path | str) -> tuple[Path, Path]:
@@ -724,23 +745,25 @@ def _read_archive_members(archive: Path) -> tuple[dict[str, tarfile.TarInfo], by
     folded: dict[str, str] = {}
     ancestor_keys: set[str] = set()
     total = 0
-    try:
-        tar = tarfile.open(archive, mode="r:gz")
-    except (OSError, tarfile.TarError) as exc:
-        raise _error(f"Could not open backup archive: {archive}") from exc
     manifest_data: bytes | None = None
-    with tar:
+    with ExitStack() as stack:
+        try:
+            raw = stack.enter_context(archive.open("rb"))
+            compressed = stack.enter_context(_TrackedGzipReader(fileobj=raw, mode="rb"))
+            tar = stack.enter_context(tarfile.open(fileobj=compressed, mode="r:"))
+        except (OSError, tarfile.TarError) as exc:
+            raise _error(f"Could not open backup archive: {archive}") from exc
         try:
             all_members = tar.getmembers()
-            trailing = tar.fileobj.read(tarfile.RECORDSIZE + 1)
+            first_end_block = compressed.last_tar_block
+            trailing = compressed.read(tarfile.RECORDSIZE + 1)
         except (gzip.BadGzipFile, EOFError, zlib.error) as exc:
             raise _error("Backup archive has invalid or incomplete gzip data") from exc
         except OSError as exc:
             raise _error(f"Could not read backup archive: {archive}") from exc
         except tarfile.TarError as exc:
             raise _error("Backup archive has invalid tar structure") from exc
-        if len(trailing) > tarfile.RECORDSIZE or any(trailing):
-            raise _error("Backup archive contains unexpected data after the tar end marker")
+        _validate_tar_end(first_end_block, trailing)
         if len(all_members) > MAX_MEMBER_COUNT:
             raise _error("Backup archive exceeds the member-count limit")
         for member in all_members:
@@ -907,6 +930,19 @@ def _extract_and_validate(archive: Path, stage_library: Path) -> dict[str, Any]:
                     raise _error(f"Could not extract backup archive member: {name}") from exc
                 if written != size or digest.hexdigest() != expected_hash:
                     raise _error(f"Backup archive checksum/size mismatch: {name}")
+            payload_end = max(
+                member.offset_data
+                + ((member.size + tarfile.BLOCKSIZE - 1) // tarfile.BLOCKSIZE) * tarfile.BLOCKSIZE
+                for member in members.values()
+            )
+            try:
+                tar.fileobj.seek(payload_end)
+                complete_tail = tar.fileobj.read(tarfile.BLOCKSIZE + tarfile.RECORDSIZE + 1)
+            except (gzip.BadGzipFile, EOFError, zlib.error) as exc:
+                raise _error("Backup archive has invalid or incomplete gzip data") from exc
+            except OSError as exc:
+                raise _error(f"Could not read backup archive: {archive}") from exc
+            _validate_tar_end(complete_tail[: tarfile.BLOCKSIZE], complete_tail[tarfile.BLOCKSIZE :])
         for root_name in REQUIRED_STORAGE_ROOTS:
             root = stage_library / root_name
             root.mkdir(mode=0o700, parents=True, exist_ok=True)

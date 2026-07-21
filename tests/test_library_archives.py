@@ -183,6 +183,34 @@ def test_gzip_trailer_corruption_is_rejected_before_restore(tmp_path, trailer_da
     assert not list(tmp_path.glob(".library.pre-restore-*"))
 
 
+def test_restore_revalidates_gzip_after_extraction(tmp_path, monkeypatch):
+    source = _library(tmp_path / "source")
+    archive = backup_library(source, tmp_path / "backup.tar.gz")
+    active = _library(tmp_path / "active")
+    sentinel = active / "originals" / "nested" / "originals.bin"
+    before = sentinel.read_bytes()
+    real_read_members = library_archives._read_archive_members
+    read_count = 0
+
+    def corrupt_after_second_validation(path):
+        nonlocal read_count
+        result = real_read_members(path)
+        read_count += 1
+        if read_count == 2:
+            data = bytearray(path.read_bytes())
+            data[-8] ^= 0xFF
+            path.write_bytes(data)
+        return result
+
+    monkeypatch.setattr(library_archives, "_read_archive_members", corrupt_after_second_validation)
+    with pytest.raises(LibraryArchiveError, match="invalid or incomplete gzip data"):
+        restore_library(archive, active, confirm=True)
+
+    assert sentinel.read_bytes() == before
+    assert library_archives.LAST_PRESERVED_PATH is None
+    assert not list(tmp_path.glob(".active.pre-restore-*"))
+
+
 @pytest.mark.parametrize("tail_damage", ("nonzero", "oversized"))
 def test_unexpected_post_tar_data_is_rejected(tmp_path, tail_damage):
     library = _library(tmp_path)
@@ -196,6 +224,31 @@ def test_unexpected_post_tar_data_is_rejected(tmp_path, tail_damage):
     invalid.write_bytes(gzip.compress(bytes(tar_data), mtime=0))
 
     with pytest.raises(LibraryArchiveError, match="unexpected data after the tar end marker"):
+        verify_backup(invalid)
+
+
+@pytest.mark.parametrize("marker_damage", ("missing", "single", "first-nonzero"))
+def test_two_tar_end_markers_are_required(tmp_path, marker_damage):
+    library = _library(tmp_path)
+    archive = backup_library(library, tmp_path / "backup.tar.gz")
+    invalid = tmp_path / f"invalid-marker-{marker_damage}.tar.gz"
+    tar_data = bytearray(gzip.decompress(archive.read_bytes()))
+    with tarfile.open(fileobj=io.BytesIO(tar_data), mode="r:") as tar:
+        members = tar.getmembers()
+    payload_end = max(
+        member.offset_data
+        + ((member.size + tarfile.BLOCKSIZE - 1) // tarfile.BLOCKSIZE) * tarfile.BLOCKSIZE
+        for member in members
+    )
+    if marker_damage == "missing":
+        del tar_data[payload_end:]
+    elif marker_damage == "single":
+        del tar_data[payload_end + tarfile.BLOCKSIZE :]
+    else:
+        tar_data[payload_end] = 1
+    invalid.write_bytes(gzip.compress(bytes(tar_data), mtime=0))
+
+    with pytest.raises(LibraryArchiveError, match="invalid or incomplete tar end marker"):
         verify_backup(invalid)
 
 
