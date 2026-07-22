@@ -140,3 +140,22 @@ test('Explore wiring preserves internal cards compatibility and removes constell
   assert.equal((translations.match(/cards: 'Library'/g) || []).length, 3);
   assert.match(toggle, /onView\('cards'\)/);
 });
+
+test('Explore detail boundary keeps local mutation actions while gating management controls', async () => {
+  const [app, detail] = await Promise.all([
+    readFile(`${ROOT}/frontend/src/App.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/ItemDetailModal.tsx`, 'utf8'),
+  ]);
+
+  assert.match(app, /const showManagementActions = !isDemoMode && view === 'cards';/);
+  assert.match(app, /showMutations={!isDemoMode} showManagementActions={showManagementActions}/);
+  assert.match(detail, /const allowManagementActions = showMutations && showManagementActions;/);
+  assert.match(detail, /showMutations && canGenerate/);
+  assert.match(detail, /showMutations && <button className="modal-icon-button edit-button"/);
+  assert.match(detail, /allowManagementActions && <button className="modal-icon-button favorite-button"/);
+  assert.match(detail, /allowManagementActions && <button className="modal-icon-button detail-delete-button"/);
+  assert.match(detail, /allowManagementActions && editingPromptLanguage === lang/);
+  assert.match(detail, /allowManagementActions && \(addingTag \?/);
+  assert.match(detail, /selectedImage \|\| showMutations/);
+  assert.equal((detail.match(/\{selectedImage && <a className="modal-icon-button download-button"/g) || []).length, 2);
+});

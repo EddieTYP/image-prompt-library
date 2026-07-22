@@ -78,7 +78,7 @@ function InlineEditableField({
   useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
   const confirm = () => { onCommit(draft); setEditing(false); };
   const cancel = () => { setDraft(value); setEditing(false); };
-  if (editing) {
+  if (editing && editable) {
     return (
       <span className={`inline-editable ${className} is-editing`}>
         <input
@@ -128,7 +128,7 @@ function InlineEditableTextArea({
   useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
   const confirm = () => { onCommit(draft); setEditing(false); };
   const cancel = () => { setDraft(value); setEditing(false); };
-  if (editing) {
+  if (editing && editable) {
     return (
       <div className={`inline-editable ${className} is-editing`}>
         <textarea
@@ -173,6 +173,7 @@ export default function ItemDetailModal({
   onOpenItem,
   onOpenProviders,
   showMutations = true,
+  showManagementActions = true,
   canGenerate = false,
   promptVariablesEnabled = false,
   initialGenerationJobId,
@@ -191,10 +192,12 @@ export default function ItemDetailModal({
   onOpenItem?: (id: string) => void;
   onOpenProviders: () => void;
   showMutations?: boolean;
+  showManagementActions?: boolean;
   canGenerate?: boolean;
   promptVariablesEnabled?: boolean;
   initialGenerationJobId?: string;
 }) {
+  const allowManagementActions = showMutations && showManagementActions;
   const [item, setItem] = useState<ItemDetail>();
   const [lang, setLang] = useState<string>(preferredLanguage);
   const [addingTag, setAddingTag] = useState(false);
@@ -468,18 +471,19 @@ export default function ItemDetailModal({
                   <button className="modal-icon-button mobile-hero-close" onClick={handleClose} aria-label={t('close')}>
                     <X size={20} strokeWidth={2.25} />
                   </button>
-                  {showMutations && (
+                  {(selectedImage || showMutations) && (
                     <span className="mobile-hero-primary-actions">
-                      <button className="modal-icon-button favorite-button" onClick={toggleFavorite} aria-label={item.favorite ? t('saved') : t('favorite')}>
+                      {selectedImage && <a className="modal-icon-button download-button" href={mediaUrl(selectedImage.original_path || imageHeroPath(selectedImage))} download={downloadFileName(displayTitle || item.title, selectedImage?.original_path || imageHeroPath(selectedImage))} aria-label="Download" title="Download"><Download size={18} /></a>}
+                      {allowManagementActions && <button className="modal-icon-button favorite-button" onClick={toggleFavorite} aria-label={item.favorite ? t('saved') : t('favorite')}>
                         <Heart size={18} fill={item.favorite ? 'currentColor' : 'none'} />
-                      </button>
-                      <button className="modal-icon-button edit-button" onClick={() => onEdit(item)} aria-label={t('edit')}>
+                      </button>}
+                      {showMutations && <button className="modal-icon-button edit-button" onClick={() => onEdit(item)} aria-label={t('edit')}>
                         <Pencil size={18} />
-                      </button>
-                      <button className="modal-icon-button detail-delete-button" onClick={() => onDelete?.(item)} aria-label={t('deleteReference')} title={t('deleteReference')}>
+                      </button>}
+                      {allowManagementActions && <button className="modal-icon-button detail-delete-button" onClick={() => onDelete?.(item)} aria-label={t('deleteReference')} title={t('deleteReference')}>
                         <Trash2 size={18} />
-                      </button>
-                      {canGenerate && <button className="modal-icon-button mobile-generate-variant-button" onClick={() => setGenerationOpen(true)} aria-label="Generate variant">
+                      </button>}
+                      {showMutations && canGenerate && <button className="modal-icon-button mobile-generate-variant-button" onClick={() => setGenerationOpen(true)} aria-label="Generate variant">
                         <Plus size={18} />
                         <span className="mobile-generate-variant-label">Generate variant</span>
                       </button>}
@@ -510,13 +514,13 @@ export default function ItemDetailModal({
                   <span className="detail-side-primary-actions">
                     {showMutations && canGenerate && <button className="secondary generate-variant-button" onClick={() => setGenerationOpen(true)}>Generate variant</button>}
                     {selectedImage && <a className="modal-icon-button download-button" href={mediaUrl(selectedImage.original_path || imageHeroPath(selectedImage))} download={downloadFileName(displayTitle || item.title, selectedImage?.original_path || imageHeroPath(selectedImage))} aria-label="Download" title="Download"><Download size={18} /></a>}
-                    {showMutations && <button className="modal-icon-button favorite-button" onClick={toggleFavorite} aria-label={item.favorite ? t('saved') : t('favorite')}>
+                    {allowManagementActions && <button className="modal-icon-button favorite-button" onClick={toggleFavorite} aria-label={item.favorite ? t('saved') : t('favorite')}>
                       <Heart size={18} fill={item.favorite ? 'currentColor' : 'none'} />
                     </button>}
                     {showMutations && <button className="modal-icon-button edit-button" onClick={() => onEdit(item)} aria-label={t('edit')}>
                       <Pencil size={18} />
                     </button>}
-                    {showMutations && <button className="modal-icon-button detail-delete-button" onClick={() => onDelete?.(item)} aria-label={t('deleteReference')} title={t('deleteReference')}>
+                    {allowManagementActions && <button className="modal-icon-button detail-delete-button" onClick={() => onDelete?.(item)} aria-label={t('deleteReference')} title={t('deleteReference')}>
                       <Trash2 size={18} />
                     </button>}
                   </span>
@@ -524,18 +528,18 @@ export default function ItemDetailModal({
                     <X size={20} strokeWidth={2.25} />
                   </button>
                 </div>
-                <InlineEditableField className="collection-inline-edit" value={item.cluster?.name || ''} placeholder={t('unclustered')} inputList="detail-collection-suggestions" onCommit={value => commitInlineUpdate({ cluster_name: value.trim() || null })} editable={showMutations}>
+                <InlineEditableField className="collection-inline-edit" value={item.cluster?.name || ''} placeholder={t('unclustered')} inputList="detail-collection-suggestions" onCommit={value => commitInlineUpdate({ cluster_name: value.trim() || null })} editable={allowManagementActions}>
                   <datalist id="detail-collection-suggestions">
                     {clusters.map(collection => <option key={collection.id} value={collection.name} />)}
                   </datalist>
                 </InlineEditableField>
                 <h2>
-                  <InlineEditableField className="title-inline-edit" value={showMutations ? item.title : (displayTitle || item.title)} placeholder={t('titlePlaceholder')} onCommit={value => commitInlineUpdate({ title: value.trim() || item.title })} editable={showMutations} />
+                  <InlineEditableField className="title-inline-edit" value={showMutations ? item.title : (displayTitle || item.title)} placeholder={t('titlePlaceholder')} onCommit={value => commitInlineUpdate({ title: value.trim() || item.title })} editable={allowManagementActions} />
                 </h2>
                 <p className="muted metadata-row">
-                  <InlineEditableField className="metadata-inline-edit" value={item.model || t('defaultModel')} placeholder={t('imageGeneratedFrom')} onCommit={value => commitInlineUpdate({ model: value.trim() || item.model })} editable={showMutations} />
+                  <InlineEditableField className="metadata-inline-edit" value={item.model || t('defaultModel')} placeholder={t('imageGeneratedFrom')} onCommit={value => commitInlineUpdate({ model: value.trim() || item.model })} editable={allowManagementActions} />
                   <span>·</span>
-                  <InlineEditableField className="metadata-inline-edit" value={`@${item.author || 'User'}`} placeholder="@User" onCommit={value => commitInlineUpdate({ author: value.replace(/^@/, '').trim() || 'User' })} editable={showMutations} />
+                  <InlineEditableField className="metadata-inline-edit" value={`@${item.author || 'User'}`} placeholder="@User" onCommit={value => commitInlineUpdate({ author: value.replace(/^@/, '').trim() || 'User' })} editable={allowManagementActions} />
                   {item.source_url && (
                     <a className="source-icon-link" href={item.source_url} target="_blank" rel="noreferrer" aria-label={t('source')}>
                       <ExternalLink size={16} />
@@ -572,13 +576,13 @@ export default function ItemDetailModal({
                             <button type="button" className="prompt-copy-icon" onClick={() => handleCopyPrompt(prompt?.text || '')} aria-label={t('copyPrompt')} disabled={!prompt?.text}>
                               <Copy size={15} />
                             </button>
-                            {showMutations && <button type="button" className="prompt-edit-icon" onClick={() => startPromptEdit(lang, prompt?.text || '')} aria-label={t('edit')}>
+                            {allowManagementActions && <button type="button" className="prompt-edit-icon" onClick={() => startPromptEdit(lang, prompt?.text || '')} aria-label={t('edit')}>
                               <Pencil size={15} />
                             </button>}
                           </span>
                         </header>
                         <div className="prompt-panel-body">
-                          {editingPromptLanguage === lang ? (
+                          {allowManagementActions && editingPromptLanguage === lang ? (
                             <>
                               <textarea
                                 className="prompt-edit-textarea"
@@ -597,7 +601,7 @@ export default function ItemDetailModal({
                               </span>
                             </>
                           ) : (
-                            <div className={`prompt-inline-edit ${prompt?.text ? '' : 'notes-empty'} ${showMutations ? '' : 'is-read-only'}`} onDoubleClick={() => { if (showMutations) startPromptEdit(lang, prompt?.text || ''); }} tabIndex={showMutations ? 0 : undefined} onKeyDown={event => { if (showMutations && event.key === 'Enter') startPromptEdit(lang, prompt?.text || ''); }}>
+                            <div className={`prompt-inline-edit ${prompt?.text ? '' : 'notes-empty'} ${allowManagementActions ? '' : 'is-read-only'}`} onDoubleClick={() => { if (allowManagementActions) startPromptEdit(lang, prompt?.text || ''); }} tabIndex={allowManagementActions ? 0 : undefined} onKeyDown={event => { if (allowManagementActions && event.key === 'Enter') startPromptEdit(lang, prompt?.text || ''); }}>
                               {prompt?.text ? <p>{prompt.text}</p> : <span className="add-note-affordance">{t('promptText')}</span>}
                             </div>
                           )}
@@ -607,13 +611,13 @@ export default function ItemDetailModal({
                   })()}
                 </div>
 
-                <InlineEditableTextArea className="notes-inline-edit" value={item.notes || ''} placeholder={t('addNote')} onCommit={value => commitInlineUpdate({ notes: value.trim() || null })} editable={showMutations} />
+                <InlineEditableTextArea className="notes-inline-edit" value={item.notes || ''} placeholder={t('addNote')} onCommit={value => commitInlineUpdate({ notes: value.trim() || null })} editable={allowManagementActions} />
 
                 <div className="tags detail-tags">
                   {item.tags.map(tag => (
-                    <span className="detail-tag-chip" key={tag.id}>#{tag.name}{showMutations && <button type="button" className="tag-unlink-button" onClick={() => unlinkTag(tag.name)} aria-label={`Remove ${tag.name}`}><X size={12} /></button>}</span>
+                    <span className="detail-tag-chip" key={tag.id}>#{tag.name}{allowManagementActions && <button type="button" className="tag-unlink-button" onClick={() => unlinkTag(tag.name)} aria-label={`Remove ${tag.name}`}><X size={12} /></button>}</span>
                   ))}
-                  {showMutations && (addingTag ? (
+                  {allowManagementActions && (addingTag ? (
                     <span className="tag-add-popover">
                       <input className="tag-add-input" autoFocus value={tagQuery} onChange={event => setTagQuery(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') addTag(tagQuery); if (event.key === 'Escape') setAddingTag(false); }} placeholder={t('tags')} />
                       <button type="button" className="inline-edit-confirm" onClick={() => addTag(tagQuery)}><Check size={12} /></button>
