@@ -165,7 +165,10 @@ def test_local_release_root_is_authoritative_and_auto_discovery_is_stable(tmp_pa
     assert latest_complete_release() is None
 
 
-@pytest.mark.parametrize("version", ["v1.02.3", "v1.2.3-01", "v1.2.3-a..b", "v1.2.3+foo..bar"])
+@pytest.mark.parametrize(
+    "version",
+    ["1.2.3", "v1.02.3", "v1.2.3-01", "v1.2.3-a..b", "v1.2.3+foo", "v1.2.3+foo..bar"],
+)
 def test_update_version_rejects_non_semver_forms(version):
     from backend.routers.app_updates import validate_version
 

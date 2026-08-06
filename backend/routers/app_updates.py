@@ -25,9 +25,9 @@ router = APIRouter(tags=["app-updates"])
 SEMVER_NUMBER = r"(?:0|[1-9]\d*)"
 SEMVER_PRERELEASE_ID = rf"(?:{SEMVER_NUMBER}|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
 RELEASE_RE = re.compile(
-    rf"^v?({SEMVER_NUMBER})\.({SEMVER_NUMBER})\.({SEMVER_NUMBER})"
+    rf"^v({SEMVER_NUMBER})\.({SEMVER_NUMBER})\.({SEMVER_NUMBER})"
     rf"(?:-({SEMVER_PRERELEASE_ID}(?:\.{SEMVER_PRERELEASE_ID})*))?"
-    r"(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$"
+    r"$"
 )
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 DEFAULT_RELEASE_BASE_URL = "https://github.com/EddieTYP/image-prompt-library/releases/download"
