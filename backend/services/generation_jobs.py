@@ -541,12 +541,47 @@ class GenerationJobRepository:
             conn.commit()
         return self.get_generation_set(generation_group_id)
 
-    def _generation_set_from_rows(self, group, rows) -> GenerationJobSetRecord:
+    @staticmethod
+    def _current_generation_set_records(records: list[GenerationJobRecord]) -> list[GenerationJobRecord]:
+        records_by_id = {record.id: record for record in records}
+        valid_replacements: dict[str, str] = {}
+        for record in records:
+            replacement_id = record.metadata.get("retried_by_generation_job_id")
+            if (
+                record.status not in {"failed", "discarded"}
+                or not isinstance(replacement_id, str)
+                or not record.generation_group_id
+                or not isinstance(record.generation_group_index, int)
+                or record.generation_group_index < 1
+            ):
+                continue
+            replacement = records_by_id.get(replacement_id)
+            if (
+                replacement is None
+                or replacement.metadata.get("retry_of_generation_job_id") != record.id
+                or replacement.generation_group_id != record.generation_group_id
+                or replacement.generation_group_index != record.generation_group_index
+            ):
+                continue
+            valid_replacements[record.id] = replacement.id
+
+        superseded_ids: set[str] = set()
+        for record_id in valid_replacements:
+            chain: set[str] = set()
+            current_id = record_id
+            while current_id in valid_replacements:
+                if current_id in chain:
+                    chain.clear()
+                    break
+                chain.add(current_id)
+                current_id = valid_replacements[current_id]
+            superseded_ids.update(chain)
+        return [record for record in records if record.id not in superseded_ids]
+
+    def _generation_set_from_rows(self, group, rows, *, include_jobs: bool = True) -> GenerationJobSetRecord:
         counts = {status: 0 for status in ("queued", "running", "succeeded", "failed", "accepted", "discarded", "cancelled")}
-        jobs = []
-        for row in rows:
-            record = self._record_from_row(row)
-            jobs.append(record)
+        jobs = [self._record_from_row(row) for row in rows]
+        for record in self._current_generation_set_records(jobs):
             counts[record.status] = counts.get(record.status, 0) + 1
         total = int(group["total"])
         completed = counts["succeeded"] + counts["failed"] + counts["accepted"] + counts["discarded"] + counts["cancelled"]
@@ -564,27 +599,7 @@ class GenerationJobRepository:
             cancelled=counts["cancelled"],
             completed=completed,
             remaining=max(0, total - completed),
-            jobs=jobs,
-        )
-
-    def _generation_set_summary_from_row(self, row) -> GenerationJobSetRecord:
-        total = int(row["total"])
-        completed = sum(int(row[status]) for status in ("succeeded", "failed", "accepted", "discarded", "cancelled"))
-        return GenerationJobSetRecord(
-            generation_group_id=row["generation_group_id"],
-            provider=row["provider"],
-            created_at=row["created_at"],
-            total=total,
-            queued=int(row["queued"]),
-            running=int(row["running"]),
-            succeeded=int(row["succeeded"]),
-            failed=int(row["failed"]),
-            accepted=int(row["accepted"]),
-            discarded=int(row["discarded"]),
-            cancelled=int(row["cancelled"]),
-            completed=completed,
-            remaining=max(0, total - completed),
-            jobs=[],
+            jobs=jobs if include_jobs else [],
         )
 
     def list_jobs(
@@ -618,12 +633,18 @@ class GenerationJobRepository:
             ))
             visibility = []
             summary_params: list[object] = []
-            summary_where = ""
-            if source_item_id is not None:
-                summary_where = "WHERE jobs.source_item_id=?"
-                summary_params.append(source_item_id)
             if status is None:
-                visibility.append("SUM(CASE WHEN jobs.status IN ('queued', 'running') THEN 1 ELSE 0 END) > 0")
+                source_filter = " AND jobs.source_item_id=?" if source_item_id is not None else ""
+                visibility.append(
+                    "EXISTS ("
+                    "SELECT 1 FROM generation_jobs AS jobs "
+                    "WHERE jobs.generation_group_id=sets.generation_group_id "
+                    "AND jobs.status IN ('queued', 'running')"
+                    f"{source_filter}"
+                    ")"
+                )
+                if source_item_id is not None:
+                    summary_params.append(source_item_id)
             if page_group_ids:
                 visibility.append(f"sets.generation_group_id IN ({','.join('?' for _ in page_group_ids)})")
                 summary_params.extend(page_group_ids)
@@ -634,28 +655,49 @@ class GenerationJobRepository:
                         sets.generation_group_id,
                         sets.provider,
                         sets.created_at,
-                        sets.total,
-                        SUM(CASE WHEN jobs.status='queued' THEN 1 ELSE 0 END) AS queued,
-                        SUM(CASE WHEN jobs.status='running' THEN 1 ELSE 0 END) AS running,
-                        SUM(CASE WHEN jobs.status='succeeded' THEN 1 ELSE 0 END) AS succeeded,
-                        SUM(CASE WHEN jobs.status='failed' THEN 1 ELSE 0 END) AS failed,
-                        SUM(CASE WHEN jobs.status='accepted' THEN 1 ELSE 0 END) AS accepted,
-                        SUM(CASE WHEN jobs.status='discarded' THEN 1 ELSE 0 END) AS discarded,
-                        SUM(CASE WHEN jobs.status='cancelled' THEN 1 ELSE 0 END) AS cancelled
+                        sets.total
                     FROM generation_sets AS sets
-                    JOIN generation_jobs AS jobs
-                      ON jobs.generation_group_id = sets.generation_group_id
-                    {summary_where}
-                    GROUP BY sets.generation_group_id, sets.provider, sets.created_at, sets.total
-                    HAVING {' OR '.join(visibility)}
+                    WHERE {' OR '.join(visibility)}
                     ORDER BY sets.created_at DESC
                     """,
                     summary_params,
                 ).fetchall()
+                summary_group_ids = [row["generation_group_id"] for row in set_rows]
+                if summary_group_ids:
+                    set_job_rows = []
+                    for start in range(0, len(summary_group_ids), 500):
+                        group_id_chunk = summary_group_ids[start:start + 500]
+                        group_job_params: list[object] = list(group_id_chunk)
+                        group_job_filter = ""
+                        if source_item_id is not None:
+                            group_job_filter = " AND source_item_id=?"
+                            group_job_params.append(source_item_id)
+                        set_job_rows.extend(conn.execute(
+                            f"""
+                            SELECT * FROM generation_jobs
+                            WHERE generation_group_id IN ({','.join('?' for _ in group_id_chunk)})
+                            {group_job_filter}
+                            ORDER BY generation_group_id, generation_group_index ASC, created_at ASC
+                            """,
+                            group_job_params,
+                        ).fetchall())
+                else:
+                    set_job_rows = []
             else:
                 set_rows = []
+                set_job_rows = []
         jobs = [self._record_from_row(row) for row in rows]
-        generation_sets = [self._generation_set_summary_from_row(row) for row in set_rows]
+        set_jobs_by_group: dict[str, list[object]] = {}
+        for row in set_job_rows:
+            set_jobs_by_group.setdefault(row["generation_group_id"], []).append(row)
+        generation_sets = [
+            self._generation_set_from_rows(
+                row,
+                set_jobs_by_group.get(row["generation_group_id"], []),
+                include_jobs=False,
+            )
+            for row in set_rows
+        ]
         status_counts = {
             "queued": 0,
             "running": 0,

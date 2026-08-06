@@ -320,7 +320,7 @@ test('work queue batch previews exclude stale terminal result paths', () => {
   assert.equal(group.previewOverflow, 0);
 });
 
-test('work queue batch counts collapse every retry ancestor without double-counting grouped replacements', () => {
+test('work queue batch counts trust canonical backend counts for grouped retry replacements', () => {
   const groupFields = { generation_group_id: 'group', generation_group_size: 3 };
   const jobs = [
     { id: 'slot-1', status: 'succeeded', generation_group_index: 1, metadata: {}, ...groupFields },
@@ -338,16 +338,17 @@ test('work queue batch counts collapse every retry ancestor without double-count
     queued: 1,
     running: 0,
     succeeded: 1,
-    failed: 2,
+    failed: 0,
     accepted: 1,
     discarded: 0,
     cancelled: 0,
-    completed: 4,
-    remaining: 0,
+    completed: 2,
+    remaining: 1,
     jobs: [],
   });
 
   assert.deepEqual(group.jobs.map(job => job.id), ['slot-1', 'retry-2', 'slot-3']);
+  assert.deepEqual(group.retryAdjustments, []);
   assert.deepEqual(counts, {
     total: 3,
     active: 1,
@@ -453,7 +454,7 @@ test('work queue batch counts replace a paginated-out failed retry ancestor', ()
   });
 });
 
-test('work queue batch counts collapse a loaded retry parent and its paginated-out original', () => {
+test('work queue batch counts do not readjust canonical grouped retry counts', () => {
   const groupFields = { generation_group_id: 'group', generation_group_index: 2, generation_group_size: 3 };
   const jobs = [
     {
@@ -482,12 +483,12 @@ test('work queue batch counts collapse a loaded retry parent and its paginated-o
     queued: 1,
     running: 0,
     succeeded: 1,
-    failed: 2,
+    failed: 0,
     accepted: 1,
     discarded: 0,
     cancelled: 0,
-    completed: 4,
-    remaining: 0,
+    completed: 2,
+    remaining: 1,
     jobs: [],
   });
 
@@ -503,7 +504,7 @@ test('work queue batch counts collapse a loaded retry parent and its paginated-o
   });
 });
 
-test('work queue batch counts collapse fully paginated retry ancestors when every slot is represented', () => {
+test('work queue batch counts keep canonical counts when retry ancestors are paginated out', () => {
   const groupFields = { generation_group_id: 'group', generation_group_size: 3 };
   const jobs = [
     { id: 'slot-1', status: 'succeeded', generation_group_index: 1, metadata: {}, ...groupFields },
@@ -525,11 +526,11 @@ test('work queue batch counts collapse fully paginated retry ancestors when ever
     queued: 0,
     running: 0,
     succeeded: 2,
-    failed: 2,
+    failed: 0,
     accepted: 1,
     discarded: 0,
     cancelled: 0,
-    completed: 5,
+    completed: 3,
     remaining: 0,
     jobs: [],
   });
@@ -576,6 +577,33 @@ test('work queue batch counts keep an omitted legacy ancestor when retry metadat
 
   assert.equal(counts.active, 1);
   assert.equal(counts.failed, 1);
+});
+
+test('work queue keeps malformed cross-group retry ancestors visible', () => {
+  const jobs = [
+    {
+      id: 'group-one-original',
+      status: 'failed',
+      generation_group_id: 'group-one',
+      generation_group_index: 1,
+      generation_group_size: 3,
+      metadata: { retried_by_generation_job_id: 'group-two-retry' },
+    },
+    {
+      id: 'group-two-retry',
+      status: 'queued',
+      generation_group_id: 'group-two',
+      generation_group_index: 1,
+      generation_group_size: 3,
+      metadata: { retry_of_generation_job_id: 'group-one-original' },
+    },
+  ];
+
+  const groups = groupGenerationQueueJobs(jobs);
+  assert.deepEqual(groups.map(group => [group.generationGroupId, group.jobs.map(job => job.id)]), [
+    ['group-one', ['group-one-original']],
+    ['group-two', ['group-two-retry']],
+  ]);
 });
 
 test('generation review rehydrates a queue-opened batch context and mapped retry chain', async () => {

@@ -2664,6 +2664,91 @@ def test_generation_job_set_progress_and_cancel_preserve_terminal_results(tmp_pa
     assert (cancelled.failed, cancelled.succeeded, cancelled.cancelled, cancelled.completed, cancelled.remaining) == (1, 1, 1, 3, 0)
 
 
+def test_generation_job_set_retry_counts_only_the_current_slot_attempt(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    created = repo.create_job_set(GenerationJobCreate(provider="test_provider", prompt_text="variant"), 3)
+    for job in created.jobs:
+        repo.mark_failed(job.id, "safe failure")
+
+    retry = repo.retry_failed_job(created.jobs[1].id)
+    progress = repo.get_generation_set(created.generation_group_id)
+    summary = next(group for group in repo.list_jobs().generation_sets if group.generation_group_id == created.generation_group_id)
+
+    assert retry.generation_group_index == 2
+    assert len(progress.jobs) == 4
+    assert (progress.queued, progress.failed, progress.completed, progress.remaining) == (1, 2, 2, 1)
+    assert (summary.queued, summary.failed, summary.completed, summary.remaining) == (1, 2, 2, 1)
+    assert summary.jobs == []
+
+    cancelled = repo.cancel_generation_set(created.generation_group_id)
+    assert (cancelled.queued, cancelled.failed, cancelled.cancelled, cancelled.completed, cancelled.remaining) == (0, 2, 1, 3, 0)
+
+
+def test_generation_job_set_multi_retry_chain_keeps_total_and_slot_position(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    created = repo.create_job_set(GenerationJobCreate(provider="test_provider", prompt_text="variant"), 3)
+    for job in created.jobs:
+        repo.mark_failed(job.id, "safe failure")
+
+    first_retry = repo.retry_failed_job(created.jobs[1].id)
+    repo.mark_failed(first_retry.id, "safe retry failure")
+    second_retry = repo.retry_failed_job(first_retry.id)
+    repo.stage_result(second_retry.id, png_bytes(), "result.png")
+
+    progress = repo.get_generation_set(created.generation_group_id)
+    summary = next(group for group in repo.list_jobs().generation_sets if group.generation_group_id == created.generation_group_id)
+    assert len(progress.jobs) == 5
+    assert second_retry.generation_group_index == created.jobs[1].generation_group_index
+    assert (progress.succeeded, progress.failed, progress.completed, progress.remaining) == (1, 2, 3, 0)
+    assert (summary.succeeded, summary.failed, summary.completed, summary.remaining) == (1, 2, 3, 0)
+
+
+def test_generation_job_set_discard_retry_replaces_the_discarded_slot(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    created = repo.create_job_set(GenerationJobCreate(provider="test_provider", prompt_text="variant"), 3)
+    staged = repo.stage_result(created.jobs[1].id, png_bytes(), "result.png")
+
+    retried = repo.discard_and_retry_job(staged.id)
+    progress = repo.get_generation_set(created.generation_group_id)
+
+    assert retried.retry_job.generation_group_index == 2
+    assert len(progress.jobs) == 4
+    assert (progress.queued, progress.discarded, progress.completed, progress.remaining) == (3, 0, 0, 3)
+
+
+def test_generation_job_set_keeps_terminal_slot_when_retry_link_is_dangling(tmp_path):
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    created = repo.create_job_set(GenerationJobCreate(provider="test_provider", prompt_text="variant"), 3)
+    failed = repo.mark_failed(created.jobs[1].id, "safe failure")
+    with connect(library) as conn:
+        metadata = {**failed.metadata, "retried_by_generation_job_id": "gen_missing"}
+        conn.execute("UPDATE generation_jobs SET metadata=? WHERE id=?", (json.dumps(metadata), failed.id))
+        conn.commit()
+
+    progress = repo.get_generation_set(created.generation_group_id)
+    assert (progress.queued, progress.failed, progress.completed, progress.remaining) == (2, 1, 1, 2)
+
+
+def test_generation_job_set_does_not_hide_a_malformed_retry_cycle(tmp_path):
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    created = repo.create_job_set(GenerationJobCreate(provider="test_provider", prompt_text="variant"), 3)
+    original = repo.mark_failed(created.jobs[1].id, "safe failure")
+    retry = repo.retry_failed_job(original.id)
+    retry = repo.mark_failed(retry.id, "safe retry failure")
+    with connect(library) as conn:
+        original_metadata = {**repo.get_job(original.id).metadata, "retry_of_generation_job_id": retry.id}
+        retry_metadata = {**retry.metadata, "retried_by_generation_job_id": original.id}
+        conn.execute("UPDATE generation_jobs SET metadata=? WHERE id=?", (json.dumps(original_metadata), original.id))
+        conn.execute("UPDATE generation_jobs SET metadata=? WHERE id=?", (json.dumps(retry_metadata), retry.id))
+        conn.commit()
+
+    progress = repo.get_generation_set(created.generation_group_id)
+    assert len(progress.jobs) == 4
+    assert (progress.queued, progress.failed, progress.completed, progress.remaining) == (2, 2, 2, 1)
+
+
 def test_provider_rate_limit_backoff_is_durable_and_simultaneous_incidents_do_not_multiply(tmp_path):
     library = tmp_path / "library"
     repo = GenerationJobRepository(library)

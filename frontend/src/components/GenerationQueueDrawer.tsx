@@ -61,7 +61,16 @@ export function groupGenerationQueueJobs(jobs: GenerationJobRecord[], previewLim
     const resolution = resolveGenerationRetryGroup(job, jobs);
     if (!resolution) return;
     retryResolutions.set(job.id, resolution);
-    resolution.ancestorIds.forEach(ancestorId => supersededOriginalIds.add(ancestorId));
+    resolution.ancestorIds.forEach(ancestorId => {
+      const ancestor = jobsById.get(ancestorId);
+      const mappedAncestor = ancestor ? mapGenerationRetryJob(ancestor) : undefined;
+      if (mappedAncestor
+        && mappedAncestor.generation_group_id === resolution.fields.generation_group_id
+        && mappedAncestor.generation_group_index === resolution.fields.generation_group_index
+        && mappedAncestor.generation_group_size === resolution.fields.generation_group_size) {
+        supersededOriginalIds.add(ancestorId);
+      }
+    });
   });
   const associatedJobs = jobs
     .filter(job => !supersededOriginalIds.has(job.id))
@@ -82,7 +91,10 @@ export function groupGenerationQueueJobs(jobs: GenerationJobRecord[], previewLim
     const adjustedAncestorIds = new Set<string>();
     const retryAdjustments = groupedJobs.flatMap(job => {
       const resolution = retryResolutions.get(job.id);
-      if (!resolution) return [];
+      // Current backend rows carry physical group fields and are already
+      // collapsed by logical retry slot. Only compensate legacy replacements
+      // that the backend generation-set aggregate cannot associate.
+      if (!resolution || backendCountedJobIds.has(job.id)) return [];
       const adjustments: GenerationQueueBatchCard['retryAdjustments'] = resolution.ancestorIds.flatMap(ancestorId => {
         const ancestor = jobsById.get(ancestorId);
         if (ancestor?.generation_group_id !== generationGroupId || adjustedAncestorIds.has(ancestorId)) return [];
@@ -101,9 +113,7 @@ export function groupGenerationQueueJobs(jobs: GenerationJobRecord[], previewLim
         adjustedAncestorIds.add(omittedAncestorId);
         adjustments.push({ status: omittedAncestorStatus, delta: -1 });
       }
-      if (!backendCountedJobIds.has(job.id)) {
-        adjustments.push({ status: job.status, delta: 1 });
-      }
+      adjustments.push({ status: job.status, delta: 1 });
       return adjustments;
     });
     return {
