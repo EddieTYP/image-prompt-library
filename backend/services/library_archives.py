@@ -12,6 +12,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import shutil
 import sqlite3
 import stat
@@ -26,6 +27,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO, Iterator
 
 from backend import config, db
+from backend.services.generation_jobs import sanitize_generation_error, sanitize_generation_parameters
 
 ARCHIVE_FORMAT = "image-prompt-library"
 ARCHIVE_VERSION = 1
@@ -48,6 +50,8 @@ REQUIRED_STORAGE_ROOTS = (
     "generation-results",
     "generation-references",
 )
+
+_INTERNAL_ACCEPT_CLAIM_TOKEN_RE = re.compile(r"accept_[0-9a-f]{16}")
 
 # Limits are intentionally conservative enough to avoid archive bombs while
 # allowing normal personal libraries.  Tests and packaged callers may inspect
@@ -404,6 +408,7 @@ def _validate_database(path: Path, *, library: Path | None = None) -> list[str]:
             raise _error("SQLite foreign_key_check failed")
         ledger = _migration_ledger(conn)
         _validate_schema_contract(conn, ledger)
+        _validate_no_stored_credentials(conn)
         if library is not None:
             _validate_referenced_paths(conn, library)
         return ledger
@@ -414,6 +419,58 @@ def _validate_database(path: Path, *, library: Path | None = None) -> list[str]:
     finally:
         if conn is not None:
             conn.close()
+
+
+def _validate_no_stored_credentials(conn: sqlite3.Connection) -> None:
+    """Reject archives that would copy credential-shaped legacy JSON."""
+
+    for table, column in (
+        ("generation_jobs", "parameters"),
+        ("generation_jobs", "metadata"),
+        ("prompts", "provenance"),
+    ):
+        columns = {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            continue
+        for row in conn.execute(f"SELECT {column} FROM {table} WHERE {column} IS NOT NULL AND {column} != ''"):
+            try:
+                payload = json.loads(row[0])
+            except (TypeError, ValueError) as exc:
+                raise _error(f"Library database contains invalid JSON in {table}.{column}") from exc
+            if not isinstance(payload, dict):
+                raise _error(f"Library database contains invalid JSON in {table}.{column}")
+            inspected_payload = payload
+            if table == "generation_jobs" and column == "metadata":
+                inspected_payload = dict(payload)
+                claim = inspected_payload.get("_generation_accept_claim")
+                if isinstance(claim, dict):
+                    valid_internal_claim = (
+                        set(claim) == {"token", "mode"}
+                        and isinstance(claim.get("token"), str)
+                        and _INTERNAL_ACCEPT_CLAIM_TOKEN_RE.fullmatch(claim["token"]) is not None
+                        and claim.get("mode") in {"existing_item", "new_item"}
+                    )
+                    if not valid_internal_claim:
+                        raise _error(
+                            "Library database contains an invalid internal generation acceptance claim; "
+                            "remove the affected generation record before creating a backup"
+                        )
+                    inspected_payload["_generation_accept_claim"] = {"mode": claim["mode"]}
+            if sanitize_generation_parameters(inspected_payload) != inspected_payload:
+                raise _error(
+                    f"Library database contains legacy credential-like data in {table}.{column}; "
+                    "remove the affected generation record before creating a backup"
+                )
+
+    generation_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(generation_jobs)")}
+    if "error" in generation_columns:
+        for row in conn.execute("SELECT error FROM generation_jobs WHERE error IS NOT NULL AND error != ''"):
+            raw_error = str(row[0])
+            if sanitize_generation_error(raw_error) != raw_error[:1000]:
+                raise _error(
+                    "Library database contains a legacy credential-like generation error; "
+                    "remove the affected generation record before creating a backup"
+                )
 
 
 def _validate_referenced_paths(conn: sqlite3.Connection, library: Path) -> None:

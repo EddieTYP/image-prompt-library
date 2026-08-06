@@ -6,6 +6,7 @@ from pathlib import Path
 from contextlib import suppress
 from .db import connect, init_db
 from .schemas import ClusterRecord, ImageRecord, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemList, ItemSummary, ItemUpdate, PromptIn, PromptRecord, TagRecord
+from .services.credential_safety import sanitize_structured_credentials
 from .services.search_query import parse_item_search_query
 from .services.text_normalize import to_traditional
 
@@ -205,7 +206,10 @@ class ItemRepository:
                 prompt.text,
                 int(is_primary),
                 int(prompt.is_original),
-                json.dumps(prompt.provenance or {}, ensure_ascii=False),
+                json.dumps(
+                    sanitize_structured_credentials(prompt.provenance or {}, redact_image_data=True),
+                    ensure_ascii=False,
+                ),
                 timestamp,
                 timestamp,
             ),
@@ -413,7 +417,10 @@ class ItemRepository:
             provenance = data.get("provenance")
             if isinstance(provenance, str) and provenance.strip():
                 try:
-                    data["provenance"] = json.loads(provenance)
+                    data["provenance"] = sanitize_structured_credentials(
+                        json.loads(provenance),
+                        redact_image_data=True,
+                    )
                 except json.JSONDecodeError:
                     data["provenance"] = {}
             else:
@@ -512,7 +519,7 @@ class ItemRepository:
             rows = conn.execute("""SELECT c.*, COUNT(i.id) count FROM clusters c LEFT JOIN items i ON i.cluster_id=c.id AND i.archived=0 GROUP BY c.id HAVING count > 0 ORDER BY c.sort_order, c.name""").fetchall()
             out=[]
             for r in rows:
-                previews = [x[0] for x in conn.execute("""SELECT COALESCE(img.thumb_path,img.preview_path,img.original_path)
+                preview_rows = conn.execute("""SELECT i.id AS item_id, COALESCE(img.thumb_path,img.preview_path,img.original_path) AS preview_path
                     FROM images img JOIN items i ON i.id=img.item_id
                     WHERE i.cluster_id=? AND i.archived=0
                       AND NOT EXISTS (
@@ -523,8 +530,18 @@ class ItemRepository:
                           OR (CASE better.role WHEN 'result_image' THEN 0 ELSE 1 END = CASE img.role WHEN 'result_image' THEN 0 ELSE 1 END AND better.sort_order = img.sort_order AND better.created_at < img.created_at)
                         )
                       )
-                    ORDER BY CASE img.role WHEN 'result_image' THEN 0 ELSE 1 END, img.sort_order LIMIT 4""",(r["id"],)).fetchall() if x[0]]
-                out.append(ClusterRecord(id=r["id"], name=r["name"], names=self._cluster_names_from_row(r), description=r["description"], sort_order=r["sort_order"], count=r["count"], preview_images=previews))
+                    ORDER BY CASE img.role WHEN 'result_image' THEN 0 ELSE 1 END, img.sort_order LIMIT 4""",(r["id"],)).fetchall()
+                preview_rows = [row for row in preview_rows if row["preview_path"]]
+                out.append(ClusterRecord(
+                    id=r["id"],
+                    name=r["name"],
+                    names=self._cluster_names_from_row(r),
+                    description=r["description"],
+                    sort_order=r["sort_order"],
+                    count=r["count"],
+                    preview_images=[row["preview_path"] for row in preview_rows],
+                    preview_item_ids=[row["item_id"] for row in preview_rows],
+                ))
             return out
 
     def list_tags(self) -> list[TagRecord]:

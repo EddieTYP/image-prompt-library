@@ -1,9 +1,10 @@
 export type ViewMode = 'explore' | 'cards';
+export type AppearancePreset = 'gallery_vermilion' | 'pine_archive' | 'aubergine_ink';
 export type UploadImageRole = 'result_image' | 'reference_image';
 export type UiLanguage = 'zh_hant' | 'zh_hans' | 'en';
 export interface PromptRecord { id: string; item_id: string; language: string; text: string; is_primary: boolean; is_original?: boolean; provenance?: Record<string, unknown> }
 export interface ImageRecord { id: string; item_id: string; original_path: string; thumb_path?: string; preview_path?: string; width?: number; height?: number; role?: UploadImageRole }
-export interface ClusterRecord { id: string; name: string; names?: Partial<Record<UiLanguage, string>>; description?: string; count: number; preview_images: string[] }
+export interface ClusterRecord { id: string; name: string; names?: Partial<Record<UiLanguage, string>>; description?: string; count: number; preview_images: string[]; preview_item_ids?: string[] }
 export interface TagRecord { id: string; name: string; kind: string; count: number }
 export interface AppConfig { version: string; library_path: string; database_path: string; preferred_prompt_language?: string; features?: { camelot?: { percival?: boolean } } }
 export interface AppUpdateStatus { current_version: string; latest_version?: string | null; update_available: boolean; release_url?: string | null; update_command?: string | null; checked_at: string; error?: string | null; update_capability: 'in_app' | 'command_only' | 'source' | string; update_reason?: string | null; service_mode: string; active_generation_jobs: { running: number; queued: number }; can_restart: boolean; requires_manual_restart: boolean }

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
 import { Check, Copy, Download, ExternalLink, Heart, Maximize2, Pencil, Plus, Trash2, X } from 'lucide-react';
-import GenerationPanel from './GenerationPanel';
 import { api, mediaUrl } from '../api/client';
+import { focusFirstAvailable } from '../hooks/useModalFocus';
 import type { ClusterRecord, ImageRecord, ItemDetail, PromptRecord, TagRecord, UiLanguage } from '../types';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { localizedDemoTitle } from '../utils/demoTitles';
-import { downloadFileName, imageDisplayPath, imageHeroPath, imageOriginalPath, selectPrimaryImage } from '../utils/images';
+import { downloadFileName, imageDisplayPath, imageHeroPath, imageOriginalPath, imageThumbnailPath, selectPrimaryImage } from '../utils/images';
 import type { Translator } from '../utils/i18n';
 import { PROMPT_LANGUAGE_LABELS, resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage, type PromptLanguage } from '../utils/prompts';
 
@@ -57,6 +57,7 @@ function resolveInitialPromptLanguage(prompts: PromptRecord[], preferredLanguage
 }
 
 function InlineEditableField({
+  t,
   className,
   value,
   placeholder,
@@ -65,6 +66,7 @@ function InlineEditableField({
   editable = true,
   children,
 }: {
+  t: Translator;
   className: string;
   value: string;
   placeholder?: string;
@@ -94,8 +96,8 @@ function InlineEditableField({
         />
         {children}
         <span className="inline-edit-controls">
-          <button type="button" className="inline-edit-confirm" onClick={confirm} aria-label="Confirm edit"><Check size={14} /></button>
-          <button type="button" className="inline-edit-cancel" onClick={cancel} aria-label="Cancel edit"><X size={14} /></button>
+          <button type="button" className="inline-edit-confirm" onClick={confirm} aria-label={t('confirmEdit')}><Check size={14} /></button>
+          <button type="button" className="inline-edit-cancel" onClick={cancel} aria-label={t('cancelEdit')}><X size={14} /></button>
         </span>
       </span>
     );
@@ -111,12 +113,14 @@ function InlineEditableField({
 }
 
 function InlineEditableTextArea({
+  t,
   className,
   value,
   placeholder,
   onCommit,
   editable = true,
 }: {
+  t: Translator;
   className: string;
   value: string;
   placeholder?: string;
@@ -142,8 +146,8 @@ function InlineEditableTextArea({
           }}
         />
         <span className="inline-edit-controls">
-          <button type="button" className="inline-edit-confirm" onClick={confirm} aria-label="Confirm edit"><Check size={14} /></button>
-          <button type="button" className="inline-edit-cancel" onClick={cancel} aria-label="Cancel edit"><X size={14} /></button>
+          <button type="button" className="inline-edit-confirm" onClick={confirm} aria-label={t('confirmEdit')}><Check size={14} /></button>
+          <button type="button" className="inline-edit-cancel" onClick={cancel} aria-label={t('cancelEdit')}><X size={14} /></button>
         </span>
       </div>
     );
@@ -171,12 +175,10 @@ export default function ItemDetailModal({
   onChanged,
   onDelete,
   onOpenItem,
-  onOpenProviders,
+  onGenerate,
   showMutations = true,
   showManagementActions = true,
   canGenerate = false,
-  promptVariablesEnabled = false,
-  initialGenerationJobId,
 }: {
   id?: string;
   t: Translator;
@@ -188,30 +190,34 @@ export default function ItemDetailModal({
   onCopyPrompt: (success: boolean) => void;
   onEdit: (item: ItemDetail) => void;
   onChanged: () => void;
-  onDelete?: (item: ItemDetail) => void;
+  onDelete?: (item: ItemDetail) => void | Promise<void>;
   onOpenItem?: (id: string) => void;
-  onOpenProviders: () => void;
+  onGenerate: (item: ItemDetail) => void;
   showMutations?: boolean;
   showManagementActions?: boolean;
   canGenerate?: boolean;
-  promptVariablesEnabled?: boolean;
-  initialGenerationJobId?: string;
 }) {
   const allowManagementActions = showMutations && showManagementActions;
   const [item, setItem] = useState<ItemDetail>();
+  const [loadError, setLoadError] = useState<string>();
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [lang, setLang] = useState<string>(preferredLanguage);
   const [addingTag, setAddingTag] = useState(false);
+  const [inlineMutationBusy, setInlineMutationBusy] = useState(false);
+  const inlineMutationBusyRef = useRef(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [tagQuery, setTagQuery] = useState('');
   const [editingPromptLanguage, setEditingPromptLanguage] = useState<string>();
   const [promptDraft, setPromptDraft] = useState('');
-  const [generationOpen, setGenerationOpen] = useState(false);
   const [selectedImageId, setSelectedImageId] = useState<string>();
-  const [toast, setToast] = useState<{ message: string; actionLabel?: string; item?: ItemDetail }>();
   const [isClosing, setIsClosing] = useState(false);
   const [isHeroFullscreen, setIsHeroFullscreen] = useState(false);
   const lastDefaultPromptKeyRef = useRef('');
   const heroImageRef = useRef<HTMLImageElement | null>(null);
   const heroFullscreenFrameRef = useRef<HTMLDivElement | null>(null);
+  const heroFullscreenTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const heroFullscreenCloseRef = useRef<HTMLButtonElement | null>(null);
+  const heroFullscreenWasOpenRef = useRef(false);
   const backdropRef = useRef<HTMLDivElement | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const openerRef = useRef<HTMLElement | null>(null);
@@ -220,10 +226,16 @@ export default function ItemDetailModal({
     if (isClosing) return;
     setIsClosing(true);
     const opener = openerRef.current;
+    const delay = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180;
     window.setTimeout(() => {
       onClose();
-      window.setTimeout(() => opener?.focus({ preventScroll: true }), 0);
-    }, 180);
+      window.setTimeout(() => {
+        const fallbacks = Array.from(document.querySelectorAll<HTMLElement>('[data-card-id]'))
+          .filter(element => element.getAttribute('data-card-id') === id);
+        const searchFallback = document.querySelector<HTMLElement>('.toolbar-search input');
+        focusFirstAvailable([opener, ...fallbacks, searchFallback]);
+      }, 0);
+    }, delay);
   };
 
   const closeHeroFullscreen = async () => {
@@ -252,7 +264,6 @@ export default function ItemDetailModal({
 
   useEffect(() => { setLang(preferredLanguage); }, [preferredLanguage, id]);
   useEffect(() => { if (id) setIsClosing(false); }, [id]);
-  useEffect(() => { setGenerationOpen(Boolean(initialGenerationJobId)); }, [initialGenerationJobId]);
 
   useEffect(() => {
     if (!id) return undefined;
@@ -267,10 +278,15 @@ export default function ItemDetailModal({
   }, [id]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) return undefined;
+    let cancelled = false;
     setItem(undefined);
-    api.item(id).then(setItem);
-  }, [id]);
+    setLoadError(undefined);
+    api.item(id)
+      .then(nextItem => { if (!cancelled) setItem(nextItem); })
+      .catch(error => { if (!cancelled) setLoadError(error instanceof Error ? error.message : t('loadFailed')); });
+    return () => { cancelled = true; };
+  }, [id, loadAttempt, t]);
 
   useEffect(() => {
     const syncHeroFullscreenState = () => setIsHeroFullscreen(document.fullscreenElement === heroFullscreenFrameRef.current);
@@ -279,10 +295,18 @@ export default function ItemDetailModal({
   }, []);
 
   useEffect(() => {
-    if (!toast) return undefined;
-    const timer = window.setTimeout(() => setToast(undefined), 2600);
-    return () => window.clearTimeout(timer);
-  }, [toast]);
+    let focusTarget: HTMLElement | null = null;
+    if (isHeroFullscreen) {
+      heroFullscreenWasOpenRef.current = true;
+      focusTarget = heroFullscreenCloseRef.current;
+    } else if (heroFullscreenWasOpenRef.current) {
+      heroFullscreenWasOpenRef.current = false;
+      focusTarget = heroFullscreenTriggerRef.current;
+    }
+    if (!focusTarget) return undefined;
+    const frame = window.requestAnimationFrame(() => focusTarget?.focus({ preventScroll: true }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [isHeroFullscreen]);
 
   const availablePromptRecords = useMemo(() => {
     if (!item) return [];
@@ -305,7 +329,9 @@ export default function ItemDetailModal({
   const primaryImage = selectPrimaryImage(uniqueImages);
   const selectedImage = uniqueImages.find(image => image.id === selectedImageId) || primaryImage;
   const selectedImageIndex = selectedImage ? uniqueImages.findIndex(image => image.id === selectedImage.id) : -1;
-
+  const heroStyle = selectedImage?.width && selectedImage.height
+    ? ({ '--detail-image-aspect-ratio': `${selectedImage.width} / ${selectedImage.height}` } as CSSProperties)
+    : undefined;
   useEffect(() => {
     if (!item || uniqueImages.length === 0) {
       setSelectedImageId(undefined);
@@ -338,10 +364,26 @@ export default function ItemDetailModal({
     api.favorite(item.id).then(updated => { setItem(updated); onChanged(); });
   };
   const commitInlineUpdate = async (payload: Record<string, unknown>) => {
-    if (!item) return;
-    const updated = await api.updateItem(item.id, payload);
-    setItem(updated);
-    onChanged();
+    if (!item || inlineMutationBusyRef.current) return;
+    inlineMutationBusyRef.current = true;
+    setInlineMutationBusy(true);
+    try {
+      const updated = await api.updateItem(item.id, payload);
+      setItem(updated);
+      onChanged();
+    } finally {
+      inlineMutationBusyRef.current = false;
+      setInlineMutationBusy(false);
+    }
+  };
+  const handleDelete = async () => {
+    if (!item || deleteBusy) return;
+    setDeleteBusy(true);
+    try {
+      await onDelete?.(item);
+    } finally {
+      setDeleteBusy(false);
+    }
   };
   const handleCopyPrompt = async (text = copyText) => {
     const copied = await copyTextToClipboard(text);
@@ -442,11 +484,19 @@ export default function ItemDetailModal({
         tabIndex={-1}
       >
         {!item ? (
-          <p className="modal-loading">{t('loading')}</p>
+          loadError ? (
+            <div className="modal-load-error" role="alert">
+              <p>{loadError}</p>
+              <button type="button" className="secondary" onClick={() => setLoadAttempt(attempt => attempt + 1)}>{t('retry')}</button>
+            </div>
+          ) : <p className="modal-loading" role="status">{t('loading')}</p>
         ) : (
-          <div className="modal-content-enter" key={item.id}>
+          <div className="detail-modal-content">
             <div className="detail-layout">
-              <section className={`modal-hero${isHeroFullscreen ? ' is-mobile-fullscreen' : ''}`}>
+              <section
+                className={`modal-hero${uniqueImages.length === 1 ? ' has-single-hero' : ''}${isHeroFullscreen ? ' is-mobile-fullscreen' : ''}`}
+                style={heroStyle}
+              >
                 {selectedImage ? (
                   <>
                     <div ref={heroFullscreenFrameRef} className={`detail-fullscreen-frame${isHeroFullscreen ? ' is-mobile-fullscreen' : ''}`}>
@@ -456,11 +506,11 @@ export default function ItemDetailModal({
                         src={mediaUrl(isHeroFullscreen ? imageOriginalPath(selectedImage) : imageHeroPath(selectedImage))}
                         alt={displayTitle || item.title}
                       />
-                      <button className="modal-icon-button detail-fullscreen-close" type="button" onClick={closeHeroFullscreen} aria-label="Close fullscreen"><X size={20} strokeWidth={2.25} /></button>
+                       <button ref={heroFullscreenCloseRef} className="modal-icon-button detail-fullscreen-close" type="button" onClick={closeHeroFullscreen} aria-label={t('closeFullscreen')}><X size={20} strokeWidth={2.25} /></button>
                     </div>
                     {uniqueImages.length > 1 && <span className="image-counter">{selectedImageIndex + 1} / {uniqueImages.length}</span>}
-                    {isReferenceImage(selectedImage) && <span className="image-role-badge">Reference</span>}
-                    <button className="modal-icon-button detail-fullscreen-overlay" type="button" onClick={toggleHeroFullscreen} aria-label="View fullscreen" title="View fullscreen">
+                     {isReferenceImage(selectedImage) && <span className="image-role-badge">{t('reference')}</span>}
+                     <button ref={heroFullscreenTriggerRef} className="modal-icon-button detail-fullscreen-overlay" type="button" onClick={toggleHeroFullscreen} aria-label={t('viewFullscreen')} title={t('viewFullscreen')}>
                       <Maximize2 size={20} strokeWidth={2.25} />
                     </button>
                   </>
@@ -473,36 +523,36 @@ export default function ItemDetailModal({
                   </button>
                   {(selectedImage || showMutations) && (
                     <span className="mobile-hero-primary-actions">
-                      {selectedImage && <a className="modal-icon-button download-button" href={mediaUrl(selectedImage.original_path || imageHeroPath(selectedImage))} download={downloadFileName(displayTitle || item.title, selectedImage?.original_path || imageHeroPath(selectedImage))} aria-label="Download" title="Download"><Download size={18} /></a>}
+                       {selectedImage && <a className="modal-icon-button download-button" href={mediaUrl(selectedImage.original_path || imageHeroPath(selectedImage))} download={downloadFileName(displayTitle || item.title, selectedImage?.original_path || imageHeroPath(selectedImage))} aria-label={t('download')} title={t('download')}><Download size={18} /></a>}
                       {allowManagementActions && <button className="modal-icon-button favorite-button" onClick={toggleFavorite} aria-label={item.favorite ? t('saved') : t('favorite')}>
                         <Heart size={18} fill={item.favorite ? 'currentColor' : 'none'} />
                       </button>}
                       {showMutations && <button className="modal-icon-button edit-button" onClick={() => onEdit(item)} aria-label={t('edit')}>
                         <Pencil size={18} />
                       </button>}
-                      {allowManagementActions && <button className="modal-icon-button detail-delete-button" onClick={() => onDelete?.(item)} aria-label={t('deleteReference')} title={t('deleteReference')}>
+                      {allowManagementActions && <button className="modal-icon-button detail-delete-button" onClick={handleDelete} disabled={deleteBusy} aria-label={t('deleteReference')} title={t('deleteReference')}>
                         <Trash2 size={18} />
                       </button>}
-                      {showMutations && canGenerate && <button className="modal-icon-button mobile-generate-variant-button" onClick={() => setGenerationOpen(true)} aria-label="Generate variant">
-                        <Plus size={18} />
-                        <span className="mobile-generate-variant-label">Generate variant</span>
+                       {showMutations && canGenerate && <button className="modal-icon-button mobile-generate-variant-button" onClick={() => onGenerate(item)} aria-label={t('generateVariant')} title={t('generateVariant')}>
+                         <Plus size={18} />
+                         <span className="mobile-generate-variant-label">{t('generate')}</span>
                       </button>}
                     </span>
                   )}
                 </div>
                 {uniqueImages.length > 1 && (
-                  <div className="rail glass-rail image-gallery-rail" aria-label="Item images">
+                   <div className="rail glass-rail image-gallery-rail" aria-label={t('itemImages')}>
                     {uniqueImages.map((img, index) => (
                       <button
                         type="button"
                         key={getImageIdentity(img)}
                         className={`image-gallery-thumb ${selectedImage?.id === img.id ? 'active' : ''}`}
                         onClick={() => setSelectedImageId(img.id)}
-                        aria-label={`Show image ${index + 1} of ${uniqueImages.length}`}
+                         aria-label={`${t('showImage')} ${index + 1} / ${uniqueImages.length}`}
                         aria-pressed={selectedImage?.id === img.id}
                       >
-                        <img src={mediaUrl(imageDisplayPath(img))} alt="" />
-                        {isReferenceImage(img) && <span className="image-thumb-role-badge">Ref</span>}
+                        <img src={mediaUrl(imageDisplayPath(img) || imageThumbnailPath(img))} alt="" loading="lazy" decoding="async" />
+                         {isReferenceImage(img) && <span className="image-thumb-role-badge">{t('reference')}</span>}
                       </button>
                     ))}
                   </div>
@@ -512,15 +562,15 @@ export default function ItemDetailModal({
               <aside className="detail-side">
                 <div className="detail-side-actions">
                   <span className="detail-side-primary-actions">
-                    {showMutations && canGenerate && <button className="secondary generate-variant-button" onClick={() => setGenerationOpen(true)}>Generate variant</button>}
-                    {selectedImage && <a className="modal-icon-button download-button" href={mediaUrl(selectedImage.original_path || imageHeroPath(selectedImage))} download={downloadFileName(displayTitle || item.title, selectedImage?.original_path || imageHeroPath(selectedImage))} aria-label="Download" title="Download"><Download size={18} /></a>}
+                     {showMutations && canGenerate && <button className="secondary generate-variant-button" onClick={() => onGenerate(item)} aria-label={t('generateVariant')} title={t('generateVariant')}>{t('generate')}</button>}
+                     {selectedImage && <a className="modal-icon-button download-button" href={mediaUrl(selectedImage.original_path || imageHeroPath(selectedImage))} download={downloadFileName(displayTitle || item.title, selectedImage?.original_path || imageHeroPath(selectedImage))} aria-label={t('download')} title={t('download')}><Download size={18} /></a>}
                     {allowManagementActions && <button className="modal-icon-button favorite-button" onClick={toggleFavorite} aria-label={item.favorite ? t('saved') : t('favorite')}>
                       <Heart size={18} fill={item.favorite ? 'currentColor' : 'none'} />
                     </button>}
                     {showMutations && <button className="modal-icon-button edit-button" onClick={() => onEdit(item)} aria-label={t('edit')}>
                       <Pencil size={18} />
                     </button>}
-                    {allowManagementActions && <button className="modal-icon-button detail-delete-button" onClick={() => onDelete?.(item)} aria-label={t('deleteReference')} title={t('deleteReference')}>
+                    {allowManagementActions && <button className="modal-icon-button detail-delete-button" onClick={handleDelete} disabled={deleteBusy} aria-label={t('deleteReference')} title={t('deleteReference')}>
                       <Trash2 size={18} />
                     </button>}
                   </span>
@@ -528,18 +578,18 @@ export default function ItemDetailModal({
                     <X size={20} strokeWidth={2.25} />
                   </button>
                 </div>
-                <InlineEditableField className="collection-inline-edit" value={item.cluster?.name || ''} placeholder={t('unclustered')} inputList="detail-collection-suggestions" onCommit={value => commitInlineUpdate({ cluster_name: value.trim() || null })} editable={allowManagementActions}>
+                <InlineEditableField t={t} className="collection-inline-edit" value={item.cluster?.name || ''} placeholder={t('unclustered')} inputList="detail-collection-suggestions" onCommit={value => commitInlineUpdate({ cluster_name: value.trim() || null })} editable={allowManagementActions && !inlineMutationBusy}>
                   <datalist id="detail-collection-suggestions">
                     {clusters.map(collection => <option key={collection.id} value={collection.name} />)}
                   </datalist>
                 </InlineEditableField>
                 <h2>
-                  <InlineEditableField className="title-inline-edit" value={showMutations ? item.title : (displayTitle || item.title)} placeholder={t('titlePlaceholder')} onCommit={value => commitInlineUpdate({ title: value.trim() || item.title })} editable={allowManagementActions} />
+                  <InlineEditableField t={t} className="title-inline-edit" value={showMutations ? item.title : (displayTitle || item.title)} placeholder={t('titlePlaceholder')} onCommit={value => commitInlineUpdate({ title: value.trim() || item.title })} editable={allowManagementActions && !inlineMutationBusy} />
                 </h2>
                 <p className="muted metadata-row">
-                  <InlineEditableField className="metadata-inline-edit" value={item.model || t('defaultModel')} placeholder={t('imageGeneratedFrom')} onCommit={value => commitInlineUpdate({ model: value.trim() || item.model })} editable={allowManagementActions} />
+                  <InlineEditableField t={t} className="metadata-inline-edit" value={item.model || t('defaultModel')} placeholder={t('imageGeneratedFrom')} onCommit={value => commitInlineUpdate({ model: value.trim() || item.model })} editable={allowManagementActions && !inlineMutationBusy} />
                   <span>·</span>
-                  <InlineEditableField className="metadata-inline-edit" value={`@${item.author || 'User'}`} placeholder="@User" onCommit={value => commitInlineUpdate({ author: value.replace(/^@/, '').trim() || 'User' })} editable={allowManagementActions} />
+                  <InlineEditableField t={t} className="metadata-inline-edit" value={`@${item.author || 'User'}`} placeholder="@User" onCommit={value => commitInlineUpdate({ author: value.replace(/^@/, '').trim() || 'User' })} editable={allowManagementActions && !inlineMutationBusy} />
                   {item.source_url && (
                     <a className="source-icon-link" href={item.source_url} target="_blank" rel="noreferrer" aria-label={t('source')}>
                       <ExternalLink size={16} />
@@ -596,8 +646,8 @@ export default function ItemDetailModal({
                                 }}
                               />
                               <span className="prompt-edit-controls">
-                                <button type="button" className="inline-edit-confirm" onClick={confirmPromptEdit} aria-label="Confirm edit"><Check size={14} /></button>
-                                <button type="button" className="inline-edit-cancel" onClick={cancelPromptEdit} aria-label="Cancel edit"><X size={14} /></button>
+                                 <button type="button" className="inline-edit-confirm" onClick={confirmPromptEdit} aria-label={t('confirmEdit')}><Check size={14} /></button>
+                                 <button type="button" className="inline-edit-cancel" onClick={cancelPromptEdit} aria-label={t('cancelEdit')}><X size={14} /></button>
                               </span>
                             </>
                           ) : (
@@ -611,11 +661,11 @@ export default function ItemDetailModal({
                   })()}
                 </div>
 
-                <InlineEditableTextArea className="notes-inline-edit" value={item.notes || ''} placeholder={t('addNote')} onCommit={value => commitInlineUpdate({ notes: value.trim() || null })} editable={allowManagementActions} />
+                <InlineEditableTextArea t={t} className="notes-inline-edit" value={item.notes || ''} placeholder={t('addNote')} onCommit={value => commitInlineUpdate({ notes: value.trim() || null })} editable={allowManagementActions && !inlineMutationBusy} />
 
                 <div className="tags detail-tags">
                   {item.tags.map(tag => (
-                    <span className="detail-tag-chip" key={tag.id}>#{tag.name}{allowManagementActions && <button type="button" className="tag-unlink-button" onClick={() => unlinkTag(tag.name)} aria-label={`Remove ${tag.name}`}><X size={12} /></button>}</span>
+                     <span className="detail-tag-chip" key={tag.id}>#{tag.name}{allowManagementActions && <button type="button" className="tag-unlink-button" onClick={() => unlinkTag(tag.name)} aria-label={t('removeTag').replace('${tag}', tag.name)}><X size={12} /></button>}</span>
                   ))}
                   {allowManagementActions && (addingTag ? (
                     <span className="tag-add-popover">
@@ -631,45 +681,6 @@ export default function ItemDetailModal({
               </aside>
             </div>
           </div>
-        )}
-        {toast && (
-          <div className="toast generation-toast" role="status">
-            <span>{toast.message}</span>
-            {toast.item && toast.actionLabel && (
-              <button type="button" onClick={() => { setItem(toast.item); setToast(undefined); setGenerationOpen(false); }}>
-                {toast.actionLabel}
-              </button>
-            )}
-            <button type="button" aria-label="Dismiss" onClick={() => setToast(undefined)}><X size={20} strokeWidth={2.25} /></button>
-          </div>
-        )}
-        {generationOpen && item && (
-          <GenerationPanel
-            item={item}
-            preferredLanguage={preferredLanguage}
-            t={t}
-            initialJobId={initialGenerationJobId}
-            clusters={clusters}
-            tags={tags}
-            promptVariablesEnabled={promptVariablesEnabled}
-            onClose={() => setGenerationOpen(false)}
-            onOpenProviders={onOpenProviders}
-            onAccepted={(acceptedItem, message) => {
-              if (acceptedItem?.id && acceptedItem.id !== item.id) {
-                setToast({ message: message || 'New variant item created', actionLabel: 'View item', item: acceptedItem });
-                onChanged();
-                onOpenItem?.(acceptedItem.id);
-                return;
-              }
-              api.item(item.id).then(updated => {
-                setItem(updated);
-                const newestImage = updated.images[0];
-                if (newestImage) setSelectedImageId(newestImage.id);
-              }).catch(() => undefined);
-              setToast({ message: message || 'Image added to item' });
-              onChanged();
-            }}
-          />
         )}
       </div>
     </div>

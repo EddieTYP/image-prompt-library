@@ -36,6 +36,7 @@ class ClusterRecord(BaseModel):
     sort_order: int = 0
     count: int = 0
     preview_images: List[str] = Field(default_factory=list)
+    preview_item_ids: List[str] = Field(default_factory=list)
 
 class TagRecord(BaseModel):
     id: str

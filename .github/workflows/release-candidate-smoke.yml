@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Exact prerelease tag under test (for example, v0.9.0)'
+        description: 'Exact prerelease tag under test (for example, v0.10.0)'
         required: true
         type: string
       baseline_version:
         description: 'Current stable release used for update and rollback'
         required: true
-        default: 'v0.8.2'
+        default: 'v0.9.0'
         type: string
 
 permissions:
@@ -57,19 +57,24 @@ jobs:
               matches.append(match)
           if matches[0].group(4):
               raise SystemExit("The promotable candidate must use a bare SemVer tag.")
+          if matches[1].group(4):
+              raise SystemExit("The rollback baseline must be a stable bare SemVer tag.")
           if sys.argv[1] == sys.argv[2]:
               raise SystemExit("Candidate and baseline versions must differ.")
           PY
           TAG_SHA="$(git rev-parse "refs/tags/$CANDIDATE_VERSION^{commit}")"
           test "$(git rev-parse HEAD)" = "$TAG_SHA"
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$CANDIDATE_VERSION" > "$RUNNER_TEMP/candidate-release.json"
-          python - "$RUNNER_TEMP/candidate-release.json" "$CANDIDATE_VERSION" <<'PY'
+          gh api "repos/$GITHUB_REPOSITORY/releases/latest" > "$RUNNER_TEMP/latest-stable-release.json"
+          python - "$RUNNER_TEMP/candidate-release.json" "$RUNNER_TEMP/latest-stable-release.json" "$CANDIDATE_VERSION" "$BASELINE_VERSION" <<'PY'
           import json
           import pathlib
           import sys
 
           release = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
-          version = sys.argv[2]
+          latest = json.loads(pathlib.Path(sys.argv[2]).read_text(encoding="utf-8"))
+          version = sys.argv[3]
+          baseline = sys.argv[4]
           expected = {
               f"image-prompt-library-{version}.tar.gz",
               f"image-prompt-library-{version}.tar.gz.sha256",
@@ -80,6 +85,8 @@ jobs:
               raise SystemExit("Candidate is not the requested published prerelease.")
           if len(names) != 3 or set(names) != expected or len(names) != len(set(names)):
               raise SystemExit(f"Candidate assets are not the exact expected set: {names}")
+          if latest.get("tag_name") != baseline or latest.get("draft") or latest.get("prerelease"):
+              raise SystemExit("Latest release no longer points to the stable rollback baseline.")
           PY
           mkdir "$RUNNER_TEMP/candidate-assets"
           gh release download "$CANDIDATE_VERSION" --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP/candidate-assets" \
@@ -227,6 +234,24 @@ jobs:
             exit 1
           fi
 
+          "$app" uninstall
+          test ! -e "$HOME/.image-prompt-library"
+          test "$(cat "$HOME/ImagePromptLibrary/originals/release-smoke-sentinel.txt")" = "release-smoke"
+
+          candidate_installer="$RUNNER_TEMP/install-$CANDIDATE_VERSION.sh"
+          curl -fsSL "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$CANDIDATE_VERSION/scripts/install.sh" -o "$candidate_installer"
+          bash "$candidate_installer" --version "$CANDIDATE_VERSION"
+          app="$HOME/.local/bin/image-prompt-library"
+          test -x "$app"
+          test "$("$app" version)" = "$CANDIDATE_VERSION"
+          "$app" status
+          "$app" doctor
+          test "$(cat "$HOME/ImagePromptLibrary/originals/release-smoke-sentinel.txt")" = "release-smoke"
+          "$app" uninstall
+          test ! -e "$HOME/.image-prompt-library"
+          test "$(cat "$HOME/ImagePromptLibrary/originals/release-smoke-sentinel.txt")" = "release-smoke"
+          printf '%s\n' "- clean install and uninstall \`$CANDIDATE_VERSION\`: PASS" >> "$GITHUB_STEP_SUMMARY"
+
   windows-default-paths:
     needs: release-contract
     runs-on: windows-latest
@@ -357,3 +382,36 @@ jobs:
               "- rollback to ``$env:BASELINE_VERSION``: FAIL" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
               throw
           }
+
+          Invoke-App -Arguments @("uninstall") | Out-Null
+          $deadline = [DateTime]::UtcNow.AddSeconds(30)
+          while ((Test-Path -LiteralPath $prefix) -and [DateTime]::UtcNow -lt $deadline) {
+              Start-Sleep -Milliseconds 200
+          }
+          if (Test-Path -LiteralPath $prefix) { throw "Baseline uninstall did not remove the app prefix." }
+          if ((Get-Content -LiteralPath (Join-Path $library "originals\release-smoke-sentinel.txt") -Raw).Trim() -ne "release-smoke") {
+              throw "Private library changed during baseline uninstall."
+          }
+
+          $candidateInstaller = Join-Path $env:RUNNER_TEMP "install-$env:CANDIDATE_VERSION.ps1"
+          Invoke-WebRequest "https://raw.githubusercontent.com/$env:GITHUB_REPOSITORY/$env:CANDIDATE_VERSION/scripts/install.ps1" -OutFile $candidateInstaller
+          & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $candidateInstaller -Version $env:CANDIDATE_VERSION -NoStart -NoBrowser
+          if ($LASTEXITCODE -ne 0) { throw "Candidate clean install failed with exit code $LASTEXITCODE." }
+          $app = Join-Path $prefix "bin\image-prompt-library.cmd"
+          $installedCandidate = [string]((Invoke-App -Arguments @("version")) | Select-Object -Last 1)
+          if ($installedCandidate.Trim() -ne $env:CANDIDATE_VERSION) { throw "Candidate clean-install version mismatch: $installedCandidate" }
+          Invoke-App -Arguments @("status") | Out-Null
+          Invoke-App -Arguments @("doctor") | Out-Null
+          if ((Get-Content -LiteralPath (Join-Path $library "originals\release-smoke-sentinel.txt") -Raw).Trim() -ne "release-smoke") {
+              throw "Private library changed during candidate clean install."
+          }
+          Invoke-App -Arguments @("uninstall") | Out-Null
+          $deadline = [DateTime]::UtcNow.AddSeconds(30)
+          while ((Test-Path -LiteralPath $prefix) -and [DateTime]::UtcNow -lt $deadline) {
+              Start-Sleep -Milliseconds 200
+          }
+          if (Test-Path -LiteralPath $prefix) { throw "Candidate uninstall did not remove the app prefix." }
+          if ((Get-Content -LiteralPath (Join-Path $library "originals\release-smoke-sentinel.txt") -Raw).Trim() -ne "release-smoke") {
+              throw "Private library changed during candidate uninstall."
+          }
+          "- clean install and uninstall ``$env:CANDIDATE_VERSION``: PASS" | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY

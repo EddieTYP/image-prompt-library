@@ -1,22 +1,33 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { mediaUrl } from '../api/client';
-import type { ClusterRecord, ImageRecord, ItemSummary } from '../types';
+import type { ClusterRecord, ImageRecord, ItemSortMode, ItemSummary } from '../types';
 import type { Translator } from '../utils/i18n';
 import ItemCard from './ItemCard';
+import ScopeHeader from './ScopeHeader';
 
 const EXPLORE_PAGE_SIZE = 48;
 
-function imageMetadata(items: ItemSummary[]) {
-  const images = new Map<string, ImageRecord>();
+type PreviewEntry = {
+  image: ImageRecord;
+  item: ItemSummary;
+};
+
+function previewEntries(items: ItemSummary[]) {
+  const byItemId = new Map<string, PreviewEntry>();
+  const byPath = new Map<string, PreviewEntry | null>();
   for (const item of items) {
     const image = item.first_image;
     if (!image) continue;
+    const entry = { image, item };
+    byItemId.set(item.id, entry);
     for (const path of [image.thumb_path, image.preview_path, image.original_path]) {
-      if (path) images.set(path, image);
+      if (!path) continue;
+      const existing = byPath.get(path);
+      if (!byPath.has(path)) byPath.set(path, entry);
+      else if (!existing || existing.item.id !== item.id) byPath.set(path, null);
     }
   }
-  return images;
+  return { byItemId, byPath };
 }
 
 export default function ExploreView({
@@ -24,12 +35,12 @@ export default function ExploreView({
   clusters,
   items,
   total,
-  focusedClusterId,
   hasActiveSearch,
   searchQuery,
   loading,
-  onFocusCluster,
-  onClearCluster,
+  sort,
+  onSort,
+  onOpenCollection,
   onOpen,
   onCopyPrompt,
   onAdd,
@@ -38,72 +49,26 @@ export default function ExploreView({
   clusters: ClusterRecord[];
   items: ItemSummary[];
   total: number;
-  focusedClusterId?: string;
   hasActiveSearch: boolean;
   searchQuery: string;
   loading: boolean;
-  onFocusCluster: (cluster: ClusterRecord) => void;
-  onClearCluster: () => void;
+  sort: ItemSortMode;
+  onSort: (sort: ItemSortMode) => void;
+  onOpenCollection: (cluster: ClusterRecord) => void;
   onOpen: (id: string) => void;
   onCopyPrompt: (item: ItemSummary) => void;
   onAdd?: () => void;
 }) {
   const [visibleCount, setVisibleCount] = useState(EXPLORE_PAGE_SIZE);
   const loadMoreRef = useRef<HTMLButtonElement | null>(null);
-  const directoryScrollRef = useRef(0);
-  const directoryScrollRestorePendingRef = useRef(false);
-  const previousShowFeedRef = useRef(Boolean(focusedClusterId || hasActiveSearch));
-  const previousFeedScopeRef = useRef(`${focusedClusterId || ''}\n${searchQuery}`);
   const nonEmptyClusters = useMemo(() => clusters.filter(cluster => cluster.count > 0), [clusters]);
-  const focusedCluster = useMemo(
-    () => clusters.find(cluster => cluster.id === focusedClusterId),
-    [clusters, focusedClusterId],
-  );
-  const previewMetadata = useMemo(() => imageMetadata(items), [items]);
-  const showFeed = Boolean(focusedClusterId || hasActiveSearch);
+  const previewMetadata = useMemo(() => previewEntries(items), [items]);
   const visibleItems = useMemo(() => items.slice(0, visibleCount), [items, visibleCount]);
-  const hasMore = showFeed && visibleCount < items.length;
-  const feedTitle = focusedCluster?.name || (focusedClusterId ? t('collections') : t('allReferences'));
+  const hasMore = hasActiveSearch && visibleCount < items.length;
 
   useEffect(() => {
     setVisibleCount(EXPLORE_PAGE_SIZE);
-  }, [focusedClusterId, hasActiveSearch, searchQuery, items]);
-
-  useEffect(() => {
-    if (showFeed || loading) return undefined;
-    const rememberDirectoryScroll = () => { directoryScrollRef.current = window.scrollY; };
-    rememberDirectoryScroll();
-    window.addEventListener('scroll', rememberDirectoryScroll, { passive: true });
-    return () => window.removeEventListener('scroll', rememberDirectoryScroll);
-  }, [loading, showFeed]);
-
-  useLayoutEffect(() => {
-    const previouslyShowingFeed = previousShowFeedRef.current;
-    if (!previouslyShowingFeed && showFeed) {
-      window.scrollTo({ top: 0, behavior: 'auto' });
-      previousShowFeedRef.current = true;
-    } else if (previouslyShowingFeed && !showFeed) {
-      directoryScrollRestorePendingRef.current = true;
-      previousShowFeedRef.current = false;
-    }
-
-    const nextScope = `${focusedClusterId || ''}\n${searchQuery}`;
-    if (showFeed && previousFeedScopeRef.current !== nextScope) {
-      window.scrollTo({ top: 0, behavior: 'auto' });
-    }
-    previousFeedScopeRef.current = nextScope;
-
-    if (!showFeed && !loading && directoryScrollRestorePendingRef.current) {
-      const restore = () => window.scrollTo({ top: directoryScrollRef.current, behavior: 'auto' });
-      restore();
-      const frame = window.requestAnimationFrame(() => {
-        restore();
-        directoryScrollRestorePendingRef.current = false;
-      });
-      return () => window.cancelAnimationFrame(frame);
-    }
-    return undefined;
-  }, [focusedClusterId, loading, searchQuery, showFeed]);
+  }, [hasActiveSearch, searchQuery, items]);
 
   useEffect(() => {
     const target = loadMoreRef.current;
@@ -117,37 +82,51 @@ export default function ExploreView({
     return () => observer.disconnect();
   }, [hasMore, items.length, visibleCount]);
 
-  if (loading) return null;
-
-  if (!showFeed && !nonEmptyClusters.length) {
-    const libraryIsEmpty = total === 0;
+  if (loading && !items.length) {
     return (
-      <div className="empty">
-        <h2>{t(libraryIsEmpty ? 'libraryEmptyTitle' : 'noCollectionsFound')}</h2>
-        <p>{libraryIsEmpty ? t('libraryEmptyHelp') : `${total} ${t('referencesShown')}`}</p>
-        <div className="empty-actions">
-          {libraryIsEmpty && onAdd && <button className="empty-primary" onClick={onAdd}>{t('addFirstPrompt')}</button>}
+      <section className={hasActiveSearch ? 'explore-feed' : 'explore-directory'} aria-label={hasActiveSearch ? t('searchResults') : t('collections')} aria-busy="true">
+        <ScopeHeader
+          t={t}
+          title={hasActiveSearch ? t('searchResults') : t('collections')}
+          count={0}
+          countLabel={hasActiveSearch ? t('referencesShown') : t('collections')}
+          sort={hasActiveSearch ? sort : undefined}
+          onSort={hasActiveSearch ? onSort : undefined}
+        />
+        <div className="content-loading-state" role="status" aria-label={t('loading')}>
+          <span /><span /><span />
         </div>
-      </div>
+      </section>
     );
   }
 
-  if (showFeed) {
+  if (!hasActiveSearch && !nonEmptyClusters.length) {
+    const libraryIsEmpty = total === 0;
     return (
-      <section className="explore-feed" aria-label={feedTitle}>
-        <header className="explore-feed-header">
-          <div>
-            <p className="explore-eyebrow">{t('explore')}</p>
-            <h2>{feedTitle}</h2>
-            <p>{total} {t('referencesShown')}</p>
+      <section className="explore-directory" aria-label={t('collections')} aria-busy={loading}>
+        <ScopeHeader t={t} title={t('collections')} count={0} countLabel={t('collections')} />
+        <div className="empty">
+          <h2>{t(libraryIsEmpty ? 'libraryEmptyTitle' : 'noCollectionsFound')}</h2>
+          <p>{libraryIsEmpty ? t('libraryEmptyHelp') : `${total} ${t('referencesShown')}`}</p>
+          <div className="empty-actions">
+            {libraryIsEmpty && onAdd && <button className="empty-primary" onClick={onAdd}>{t('addFirstPrompt')}</button>}
           </div>
-          {focusedClusterId && (
-            <button type="button" className="explore-back-button" onClick={onClearCluster}>
-              <ArrowLeft size={17} aria-hidden="true" />
-              {t('collections')}
-            </button>
-          )}
-        </header>
+        </div>
+      </section>
+    );
+  }
+
+  if (hasActiveSearch) {
+    return (
+      <section className="explore-feed" aria-label={t('searchResults')} aria-busy={loading}>
+        <ScopeHeader
+          t={t}
+          title={t('searchResults')}
+          count={total}
+          countLabel={t('referencesShown')}
+          sort={sort}
+          onSort={onSort}
+        />
 
         {!items.length ? (
           <div className="empty explore-empty">
@@ -185,44 +164,78 @@ export default function ExploreView({
   }
 
   return (
-    <section className="explore-directory" aria-labelledby="explore-directory-title">
-      <header className="explore-directory-header">
-        <p className="explore-eyebrow">{t('explore')}</p>
-        <h2 id="explore-directory-title">{t('collections')}</h2>
-      </header>
+    <section className="explore-directory" aria-label={t('collections')} aria-busy={loading}>
+      <ScopeHeader
+        t={t}
+        title={t('collections')}
+        count={nonEmptyClusters.length}
+        countLabel={t('collections')}
+      />
       <div className="explore-collection-grid">
         {nonEmptyClusters.map(cluster => {
           const previews = cluster.preview_images.slice(0, 3);
           return (
-            <button
-              key={cluster.id}
-              type="button"
-              className="explore-collection-card"
-              onClick={() => onFocusCluster(cluster)}
-              aria-label={`${cluster.name}, ${cluster.count} ${t('referencesShown')}`}
-            >
-              <span className="explore-collection-heading">
+            <article key={cluster.id} className="explore-collection-card">
+              <button
+                type="button"
+                className="explore-collection-heading"
+                onClick={() => onOpenCollection(cluster)}
+                aria-label={`${cluster.name}, ${cluster.count} ${t('referencesShown')}`}
+              >
                 <strong>{cluster.name}</strong>
                 <span>{cluster.count} {t('referencesShown')}</span>
-              </span>
-              <span className={`explore-collection-previews preview-count-${previews.length}`} aria-hidden="true">
+              </button>
+              <div className={`explore-collection-previews preview-count-${previews.length}`}>
                 {previews.length ? previews.map((path, index) => {
-                  const metadata = previewMetadata.get(path);
-                  return (
-                    <span className="explore-collection-preview" key={`${cluster.id}-${path}-${index}`}>
-                      <img
-                        src={mediaUrl(path)}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        width={metadata?.width || undefined}
-                        height={metadata?.height || undefined}
-                      />
+                  const previewItemId = cluster.preview_item_ids?.[index];
+                  const entry = (previewItemId && previewMetadata.byItemId.get(previewItemId))
+                    || previewMetadata.byPath.get(path)
+                    || undefined;
+                  const openItemId = previewItemId || entry?.item.id;
+                  const image = entry?.image;
+                  const previewStyle = { flexGrow: image?.width && image.height ? image.width / image.height : 1 };
+                  const previewImage = (
+                    <img
+                      src={mediaUrl(path)}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      width={image?.width || undefined}
+                      height={image?.height || undefined}
+                      onLoad={event => {
+                        if (image?.width && image.height) return;
+                        const { naturalWidth, naturalHeight } = event.currentTarget;
+                        if (naturalWidth && naturalHeight && event.currentTarget.parentElement) {
+                          event.currentTarget.parentElement.style.flexGrow = String(naturalWidth / naturalHeight);
+                        }
+                      }}
+                    />
+                  );
+                  return openItemId ? (
+                    <button
+                      type="button"
+                      className="explore-collection-preview"
+                      key={`${cluster.id}-${openItemId}-${index}`}
+                      style={previewStyle}
+                      onClick={() => onOpen(openItemId)}
+                      aria-label={`${t('showImage')}: ${entry?.item.title || cluster.name}`}
+                      data-card-id={openItemId}
+                    >
+                      {previewImage}
+                    </button>
+                  ) : (
+                    <span
+                      className="explore-collection-preview"
+                      key={`${cluster.id}-${path}-${index}`}
+                      style={previewStyle}
+                      aria-hidden="true"
+                    >
+                      {previewImage}
                     </span>
                   );
                 }) : <span className="explore-collection-placeholder">{t('noImage')}</span>}
-              </span>
-            </button>
+              </div>
+            </article>
           );
         })}
       </div>

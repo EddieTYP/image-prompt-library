@@ -13,7 +13,12 @@ from backend.schemas import (
     GenerationJobSetRecord,
     GenerationJobRetryResult,
 )
-from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository, sanitize_generation_error
+from backend.services.generation_jobs import (
+    GenerationJobConflict,
+    GenerationJobRepository,
+    sanitize_generation_error,
+    sanitize_generation_parameters,
+)
 from backend.services.generation_queue import _continue_generation_queue, enqueue_generation_jobs, run_generation_job_now
 from backend.services.openai_codex_native import (
     PROVIDER_ID as CODEX_NATIVE_PROVIDER_ID,
@@ -29,31 +34,41 @@ MAX_UPLOAD_BYTES = 30 * 1024 * 1024
 def _sanitize_generation_input_image_spec(spec: object) -> object:
     if not isinstance(spec, dict):
         return spec
-    if "data_url" not in spec:
-        return spec
-    sanitized = dict(spec)
-    sanitized.pop("data_url", None)
-    sanitized["has_data_url"] = True
-    sanitized["data_url_redacted"] = True
+    has_inline_image = any(
+        str(key).lower().replace("_", "").replace("-", "").endswith(("dataurl", "imageurl"))
+        or (isinstance(value, str) and value.lstrip().lower().startswith("data:image/"))
+        for key, value in spec.items()
+    )
+    sanitized = sanitize_generation_parameters(spec, redact_image_data=True)
+    if has_inline_image:
+        sanitized["has_data_url"] = True
+        sanitized["data_url_redacted"] = True
     return sanitized
 
 
 def _sanitize_generation_job_parameters(parameters: object) -> object:
-    if not isinstance(parameters, dict):
-        return parameters
-    input_images = parameters.get("input_images")
+    sanitized = sanitize_generation_parameters(parameters)
+    input_images = sanitized.get("input_images")
+    redacted = sanitize_generation_parameters(sanitized, redact_image_data=True)
     if not isinstance(input_images, list):
-        return parameters
-    sanitized = dict(parameters)
-    sanitized["input_images"] = [
+        return redacted
+    redacted["input_images"] = [
         _sanitize_generation_input_image_spec(item) for item in input_images
     ]
-    return sanitized
+    return redacted
 
 
 def _sanitize_generation_job_record(job: GenerationJobRecord) -> GenerationJobRecord:
     payload = job.model_dump()
     payload["parameters"] = _sanitize_generation_job_parameters(payload.get("parameters"))
+    metadata = payload.get("metadata")
+    if isinstance(metadata, dict):
+        visible_metadata = {
+            key: value
+            for key, value in metadata.items()
+            if not key.startswith("_generation_accept_")
+        }
+        payload["metadata"] = sanitize_generation_parameters(visible_metadata, redact_image_data=True)
     if payload.get("error"):
         payload["error"] = sanitize_generation_error(str(payload["error"]))
     return GenerationJobRecord(**payload)
@@ -112,10 +127,18 @@ def create_generation_job_set(payload: GenerationJobSetCreate, request: Request)
 def list_generation_jobs(
     request: Request,
     status: str | None = None,
+    source_item_id: str | None = None,
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
-    return _sanitize_generation_job_list(repo(request).list_jobs(status=status, limit=limit, offset=offset))
+    return _sanitize_generation_job_list(
+        repo(request).list_jobs(
+            status=status,
+            source_item_id=source_item_id,
+            limit=limit,
+            offset=offset,
+        )
+    )
 
 
 @router.get("/sets/{generation_group_id}", response_model=GenerationJobSetRecord)

@@ -30,6 +30,27 @@ def test_init_db_is_idempotent(tmp_path: Path):
         assert {row[0] for row in conn.execute("SELECT version FROM schema_migrations")} == set(MIGRATIONS)
 
 
+def test_generation_jobs_source_created_index_is_migrated(tmp_path: Path):
+    library = tmp_path / "library"
+    init_db(library)
+
+    with connect(library) as conn:
+        indexes = {
+            row["name"]
+            for row in conn.execute("PRAGMA index_list('generation_jobs')")
+        }
+        columns = [
+            (row["name"], row["desc"])
+            for row in conn.execute(
+                "PRAGMA index_xinfo('idx_generation_jobs_source_created')"
+            )
+            if row["key"]
+        ]
+
+    assert "idx_generation_jobs_source_created" in indexes
+    assert columns == [("source_item_id", 0), ("created_at", 1)]
+
+
 def test_failed_destructive_migration_rolls_back_and_can_retry(tmp_path: Path, monkeypatch):
     library = tmp_path / "library"
     init_db(library)

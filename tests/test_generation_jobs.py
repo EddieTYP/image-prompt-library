@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 import base64
+from concurrent.futures import ThreadPoolExecutor
 import json
 from pathlib import Path
+from threading import Event
 import time
 
 from fastapi.testclient import TestClient
@@ -11,7 +13,7 @@ import pytest
 
 from backend.db import connect
 from backend.main import create_app
-from backend.schemas import GenerationJobCreate
+from backend.schemas import GenerationJobCreate, ItemCreate, PromptIn
 from backend.services.generation_jobs import (
     GenerationJobConflict,
     GenerationJobRepository,
@@ -77,6 +79,17 @@ def test_generation_failure_classification(message, expected):
         "cookie=session-secret",
         "session=opaque-secret",
         "client_secret=secret-token",
+        "accessToken=secret-token",
+        "deviceAuthId=secret-token",
+        "user-code=secret-token",
+        "oauth_token=secret-token",
+        "client-id=secret-token",
+        "credentials=secret-token",
+        '{"privateKey":"secret-token"}',
+        '{"error":"clientSecret=secret-token"}',
+        '{"outer":{"message":"access_token=secret-token"}}',
+        '{"outer":"{\\"error\\":\\"clientSecret=secret-token\\"}"}',
+        '{"outer":"{\\"clientSecret\\":\\"secret-token\\"}"}',
         "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturevalue",
     ),
 )
@@ -93,6 +106,12 @@ def test_generation_error_sanitizer_preserves_safe_token_status_message():
     assert sanitize_generation_error(message) == message
 
 
+def test_generation_error_sanitizer_handles_deep_structured_text_without_parsing_it():
+    message = "{" + '"context":{' * 500 + "0" + "}" * 500
+
+    assert sanitize_generation_error(message) == message[:1000]
+
+
 def test_generation_failure_classifies_raw_error_before_sanitizing(tmp_path):
     repo = GenerationJobRepository(tmp_path / "library")
     job = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="busy prompt"))
@@ -102,6 +121,18 @@ def test_generation_failure_classifies_raw_error_before_sanitizing(tmp_path):
     assert failed.metadata["error_kind"] == "rate_limited"
     assert failed.error == "Generation failed; provider returned a credential-related error"
     assert "super-secret" not in failed.error
+
+
+def test_generation_failure_never_persists_camel_case_provider_credentials(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="provider error boundary"))
+
+    failed = repo.mark_failed(job.id, '{"error":"clientSecret=secret-canary"}')
+
+    assert failed.error == "Generation failed; provider returned a credential-related error"
+    with connect(tmp_path / "library") as conn:
+        stored = conn.execute("SELECT error FROM generation_jobs WHERE id=?", (job.id,)).fetchone()[0]
+    assert "secret-canary" not in stored
 
 
 def create_source_item(c, *, author=None):
@@ -218,6 +249,129 @@ def test_generation_job_list_and_detail_redact_input_image_data_urls(tmp_path):
     assert "data_url" not in listed_input
     assert listed_input["has_data_url"] is True
     assert listed_input["data_url_redacted"] is True
+
+
+def test_generation_job_credentials_never_enter_storage_or_api_payloads(tmp_path):
+    c = client(tmp_path)
+    created = c.post(
+        "/api/generation-jobs",
+        json={
+            "prompt_text": "Credential boundary regression",
+            "parameters": {
+                "quality": "high",
+                "tokenValue": "token-secret",
+                "authorizationValue": "authorization-secret",
+                "clientIdValue": "client-secret",
+                "APIKey": "api-key-secret",
+                "apiKEYValue": "api-key-value-secret",
+                "clientIDValue": "client-id-secret",
+                "sessionid": "session-secret",
+                "authorizationcode": "authorization-code-secret",
+                "userCode": "device-user-code-secret",
+                "jwtValue": "jwt-secret",
+                "api_key_mode": "api-key-mode-secret",
+                "clientSecretMode": "client-secret-mode-secret",
+                "authorization_type": "authorization-type-secret",
+                "password_style": "password-style-secret",
+                "jwt_name": "jwt-name-secret",
+                "access_token_count": 999,
+                "apiKeyId": "api-key-id-secret",
+                "apiKeyVerifier": "api-key-verifier-secret",
+                "accessTokenId": "access-token-id-secret",
+                "authorizationCodeId": "authorization-code-id-secret",
+                "clientSecretId": "client-secret-id-secret",
+                "xApiKeyId": "prefixed-api-key-id-secret",
+                "secretKey": "secret-key-secret",
+                "sessionIDCode": "session-id-code-secret",
+                "auth_mode": "codex_oauth_native",
+                "token_budget": 128,
+                "token_count": 64,
+                "header_style": "compact",
+                "note": "access_token=credential-canary",
+                "safe_note": "authorization settings are managed outside the library",
+                "attachment_label": "Bearer image",
+                "debug_messages": ["Bearer nested-secret-token", "kept"],
+                "nested": {
+                    "headers": {"Authorization": "Bearer header-secret"},
+                    "cookies": "cookie-secret",
+                    "safe": "kept",
+                },
+            },
+        },
+    )
+
+    assert created.status_code == 200
+    job = created.json()
+    assert job["parameters"] == {
+        "quality": "high",
+        "auth_mode": "codex_oauth_native",
+        "token_budget": 128,
+        "token_count": 64,
+        "header_style": "compact",
+        "note": "[redacted credential data]",
+        "safe_note": "authorization settings are managed outside the library",
+        "attachment_label": "Bearer image",
+        "debug_messages": ["[redacted credential data]", "kept"],
+        "nested": {"safe": "kept"},
+    }
+    assert c.get(f"/api/generation-jobs/{job['id']}").json()["parameters"] == job["parameters"]
+    assert c.get("/api/generation-jobs").json()["jobs"][0]["parameters"] == job["parameters"]
+    assert GenerationJobRepository(tmp_path / "library").get_job(job["id"]).parameters == job["parameters"]
+    with connect(tmp_path / "library") as conn:
+        stored = conn.execute("SELECT parameters FROM generation_jobs WHERE id=?", (job["id"],)).fetchone()[0]
+    assert "credential-canary" not in stored
+
+
+def test_generation_job_api_hides_internal_acceptance_metadata(tmp_path):
+    c = client(tmp_path)
+    created = c.post(
+        "/api/generation-jobs",
+        json={"prompt_text": "Internal metadata redaction"},
+    ).json()
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET metadata=? WHERE id=?",
+            (
+                json.dumps({
+                    "visible": "kept",
+                    "_generation_accept_claim": "private-claim",
+                    "_generation_accept_claim_at": "private-timestamp",
+                    "_generation_accept_artifacts": {"item_id": "private-item"},
+                }),
+                created["id"],
+            ),
+        )
+        conn.commit()
+
+    detail_metadata = c.get(f"/api/generation-jobs/{created['id']}").json()["metadata"]
+    listed_metadata = c.get("/api/generation-jobs").json()["jobs"][0]["metadata"]
+
+    assert detail_metadata == {"visible": "kept"}
+    assert listed_metadata == {"visible": "kept"}
+
+
+def test_generation_job_api_recursively_redacts_image_data(tmp_path):
+    c = client(tmp_path)
+    created = c.post(
+        "/api/generation-jobs",
+        json={
+            "prompt_text": "Nested image redaction",
+            "parameters": {
+                "nested": {
+                    "dataUrl": "data:image/png;base64,private-nested-data",
+                    "image_url": "https://example.invalid/private-image.png",
+                    "safe": "kept",
+                },
+            },
+        },
+    )
+
+    assert created.status_code == 200
+    job = created.json()
+    assert job["parameters"] == {"nested": {"safe": "kept"}}
+    stored = GenerationJobRepository(tmp_path / "library").get_job(job["id"])
+    assert stored.parameters["nested"]["dataUrl"].startswith("data:image/")
+    assert stored.parameters["nested"]["image_url"].startswith("https://")
 
 
 def test_generation_result_media_is_servable_before_accept(tmp_path):
@@ -346,6 +500,91 @@ def test_accept_as_new_item_uses_metadata_overrides_and_keeps_provenance(tmp_pat
     assert provenance["model"] == "manual-test-model"
     assert provenance["mode"] == "text_to_image"
     assert provenance["parameters"] == {"quality": "high"}
+
+
+def test_accept_as_new_item_redacts_private_generation_parameters_from_provenance(tmp_path):
+    c = client(tmp_path)
+    encoded = base64.b64encode(png_bytes("pink")).decode()
+    job = c.post("/api/generation-jobs", json={
+        "mode": "image_edit",
+        "provider": "manual_upload",
+        "prompt_language": "en",
+        "prompt_text": "Private reference regression",
+        "parameters": {
+            "quality": "high",
+            "api_key": "must-not-persist",
+            "headers": {"Authorization": "Bearer header-secret"},
+            "cookies": "cookie-secret",
+            "auth": "auth-secret",
+            "clientId": "client-id-secret",
+            "tokenValue": "token-value-secret",
+            "authorizationValue": "authorization-value-secret",
+            "input_images": [{
+                "name": "private-reference.png",
+                "data_url": f"data:image/png;base64,{encoded}",
+                "nested": {"refresh_token": "must-not-persist-either"},
+            }],
+        },
+    }).json()
+    c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("blue"), "image/png")},
+    )
+
+    accepted = c.post(f"/api/generation-jobs/{job['id']}/accept-as-new-item")
+
+    assert accepted.status_code == 200
+    provenance = accepted.json()["item"]["prompts"][0]["provenance"]
+    assert provenance["parameters"] == {
+        "quality": "high",
+        "input_images": [{"name": "private-reference.png", "nested": {}}],
+    }
+    serialized = json.dumps(provenance)
+    assert encoded not in serialized
+    assert "must-not-persist" not in serialized
+    assert "header-secret" not in serialized
+    assert "cookie-secret" not in serialized
+    assert "auth-secret" not in serialized
+    assert "client-id-secret" not in serialized
+    assert "token-value-secret" not in serialized
+    assert "authorization-value-secret" not in serialized
+
+
+def test_accept_as_new_item_sanitizes_override_prompt_provenance(tmp_path):
+    c = client(tmp_path)
+    job = c.post(
+        "/api/generation-jobs",
+        json={"provider": "manual_upload", "prompt_text": "Override provenance regression"},
+    ).json()
+    c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("blue"), "image/png")},
+    )
+
+    accepted = c.post(
+        f"/api/generation-jobs/{job['id']}/accept-as-new-item",
+        json={
+            "prompts": [{
+                "language": "en",
+                "text": "Edited safe prompt",
+                "provenance": {
+                    "safe_note": "kept",
+                    "tokenValue": "token-secret",
+                    "authorization": "authorization-secret",
+                    "nested": {"cookies": "cookie-secret", "safe": "kept"},
+                },
+            }],
+        },
+    )
+
+    assert accepted.status_code == 200
+    provenance = accepted.json()["item"]["prompts"][0]["provenance"]
+    assert provenance["safe_note"] == "kept"
+    assert provenance["nested"] == {"safe": "kept"}
+    serialized = json.dumps(provenance)
+    assert "token-secret" not in serialized
+    assert "authorization-secret" not in serialized
+    assert "cookie-secret" not in serialized
 
 
 def test_standalone_generation_job_can_save_as_new_item(tmp_path):
@@ -818,6 +1057,32 @@ def test_generation_job_rejects_nested_generation_reference_clone_symlink_destin
     assert list(wrong_reference_dir.rglob("*")) == []
 
 
+def test_generation_reference_clone_recovers_partial_deterministic_destination(tmp_path):
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    source = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="source result"))
+    source = repo.stage_result(source.id, png_bytes("blue"), "source.png")
+    downstream = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="downstream"))
+    clone_path = (
+        library
+        / "generation-references"
+        / downstream.id
+        / f"from-{source.id}-{source.result_sha256[:12]}.png"
+    )
+    clone_path.parent.mkdir(parents=True)
+    clone_path.write_bytes(b"partial")
+
+    copied_path, _ = repo._clone_generation_result_input(
+        job_id=downstream.id,
+        result_path=source.result_path,
+        name="source.png",
+    )
+
+    assert copied_path == clone_path.relative_to(library).as_posix()
+    assert clone_path.read_bytes() == png_bytes("blue")
+    assert list(clone_path.parent.glob("*.tmp")) == []
+
+
 def test_discard_rejects_symlinked_generation_result_root_before_delete(tmp_path):
     c = client(tmp_path)
     job = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "unsafe symlink result"}).json()
@@ -919,6 +1184,54 @@ def test_accept_as_new_rejects_legacy_invalid_input_reference_without_creating_i
     assert after["accepted_image_id"] is None
 
 
+def test_accept_as_new_rejects_result_changed_after_staging(tmp_path):
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "staged result integrity",
+    }).json()
+    staged = c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("blue"), "image/png")},
+    ).json()
+    result_file = tmp_path / "library" / staged["result_path"]
+    result_file.write_bytes(png_bytes("purple"))
+    initial_total = c.get("/api/items").json()["total"]
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/accept-as-new-item")
+
+    assert response.status_code == 409
+    assert "changed after it was staged" in response.json()["detail"]
+    assert c.get("/api/items").json()["total"] == initial_total
+    after = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert after["status"] == "succeeded"
+    assert after["accepted_image_id"] is None
+    assert result_file.read_bytes() == png_bytes("purple")
+
+
+def test_accept_as_new_rejects_missing_result_integrity_record(tmp_path):
+    c = client(tmp_path)
+    job = c.post(
+        "/api/generation-jobs",
+        json={"provider": "manual_upload", "prompt_text": "missing staged integrity"},
+    ).json()
+    staged = c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("blue"), "image/png")},
+    ).json()
+    with connect(tmp_path / "library") as conn:
+        conn.execute("UPDATE generation_jobs SET result_sha256=NULL WHERE id=?", (job["id"],))
+        conn.commit()
+    initial_total = c.get("/api/items").json()["total"]
+
+    response = c.post(f"/api/generation-jobs/{job['id']}/accept-as-new-item")
+
+    assert response.status_code == 409
+    assert "integrity record is missing" in response.json()["detail"]
+    assert c.get("/api/items").json()["total"] == initial_total
+    assert (tmp_path / "library" / staged["result_path"]).is_file()
+
+
 def test_accept_rejects_invalid_data_url_reference_without_mutating_source_item(tmp_path):
     c = client(tmp_path)
     source_item = create_source_item(c)
@@ -1001,7 +1314,9 @@ def test_discard_lazily_repairs_legacy_generation_job_references(tmp_path, monke
     source_path = source["result_path"]
 
     downstream = c.post("/api/generation-jobs", json={"provider": "manual_upload", "prompt_text": "legacy downstream"}).json()
-    legacy_parameters = {"input_images": [{"result_path": source_path, "name": "legacy-source.png"}]}
+    legacy_parameters = {
+        "input_images": [{"result_path": source_path, "preview_path": source_path, "name": "legacy-source.png"}]
+    }
     with connect(tmp_path / "library") as conn:
         conn.execute("UPDATE generation_jobs SET parameters=? WHERE id=?", (json.dumps(legacy_parameters), downstream["id"]))
         conn.commit()
@@ -1016,10 +1331,247 @@ def test_discard_lazily_repairs_legacy_generation_job_references(tmp_path, monke
     repaired = c.get(f"/api/generation-jobs/{downstream['id']}").json()
     repaired_spec = repaired["parameters"]["input_images"][0]
     assert repaired_spec["result_path"] != source_path
+    assert repaired_spec["preview_path"] == repaired_spec["result_path"]
     assert repaired_spec["result_path"].startswith(f"generation-references/{downstream['id']}/")
     assert (tmp_path / "library" / repaired_spec["result_path"]).is_file()
     assert repaired["metadata"]["reference_image_copies"][0]["source_result_path"] == source_path
     assert repaired["metadata"]["reference_image_repair"]["repaired_from_discard_job_id"] == source["id"]
+
+
+def test_discard_status_conflict_does_not_repair_downstream_reference(tmp_path, monkeypatch):
+    repo = GenerationJobRepository(tmp_path / "library")
+    source = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="discard race source"))
+    source = repo.stage_result(source.id, png_bytes("black"), "source.png")
+    downstream = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="discard race downstream"))
+    legacy_parameters = {
+        "input_images": [{"result_path": source.result_path, "preview_path": source.result_path, "name": "source.png"}]
+    }
+    with connect(tmp_path / "library") as conn:
+        conn.execute("UPDATE generation_jobs SET parameters=? WHERE id=?", (json.dumps(legacy_parameters), downstream.id))
+        conn.commit()
+
+    started = Event()
+    release = Event()
+    original_check = repo._result_path_is_discardable
+
+    def gated_check(job):
+        result = original_check(job)
+        started.set()
+        assert release.wait(5)
+        return result
+
+    monkeypatch.setattr(repo, "_result_path_is_discardable", gated_check)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(repo.discard_job, source.id)
+        assert started.wait(5)
+        with connect(tmp_path / "library") as conn:
+            conn.execute("UPDATE generation_jobs SET status='failed' WHERE id=?", (source.id,))
+            conn.commit()
+        release.set()
+        with pytest.raises(GenerationJobConflict):
+            pending.result()
+
+    assert repo.get_job(source.id).status == "failed"
+    assert repo.get_job(downstream.id).parameters == legacy_parameters
+    assert repo.get_job(downstream.id).metadata.get("reference_image_copies") is None
+
+
+def test_discard_retry_status_conflict_does_not_repair_downstream_reference(tmp_path, monkeypatch):
+    repo = GenerationJobRepository(tmp_path / "library")
+    source = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="retry race source"))
+    source = repo.stage_result(source.id, png_bytes("silver"), "source.png")
+    downstream = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="retry race downstream"))
+    legacy_parameters = {"input_images": [{"result_path": source.result_path, "name": "source.png"}]}
+    with connect(tmp_path / "library") as conn:
+        conn.execute("UPDATE generation_jobs SET parameters=? WHERE id=?", (json.dumps(legacy_parameters), downstream.id))
+        conn.commit()
+
+    started = Event()
+    release = Event()
+    original_check = repo._result_path_is_discardable
+
+    def gated_check(job):
+        result = original_check(job)
+        started.set()
+        assert release.wait(5)
+        return result
+
+    monkeypatch.setattr(repo, "_result_path_is_discardable", gated_check)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(repo.discard_and_retry_job, source.id)
+        assert started.wait(5)
+        with connect(tmp_path / "library") as conn:
+            conn.execute("UPDATE generation_jobs SET status='failed' WHERE id=?", (source.id,))
+            conn.commit()
+        release.set()
+        with pytest.raises(GenerationJobConflict):
+            pending.result()
+
+    assert repo.get_job(source.id).status == "failed"
+    assert repo.get_job(downstream.id).parameters == legacy_parameters
+    assert repo.get_job(downstream.id).metadata.get("reference_image_copies") is None
+
+
+def test_discard_repair_and_failed_retry_snapshot_reference_before_source_cleanup(tmp_path, monkeypatch):
+    repo = GenerationJobRepository(tmp_path / "library")
+    source = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="repair source"))
+    source = repo.stage_result(source.id, png_bytes("olive"), "source.png")
+    downstream = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="repair downstream"))
+    legacy_parameters = {
+        "input_images": [{"result_path": source.result_path, "preview_path": source.result_path, "name": "source.png"}]
+    }
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET parameters=?, status='failed', error=? WHERE id=?",
+            (json.dumps(legacy_parameters), "failed downstream", downstream.id),
+        )
+        conn.commit()
+
+    started = Event()
+    release = Event()
+    original_repair = repo._repair_generation_job_references_to_result
+
+    def gated_repair(job):
+        started.set()
+        assert release.wait(5)
+        return original_repair(job)
+
+    monkeypatch.setattr(repo, "_repair_generation_job_references_to_result", gated_repair)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        discard_future = pool.submit(repo.discard_job, source.id)
+        assert started.wait(5)
+        retry_future = pool.submit(repo.retry_failed_job, downstream.id)
+        retry = retry_future.result()
+        release.set()
+        discarded = discard_future.result()
+
+    retry_spec = retry.parameters["input_images"][0]
+    assert discarded.status == "discarded"
+    assert retry_spec["result_path"].startswith(f"generation-references/{retry.id}/")
+    assert retry_spec["preview_path"] == retry_spec["result_path"]
+    assert (tmp_path / "library" / retry_spec["result_path"]).is_file()
+    assert not (tmp_path / "library" / source.result_path).exists()
+
+
+def test_discard_repair_failure_leaves_pending_marker_for_idempotent_resume(tmp_path, monkeypatch):
+    repo = GenerationJobRepository(tmp_path / "library")
+    source = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="pending source"))
+    source = repo.stage_result(source.id, png_bytes("plum"), "source.png")
+    downstream = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="pending downstream"))
+    legacy_parameters = {"input_images": [{"result_path": source.result_path, "name": "source.png"}]}
+    with connect(tmp_path / "library") as conn:
+        conn.execute("UPDATE generation_jobs SET parameters=? WHERE id=?", (json.dumps(legacy_parameters), downstream.id))
+        conn.commit()
+
+    original_repair = repo._repair_generation_job_references_to_result
+
+    def fail_once(_job):
+        raise GenerationJobConflict("repair unavailable")
+
+    monkeypatch.setattr(repo, "_repair_generation_job_references_to_result", fail_once)
+    with pytest.raises(GenerationJobConflict, match="repair unavailable"):
+        repo.discard_job(source.id)
+
+    pending = repo.get_job(source.id)
+    assert pending.status == "discarded"
+    assert pending.metadata["discard_repair_pending"] is True
+    assert (tmp_path / "library" / source.result_path).is_file()
+
+    monkeypatch.setattr(repo, "_repair_generation_job_references_to_result", original_repair)
+    resumed = repo.discard_job(source.id)
+
+    assert resumed.status == "discarded"
+    assert resumed.metadata.get("discard_repair_pending") is None
+    repaired = repo.get_job(downstream.id)
+    repaired_path = repaired.parameters["input_images"][0]["result_path"]
+    assert repaired_path.startswith(f"generation-references/{downstream.id}/")
+    assert not (tmp_path / "library" / source.result_path).exists()
+
+
+def test_concurrent_discards_merge_two_source_repairs_into_one_downstream_job(tmp_path):
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    first = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="first source"))
+    second = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="second source"))
+    first = repo.stage_result(first.id, png_bytes("red"), "first.png")
+    second = repo.stage_result(second.id, png_bytes("blue"), "second.png")
+    downstream = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="two source downstream"))
+    parameters = {
+        "input_images": [
+            {"result_path": first.result_path, "preview_path": first.result_path, "name": "first.png"},
+            {"result_path": second.result_path, "preview_path": second.result_path, "name": "second.png"},
+        ]
+    }
+    with connect(library) as conn:
+        conn.execute("UPDATE generation_jobs SET parameters=? WHERE id=?", (json.dumps(parameters), downstream.id))
+        conn.commit()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        discarded = list(pool.map(repo.discard_job, [first.id, second.id]))
+
+    assert {job.status for job in discarded} == {"discarded"}
+    repaired_specs = repo.get_job(downstream.id).parameters["input_images"]
+    assert all(spec["result_path"].startswith(f"generation-references/{downstream.id}/") for spec in repaired_specs)
+    assert all(spec["preview_path"] == spec["result_path"] for spec in repaired_specs)
+    assert not (library / first.result_path).exists()
+    assert not (library / second.result_path).exists()
+
+
+def test_discard_file_removal_failure_keeps_pending_repair_for_retry(tmp_path, monkeypatch):
+    repo = GenerationJobRepository(tmp_path / "library")
+    source = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="locked result"))
+    source = repo.stage_result(source.id, png_bytes("green"), "source.png")
+    original_remove = repo._remove_discarded_result_file
+
+    def fail_remove(_path):
+        raise GenerationJobConflict("Generation result could not be removed. Retry the discard.")
+
+    monkeypatch.setattr(repo, "_remove_discarded_result_file", fail_remove)
+    with pytest.raises(GenerationJobConflict, match="could not be removed"):
+        repo.discard_job(source.id)
+
+    pending = repo.get_job(source.id)
+    assert pending.metadata["discard_repair_pending"] is True
+    assert (repo.library_path / source.result_path).is_file()
+
+    monkeypatch.setattr(repo, "_remove_discarded_result_file", original_remove)
+    resumed = repo.discard_job(source.id)
+    assert resumed.metadata.get("discard_repair_pending") is None
+    assert not (repo.library_path / source.result_path).exists()
+
+
+def test_backend_restart_resumes_pending_discard_repair(tmp_path, monkeypatch):
+    from backend.services.generation_queue import recover_interrupted_generation_jobs
+
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    source = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="restart repair source"))
+    source = repo.stage_result(source.id, png_bytes("navy"), "source.png")
+    downstream = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="restart repair downstream"))
+    legacy_parameters = {"input_images": [{"result_path": source.result_path, "name": "source.png"}]}
+    with connect(library) as conn:
+        conn.execute("UPDATE generation_jobs SET parameters=? WHERE id=?", (json.dumps(legacy_parameters), downstream.id))
+        conn.commit()
+
+    original_repair = GenerationJobRepository._repair_generation_job_references_to_result
+
+    def fail_repair(_job):
+        raise GenerationJobConflict("repair unavailable")
+
+    monkeypatch.setattr(repo, "_repair_generation_job_references_to_result", fail_repair)
+    with pytest.raises(GenerationJobConflict, match="repair unavailable"):
+        repo.discard_job(source.id)
+
+    monkeypatch.setattr(GenerationJobRepository, "_repair_generation_job_references_to_result", original_repair)
+    recover_interrupted_generation_jobs(library)
+
+    resumed = GenerationJobRepository(library).get_job(source.id)
+    repaired = GenerationJobRepository(library).get_job(downstream.id)
+    assert resumed.metadata.get("discard_repair_pending") is None
+    assert repaired.parameters["input_images"][0]["result_path"].startswith(
+        f"generation-references/{downstream.id}/"
+    )
+    assert not (library / source.result_path).exists()
 
 
 def test_generation_job_can_discard_unsaved_result_and_retry_same_settings(tmp_path, monkeypatch):
@@ -1132,6 +1684,643 @@ def test_failed_generation_job_can_be_retried_without_rerunning_original(tmp_pat
     assert [candidate["metadata"].get("retry_of_generation_job_id") for candidate in jobs].count(job["id"]) == 1
 
 
+def _concurrent_results(callable_, count=2):
+    with ThreadPoolExecutor(max_workers=count) as pool:
+        futures = [pool.submit(callable_) for _ in range(count)]
+        return [future.result() for future in futures]
+
+
+def test_concurrent_accept_result_creates_one_image_and_one_winner(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(source_item_id=source_item["id"], provider="manual_upload", prompt_text="concurrent accept"))
+    repo.stage_result(job.id, png_bytes("blue"), "generated.png")
+
+    def accept():
+        try:
+            return ("ok", repo.accept_result(job.id))
+        except GenerationJobConflict as exc:
+            return ("conflict", str(exc))
+
+    results = _concurrent_results(accept)
+
+    assert [result[0] for result in results].count("ok") == 1
+    assert [result[0] for result in results].count("conflict") == 1
+    assert repo.get_job(job.id).status == "accepted"
+    assert len(repo.items.get_item(source_item["id"]).images) == 1
+
+
+def test_concurrent_accept_as_new_item_creates_one_item_and_one_winner(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(source_item_id=source_item["id"], provider="manual_upload", prompt_text="concurrent variant"))
+    repo.stage_result(job.id, png_bytes("purple"), "generated.png")
+
+    def accept_as_new():
+        try:
+            return ("ok", repo.accept_result_as_new_item(job.id))
+        except GenerationJobConflict as exc:
+            return ("conflict", str(exc))
+
+    results = _concurrent_results(accept_as_new)
+
+    assert [result[0] for result in results].count("ok") == 1
+    assert [result[0] for result in results].count("conflict") == 1
+    assert repo.get_job(job.id).status == "accepted"
+    assert repo.items.list_items(limit=10).total == 2
+
+
+def test_stale_accept_claim_only_recovers_the_same_acceptance_mode(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(
+        GenerationJobCreate(
+            source_item_id=source_item["id"],
+            provider="manual_upload",
+            prompt_text="mode-safe recovery",
+        )
+    )
+    repo.stage_result(job.id, png_bytes("purple"), "generated.png")
+    stale_at = (datetime.now(timezone.utc) - timedelta(minutes=11)).isoformat()
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET metadata=?, updated_at=? WHERE id=?",
+            (
+                json.dumps({
+                    "_generation_accept_claim": {
+                        "token": "accept_crashed_process",
+                        "mode": "existing_item",
+                    },
+                    "_generation_accept_claim_at": stale_at,
+                }),
+                stale_at,
+                job.id,
+            ),
+        )
+        conn.commit()
+
+    with pytest.raises(GenerationJobConflict, match="interrupted save"):
+        repo.accept_result_as_new_item(job.id)
+
+    accepted = repo.accept_result(job.id)
+    assert accepted.job.status == "accepted"
+    assert repo.items.list_items(limit=10).total == 1
+    assert len(repo.items.get_item(source_item["id"]).images) == 1
+
+
+def test_stage_result_cannot_replace_result_during_acceptance(tmp_path, monkeypatch):
+    source = GenerationJobRepository(tmp_path / "library").items.create_item(
+        ItemCreate(title="Stage race source", prompts=[PromptIn(language="en", text="source", is_original=True)])
+    )
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(
+        GenerationJobCreate(
+            source_item_id=source.id,
+            provider="manual_upload",
+            prompt_text="stage accept race",
+        )
+    )
+    staged = repo.stage_result(job.id, png_bytes("blue"), "first.png")
+    store_started = Event()
+    release_store = Event()
+    original_store = repo._store_prepared_image
+
+    def gated_store(prepared):
+        store_started.set()
+        assert release_store.wait(5)
+        return original_store(prepared)
+
+    monkeypatch.setattr(repo, "_store_prepared_image", gated_store)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(repo.accept_result, job.id)
+        assert store_started.wait(5)
+        with pytest.raises(GenerationJobConflict, match="currently being accepted"):
+            repo.stage_result(job.id, png_bytes("red"), "second.png")
+        release_store.set()
+        accepted = pending.result()
+
+    final_job = repo.get_job(job.id)
+    accepted_image = repo.items.get_image(accepted.job.accepted_image_id)
+    with Image.open(repo.library_path / accepted_image.original_path) as image:
+        assert image.getpixel((0, 0)) == (0, 0, 255)
+    assert final_job.status == "accepted"
+    assert final_job.result_path == staged.result_path
+    assert final_job.result_sha256 == staged.result_sha256
+    result_directory = repo.library_path / "generation-results" / job.id
+    assert not any(
+        path.name.startswith("result-") and path != repo.library_path / staged.result_path
+        for path in result_directory.iterdir()
+    )
+
+
+def test_stage_result_rejects_truncated_image_before_marking_job_succeeded(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="truncated result"))
+    truncated = png_bytes("blue")[:-12]
+
+    with pytest.raises(GenerationJobConflict, match="invalid"):
+        repo.stage_result(job.id, truncated, "truncated.png")
+
+    current = repo.get_job(job.id)
+    assert current.status == "queued"
+    assert current.result_path is None
+    result_directory = repo.library_path / "generation-results" / job.id
+    assert not result_directory.exists()
+
+
+def test_accept_and_discard_race_does_not_resurrect_discarded_job(tmp_path, monkeypatch):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(source_item_id=source_item["id"], provider="manual_upload", prompt_text="accept discard race"))
+    repo.stage_result(job.id, png_bytes("green"), "generated.png")
+    claim_started = Event()
+    release_claim = Event()
+    claim = repo._claim_acceptance
+
+    def delayed_claim(*args, **kwargs):
+        claim_started.set()
+        assert release_claim.wait(5)
+        return claim(*args, **kwargs)
+
+    monkeypatch.setattr(repo, "_claim_acceptance", delayed_claim)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(repo.accept_result, job.id)
+        assert claim_started.wait(5)
+        discarded = repo.discard_job(job.id)
+        release_claim.set()
+        with pytest.raises(GenerationJobConflict):
+            pending.result()
+
+    assert discarded.status == "discarded"
+    assert repo.get_job(job.id).status == "discarded"
+    assert repo.items.get_item(source_item["id"]).images == []
+
+
+def test_accept_side_effect_failure_releases_claim_and_compensates_image(tmp_path, monkeypatch):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(source_item_id=source_item["id"], provider="manual_upload", prompt_text="accept cleanup"))
+    staged = repo.stage_result(job.id, png_bytes("orange"), "generated.png")
+    result_path = tmp_path / "library" / staged.result_path
+
+    def fail_reference_storage(*_args, **_kwargs):
+        raise RuntimeError("reference side effect failed")
+
+    monkeypatch.setattr(repo, "_store_input_reference_images", fail_reference_storage)
+    with pytest.raises(RuntimeError, match="reference side effect failed"):
+        repo.accept_result(job.id)
+
+    assert repo.get_job(job.id).status == "succeeded"
+    assert repo.get_job(job.id).metadata.get("_generation_accept_claim") is None
+    assert repo.items.get_item(source_item["id"]).images == []
+    assert result_path.is_file()
+
+
+def test_stale_legacy_accept_claim_is_recovered_for_accept(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(source_item_id=source_item["id"], provider="manual_upload", prompt_text="recover stale claim"))
+    repo.stage_result(job.id, png_bytes("yellow"), "generated.png")
+    stale_at = (datetime.now(timezone.utc) - timedelta(minutes=11)).isoformat()
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET metadata=?, updated_at=? WHERE id=?",
+            (json.dumps({"_generation_accept_claim": "accept_crashed_process"}), stale_at, job.id),
+        )
+        conn.commit()
+
+    accepted = repo.accept_result(job.id)
+
+    assert accepted.job.status == "accepted"
+    assert accepted.job.metadata.get("_generation_accept_claim") is None
+
+
+def test_accept_reuses_side_effects_after_crash_before_finalize_and_legacy_claim_recovery(tmp_path, monkeypatch):
+    repo = GenerationJobRepository(tmp_path / "library")
+    source = repo.items.create_item(ItemCreate(title="Crash source", prompts=[PromptIn(language="en", text="source", is_original=True)]))
+    job = repo.create_job(GenerationJobCreate(source_item_id=source.id, provider="manual_upload", prompt_text="crash accept"))
+    repo.stage_result(job.id, png_bytes("navy"), "generated.png")
+
+    class SimulatedCrash(BaseException):
+        pass
+
+    finalize = repo._finalize_acceptance
+    monkeypatch.setattr(repo, "_finalize_acceptance", lambda *_args, **_kwargs: (_ for _ in ()).throw(SimulatedCrash()))
+    with pytest.raises(SimulatedCrash):
+        repo.accept_result(job.id)
+
+    crashed = repo.get_job(job.id)
+    stale_at = (datetime.now(timezone.utc) - timedelta(minutes=11)).isoformat()
+    legacy_metadata = dict(crashed.metadata)
+    legacy_metadata.pop("_generation_accept_artifacts", None)
+    legacy_metadata.pop("_generation_accept_claim_at", None)
+    legacy_metadata["_generation_accept_claim"] = "legacy-crashed-claim"
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET metadata=?, updated_at=? WHERE id=?",
+            (json.dumps(legacy_metadata), stale_at, job.id),
+        )
+        conn.commit()
+
+    monkeypatch.setattr(repo, "_finalize_acceptance", finalize)
+    accepted = repo.accept_result(job.id)
+
+    assert accepted.job.status == "accepted"
+    assert len(repo.items.get_item(source.id).images) == 1
+    assert accepted.job.accepted_image_id == repo.items.get_item(source.id).images[0].id
+    assert not any(key.startswith("_generation_accept_") for key in accepted.job.metadata)
+
+
+def test_accept_lease_loss_during_store_cleans_losing_claim_side_effects(tmp_path, monkeypatch):
+    repo = GenerationJobRepository(tmp_path / "library")
+    source = repo.items.create_item(ItemCreate(title="Lease source", prompts=[PromptIn(language="en", text="source", is_original=True)]))
+    job = repo.create_job(GenerationJobCreate(source_item_id=source.id, provider="manual_upload", prompt_text="lease race"))
+    repo.stage_result(job.id, png_bytes("maroon"), "generated.png")
+    monkeypatch.setattr("backend.services.generation_jobs.ACCEPT_CLAIM_LEASE_AFTER", timedelta(0))
+    started = Event()
+    release = Event()
+    original_store = repo._store_prepared_image
+
+    def gated_store(prepared):
+        started.set()
+        assert release.wait(5)
+        return original_store(prepared)
+
+    monkeypatch.setattr(repo, "_store_prepared_image", gated_store)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(repo.accept_result, job.id)
+        assert started.wait(5)
+        discarded = repo.discard_job(job.id)
+        release.set()
+        with pytest.raises(GenerationJobConflict):
+            pending.result()
+
+    assert discarded.status == "discarded"
+    assert repo.items.get_item(source.id).images == []
+    originals = tmp_path / "library" / "originals"
+    assert not originals.exists() or not any(path.is_file() for path in originals.rglob("*"))
+
+
+def test_accept_as_new_reuses_item_and_image_after_crash_before_finalize(tmp_path, monkeypatch):
+    repo = GenerationJobRepository(tmp_path / "library")
+    source = repo.items.create_item(ItemCreate(title="Crash source", prompts=[PromptIn(language="en", text="source", is_original=True)]))
+    job = repo.create_job(GenerationJobCreate(source_item_id=source.id, provider="manual_upload", prompt_text="crash variant"))
+    repo.stage_result(job.id, png_bytes("indigo"), "generated.png")
+
+    class SimulatedCrash(BaseException):
+        pass
+
+    finalize = repo._finalize_acceptance
+    monkeypatch.setattr(repo, "_finalize_acceptance", lambda *_args, **_kwargs: (_ for _ in ()).throw(SimulatedCrash()))
+    with pytest.raises(SimulatedCrash):
+        repo.accept_result_as_new_item(job.id)
+
+    crashed = repo.get_job(job.id)
+    stale_at = (datetime.now(timezone.utc) - timedelta(minutes=11)).isoformat()
+    legacy_metadata = dict(crashed.metadata)
+    legacy_metadata.pop("_generation_accept_artifacts", None)
+    legacy_metadata.pop("_generation_accept_claim_at", None)
+    legacy_metadata["_generation_accept_claim"] = "legacy-crashed-claim"
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET metadata=?, updated_at=? WHERE id=?",
+            (json.dumps(legacy_metadata), stale_at, job.id),
+        )
+        conn.commit()
+
+    monkeypatch.setattr(repo, "_finalize_acceptance", finalize)
+    accepted = repo.accept_result_as_new_item(job.id)
+
+    assert accepted.job.status == "accepted"
+    assert accepted.item.id != source.id
+    assert repo.items.list_items(limit=10).total == 2
+    assert len(accepted.item.images) == 1
+    assert not any(key.startswith("_generation_accept_") for key in accepted.job.metadata)
+
+
+def test_stale_timestamped_accept_claim_is_recovered_for_discard_and_retry(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="recover stale discard"))
+    repo.stage_result(job.id, png_bytes("teal"), "generated.png")
+    stale_at = (datetime.now(timezone.utc) - timedelta(minutes=11)).isoformat()
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET metadata=?, updated_at=? WHERE id=?",
+            (json.dumps({
+                "_generation_accept_claim": "accept_crashed_process",
+                "_generation_accept_claim_at": stale_at,
+            }), stale_at, job.id),
+        )
+        conn.commit()
+
+    retried = repo.discard_and_retry_job(job.id)
+
+    assert retried.discarded_job.status == "discarded"
+    assert retried.retry_job.status == "queued"
+
+
+def test_stale_timestamped_accept_claim_is_recovered_for_discard(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="recover stale discard only"))
+    repo.stage_result(job.id, png_bytes("gray"), "generated.png")
+    stale_at = (datetime.now(timezone.utc) - timedelta(minutes=11)).isoformat()
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET metadata=?, updated_at=? WHERE id=?",
+            (json.dumps({
+                "_generation_accept_claim": "accept_crashed_process",
+                "_generation_accept_claim_at": stale_at,
+            }), stale_at, job.id),
+        )
+        conn.commit()
+
+    discarded = repo.discard_job(job.id)
+
+    assert discarded.status == "discarded"
+
+
+def test_stale_acceptance_artifacts_must_resume_before_discard(tmp_path, monkeypatch):
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    source = repo.items.create_item(
+        ItemCreate(title="Interrupted save source", prompts=[PromptIn(language="en", text="source", is_original=True)])
+    )
+    job = repo.create_job(
+        GenerationJobCreate(source_item_id=source.id, provider="manual_upload", prompt_text="interrupted save")
+    )
+    repo.stage_result(job.id, png_bytes("purple"), "generated.png")
+
+    class SimulatedCrash(BaseException):
+        pass
+
+    finalize = repo._finalize_acceptance
+
+    def crash_before_finalize(*_args, **_kwargs):
+        raise SimulatedCrash()
+
+    monkeypatch.setattr(repo, "_finalize_acceptance", crash_before_finalize)
+    with pytest.raises(SimulatedCrash):
+        repo.accept_result(job.id)
+
+    crashed = repo.get_job(job.id)
+    assert crashed.metadata.get("_generation_accept_artifacts")
+    stale_at = (datetime.now(timezone.utc) - timedelta(minutes=11)).isoformat()
+    stale_metadata = dict(crashed.metadata)
+    stale_metadata["_generation_accept_claim_at"] = stale_at
+    with connect(library) as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET metadata=?, updated_at=? WHERE id=?",
+            (json.dumps(stale_metadata), stale_at, job.id),
+        )
+        conn.commit()
+
+    with pytest.raises(GenerationJobConflict, match="interrupted save"):
+        repo.discard_job(job.id)
+    with pytest.raises(GenerationJobConflict, match="interrupted save"):
+        repo.discard_and_retry_job(job.id)
+
+    monkeypatch.setattr(repo, "_finalize_acceptance", finalize)
+    accepted = repo.accept_result(job.id)
+    assert accepted.job.status == "accepted"
+    assert len(repo.items.get_item(source.id).images) == 1
+
+
+def test_stale_new_item_without_artifact_marker_must_resume_before_discard(tmp_path, monkeypatch):
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    source = repo.items.create_item(
+        ItemCreate(title="Interrupted variant source", prompts=[PromptIn(language="en", text="source", is_original=True)])
+    )
+    job = repo.create_job(
+        GenerationJobCreate(source_item_id=source.id, provider="manual_upload", prompt_text="interrupted variant")
+    )
+    repo.stage_result(job.id, png_bytes("plum"), "generated.png")
+
+    class SimulatedCrash(BaseException):
+        pass
+
+    record_artifacts = repo._record_acceptance_artifacts
+    monkeypatch.setattr(
+        repo,
+        "_record_acceptance_artifacts",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(SimulatedCrash()),
+    )
+    with pytest.raises(SimulatedCrash):
+        repo.accept_result_as_new_item(job.id)
+
+    crashed = repo.get_job(job.id)
+    assert crashed.metadata.get("_generation_accept_artifacts") is None
+    assert repo.items.list_items(limit=10).total == 2
+    stale_at = (datetime.now(timezone.utc) - timedelta(minutes=11)).isoformat()
+    stale_metadata = dict(crashed.metadata)
+    stale_metadata["_generation_accept_claim_at"] = stale_at
+    with connect(library) as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET metadata=?, updated_at=? WHERE id=?",
+            (json.dumps(stale_metadata), stale_at, job.id),
+        )
+        conn.commit()
+
+    with pytest.raises(GenerationJobConflict, match="interrupted save"):
+        repo.discard_job(job.id)
+    with pytest.raises(GenerationJobConflict, match="interrupted save"):
+        repo.discard_and_retry_job(job.id)
+
+    monkeypatch.setattr(repo, "_record_acceptance_artifacts", record_artifacts)
+    accepted = repo.accept_result_as_new_item(job.id)
+    assert accepted.job.status == "accepted"
+    assert repo.items.list_items(limit=10).total == 2
+    assert accepted.item.id != source.id
+
+
+def test_stale_existing_item_without_artifact_marker_must_resume_before_discard(tmp_path, monkeypatch):
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    source = repo.items.create_item(
+        ItemCreate(title="Interrupted attach source", prompts=[PromptIn(language="en", text="source", is_original=True)])
+    )
+    job = repo.create_job(
+        GenerationJobCreate(source_item_id=source.id, provider="manual_upload", prompt_text="interrupted attach")
+    )
+    repo.stage_result(job.id, png_bytes("orchid"), "generated.png")
+
+    class SimulatedCrash(BaseException):
+        pass
+
+    record_artifacts = repo._record_acceptance_artifacts
+    monkeypatch.setattr(
+        repo,
+        "_record_acceptance_artifacts",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(SimulatedCrash()),
+    )
+    with pytest.raises(SimulatedCrash):
+        repo.accept_result(job.id)
+
+    crashed = repo.get_job(job.id)
+    assert crashed.metadata.get("_generation_accept_artifacts") is None
+    assert len(repo.items.get_item(source.id).images) == 1
+    stale_at = (datetime.now(timezone.utc) - timedelta(minutes=11)).isoformat()
+    stale_metadata = dict(crashed.metadata)
+    stale_metadata["_generation_accept_claim_at"] = stale_at
+    with connect(library) as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET metadata=?, updated_at=? WHERE id=?",
+            (json.dumps(stale_metadata), stale_at, job.id),
+        )
+        conn.commit()
+
+    with pytest.raises(GenerationJobConflict, match="interrupted save"):
+        repo.discard_job(job.id)
+    with pytest.raises(GenerationJobConflict, match="interrupted save"):
+        repo.discard_and_retry_job(job.id)
+
+    monkeypatch.setattr(repo, "_record_acceptance_artifacts", record_artifacts)
+    accepted = repo.accept_result(job.id)
+    assert accepted.job.status == "accepted"
+    assert len(repo.items.get_item(source.id).images) == 1
+
+
+def test_fresh_accept_claim_blocks_accept_discard_and_retry(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="fresh claim"))
+    repo.stage_result(job.id, png_bytes("pink"), "generated.png")
+    _, claim_token = repo._claim_acceptance(job.id, require_source_item=False)
+
+    with pytest.raises(GenerationJobConflict, match="already being accepted"):
+        repo._claim_acceptance(job.id, require_source_item=False)
+    with pytest.raises(GenerationJobConflict):
+        repo.discard_job(job.id)
+    with pytest.raises(GenerationJobConflict):
+        repo.discard_and_retry_job(job.id)
+
+    repo._release_acceptance(job.id, claim_token)
+
+
+def test_stage_result_merges_provider_metadata_without_dropping_retry_provenance(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    original = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="retry metadata"))
+    repo.mark_failed(original.id, "temporary failure")
+    retry = repo.retry_failed_job(original.id)
+
+    staged = repo.stage_result(retry.id, png_bytes("white"), "generated.png", {
+        "provider_request_id": "req_123",
+        "_generation_accept_claim": "forged-claim",
+        "_generation_accept_artifacts": {"item_id": "forged-item"},
+        "reference_image_copies": [{"copied_path": "forged-copy"}],
+    })
+    reloaded = repo.get_job(retry.id)
+
+    assert staged.metadata["retry_of_generation_job_id"] == original.id
+    assert staged.metadata["provider_request_id"] == "req_123"
+    assert reloaded.metadata["retry_of_generation_job_id"] == original.id
+    assert reloaded.metadata.get("_generation_accept_claim") is None
+    assert reloaded.metadata.get("_generation_accept_artifacts") is None
+    assert reloaded.metadata.get("reference_image_copies") is None
+
+
+def test_stage_result_sanitizes_provider_metadata_before_storage_and_api_output(tmp_path):
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={"prompt_text": "metadata boundary"}).json()
+    response = c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("white"), "image/png")},
+        data={
+            "metadata": json.dumps({
+                "provider_request_id": "req_safe",
+                "auth_mode": "codex_oauth_native",
+                "tokenValue": "token-secret",
+                "APIKey": "api-key-secret",
+                "nested": {
+                    "headers": {"Authorization": "Bearer secret"},
+                    "data_url": "data:image/png;base64,private-metadata-image",
+                    "safe": "kept",
+                },
+            }),
+        },
+    )
+
+    assert response.status_code == 200
+    expected = {
+        "provider_request_id": "req_safe",
+        "auth_mode": "codex_oauth_native",
+        "nested": {"safe": "kept"},
+    }
+    assert response.json()["metadata"] == expected
+    assert GenerationJobRepository(tmp_path / "library").get_job(job["id"]).metadata == expected
+
+
+def test_generation_result_and_failure_updates_do_not_overwrite_terminal_outcomes(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    succeeded = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="success wins"))
+    repo.stage_result(succeeded.id, png_bytes("white"), "generated.png")
+
+    with pytest.raises(GenerationJobConflict, match="cannot be marked failed"):
+        repo.mark_failed(succeeded.id, "late provider failure")
+    assert repo.get_job(succeeded.id).status == "succeeded"
+
+    failed = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="failure wins"))
+    repo.mark_failed(failed.id, "provider failed")
+    with pytest.raises(GenerationJobConflict, match="cannot be staged"):
+        repo.stage_result(failed.id, png_bytes("black"), "late-result.png")
+    assert repo.get_job(failed.id).status == "failed"
+
+
+def test_concurrent_failed_retry_creates_one_replacement_and_preserves_batch_fields(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    generation_set = repo.create_job_set(GenerationJobCreate(provider="openai_codex_oauth_native", prompt_text="batch failed retry"), 3)
+    job = generation_set.jobs[1]
+    repo.mark_failed(job.id, "failed")
+
+    def retry():
+        try:
+            return ("ok", repo.retry_failed_job(job.id))
+        except GenerationJobConflict as exc:
+            return ("conflict", str(exc))
+
+    results = _concurrent_results(retry)
+
+    assert [result[0] for result in results].count("ok") == 1
+    assert [result[0] for result in results].count("conflict") == 1
+    retry_job = next(result[1] for result in results if result[0] == "ok")
+    assert retry_job.generation_group_id == job.generation_group_id
+    assert retry_job.generation_group_index == job.generation_group_index
+    assert retry_job.generation_group_size == job.generation_group_size
+    with connect(tmp_path / "library") as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM generation_jobs WHERE metadata LIKE ?",
+            (f'%"retry_of_generation_job_id": "{job.id}"%',),
+        ).fetchone()[0] == 1
+
+
+def test_concurrent_discard_retry_creates_one_replacement_and_preserves_batch_fields(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    generation_set = repo.create_job_set(GenerationJobCreate(provider="openai_codex_oauth_native", prompt_text="batch discard retry"), 3)
+    job = generation_set.jobs[1]
+    staged = repo.stage_result(job.id, png_bytes("red"), "generated.png")
+
+    def retry():
+        try:
+            return ("ok", repo.discard_and_retry_job(job.id))
+        except GenerationJobConflict as exc:
+            return ("conflict", str(exc))
+
+    results = _concurrent_results(retry)
+
+    assert [result[0] for result in results].count("ok") == 1
+    assert [result[0] for result in results].count("conflict") == 1
+    retry_job = next(result[1].retry_job for result in results if result[0] == "ok")
+    assert retry_job.generation_group_id == job.generation_group_id
+    assert retry_job.generation_group_index == job.generation_group_index
+    assert retry_job.generation_group_size == job.generation_group_size
+    assert not (tmp_path / "library" / staged.result_path).exists()
+
+
 def test_running_generation_job_is_not_stale_before_ten_minutes(tmp_path):
     repo, job_id = _make_running_job(tmp_path, started_minutes_ago=9)
 
@@ -1145,6 +2334,12 @@ def test_running_generation_job_is_not_stale_before_ten_minutes(tmp_path):
 
 def test_stale_running_generation_job_fails_with_retryable_message(tmp_path):
     repo, job_id = _make_running_job(tmp_path, started_minutes_ago=11)
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET metadata=? WHERE id=?",
+            (json.dumps({"note": "access_token=stale-canary", "safe": "kept"}), job_id),
+        )
+        conn.commit()
 
     failed = repo.mark_stale_running_failed(job_id)
     retry = repo.retry_failed_job(job_id)
@@ -1153,8 +2348,30 @@ def test_stale_running_generation_job_fails_with_retryable_message(tmp_path):
     assert failed.error == "Generation took too long and may have stalled. Retry to run it again."
     assert failed.metadata["stale_running_marked_failed"] is True
     assert failed.metadata["stale_running_threshold_minutes"] == 10
+    assert failed.metadata["note"] == "[redacted credential data]"
+    assert failed.metadata["safe"] == "kept"
+    assert "stale-canary" not in json.dumps(failed.metadata)
     assert retry.status == "queued"
     assert retry.metadata["retry_of_generation_job_id"] == job_id
+
+
+def test_discard_sanitizes_legacy_metadata_before_rewriting_job(tmp_path):
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    job = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="discard boundary"))
+    repo.stage_result(job.id, png_bytes("blue"), "generated.png")
+    with connect(library) as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET metadata=? WHERE id=?",
+            (json.dumps({"note": "access_token=discard-canary", "safe": "kept"}), job.id),
+        )
+        conn.commit()
+
+    discarded = repo.discard_job(job.id)
+
+    assert discarded.metadata["note"] == "[redacted credential data]"
+    assert discarded.metadata["safe"] == "kept"
+    assert "discard-canary" not in json.dumps(discarded.metadata)
 
 
 def test_queued_and_running_generation_jobs_can_be_cancelled(tmp_path):
@@ -1715,6 +2932,108 @@ def test_generation_job_api_preserves_exact_global_status_counts(tmp_path):
         "running": 0,
         "succeeded": 0,
         "failed": 0,
+        "accepted": 0,
+        "discarded": 0,
+        "cancelled": 0,
+    }
+
+
+def test_generation_job_source_filter_excludes_unrelated_active_generation_sets(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    other_source_item = create_source_item(c)
+    repo = GenerationJobRepository(tmp_path / "library")
+    source_set = repo.create_job_set(GenerationJobCreate(
+        source_item_id=source_item["id"],
+        provider="test_provider",
+        prompt_text="source set",
+    ), 3)
+    repo.create_job_set(GenerationJobCreate(
+        source_item_id=other_source_item["id"],
+        provider="test_provider",
+        prompt_text="other source set",
+    ), 3)
+
+    response = c.get(
+        "/api/generation-jobs",
+        params={"source_item_id": source_item["id"]},
+    )
+
+    assert response.status_code == 200
+    assert {
+        item["generation_group_id"] for item in response.json()["generation_sets"]
+    } == {source_set.generation_group_id}
+
+
+def test_generation_job_api_filters_by_source_item_with_status_and_pagination(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    other_source_item = create_source_item(c)
+    repo = GenerationJobRepository(tmp_path / "library")
+
+    older_failed = repo.create_job(GenerationJobCreate(
+        source_item_id=source_item["id"],
+        provider="manual_upload",
+        prompt_text="older failed",
+    ))
+    newer_failed = repo.create_job(GenerationJobCreate(
+        source_item_id=source_item["id"],
+        provider="manual_upload",
+        prompt_text="newer failed",
+    ))
+    queued = repo.create_job(GenerationJobCreate(
+        source_item_id=source_item["id"],
+        provider="manual_upload",
+        prompt_text="queued",
+    ))
+    other_failed = repo.create_job(GenerationJobCreate(
+        source_item_id=other_source_item["id"],
+        provider="manual_upload",
+        prompt_text="other failed",
+    ))
+    for job in (older_failed, newer_failed, other_failed):
+        repo.mark_failed(job.id, "test failure")
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET created_at=? WHERE id=?",
+            ("2026-01-01T00:00:00+00:00", older_failed.id),
+        )
+        conn.execute(
+            "UPDATE generation_jobs SET created_at=? WHERE id=?",
+            ("2026-01-02T00:00:00+00:00", newer_failed.id),
+        )
+        conn.commit()
+
+    source_only = c.get(
+        "/api/generation-jobs",
+        params={"source_item_id": source_item["id"]},
+    )
+    assert source_only.status_code == 200
+    assert source_only.json()["total"] == 3
+    assert {job["id"] for job in source_only.json()["jobs"]} == {
+        older_failed.id,
+        newer_failed.id,
+        queued.id,
+    }
+
+    filtered_page = c.get(
+        "/api/generation-jobs",
+        params={
+            "source_item_id": source_item["id"],
+            "status": "failed",
+            "limit": 1,
+            "offset": 1,
+        },
+    )
+    assert filtered_page.status_code == 200
+    payload = filtered_page.json()
+    assert payload["total"] == 2
+    assert [job["id"] for job in payload["jobs"]] == [older_failed.id]
+    assert payload["status_counts"] == {
+        "queued": 1,
+        "running": 0,
+        "succeeded": 0,
+        "failed": 3,
         "accepted": 0,
         "discarded": 0,
         "cancelled": 0,

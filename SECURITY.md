@@ -28,4 +28,5 @@ Do not include private prompt-library data, personal images, API keys, or creden
 - The default bind address is `127.0.0.1`; changing the host can expose the app to other devices on your network.
 - Runtime data under `IMAGE_PROMPT_LIBRARY_PATH` is private user data and should be backed up separately.
 - The `/media` route should only serve intended image media directories, never the SQLite database, config files, backups, or arbitrary local paths.
+- Browser API writes with an `Origin` header must match the app origin or the approved local development UI. Other requests explicitly marked cross-site are rejected. CLI-style local clients without browser fetch metadata remain supported.
 - There is no built-in authentication layer yet, so do not expose the app directly to the public internet.

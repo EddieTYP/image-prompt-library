@@ -6,6 +6,7 @@ import sys
 import zipfile
 from pathlib import Path
 
+import pytest
 
 from PIL import Image
 
@@ -44,7 +45,7 @@ def nested_keys(value):
 
 def test_sample_data_manifests_are_localized_and_truthful():
     manifest_dir = ROOT / "sample-data" / "manifests"
-    manifests = {lang: json.loads((manifest_dir / f"{lang}.json").read_text()) for lang in ("en", "zh_hans", "zh_hant")}
+    manifests = {lang: json.loads((manifest_dir / f"{lang}.json").read_text(encoding="utf-8")) for lang in ("en", "zh_hans", "zh_hant")}
 
     assert set(manifests) == {"en", "zh_hans", "zh_hant"}
     assert len(manifests["en"]["items"]) == 162
@@ -99,8 +100,8 @@ def test_sample_data_manifests_exclude_private_runtime_fields():
         assert PRIVATE_RUNTIME_KEYS.isdisjoint(nested_keys(payload)), path
 
 def test_sample_data_attribution_documents_third_party_license_boundary():
-    attribution = (ROOT / "sample-data" / "ATTRIBUTION.md").read_text()
-    readme = (ROOT / "sample-data" / "README.md").read_text()
+    attribution = (ROOT / "sample-data" / "ATTRIBUTION.md").read_text(encoding="utf-8")
+    readme = (ROOT / "sample-data" / "README.md").read_text(encoding="utf-8")
 
     assert "wuyoscar/gpt_image_2_skill" in attribution
     assert "CC BY 4.0" in attribution
@@ -145,7 +146,14 @@ def test_import_sample_bundle_loads_manifest_assets_and_is_idempotent(tmp_path: 
                 "text": "一個紅色方塊",
                 "is_primary": True,
                 "is_original": True,
-                "provenance": {"kind": "source", "source_language": "zh_hant", "derived_from": None, "method": None},
+                "provenance": {
+                    "kind": "source",
+                    "source_language": "zh_hant",
+                    "derived_from": None,
+                    "method": None,
+                    "note": "access_token=sample-import-canary",
+                    "auth_mode": "codex_oauth_native",
+                },
             }],
         }],
     }), encoding="utf-8")
@@ -169,6 +177,11 @@ def test_import_sample_bundle_loads_manifest_assets_and_is_idempotent(tmp_path: 
     assert items[0].prompts[0].language == "zh_hant"
     assert items[0].prompts[0].is_original is True
     assert items[0].prompts[0].provenance["kind"] == "source"
+    assert items[0].prompts[0].provenance["note"] == "[redacted credential data]"
+    assert items[0].prompts[0].provenance["auth_mode"] == "codex_oauth_native"
+    assert "sample-import-canary" not in (tmp_path / "library" / "db.sqlite").read_bytes().decode(
+        "utf-8", errors="ignore"
+    )
     detail = ItemRepository(tmp_path / "library").get_item(items[0].id)
     assert detail is not None
     assert "CC BY 4.0" in (detail.notes or "")
@@ -178,7 +191,7 @@ def test_import_sample_bundle_loads_manifest_assets_and_is_idempotent(tmp_path: 
 
 
 def test_install_sample_data_script_verifies_release_zip_checksum():
-    installer = (ROOT / "scripts" / "install-sample-data.sh").read_text()
+    installer = (ROOT / "scripts" / "install-sample-data.sh").read_text(encoding="utf-8")
 
     assert "EXPECTED_SHA256" in installer
     assert "zipfile.ZipFile" in installer
@@ -187,13 +200,25 @@ def test_install_sample_data_script_verifies_release_zip_checksum():
     assert "8a458f6c8c96079f40fbc46c689e7de0bd2eb464ee7f800f94f3ca60131d5035" in installer
 
 
+@pytest.mark.skipif(os.name == "nt", reason="POSIX shell coverage runs on POSIX CI")
 def test_install_sample_data_script_supports_local_zip_override_without_system_unzip(tmp_path: Path):
+    bash_path = shutil.which("bash")
+    if not bash_path:
+        pytest.skip("bash is required for POSIX installer coverage")
+
     tool_bin = tmp_path / "tool-bin"
     tool_bin.mkdir()
+    command_paths = {}
     for command in ("dirname", "rm", "mkdir"):
         command_path = shutil.which(command)
-        assert command_path, f"{command} should be available in the test environment"
-        (tool_bin / command).symlink_to(command_path)
+        if not command_path:
+            pytest.skip(f"{command} is required for POSIX installer coverage")
+        command_paths[command] = command_path
+    try:
+        for command, command_path in command_paths.items():
+            (tool_bin / command).symlink_to(command_path)
+    except OSError as exc:
+        pytest.skip(f"POSIX symlink support is required for installer coverage: {exc}")
 
     assets = tmp_path / "assets"
     image_dir = assets / "images"
@@ -229,7 +254,7 @@ def test_install_sample_data_script_supports_local_zip_override_without_system_u
 
     library = tmp_path / "library"
     result = subprocess.run(
-        ["/bin/bash", str(ROOT / "scripts" / "install-sample-data.sh"), "en"],
+        [bash_path, str(ROOT / "scripts" / "install-sample-data.sh"), "en"],
         cwd=ROOT,
         env={
             "PATH": str(tool_bin),

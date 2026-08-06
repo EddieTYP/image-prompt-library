@@ -8,6 +8,7 @@ from typing import Any
 from backend.db import connect, init_db
 from backend.repositories import ItemRepository, StoredImageInput, new_id, now
 from backend.schemas import ImportResult, ItemCreate, PromptIn
+from backend.services.credential_safety import sanitize_structured_credentials
 from backend.services.image_store import store_image
 
 
@@ -140,7 +141,10 @@ def _replace_prompts_exactly(library_path: Path, repo: ItemRepository, item_id: 
                     prompt.text,
                     int(prompt.is_primary or index == 0),
                     int(prompt.is_original),
-                    json.dumps(prompt.provenance or {}, ensure_ascii=False),
+                    json.dumps(
+                        sanitize_structured_credentials(prompt.provenance or {}, redact_image_data=True),
+                        ensure_ascii=False,
+                    ),
                     timestamp,
                     timestamp,
                 ),

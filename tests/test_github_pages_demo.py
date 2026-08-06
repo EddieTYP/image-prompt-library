@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from backend.db import connect
 from backend.repositories import ItemRepository, StoredImageInput
 from backend.schemas import ItemCreate, PromptIn
 
@@ -51,8 +52,8 @@ def test_github_pages_demo_mode_uses_static_data_and_base_path():
     assert "demo-data/clusters.json" in client
     assert "demo-data/tags.json" in client
     assert '"build:demo"' in package_json
-    assert "VITE_DEMO_MODE=true" in package_json
-    assert "VITE_BASE_PATH=/image-prompt-library/" in package_json
+    assert "vite build --mode demo --base /image-prompt-library/" in package_json
+    assert "VITE_DEMO_MODE=true" in (ROOT / "frontend" / ".env.demo").read_text(encoding="utf-8")
 
 
 def test_github_pages_demo_banner_uses_versionless_local_install_highlights():
@@ -60,8 +61,8 @@ def test_github_pages_demo_banner_uses_versionless_local_install_highlights():
     translations = (ROOT / "frontend" / "src" / "utils" / "i18n.ts").read_text(encoding="utf-8")
 
     assert "t('localInstallHighlights')" in app
-    assert "portable backup/restore" in translations
-    assert "portable backup／restore" in translations
+    assert "multi-image generation, and complete backup and restore" in translations
+    assert "多張生成及完整備份與還原" in translations
     assert "localV06SupportsMobileGeneration" not in translations
     assert "Latest v0.7" not in translations
     assert "最新 v0.7" not in translations
@@ -120,6 +121,15 @@ def test_demo_data_bundle_is_present_and_uses_compressed_media_paths():
     assert "originals/" not in items_text
     assert "library/db.sqlite" not in items_text
     assert clusters and all(cluster.get("names", {}).get("zh_hant") for cluster in clusters)
+    items_by_id = {item["id"]: item for item in items}
+    for cluster in clusters:
+        preview_ids = cluster.get("preview_item_ids", [])
+        preview_paths = cluster.get("preview_images", [])
+        assert len(preview_ids) == len(preview_paths)
+        for item_id, preview_path in zip(preview_ids, preview_paths, strict=True):
+            item = items_by_id[item_id]
+            assert item.get("cluster", {}).get("id") == cluster["id"]
+            assert item.get("first_image", {}).get("thumb_path") == preview_path
 
 
 def test_demo_export_only_includes_tags_from_public_items(tmp_path):
@@ -131,18 +141,34 @@ def test_demo_export_only_includes_tags_from_public_items(tmp_path):
     repo = ItemRepository(library)
     public_item = repo.create_item(ItemCreate(
         title="Public item",
+        cluster_name="Public collection",
         source_name="wuyoscar/gpt_image_2_skill",
         tags=["public-only", "shared"],
-        prompts=[PromptIn(language="en", text="Public prompt", is_original=True)],
+        prompts=[PromptIn(language="en", text="Render UI label access_token=example", is_original=True)],
     ))
     private_item = repo.create_item(ItemCreate(
         title="Private item",
+        cluster_name="Private collection",
         source_name="personal-library",
         tags=["private-only", "shared"],
         prompts=[PromptIn(language="en", text="Private prompt", is_original=True)],
     ))
     repo.add_image(public_item.id, StoredImageInput(original_path="originals/public.png"))
     repo.add_image(private_item.id, StoredImageInput(original_path="originals/private.png"))
+    with connect(library) as connection:
+        connection.execute(
+            "UPDATE prompts SET provenance=? WHERE item_id=?",
+            (
+                json.dumps({
+                    "kind": "manual",
+                    "note": "access_token=demo-provenance-canary",
+                    "authMode": "private-runtime-mode",
+                    "accountId": "private-account-canary",
+                }),
+                public_item.id,
+            ),
+        )
+        connection.commit()
     (library / "auth.json").write_text("demo-auth-canary", encoding="utf-8")
     (library / "config.json").write_text("demo-config-canary", encoding="utf-8")
     output = tmp_path / "demo-output"
@@ -151,11 +177,22 @@ def test_demo_export_only_includes_tags_from_public_items(tmp_path):
     export_demo(library, output)
 
     tags = json.loads((output / "tags.json").read_text(encoding="utf-8"))
+    clusters = json.loads((output / "clusters.json").read_text(encoding="utf-8"))
     assert {tag["name"] for tag in tags} == {"public-only", "shared"}
     assert next(tag for tag in tags if tag["name"] == "shared")["count"] == 1
+    assert [cluster["name"] for cluster in clusters] == ["Public collection"]
+    assert clusters[0]["preview_item_ids"] == [public_item.id]
     output_bytes = b"".join(path.read_bytes() for path in output.rglob("*") if path.is_file())
     assert b"demo-auth-canary" not in output_bytes
     assert b"demo-config-canary" not in output_bytes
+    assert b"demo-provenance-canary" not in output_bytes
+    assert b"private-account-canary" not in output_bytes
+    exported_items = json.loads((output / "items.json").read_text(encoding="utf-8"))
+    assert exported_items[0]["prompts"][0]["text"] == "Render UI label access_token=example"
+    exported_provenance = exported_items[0]["prompts"][0]["provenance"]
+    assert exported_provenance["note"] == "[redacted credential data]"
+    assert "authMode" not in exported_provenance
+    assert "accountId" not in exported_provenance
 
 
 def test_committed_demo_json_excludes_private_runtime_fields():

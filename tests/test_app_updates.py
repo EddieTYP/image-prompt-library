@@ -324,19 +324,23 @@ def test_frontend_static_update_wizard_contract():
     config = (root / "frontend" / "src" / "components" / "ConfigPanel.tsx").read_text(encoding="utf-8")
     topbar = (root / "frontend" / "src" / "components" / "TopBar.tsx").read_text(encoding="utf-8")
     app = (root / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+    i18n = (root / "frontend" / "src" / "utils" / "i18n.ts").read_text(encoding="utf-8")
 
     assert "updateStatus:" in client
     assert "startAppUpdate:" in client
-    assert "App update" in config
-    assert "Cancel jobs and update" in config
-    assert "Update later" in config
+    assert "t('appUpdate')" in config
+    assert "t('cancelJobsAndUpdate')" in config
+    assert "t('updateLater')" in config
     assert "Wait" not in config and "等待" not in config
-    assert "Restart required" in config
-    assert "Could not check for updates" in config
-    assert "managed outside the app" in config
-    assert "Windows updates run from PowerShell" in config
+    assert "t('updateRestartRequired')" in config
+    assert "t('updateStatusFailed')" in config
+    assert "t('updateSourceManaged')" in config
+    assert "t('updatePowerShellHint')" in config
     assert "result.requires_manual_restart" in config
-    assert "Update available" in app
-    assert "Restart required" in app
+    assert "t('updateAvailable')" in app
+    assert "t('restartRequired')" in app
     assert "handleUpdateInstalled" in app
     assert "updateBadgeLabel" in topbar
+    assert "appUpdate: 'App update'" in i18n
+    assert "cancelJobsAndUpdate: 'Cancel jobs and update'" in i18n
+    assert "updateAvailable: 'Update available'" in i18n
