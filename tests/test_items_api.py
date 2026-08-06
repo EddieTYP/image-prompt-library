@@ -47,11 +47,81 @@ def test_api_rejects_explicit_prompt_provenance_without_exactly_one_original(tmp
     assert c.post("/api/items", json=zero_original).status_code == 400
     assert c.post("/api/items", json=multiple_originals).status_code == 400
 
+
+def test_item_prompt_provenance_redacts_credentials_on_create_and_update(tmp_path):
+    c = client(tmp_path)
+    created = c.post("/api/items", json=create_payload(prompts=[{
+        "language": "en",
+        "text": "Safe prompt text with access_token=example as ordinary content",
+        "is_primary": True,
+        "is_original": True,
+        "provenance": {
+            "kind": "manual",
+            "note": "access_token=create-canary",
+            "safe_note": "authorization settings are managed outside the library",
+        },
+    }]))
+
+    assert created.status_code == 200
+    item = created.json()
+    prompt = item["prompts"][0]
+    assert "access_token=example" in prompt["text"]
+    assert prompt["provenance"]["note"] == "[redacted credential data]"
+    assert prompt["provenance"]["safe_note"] == "authorization settings are managed outside the library"
+
+    updated = c.patch(f"/api/items/{item['id']}", json={"prompts": [{
+        "language": "en",
+        "text": prompt["text"],
+        "is_primary": True,
+        "is_original": True,
+        "provenance": {"kind": "manual", "note": "client_secret=update-canary"},
+    }]})
+
+    assert updated.status_code == 200
+    updated_prompt = updated.json()["prompts"][0]
+    assert updated_prompt["provenance"]["note"] == "[redacted credential data]"
+    with connect(tmp_path / "library") as conn:
+        stored = conn.execute("SELECT provenance FROM prompts WHERE item_id=?", (item["id"],)).fetchone()[0]
+    assert "create-canary" not in stored
+    assert "update-canary" not in stored
+
     created = c.post("/api/items", json=create_payload(prompts=[
         {"language": "en", "text": "English prompt", "is_original": True, "provenance": {"kind": "manual"}},
         {"language": "zh_hant", "text": "中文 prompt", "is_original": False, "provenance": {"kind": "manual"}},
     ])).json()
     assert sum(1 for prompt in created["prompts"] if prompt["is_original"]) == 1
+
+
+def test_item_api_redacts_legacy_prompt_provenance_without_rewriting_prompt_text(tmp_path):
+    c = client(tmp_path)
+    item = c.post("/api/items", json=create_payload(prompts=[{
+        "language": "en",
+        "text": "Render UI label accessToken=example",
+        "is_primary": True,
+        "is_original": True,
+        "provenance": {"kind": "manual"},
+    }])).json()
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE prompts SET provenance=? WHERE item_id=?",
+            (
+                '{"accessToken":"legacy-canary","auth_mode":"codex_oauth_native",'
+                '"nested_note":{"message":"clientSecret=legacy-nested-canary"},"safe":"kept"}',
+                item["id"],
+            ),
+        )
+        conn.commit()
+
+    detail_prompt = c.get(f"/api/items/{item['id']}").json()["prompts"][0]
+    listed_prompt = c.get("/api/items").json()["items"][0]["prompts"][0]
+
+    for prompt in (detail_prompt, listed_prompt):
+        assert prompt["text"] == "Render UI label accessToken=example"
+        assert prompt["provenance"] == {
+            "auth_mode": "codex_oauth_native",
+            "nested_note": {"message": "[redacted credential data]"},
+            "safe": "kept",
+        }
 
 
 def test_template_tag_is_derived_from_prompt_variables_on_create_and_update(tmp_path):
@@ -289,6 +359,43 @@ def test_patch_favorite_and_delete_item(tmp_path):
     assert {tag["name"]: tag["count"] for tag in c.get("/api/tags").json()} == {"glass": 0, "vista": 0}
 
 
+def test_cross_origin_browser_writes_are_rejected_without_mutating_the_library(tmp_path):
+    c = client(tmp_path)
+
+    blocked = c.post(
+        "/api/items",
+        json=create_payload(title="Blocked cross-origin write"),
+        headers={"Origin": "https://example.invalid", "Sec-Fetch-Site": "cross-site"},
+    )
+    blocked_null_origin = c.post(
+        "/api/items",
+        json=create_payload(title="Blocked opaque origin write"),
+        headers={"Origin": "null"},
+    )
+
+    assert blocked.status_code == 403
+    assert blocked_null_origin.status_code == 403
+    assert c.get("/api/items").json()["total"] == 0
+
+
+@pytest.mark.parametrize(
+    ("base_url", "headers"),
+    (
+        ("http://testserver", {"Origin": "http://testserver", "Sec-Fetch-Site": "same-origin"}),
+        ("http://192.168.1.25:8000", {"Origin": "http://192.168.1.25:8000", "Sec-Fetch-Site": "same-origin"}),
+        ("http://testserver", {"Origin": "http://127.0.0.1:5177", "Sec-Fetch-Site": "cross-site"}),
+        ("http://testserver", {}),
+    ),
+)
+def test_supported_same_origin_dev_and_cli_writes_remain_available(tmp_path, base_url, headers):
+    c = TestClient(create_app(library_path=tmp_path / "library"), base_url=base_url)
+
+    created = c.post("/api/items", json=create_payload(title="Allowed write"), headers=headers)
+
+    assert created.status_code == 200
+    assert c.get("/api/items").json()["total"] == 1
+
+
 def test_deleting_item_keeps_media_files_still_used_by_another_item(tmp_path):
     c = client(tmp_path)
     library = tmp_path / "library"
@@ -418,6 +525,28 @@ def test_result_image_is_primary_even_when_reference_uploaded_first(tmp_path):
     assert detail["first_image"]["id"] == result["id"]
     assert detail["images"][0]["id"] == result["id"]
     assert cluster["preview_images"] == [result["thumb_path"]]
+    assert cluster["preview_item_ids"] == [item["id"]]
+
+
+def test_cluster_preview_item_ids_disambiguate_deduplicated_image_paths(tmp_path):
+    c = client(tmp_path)
+    first = c.post("/api/items", json=create_payload(title="First shared image")).json()
+    second = c.post("/api/items", json=create_payload(title="Second shared image")).json()
+    shared = png_bytes(color=(8, 9, 10))
+    first_image = c.post(
+        f"/api/items/{first['id']}/images",
+        files={"file": ("shared-first.png", shared, "image/png")},
+    ).json()
+    second_image = c.post(
+        f"/api/items/{second['id']}/images",
+        files={"file": ("shared-second.png", shared, "image/png")},
+    ).json()
+
+    cluster = c.get("/api/clusters").json()[0]
+
+    assert first_image["thumb_path"] == second_image["thumb_path"]
+    assert cluster["preview_images"] == [first_image["thumb_path"], second_image["thumb_path"]]
+    assert set(cluster["preview_item_ids"]) == {first["id"], second["id"]}
 
 
 def test_editing_last_item_out_of_collection_removes_empty_collection(tmp_path):

@@ -33,6 +33,7 @@ def recover_interrupted_generation_jobs(library_path: Path | str, *, provider: s
     Persisted queued jobs are still safe to drain because they have not started.
     """
     repo = GenerationJobRepository(Path(library_path))
+    repo.resume_pending_discard_repairs()
     return repo.mark_running_provider_jobs_failed(provider, INTERRUPTED_BY_BACKEND_RESTART_ERROR)
 
 

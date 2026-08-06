@@ -27,10 +27,10 @@ For an existing unsafe override, move the file manually to `~/.image-prompt-libr
 
 ## Connect the provider
 
-Open **Config → Providers**. Manual upload is always available; the ChatGPT / Codex OAuth provider is optional.
+Open **Config → Providers**. The in-app generation provider is **ChatGPT / Codex OAuth**. Manual upload is an internal fallback for existing library import paths, not a selectable generation provider.
 
 <p align="center">
-  <img src="assets/screenshots/generation-provider-unset.png" alt="Providers panel showing manual upload available and ChatGPT / Codex OAuth not connected" width="320" />
+  <img src="assets/screenshots/generation-provider-unset.png" alt="Providers panel showing ChatGPT / Codex OAuth not connected" width="320" />
 </p>
 
 Choose **Connect**. The app opens a device-login step: follow the verification link, enter the displayed user code, and then return to Image Prompt Library to check authorization.
@@ -55,7 +55,11 @@ After approval, the provider card should show **Connected** and list the availab
 
 Open the local generation composer, type a prompt, choose the desired controls, and run **Generate** for one image. The adjacent choice offers **Generate ×3**, **Generate ×5**, and **Generate ×10**; each option states how many generation requests it will use. Manual result upload remains single-image. Use double braces for reusable fields, for example `A portrait of {{subject}} in {{style}}`; the composer shows fields for each variable and previews the resolved prompt before sending.
 
-A multi-image choice is created atomically: either the whole `Generation set` is queued or none of it is. The composer and Generation queue show exact finished, running, queued, ready, failed, and cancelled counts. **Cancel remaining** cancels only queued or running members; completed results stay available for the existing individual review, save, discard, provenance, and reference flows. Failed members are retried individually rather than with a set-wide retry.
+A multi-image choice is created atomically: either the whole `Generation set` is queued or none of it is. The composer and Generation queue show exact finished, running, queued, ready, failed, and cancelled counts. **Cancel remaining** cancels only queued or running members. During review, Save as new, Attach, Discard, and Retry move to the next unreviewed result while keeping the original batch position. **Use as draft** pauses the review and **Resume review** returns to the remaining results. The final summary shows saved, attached, discarded, retrying, failed, and cancelled outcomes. Failed members are retried individually rather than with a set-wide retry.
+
+This review session is browser-local. If Generation is closed or the page is refreshed, unfinished and replacement jobs remain available through the existing Work Queue rather than a new backend review record.
+
+Deleting a source reference does not cancel its queued or running jobs. Those jobs become detached; completed results remain in the Generation queue and can be saved as new references.
 
 <p align="center">
   <img src="assets/screenshots/generation-composer-running.png" alt="Local generation composer showing an image job in progress" width="100%" />
@@ -67,7 +71,7 @@ When the result appears, you can inspect the generated image, download it, attac
   <img src="assets/screenshots/generation-composer-result.png" alt="Local generation composer showing a generated apple image result" width="100%" />
 </p>
 
-If you save a result as a new library item, review and edit the metadata first. The saved item keeps readonly provenance for the generation job, provider, and model.
+If you save a result as a new library item, review and edit the metadata first. The save screen shows a short generation record with the provider, model, source item, and batch position. Internal job and item identifiers remain stored for provenance but are not shown as normal user-facing text.
 
 <p align="center">
   <img src="assets/screenshots/generation-save-as-new-item.png" alt="Save generated image as a new item with editable metadata and readonly provenance" width="100%" />

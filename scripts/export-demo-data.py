@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 from PIL import Image, ImageOps
 
 from backend.repositories import ItemRepository
+from backend.services.credential_safety import normalize_structured_key, sanitize_structured_credentials
 
 
 def _to_simplified(value: str) -> str:
@@ -29,6 +30,23 @@ def _to_simplified(value: str) -> str:
 
 DEFAULT_OUTPUT = ROOT / "frontend" / "public" / "demo-data"  # frontend/public/demo-data
 PUBLIC_DEMO_SOURCES = {"wuyoscar/gpt_image_2_skill", "freestylefly/awesome-gpt-image-2"}
+PRIVATE_RUNTIME_KEYS = {
+    "access_token",
+    "account_id",
+    "auth_mode",
+    "auth_store_path",
+    "authorization_code",
+    "client_id",
+    "code_verifier",
+    "device_auth_id",
+    "id_token",
+    "providers",
+    "refresh_token",
+    "session_id",
+    "token_present",
+    "tokens",
+    "user_code",
+}
 DEMO_IMAGE_MAX_WIDTH = int(os.environ.get("DEMO_IMAGE_MAX_WIDTH", "900"))
 DEMO_IMAGE_QUALITY = int(os.environ.get("DEMO_IMAGE_QUALITY", "62"))
 
@@ -122,6 +140,7 @@ def _rewrite_item(library_path: Path, media_dir: Path, detail: dict) -> dict:
 
 def _rewrite_cluster_previews(clusters: list[dict], items: list[dict]) -> list[dict]:
     preview_by_cluster: dict[str, list[str]] = {}
+    preview_item_ids_by_cluster: dict[str, list[str]] = {}
     item_count_by_cluster: dict[str, int] = {}
     for item in items:
         cluster = item.get("cluster")
@@ -134,6 +153,7 @@ def _rewrite_cluster_previews(clusters: list[dict], items: list[dict]) -> list[d
         preview_by_cluster.setdefault(cluster["id"], [])
         if len(preview_by_cluster[cluster["id"]]) < 4:
             preview_by_cluster[cluster["id"]].append(first["thumb_path"])
+            preview_item_ids_by_cluster.setdefault(cluster["id"], []).append(item["id"])
     rewritten = []
     for cluster in clusters:
         if cluster["id"] not in item_count_by_cluster:
@@ -141,6 +161,7 @@ def _rewrite_cluster_previews(clusters: list[dict], items: list[dict]) -> list[d
         next_cluster = dict(cluster)
         next_cluster["count"] = item_count_by_cluster[cluster["id"]]
         next_cluster["preview_images"] = preview_by_cluster.get(cluster["id"], [])
+        next_cluster["preview_item_ids"] = preview_item_ids_by_cluster.get(cluster["id"], [])
         rewritten.append(next_cluster)
     return rewritten
 
@@ -161,6 +182,29 @@ def write_json(path: Path, data: object) -> None:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _strip_private_runtime_fields(value):
+    if isinstance(value, dict):
+        return {
+            key: _strip_private_runtime_fields(child)
+            for key, child in value.items()
+            if normalize_structured_key(key) not in PRIVATE_RUNTIME_KEYS
+        }
+    if isinstance(value, list):
+        return [_strip_private_runtime_fields(child) for child in value]
+    return value
+
+
+def _public_item(detail: dict) -> dict:
+    public_detail = _strip_private_runtime_fields(detail)
+    for prompt in public_detail.get("prompts", []):
+        if isinstance(prompt, dict) and isinstance(prompt.get("provenance"), dict):
+            prompt["provenance"] = sanitize_structured_credentials(
+                prompt["provenance"],
+                redact_image_data=True,
+            )
+    return public_detail
+
+
 def export_demo(library_path: Path, output: Path = DEFAULT_OUTPUT) -> None:
     repo = ItemRepository(library_path)
     media_dir = output / "media"
@@ -170,7 +214,14 @@ def export_demo(library_path: Path, output: Path = DEFAULT_OUTPUT) -> None:
 
     item_list = repo.list_items(limit=1000, offset=0)
     public_items = [item for item in item_list.items if item.source_name in PUBLIC_DEMO_SOURCES]
-    items = [_rewrite_item(library_path, media_dir, repo.get_item(item.id).model_dump(mode="json")) for item in public_items]
+    items = [
+        _rewrite_item(
+            library_path,
+            media_dir,
+            _public_item(repo.get_item(item.id).model_dump(mode="json")),
+        )
+        for item in public_items
+    ]
     clusters = _rewrite_cluster_previews([cluster.model_dump(mode="json") for cluster in repo.list_clusters()], items)
     tags = _public_tags(items)
     sources = sorted({item.source_name for item in public_items if item.source_name})

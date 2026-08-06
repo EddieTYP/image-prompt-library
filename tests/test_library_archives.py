@@ -15,7 +15,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend import db
+from backend.schemas import GenerationJobCreate, ItemCreate, PromptIn
 from backend.services import library_archives
+from backend.services.generation_jobs import GenerationJobRepository
 from backend.services.library_archives import (
     LibraryArchiveError,
     LibraryOperationLock,
@@ -127,6 +129,203 @@ def test_backup_verify_restore_round_trip_and_preserves_original(tmp_path, monke
     restore_library(archive, library, confirm=True)
     assert (library / "originals" / "nested" / "originals.bin").read_bytes() == b"originals"
     assert list(tmp_path.glob(".library.pre-restore-*")), "the replaced library must be preserved"
+
+
+@pytest.mark.parametrize(
+    ("table", "column", "secret_key"),
+    (
+        ("generation_jobs", "parameters", "api_key_mode"),
+        ("generation_jobs", "metadata", "client_secret_mode"),
+        ("prompts", "provenance", "authorization_type"),
+    ),
+)
+def test_backup_rejects_legacy_credential_data_in_library_json(tmp_path, table, column, secret_key):
+    library = _library(tmp_path)
+    repository = GenerationJobRepository(library)
+    job = repository.create_job(GenerationJobCreate(prompt_text="legacy backup boundary"))
+    item = repository.items.create_item(
+        ItemCreate(
+            title="Legacy backup boundary",
+            prompts=[PromptIn(language="en", text="safe prompt", is_original=True)],
+        )
+    )
+    with db.connect(library) as connection:
+        if table == "generation_jobs":
+            connection.execute(
+                f"UPDATE generation_jobs SET {column}=? WHERE id=?",
+                (json.dumps({secret_key: "credential-canary"}), job.id),
+            )
+        else:
+            connection.execute(
+                "UPDATE prompts SET provenance=? WHERE item_id=?",
+                (json.dumps({secret_key: "credential-canary"}), item.id),
+            )
+        connection.commit()
+
+    output = tmp_path / f"unsafe-{table}-{column}.tar.gz"
+    with pytest.raises(LibraryArchiveError, match=f"credential-like data in {table}.{column}"):
+        backup_library(library, output)
+    assert not output.exists()
+
+
+def test_backup_preserves_safe_generation_metadata_descriptors(tmp_path):
+    library = _library(tmp_path)
+    repository = GenerationJobRepository(library)
+    job = repository.create_job(
+        GenerationJobCreate(
+            prompt_text="safe backup boundary",
+            parameters={"max_tokens": 2048, "header_style": "compact"},
+        )
+    )
+    with db.connect(library) as connection:
+        connection.execute(
+            "UPDATE generation_jobs SET metadata=? WHERE id=?",
+            (json.dumps({"auth_mode": "codex_oauth_native", "token_count": 42}), job.id),
+        )
+        connection.commit()
+
+    assert backup_library(library, tmp_path / "safe-metadata.tar.gz").is_file()
+
+
+def test_backup_rejects_embedded_legacy_credential_value(tmp_path):
+    library = _library(tmp_path)
+    repository = GenerationJobRepository(library)
+    job = repository.create_job(GenerationJobCreate(prompt_text="embedded legacy boundary"))
+    with db.connect(library) as connection:
+        connection.execute(
+            "UPDATE generation_jobs SET parameters=? WHERE id=?",
+            (json.dumps({"note": "access_token=credential-canary"}), job.id),
+        )
+        connection.commit()
+
+    output = tmp_path / "unsafe-embedded-value.tar.gz"
+    with pytest.raises(LibraryArchiveError, match="credential-like data in generation_jobs.parameters"):
+        backup_library(library, output)
+    assert not output.exists()
+
+
+def test_backup_allows_internal_generation_acceptance_claim(tmp_path):
+    library = _library(tmp_path)
+    repository = GenerationJobRepository(library)
+    job = repository.create_job(GenerationJobCreate(prompt_text="acceptance recovery boundary"))
+    with db.connect(library) as connection:
+        connection.execute(
+            "UPDATE generation_jobs SET metadata=? WHERE id=?",
+            (
+                json.dumps({
+                    "_generation_accept_claim": {"token": "accept_0123456789abcdef", "mode": "new_item"},
+                    "_generation_accept_claim_at": "2026-08-06T00:00:00+00:00",
+                    "safe": "kept",
+                }),
+                job.id,
+            ),
+        )
+        connection.commit()
+
+    assert backup_library(library, tmp_path / "acceptance-recovery.tar.gz").is_file()
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        {"token": "credential-canary", "mode": "new_item"},
+        {"token": "accept_0123456789abcdef", "mode": "unsafe_mode"},
+        {"token": "accept_0123456789abcdef", "mode": "new_item", "secret": "credential-canary"},
+    ],
+)
+def test_backup_rejects_malformed_internal_generation_acceptance_claim(tmp_path, claim):
+    library = _library(tmp_path)
+    repository = GenerationJobRepository(library)
+    job = repository.create_job(GenerationJobCreate(prompt_text="malformed acceptance claim boundary"))
+    with db.connect(library) as connection:
+        connection.execute(
+            "UPDATE generation_jobs SET metadata=? WHERE id=?",
+            (json.dumps({"_generation_accept_claim": claim}), job.id),
+        )
+        connection.commit()
+
+    output = tmp_path / "unsafe-acceptance-claim.tar.gz"
+    with pytest.raises(LibraryArchiveError, match="invalid internal generation acceptance claim"):
+        backup_library(library, output)
+    assert not output.exists()
+
+
+def test_backup_allows_benign_legacy_generation_acceptance_claim(tmp_path):
+    library = _library(tmp_path)
+    repository = GenerationJobRepository(library)
+    job = repository.create_job(GenerationJobCreate(prompt_text="legacy acceptance claim boundary"))
+    with db.connect(library) as connection:
+        connection.execute(
+            "UPDATE generation_jobs SET metadata=? WHERE id=?",
+            (json.dumps({"_generation_accept_claim": "accept_crashed_process"}), job.id),
+        )
+        connection.commit()
+
+    assert backup_library(library, tmp_path / "legacy-acceptance-claim.tar.gz").is_file()
+
+
+def test_backup_rejects_credential_shaped_legacy_generation_acceptance_claim(tmp_path):
+    library = _library(tmp_path)
+    repository = GenerationJobRepository(library)
+    job = repository.create_job(GenerationJobCreate(prompt_text="unsafe legacy acceptance claim boundary"))
+    with db.connect(library) as connection:
+        connection.execute(
+            "UPDATE generation_jobs SET metadata=? WHERE id=?",
+            (json.dumps({"_generation_accept_claim": "access_token=credential-canary"}), job.id),
+        )
+        connection.commit()
+
+    output = tmp_path / "unsafe-legacy-acceptance-claim.tar.gz"
+    with pytest.raises(LibraryArchiveError, match="credential-like data in generation_jobs.metadata"):
+        backup_library(library, output)
+    assert not output.exists()
+
+
+def test_backup_scans_other_generation_acceptance_metadata(tmp_path):
+    library = _library(tmp_path)
+    repository = GenerationJobRepository(library)
+    job = repository.create_job(GenerationJobCreate(prompt_text="acceptance artifact boundary"))
+    with db.connect(library) as connection:
+        connection.execute(
+            "UPDATE generation_jobs SET metadata=? WHERE id=?",
+            (
+                json.dumps({
+                    "_generation_accept_artifacts": {"note": "access_token=credential-canary"},
+                }),
+                job.id,
+            ),
+        )
+        connection.commit()
+
+    output = tmp_path / "unsafe-acceptance-artifact.tar.gz"
+    with pytest.raises(LibraryArchiveError, match="credential-like data in generation_jobs.metadata"):
+        backup_library(library, output)
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "raw_error",
+    [
+        "provider failed: access_token=credential-canary",
+        '{"error":{"clientSecret":"credential-canary"}}',
+        '{"error":"clientSecret=credential-canary"}',
+    ],
+)
+def test_backup_rejects_legacy_credential_data_in_generation_error(tmp_path, raw_error):
+    library = _library(tmp_path)
+    repository = GenerationJobRepository(library)
+    job = repository.create_job(GenerationJobCreate(prompt_text="legacy error boundary"))
+    with db.connect(library) as connection:
+        connection.execute(
+            "UPDATE generation_jobs SET error=? WHERE id=?",
+            (raw_error, job.id),
+        )
+        connection.commit()
+
+    output = tmp_path / "unsafe-generation-error.tar.gz"
+    with pytest.raises(LibraryArchiveError, match="credential-like generation error"):
+        backup_library(library, output)
+    assert not output.exists()
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits are not meaningful on Windows")

@@ -121,7 +121,7 @@ subprocess.check_output = check_output_subprocess
 
 
 def read(path: str) -> str:
-    return (ROOT / path).read_text()
+    return (ROOT / path).read_text(encoding="utf-8")
 
 
 def package_release(tmp_path: Path, version: str) -> Path:
@@ -408,10 +408,10 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert setup_runtime_script.exists()
     assert package_script.exists()
 
-    install = install_script.read_text()
-    appctl = appctl_script.read_text()
-    setup_runtime = setup_runtime_script.read_text()
-    package = package_script.read_text()
+    install = install_script.read_text(encoding="utf-8")
+    appctl = appctl_script.read_text(encoding="utf-8")
+    setup_runtime = setup_runtime_script.read_text(encoding="utf-8")
+    package = package_script.read_text(encoding="utf-8")
 
     for script in (install, appctl, setup_runtime, package):
         assert "set -euo pipefail" in script
@@ -502,7 +502,7 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
 def test_release_assets_workflow_builds_and_uploads_candidate_artifacts():
     workflow_path = ROOT / ".github" / "workflows" / "release-assets.yml"
     assert workflow_path.exists()
-    workflow = workflow_path.read_text()
+    workflow = workflow_path.read_text(encoding="utf-8")
 
     assert "tags:" not in workflow
     assert "push:" not in workflow
@@ -548,7 +548,9 @@ def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developer
     assert "Normal release installs require" in readme
     assert "GitHub Release assets" in installation
     assert "source/development installs" in installation
-    assert "git clone https://github.com/EddieTYP/image-prompt-library.git" in (ROOT / "docs" / "DEVELOPMENT.md").read_text()
+    assert "git clone https://github.com/EddieTYP/image-prompt-library.git" in (
+        ROOT / "docs" / "DEVELOPMENT.md"
+    ).read_text(encoding="utf-8")
     assert "Node.js" in installation
     assert "Normal release installs do not require Node.js" in installation
     assert "~/ImagePromptLibrary" in installation
@@ -573,14 +575,14 @@ def test_package_release_creates_manifest_and_excludes_private_runtime_data(tmp_
     assert tarball_path.exists()
     assert checksum_path.exists()
 
-    manifest = json.loads(manifest_path.read_text())
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["name"] == "image-prompt-library"
     assert manifest["version"] == "v9.9.9-test"
     assert manifest["artifact"] == tarball_path.name
     assert manifest["capabilities"] == ["windows-powershell-v1", "posix-shell-v1", "portable-backup-v1"]
     assert manifest["schema_version"] == 2
     assert len(manifest["source_sha"]) == 40
-    assert manifest["sha256"] in checksum_path.read_text()
+    assert manifest["sha256"] in checksum_path.read_text(encoding="utf-8")
     assert manifest["node_required_for_runtime"] is False
     assert manifest["built_frontend"] is True
 
@@ -935,7 +937,7 @@ def test_installer_supports_file_release_base_and_installs_without_git(tmp_path)
 
     env_file = prefix / ".env"
     assert env_file.exists()
-    env_text = env_file.read_text()
+    env_text = env_file.read_text(encoding="utf-8")
     assert f"IMAGE_PROMPT_LIBRARY_PATH={git_bash_arg(library)}" in env_text
     assert f"BACKUP_DIR={git_bash_arg(prefix)}/backups" in env_text
     assert "BACKEND_PORT=8000" in env_text

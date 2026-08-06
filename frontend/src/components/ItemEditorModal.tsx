@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ImagePlus, Trash2, X } from 'lucide-react';
 import { api } from '../api/client';
+import { useModalFocus } from '../hooks/useModalFocus';
 import type { ClusterRecord, ItemDetail, TagRecord } from '../types';
 import type { Translator } from '../utils/i18n';
 
@@ -31,6 +32,7 @@ export default function ItemEditorModal({
   onClose,
   onSaved,
   onDeleted,
+  allowDelete = true,
 }: {
   item?: ItemDetail;
   t: Translator;
@@ -39,7 +41,9 @@ export default function ItemEditorModal({
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
+  allowDelete?: boolean;
 }) {
+  const [persistedItem, setPersistedItem] = useState(item);
   const [title, setTitle] = useState(item?.title || '');
   const [model, setModel] = useState(item?.model || 'ChatGPT');
   const [author, setAuthor] = useState(item?.author || 'User');
@@ -57,12 +61,20 @@ export default function ItemEditorModal({
   const [deleting, setDeleting] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
 
-  const handleClose = () => {
+  const beginClose = () => {
+    if (isClosing) return;
     setIsClosing(true);
-    window.setTimeout(onClose, 180);
+    const delay = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180;
+    window.setTimeout(onClose, delay);
   };
+  const handleClose = () => {
+    if (saving || deleting) return;
+    beginClose();
+  };
+  const editorFallbackSelector = '.card-open-hit, .add-fab, .empty-primary';
+  const { containerRef: editorDialogRef, handleModalKeyDown } = useModalFocus<HTMLDivElement>(handleClose, { fallbackFocusSelector: editorFallbackSelector });
 
-  const hasExistingResultImage = Boolean(item?.images?.some(image => image.role === 'result_image'));
+  const hasExistingResultImage = Boolean(persistedItem?.images?.some(image => image.role === 'result_image'));
   const hasPrompt = Boolean(zhHantPrompt.trim() || zhHansPrompt.trim() || englishPrompt.trim());
   const missingRequiredImage = !hasExistingResultImage && !resultFile;
   const [saveError, setSaveError] = useState('');
@@ -86,7 +98,7 @@ export default function ItemEditorModal({
   };
 
   const save = async () => {
-    if (!title.trim() || !hasPrompt || missingRequiredImage) return;
+    if (!title.trim() || !hasPrompt || missingRequiredImage || saving || deleting) return;
     setSaving(true);
     setSaveError('');
     try {
@@ -115,17 +127,48 @@ export default function ItemEditorModal({
         tags: tags.split(',').map(t => t.trim()).filter(Boolean),
         prompts,
       };
-      const createdNewItem = !item;
-      const saved = item ? await api.updateItem(item.id, payload) : await api.createItem(payload);
+      const createdNewItem = !persistedItem;
+      const saved = persistedItem ? await api.updateItem(persistedItem.id, payload) : await api.createItem(payload);
+      setPersistedItem(saved);
+      let resultUploaded = false;
+      let referenceUploaded = false;
       try {
-        if (resultFile) await api.uploadImage(saved.id, resultFile, 'result_image');
-        if (referenceFile) await api.uploadImage(saved.id, referenceFile, 'reference_image');
-      } catch (uploadError) {
-        if (createdNewItem) await api.deleteItem(saved.id);
-        throw uploadError;
+        if (resultFile) {
+          await api.uploadImage(saved.id, resultFile, 'result_image');
+          resultUploaded = true;
+        }
+        if (referenceFile) {
+          await api.uploadImage(saved.id, referenceFile, 'reference_image');
+          referenceUploaded = true;
+        }
+      } catch {
+        if (createdNewItem) {
+          try {
+            await api.deleteItem(saved.id);
+            setPersistedItem(undefined);
+            setSaveError(t('imageUploadFailed'));
+          } catch {
+            const reconciled = await api.item(saved.id).catch(() => undefined);
+            setPersistedItem(reconciled || saved);
+            if (resultUploaded && reconciled?.images.some(image => image.role === 'result_image')) setResultFile(undefined);
+            if (referenceUploaded && reconciled?.images.some(image => image.role === 'reference_image')) setReferenceFile(undefined);
+            onSaved();
+            setSaveError(t('saveRollbackFailed'));
+          }
+          return;
+        }
+        const reconciled = await api.item(saved.id).catch(() => undefined);
+        setPersistedItem(reconciled || saved);
+        if (resultUploaded && reconciled?.images.some(image => image.role === 'result_image')) setResultFile(undefined);
+        if (referenceUploaded && reconciled?.images.some(image => image.role === 'reference_image')) setReferenceFile(undefined);
+        onSaved();
+        setSaveError(t('savePartiallyCompleted'));
+        return;
       }
+      setResultFile(undefined);
+      setReferenceFile(undefined);
       onSaved();
-      onClose();
+      beginClose();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : t('saveFailed'));
     } finally {
@@ -134,13 +177,15 @@ export default function ItemEditorModal({
   };
 
   const deleteReference = async () => {
-    if (!item) return;
+    if (!allowDelete || !persistedItem || deleting || saving) return;
     if (!confirm(t('deleteReferenceConfirm'))) return;
     setDeleting(true);
     try {
-      await api.deleteItem(item.id);
+      await api.deleteItem(persistedItem.id);
       onDeleted();
-      onClose();
+      beginClose();
+    } catch {
+      setSaveError(t('deleteFailed'));
     } finally {
       setDeleting(false);
     }
@@ -148,20 +193,29 @@ export default function ItemEditorModal({
 
   return (
     <div className={`modal-backdrop${isClosing ? ' is-closing' : ''}`} onClick={handleClose}>
-      <div className="editor modal polished-modal" onClick={event => event.stopPropagation()}>
+      <div
+        ref={editorDialogRef}
+        className="editor modal polished-modal"
+        onClick={event => event.stopPropagation()}
+        onKeyDown={handleModalKeyDown}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reference-editor-title"
+      >
         <button className="close" onClick={handleClose} aria-label={t('close')}>
           <X size={20} strokeWidth={2.25} />
         </button>
         <div className="editor-head">
-          <p className="modal-kicker">{item ? t('updateReference') : t('newReference')}</p>
-          <h2>{item ? t('editPromptCard') : t('addPromptCard')}</h2>
+          <p className="modal-kicker">{persistedItem ? t('updateReference') : t('newReference')}</p>
+          <h2 id="reference-editor-title">{persistedItem ? t('editPromptCard') : t('addPromptCard')}</h2>
           <p>{t('editorHelp')}</p>
         </div>
 
         <div className="editor-grid">
           <label className="field field-title">
             <span>{t('title')}</span>
-            <input placeholder={t('titlePlaceholder')} value={title} onChange={e => setTitle(e.target.value)} />
+            <input data-modal-initial-focus placeholder={t('titlePlaceholder')} value={title} onChange={e => setTitle(e.target.value)} />
           </label>
           <label className="field">
             <span>{t('collection')}</span>
@@ -194,23 +248,23 @@ export default function ItemEditorModal({
               </div>
             )}
           </label>
-          <label className="field prompt-field">
+          <label className="field prompt-field prompt-field-en">
             <span className="prompt-field-title">{t('englishPrompt')} <button type="button" className={`origin-marker ${originalLanguage === 'en' ? 'active' : ''}`} onClick={() => setOriginalLanguage('en')}>{originalLanguage === 'en' ? t('origin') : t('markAsOriginal')}</button></span>
             <textarea placeholder={t('englishPromptPlaceholder')} value={englishPrompt} onChange={e => setEnglishPrompt(e.target.value)} />
           </label>
-          <label className="field prompt-field">
+          <label className="field prompt-field prompt-field-zh-hant">
             <span className="prompt-field-title">{t('traditionalChinesePrompt')} <button type="button" className={`origin-marker ${originalLanguage === 'zh_hant' ? 'active' : ''}`} onClick={() => setOriginalLanguage('zh_hant')}>{originalLanguage === 'zh_hant' ? t('origin') : t('markAsOriginal')}</button></span>
             <textarea placeholder={t('traditionalPromptPlaceholder')} value={zhHantPrompt} onChange={e => setZhHantPrompt(e.target.value)} />
           </label>
-          <label className="field prompt-field">
+          <label className="field prompt-field prompt-field-zh-hans">
             <span className="prompt-field-title">{t('simplifiedChinesePrompt')} <button type="button" className={`origin-marker ${originalLanguage === 'zh_hans' ? 'active' : ''}`} onClick={() => setOriginalLanguage('zh_hans')}>{originalLanguage === 'zh_hans' ? t('origin') : t('markAsOriginal')}</button></span>
             <textarea placeholder={t('simplifiedPromptPlaceholder')} value={zhHansPrompt} onChange={e => setZhHansPrompt(e.target.value)} />
           </label>
-          <label className="field prompt-field">
+          <label className="field prompt-field notes-field">
             <span>{t('notes')}</span>
             <textarea placeholder={t('addNote')} value={notes} onChange={e => setNotes(e.target.value)} />
           </label>
-          <label className={`drop-zone ${missingRequiredImage ? 'required' : ''}`}>
+          <label className={`drop-zone result-drop-zone ${missingRequiredImage ? 'required' : ''}`}>
             <ImagePlus size={24} />
             <strong>{resultFile ? resultFile.name : hasExistingResultImage ? t('resultImageAlreadySaved') : t('resultImageRequired')}</strong>
             <span>{t('resultImageHelp')}</span>
@@ -227,8 +281,8 @@ export default function ItemEditorModal({
         {saveError && <p className="form-error" role="alert">{saveError}</p>}
 
         <div className="editor-actions">
-          {item && <button className="danger" disabled={deleting || saving} onClick={deleteReference}><Trash2 size={16} /> {t('deleteReference')}</button>}
-          <button className="secondary" onClick={handleClose}>{t('cancel')}</button>
+          {allowDelete && persistedItem && <button className="danger" disabled={deleting || saving} onClick={deleteReference}><Trash2 size={16} /> {t('deleteReference')}</button>}
+          <button className="secondary" disabled={deleting || saving} onClick={handleClose}>{t('cancel')}</button>
           <button className="primary" disabled={!title.trim() || !hasPrompt || missingRequiredImage || saving || deleting} onClick={save}>{saving ? t('saving') : t('saveReference')}</button>
         </div>
       </div>

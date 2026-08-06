@@ -67,7 +67,7 @@ Manual `scripts/package-release.sh --skip-build` runs must set `IMAGE_PROMPT_LIB
 - Keep `/media` limited to intended image media directories; never expose the SQLite DB or internal files.
 - Prefer small, tested changes.
 - Add regression tests for bug fixes and public-install behavior.
-- Preserve the accepted browsing model: Explore is a thumbnail constellation; Cards is adaptive masonry.
+- Preserve the accepted browsing model: Explore is a Collection directory leading to natural-ratio discovery feeds; Library is adaptive masonry and owns selection and batch management.
 
 ## Reporting issues
 

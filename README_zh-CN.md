@@ -79,12 +79,13 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 
 ## 功能概览
 
-- **图片优先浏览：** 用 Cards view 或 Explore view 快速浏览案例。
+- **图片优先浏览：** 在 Explore 按 Collections 探索自然比例图片，或在 Library 完整管理 prompt references。
+- **选择浅色配色：** 可在浏览器本地切换朱红、松绿及茄紫三种配色，不会改动 library data。
 - **搜索和筛选：** 搜索 title、prompt、tag、collection、source 和 note，也可以配合 collection filter 使用。
 - **保存来源脉络：** 原始 prompt、来源资料、翻译或转换后的 variant 可以放在同一张卡片。
 - **管理私人 library：** 新增 / 编辑自己的 prompt card、结果图、reference image、tag、note、source URL 和 collection。
 - **一键复制 prompt：** 打开 item，选择语言或来源 variant，直接复制。
-- **本地生成：** 本地安装版可选择连接 ChatGPT / Codex OAuth。只要你的 ChatGPT account/subscription 有图片生成权限，就可以由新 prompt 或已保存 reference 生成图片；prompt 可用 `{{变量}}`，发送前先填值。
+- **本地生成：** 本地安装版可选择连接 ChatGPT / Codex OAuth，一次生成 1、3、5 或 10 张图片，再连续检查每个结果并选择保存、附加、丢弃或重试。
 - **保持 local-first：** database 和图片文件都留在本地 library directory。
 
 ## 搜索 library
@@ -160,4 +161,4 @@ Privacy model：
 
 ## Project status
 
-Local-first library、versioned install/update/rollback workflow、只读 online demo，以及 optional ChatGPT / Codex OAuth generation 都已进入 stable 并可正常使用。如果上游 OAuth 或 generation service 发生变化，会通过 maintenance release 跟进兼容性。`v0.9.0` milestone 加入 portable backup 与 safe restore；其后只按实际需要处理 Explore、theme、batch 及 multi-image 改进。
+`v0.9.0` 仍是当前 stable release。`v0.10.0` candidate 已包括 Explore Collections directory、浏览器本地 Appearance presets、连续 Generation-set review，以及 browser-origin 和 concurrent result-action hardening。通过 release gate 前会保持 prerelease，所以一般 install／update 仍只会选择 stable release。

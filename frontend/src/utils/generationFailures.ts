@@ -5,6 +5,8 @@ export type GenerationFailureKind =
   | 'auth_required'
   | 'unknown';
 
+import type { Translator } from './i18n';
+
 type GenerationFailureSource = {
   metadata?: Record<string, unknown>;
 };
@@ -32,10 +34,23 @@ const FAILURE_GUIDANCE: Record<GenerationFailureKind, { title: string; guidance:
   },
 };
 
-export function generationFailure(job: GenerationFailureSource) {
+const FAILURE_TRANSLATION_KEYS: Record<GenerationFailureKind, { title: Parameters<Translator>[0]; guidance: Parameters<Translator>[0] }> = {
+  policy_violation: { title: 'generationFailurePolicyTitle', guidance: 'generationFailurePolicyGuidance' },
+  rate_limited: { title: 'generationFailureRateTitle', guidance: 'generationFailureRateGuidance' },
+  provider_unavailable: { title: 'generationFailureProviderTitle', guidance: 'generationFailureProviderGuidance' },
+  auth_required: { title: 'generationFailureAuthTitle', guidance: 'generationFailureAuthGuidance' },
+  unknown: { title: 'generationFailureUnknownTitle', guidance: 'generationFailureUnknownGuidance' },
+};
+
+export function generationFailure(job: GenerationFailureSource, t?: Translator) {
   const rawKind = job.metadata?.error_kind;
   const kind: GenerationFailureKind = typeof rawKind === 'string' && Object.hasOwn(FAILURE_GUIDANCE, rawKind)
     ? rawKind as GenerationFailureKind
     : 'unknown';
-  return { kind, ...FAILURE_GUIDANCE[kind] };
+  const fallback = FAILURE_GUIDANCE[kind];
+  return {
+    kind,
+    title: t ? t(FAILURE_TRANSLATION_KEYS[kind].title) : fallback.title,
+    guidance: t ? t(FAILURE_TRANSLATION_KEYS[kind].guidance) : fallback.guidance,
+  };
 }

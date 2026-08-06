@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_ci_workflow_runs_full_public_alpha_checks():
     workflow_path = ROOT / ".github" / "workflows" / "ci.yml"
     assert workflow_path.exists()
-    workflow = workflow_path.read_text()
+    workflow = workflow_path.read_text(encoding="utf-8")
 
     assert "name: CI" in workflow
     assert "pull_request:" in workflow
@@ -27,7 +27,7 @@ def test_ci_workflow_runs_full_public_alpha_checks():
 def test_alpha_release_notes_are_public_safe_and_actionable():
     notes_path = ROOT / "docs" / "releases" / "v0.1.0-alpha.md"
     assert notes_path.exists()
-    notes = notes_path.read_text()
+    notes = notes_path.read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.1.0-alpha" in notes
     assert "https://eddietyp.github.io/image-prompt-library/" in notes
@@ -55,7 +55,7 @@ def test_alpha_release_notes_are_public_safe_and_actionable():
 def test_v02_release_notes_describe_mobile_preview_and_versioned_pages():
     notes_path = ROOT / "docs" / "releases" / "v0.2.0-alpha.md"
     assert notes_path.exists()
-    notes = notes_path.read_text()
+    notes = notes_path.read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.2.0-alpha" in notes
     assert "current 0.2 preview" in notes
@@ -81,7 +81,7 @@ def test_v02_release_notes_describe_mobile_preview_and_versioned_pages():
 def test_v03_release_notes_describe_multilingual_provenance_vault():
     notes_path = ROOT / "docs" / "releases" / "v0.3.0-alpha.md"
     assert notes_path.exists()
-    notes = notes_path.read_text()
+    notes = notes_path.read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.3.0-alpha" in notes
     assert "Multilingual provenance-aware prompt vault" in notes
@@ -108,7 +108,7 @@ def test_v03_release_notes_describe_multilingual_provenance_vault():
 def test_release_assets_workflow_packages_only_current_version_assets():
     workflow_path = ROOT / ".github" / "workflows" / "release-assets.yml"
     assert workflow_path.exists()
-    workflow = workflow_path.read_text()
+    workflow = workflow_path.read_text(encoding="utf-8")
 
     assert "rm -rf dist-release" in workflow
     assert 'scripts/package-release.sh "$VERSION" --skip-build' in workflow
@@ -152,7 +152,7 @@ def test_release_assets_workflow_packages_only_current_version_assets():
     assert workflow.count('--source-sha "$SOURCE_SHA"') == 4
     assert workflow.count("--capability portable-backup-v1") == 2
 
-    contributing = (ROOT / "CONTRIBUTING.md").read_text()
+    contributing = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
     assert "Manual release workflow dispatches are candidate-only" in contributing
     assert "Release candidate install update rollback smoke" in contributing
     assert "Leave the release marked as a prerelease if any platform fails" in contributing
@@ -164,7 +164,7 @@ def test_release_assets_workflow_packages_only_current_version_assets():
 def test_release_candidate_smoke_uses_public_assets_and_default_user_paths():
     workflow_path = ROOT / ".github" / "workflows" / "release-candidate-smoke.yml"
     assert workflow_path.exists()
-    workflow = workflow_path.read_text()
+    workflow = workflow_path.read_text(encoding="utf-8")
 
     assert "workflow_dispatch:" in workflow
     assert "contents: read" in workflow
@@ -173,9 +173,13 @@ def test_release_candidate_smoke_uses_public_assets_and_default_user_paths():
     assert "macos-latest" in workflow
     assert "windows-latest" in workflow
     assert "fail-fast: false" in workflow
-    assert 'default: \'v0.8.2\'' in workflow
+    assert 'default: \'v0.9.0\'' in workflow
+    assert "for example, v0.10.0" in workflow
     assert "Candidate is not the requested published prerelease" in workflow
     assert "Candidate assets are not the exact expected set" in workflow
+    assert "The rollback baseline must be a stable bare SemVer tag" in workflow
+    assert 'gh api "repos/$GITHUB_REPOSITORY/releases/latest"' in workflow
+    assert "Latest release no longer points to the stable rollback baseline" in workflow
     assert "gh release download" in workflow
     assert "persist-credentials: false" in workflow
     assert "unset GH_TOKEN" in workflow
@@ -185,11 +189,15 @@ def test_release_candidate_smoke_uses_public_assets_and_default_user_paths():
     assert 'bash "$installer" --version "$BASELINE_VERSION"' in workflow
     assert '"$app" update --version "$CANDIDATE_VERSION"' in workflow
     assert 'if "$app" rollback; then' in workflow
+    assert 'bash "$candidate_installer" --version "$CANDIDATE_VERSION"' in workflow
+    assert workflow.count('"$app" uninstall') == 2
     assert 'Join-Path $env:LOCALAPPDATA "ImagePromptLibrary"' in workflow
     assert 'Join-Path $env:USERPROFILE "ImagePromptLibrary"' in workflow
     assert "-NoStart -NoBrowser" in workflow
     assert 'Invoke-App -Arguments @("update", "--version", $env:CANDIDATE_VERSION)' in workflow
     assert 'Invoke-App -Arguments @("rollback")' in workflow
+    assert '-File $candidateInstaller -Version $env:CANDIDATE_VERSION -NoStart -NoBrowser' in workflow
+    assert workflow.count('Invoke-App -Arguments @("uninstall")') == 2
     assert "release-smoke-sentinel.txt" in workflow
     assert '"$app" backup --output "$backup"' in workflow
     assert '"$app" restore "$backup" --yes' in workflow
@@ -215,9 +223,29 @@ def test_release_candidate_smoke_uses_public_assets_and_default_user_paths():
     assert "prerelease=false" not in workflow
 
 
+def test_v010_release_docs_define_prerelease_gate_and_stable_update_behavior():
+    notes_path = ROOT / "docs" / "releases" / "v0.10.0.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text(encoding="utf-8")
+    installation = (ROOT / "docs" / "INSTALLATION.md").read_text(encoding="utf-8")
+    posix_installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
+    windows_installer = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
+
+    assert "# Image Prompt Library v0.10.0" in notes
+    assert "prerelease candidate" in notes
+    assert "Explore" in notes
+    assert "Appearance" in notes
+    assert "Continuous Generation-set review" in notes
+    assert "No paid generation request" in notes
+    assert "Normal install and update commands skip prereleases" in notes
+    assert "v0.10.0" in installation
+    assert 'release.get("prerelease")' in posix_installer
+    assert "$candidate.prerelease" in windows_installer
+
+
 def test_v082_release_docs_and_smoke_cover_exact_v080_posix_migration():
-    workflow = (ROOT / ".github" / "workflows" / "release-candidate-smoke.yml").read_text()
-    installation = (ROOT / "docs" / "INSTALLATION.md").read_text()
+    workflow = (ROOT / ".github" / "workflows" / "release-candidate-smoke.yml").read_text(encoding="utf-8")
+    installation = (ROOT / "docs" / "INSTALLATION.md").read_text(encoding="utf-8")
     notes_path = ROOT / "docs" / "releases" / "v0.8.2.md"
     assert notes_path.exists()
     notes = notes_path.read_text(encoding="utf-8")
@@ -265,7 +293,7 @@ def test_v081_release_notes_describe_safety_and_legacy_posix_boundary():
 def test_v04_release_notes_describe_chatgpt_oauth_generation_and_installer():
     notes_path = ROOT / "docs" / "releases" / "v0.4.0-alpha.md"
     assert notes_path.exists()
-    notes = notes_path.read_text()
+    notes = notes_path.read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.4.0-alpha" in notes
     assert "ChatGPT OAuth" in notes
@@ -292,7 +320,7 @@ def test_v04_release_notes_describe_chatgpt_oauth_generation_and_installer():
 def test_v05_release_notes_describe_local_generation_studio_beta():
     notes_path = ROOT / "docs" / "releases" / "v0.5.0-beta.md"
     assert notes_path.exists()
-    notes = notes_path.read_text()
+    notes = notes_path.read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.5.0-beta" in notes
     assert "Local Generation Studio" in notes
@@ -319,7 +347,7 @@ def test_v05_release_notes_describe_local_generation_studio_beta():
 def test_v06_release_notes_describe_generation_workflow_and_attachment_edits_beta():
     notes_path = ROOT / "docs" / "releases" / "v0.6.0-beta.md"
     assert notes_path.exists()
-    notes = notes_path.read_text()
+    notes = notes_path.read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.6.0-beta" in notes
     assert "Generation Workflow & Attachment Edits" in notes
@@ -346,7 +374,7 @@ def test_v06_release_notes_describe_generation_workflow_and_attachment_edits_bet
 def test_v061_release_notes_describe_save_as_new_metadata_and_image_actions_beta():
     notes_path = ROOT / "docs" / "releases" / "v0.6.1-beta.md"
     assert notes_path.exists()
-    notes = notes_path.read_text()
+    notes = notes_path.read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.6.1-beta" in notes
     assert "Save-as-new Metadata & Image Actions" in notes
@@ -373,7 +401,7 @@ def test_v061_release_notes_describe_save_as_new_metadata_and_image_actions_beta
 def test_v071_release_notes_describe_queue_recovery_and_search_sort_beta():
     notes_path = ROOT / "docs" / "releases" / "v0.7.1-beta.md"
     assert notes_path.exists()
-    notes = notes_path.read_text()
+    notes = notes_path.read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.7.1-beta" in notes
     assert "Queue Recovery" in notes
@@ -396,7 +424,7 @@ def test_v071_release_notes_describe_queue_recovery_and_search_sort_beta():
 def test_v074_release_notes_describe_reference_aware_queue_review_beta():
     notes_path = ROOT / "docs" / "releases" / "v0.7.4-beta.md"
     assert notes_path.exists()
-    notes = notes_path.read_text()
+    notes = notes_path.read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.7.4-beta" in notes
     assert "Reference-Aware Queue Review" in notes
@@ -419,7 +447,7 @@ def test_v074_release_notes_describe_reference_aware_queue_review_beta():
 def test_v073_release_notes_describe_safer_queue_recovery_beta():
     notes_path = ROOT / "docs" / "releases" / "v0.7.3-beta.md"
     assert notes_path.exists()
-    notes = notes_path.read_text()
+    notes = notes_path.read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.7.3-beta" in notes
     assert "Safer Queue Recovery" in notes
@@ -445,7 +473,7 @@ def test_v073_release_notes_describe_safer_queue_recovery_beta():
 def test_v062_release_notes_describe_update_reliability_fixes_beta():
     notes_path = ROOT / "docs" / "releases" / "v0.6.2-beta.md"
     assert notes_path.exists()
-    notes = notes_path.read_text()
+    notes = notes_path.read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.6.2-beta" in notes
     assert "Update Reliability Fixes" in notes

@@ -87,12 +87,13 @@ For update, rollback, service mode, uninstall, WSL, and source-development setup
 
 ## What you can do
 
-- **Browse visually:** scan prompt references in Cards view or Explore view.
+- **Browse visually:** discover Collections and natural-ratio image feeds in Explore, or manage prompt references in Library.
+- **Choose a light appearance:** switch between Red, Green, and Purple browser-local colour presets without changing library data.
 - **Search and filter:** search titles, prompts, tags, collections, sources, and notes; combine search with collection filters.
 - **Preserve prompt provenance:** keep original/source prompt variants and translated or converted variants side by side.
 - **Manage a private library:** add/edit your own prompt cards, result images, optional reference images, tags, notes, source URLs, and collections.
 - **Copy reusable prompts:** open an item, choose the prompt language/source variant, and copy it with one click.
-- **Generate locally:** connect optional ChatGPT / Codex OAuth in a local install with a ChatGPT subscription that has image-generation access, generate from new or saved prompts, fill `{{variables}}` before sending template prompts, review results, then attach to the current item or save as a new item.
+- **Generate locally:** connect optional ChatGPT / Codex OAuth in a local install with a ChatGPT subscription that has image-generation access, fill `{{variables}}` in reusable prompts, generate 1, 3, 5, or 10 results, then review each result continuously to save as a new item, attach to the current item, discard, or retry it.
 - **Stay local-first:** your database and image files remain in your local library directory.
 
 ## Searching the library
@@ -172,4 +173,4 @@ Privacy model:
 
 ## Project status
 
-The local-first library, versioned install/update/rollback workflow, read-only online demo, and optional ChatGPT / Codex OAuth generation are stable and available today. If the upstream OAuth or generation service changes, compatibility updates will be handled as maintenance releases. The `v0.9.0` milestone adds portable backup and safe restore; later work remains limited to evidence-led Explore, theme, batch, and multi-image improvements.
+`v0.9.0` remains the current stable release. The `v0.10.0` candidate adds the Explore Collections directory, browser-local Appearance presets, continuous Generation-set review, and browser-origin and concurrent result-action hardening. It will remain a prerelease until the release gate passes, so normal install and update commands continue to select the stable release.

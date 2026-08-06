@@ -82,7 +82,7 @@ Do not commit runtime `library/` data to git. It is your private prompt/image co
 2. Click `+ Add`.
 3. Add a title, prompt text, collection, optional tags, and a required result image.
 4. Save the card.
-5. Use Cards/Explore, search, filters, and detail view to browse and copy prompts later.
+5. Use Explore/Library, search, filters, and detail view to browse and copy prompts later.
 
 ## Portable backup and safe restore
 

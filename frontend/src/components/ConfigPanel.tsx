@@ -1,51 +1,43 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { X } from 'lucide-react';
 import { api, isDemoMode } from '../api/client';
-import type { AppConfig, AppUpdateStatus, CleanupPreview, CodexNativeAuthStart, GenerationProviderStatus } from '../types';
+import { restoreFocusAfterMotion } from '../hooks/useModalFocus';
+import type { AppearancePreset, AppConfig, AppUpdateStatus, CleanupPreview, CodexNativeAuthStart, GenerationProviderStatus } from '../types';
 import { UI_LANGUAGE_LABELS, type Translator, type UiLanguage } from '../utils/i18n';
 import { getPromptCopyLanguageLabel, type PromptCopyLanguage } from '../utils/prompts';
 
 const LANGUAGE_OPTIONS: PromptCopyLanguage[] = ['origin', 'en', 'zh_hant', 'zh_hans'];
 const UI_LANGUAGE_OPTIONS: UiLanguage[] = ['zh_hant', 'zh_hans', 'en'];
-const GLOBAL_BUDGET_MIN = 50;
-const GLOBAL_BUDGET_MAX = 150;
-const GLOBAL_BUDGET_STEP = 5;
-const FOCUS_BUDGET_MIN = 24;
-const FOCUS_BUDGET_MAX = 100;
-const FOCUS_BUDGET_STEP = 4;
 
-function providerStateLabel(provider: GenerationProviderStatus) {
-  if (provider.state === 'not_configured') return 'Not configured';
-  if (provider.state === 'not_connected') return 'Not connected';
-  if (provider.state === 'connected') return 'Connected';
-  if (provider.state === 'demo_unavailable') return 'Local only';
-  if (provider.state === 'available') return 'Available';
-  if (provider.state === 'expired') return 'Expired';
-  return provider.state || 'Unavailable';
+function providerStateLabel(provider: GenerationProviderStatus, t: Translator) {
+  if (provider.state === 'not_configured') return t('providerStateNotConfigured');
+  if (provider.state === 'not_connected') return t('providerStateNotConnected');
+  if (provider.state === 'connected') return t('providerStateConnected');
+  if (provider.state === 'demo_unavailable') return t('providerStateLocalOnly');
+  if (provider.state === 'available') return t('providerStateAvailable');
+  if (provider.state === 'expired') return t('providerStateExpired');
+  return provider.state || t('providerStateUnavailable');
 }
 
-function featureSummary(provider: GenerationProviderStatus) {
+function featureSummary(provider: GenerationProviderStatus, t: Translator) {
   const features = [
-    provider.features.text_to_image ? 'Text→Image' : undefined,
-    provider.features.text_reference_to_image ? 'Text+Reference→Image' : undefined,
-    provider.features.image_edit ? 'Image edit' : undefined,
-    provider.features.manual_result_upload ? 'Manual upload' : undefined,
+    provider.features.text_to_image ? t('providerFeatureTextToImage') : undefined,
+    provider.features.text_reference_to_image ? t('providerFeatureTextReferenceToImage') : undefined,
+    provider.features.image_edit ? t('providerFeatureImageEdit') : undefined,
+    provider.features.manual_result_upload ? t('providerFeatureManualUpload') : undefined,
   ].filter(Boolean);
-  return features.length ? features.join(' · ') : 'No generation features enabled';
+  return features.length ? features.join(' · ') : t('providerFeaturesNone');
+}
+
+const FOCUSABLE_SELECTOR = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+function scrollIntoViewRespectingMotion(element: HTMLElement | null) {
+  if (!element) return;
+  const behavior: ScrollBehavior = window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+  element.scrollIntoView({ behavior, block: 'start' });
 }
 
 const providerFallback: GenerationProviderStatus[] = [
-  {
-    provider: 'manual_upload',
-    display_name: 'Manual upload',
-    optional: false,
-    configured: true,
-    authenticated: true,
-    available: true,
-    state: 'available',
-    reason: null,
-    features: { manual_result_upload: true },
-  },
   {
     provider: 'openai_codex_oauth_native',
     display_name: 'ChatGPT / Codex OAuth',
@@ -71,14 +63,11 @@ export default function ConfigPanel({
   onUiLanguage,
   preferredLanguage,
   onPreferredLanguage,
-  globalThumbnailBudget,
-  onGlobalThumbnailBudget,
-  focusThumbnailBudget,
-  onFocusThumbnailBudget,
+  appearance,
+  onAppearance,
   updateStatus,
   onRefreshUpdateStatus,
   onUpdateInstalled,
-  onProvidersChanged = () => undefined,
   onLibraryCleanup = () => undefined,
 }: {
   open: boolean;
@@ -89,14 +78,11 @@ export default function ConfigPanel({
   onUiLanguage: (language: UiLanguage) => void;
   preferredLanguage: PromptCopyLanguage;
   onPreferredLanguage: (language: PromptCopyLanguage) => void;
-  globalThumbnailBudget: number;
-  onGlobalThumbnailBudget: (budget: number) => void;
-  focusThumbnailBudget: number;
-  onFocusThumbnailBudget: (budget: number) => void;
+  appearance: AppearancePreset;
+  onAppearance: (appearance: AppearancePreset) => void;
   updateStatus?: AppUpdateStatus;
   onRefreshUpdateStatus: () => Promise<AppUpdateStatus | undefined>;
   onUpdateInstalled: (targetVersion: string, requiresManualRestart: boolean) => void;
-  onProvidersChanged?: () => void;
   onLibraryCleanup?: () => void;
 }) {
   const [cfg, setCfg] = useState<AppConfig>();
@@ -115,124 +101,185 @@ export default function ConfigPanel({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const providersSectionRef = useRef<HTMLElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
+  const closeMotionCleanupRef = useRef<(() => void) | undefined>(undefined);
+  const cleanupInFlightRef = useRef(false);
+  const cleanupRequestRef = useRef(0);
+  const providersRequestRef = useRef(0);
+  const providerActionRequestRef = useRef(0);
 
-  const loadProviders = useCallback(() => api.generationProviders().then(nextProviders => {
-    setProviders(nextProviders);
-    onProvidersChanged();
-  }).catch(() => {
-    setProviders(providerFallback);
-    setProviderMessage('Could not load provider status from the local backend. Showing safe local fallback.');
-    onProvidersChanged();
-  }), [onProvidersChanged]);
+  const loadProviders = useCallback(async () => {
+    const requestId = providersRequestRef.current + 1;
+    providersRequestRef.current = requestId;
+    try {
+      const nextProviders = await api.generationProviders();
+      if (providersRequestRef.current !== requestId) return;
+      setProviders(nextProviders.filter(provider => provider.provider !== 'manual_upload'));
+    } catch {
+      if (providersRequestRef.current !== requestId) return;
+      setProviders(providerFallback);
+      setProviderMessage(t('providerStatusLoadFailed'));
+    }
+  }, [t]);
 
   const loadCleanupPreview = useCallback(async () => {
-    if (isDemoMode) return;
+    if (isDemoMode || cleanupInFlightRef.current) return;
+    cleanupInFlightRef.current = true;
+    const requestId = cleanupRequestRef.current + 1;
+    cleanupRequestRef.current = requestId;
     setCleanupBusy(true);
+    setCleanupPreview(undefined);
     setCleanupMessage(undefined);
     try {
-      setCleanupPreview(await api.cleanupPreview());
+      const preview = await api.cleanupPreview();
+      if (cleanupRequestRef.current === requestId) setCleanupPreview(preview);
     } catch (err) {
-      setCleanupMessage(err instanceof Error ? err.message : 'Could not preview cleanup.');
+      if (cleanupRequestRef.current === requestId) setCleanupMessage(err instanceof Error ? err.message : t('cleanupPreviewFailed'));
     } finally {
-      setCleanupBusy(false);
+      if (cleanupRequestRef.current === requestId) {
+        cleanupInFlightRef.current = false;
+        setCleanupBusy(false);
+      }
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
-    if (open) {
-      api.config().then(setCfg).catch(() => undefined);
-      onRefreshUpdateStatus().catch(() => undefined);
-      loadProviders();
-      if (!isDemoMode) void loadCleanupPreview();
+    if (!open) {
+      providersRequestRef.current += 1;
+      providerActionRequestRef.current += 1;
+      setProviderBusy(false);
+      return;
     }
+    api.config().then(setCfg).catch(() => undefined);
+    onRefreshUpdateStatus().catch(() => undefined);
+    loadProviders();
   }, [open, onRefreshUpdateStatus, loadProviders, loadCleanupPreview]);
 
   useEffect(() => {
     if (!open) return;
+    closeMotionCleanupRef.current?.();
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLElement && !drawerRef.current?.contains(activeElement)) {
       openerRef.current = activeElement;
     }
-    window.setTimeout(() => {
+    const frame = window.requestAnimationFrame(() => {
       if (focusProviders) {
-        providersSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        scrollIntoViewRespectingMotion(providersSectionRef.current);
         providersSectionRef.current?.focus({ preventScroll: true });
       } else {
         closeButtonRef.current?.focus({ preventScroll: true });
       }
-    }, 0);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [open, focusProviders]);
 
+  useEffect(() => () => {
+    providersRequestRef.current += 1;
+    providerActionRequestRef.current += 1;
+    closeMotionCleanupRef.current?.();
+  }, []);
+
   const closePanel = () => {
+    providersRequestRef.current += 1;
+    providerActionRequestRef.current += 1;
+    setProviderBusy(false);
+    closeMotionCleanupRef.current?.();
+    const fallbacks = Array.from(document.querySelectorAll<HTMLElement>('.config-button, .toolbar-search input'));
+    // Static compatibility marker: focusFirstAvailable([opener, ...fallbacks]) runs after drawer exit.
+    closeMotionCleanupRef.current = restoreFocusAfterMotion(drawerRef.current, [openerRef.current, ...fallbacks]);
     onClose();
-    window.setTimeout(() => openerRef.current?.focus({ preventScroll: true }), 0);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault();
       closePanel();
+      return;
+    }
+    if (event.key !== 'Tab' || !drawerRef.current) return;
+    const focusable = Array.from(drawerRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+      .filter(element => element.getClientRects().length > 0 || element === document.activeElement);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus({ preventScroll: true });
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus({ preventScroll: true });
     }
   };
 
   const startCodexAuth = async () => {
+    const requestId = providerActionRequestRef.current + 1;
+    providerActionRequestRef.current = requestId;
     setProviderBusy(true);
     setProviderMessage(undefined);
     try {
       const started = await api.codexNativeAuthStart();
+      if (providerActionRequestRef.current !== requestId) return;
       setAuthStart(started);
     } catch (err) {
-      setProviderMessage(err instanceof Error ? err.message : 'Could not start OAuth.');
+      if (providerActionRequestRef.current !== requestId) return;
+      setProviderMessage(err instanceof Error ? err.message : t('oauthStartFailed'));
     } finally {
-      setProviderBusy(false);
+      if (providerActionRequestRef.current === requestId) setProviderBusy(false);
     }
   };
 
   const pollCodexAuth = async () => {
     if (!authStart) return;
+    const requestId = providerActionRequestRef.current + 1;
+    providerActionRequestRef.current = requestId;
     setProviderBusy(true);
     setProviderMessage(undefined);
     try {
       const pollResult = await api.codexNativeAuthPoll({ device_auth_id: authStart.device_auth_id, user_code: authStart.user_code });
+      if (providerActionRequestRef.current !== requestId) return;
       if ('status' in pollResult && pollResult.status === 'pending') {
-        setProviderMessage('Authorization is still pending. Complete the browser approval, then check again.');
+        setProviderMessage(t('oauthPending'));
         return;
       }
       setAuthStart(undefined);
       await loadProviders();
     } catch (err) {
-      setProviderMessage(err instanceof Error ? err.message : 'Authorization is not complete yet.');
+      if (providerActionRequestRef.current !== requestId) return;
+      setProviderMessage(err instanceof Error ? err.message : t('oauthIncomplete'));
     } finally {
-      setProviderBusy(false);
+      if (providerActionRequestRef.current === requestId) setProviderBusy(false);
     }
   };
 
   const disconnectCodexAuth = async () => {
+    const requestId = providerActionRequestRef.current + 1;
+    providerActionRequestRef.current = requestId;
     setProviderBusy(true);
     setProviderMessage(undefined);
     try {
       await api.codexNativeAuthDisconnect();
+      if (providerActionRequestRef.current !== requestId) return;
       setAuthStart(undefined);
       await loadProviders();
     } catch (err) {
-      setProviderMessage(err instanceof Error ? err.message : 'Could not disconnect provider.');
+      if (providerActionRequestRef.current !== requestId) return;
+      setProviderMessage(err instanceof Error ? err.message : t('oauthDisconnectFailed'));
     } finally {
-      setProviderBusy(false);
+      if (providerActionRequestRef.current === requestId) setProviderBusy(false);
     }
   };
 
   const activeUpdateJobs = (updateStatus?.active_generation_jobs.running || 0) + (updateStatus?.active_generation_jobs.queued || 0);
   const readyProviderCount = providers.filter(provider => provider.can_generate ?? Boolean(provider.available && provider.authenticated && provider.configured)).length;
-  const generationSetupLabel = readyProviderCount > 0 ? `${readyProviderCount} ready` : 'Optional; not connected';
+  const generationSetupLabel = readyProviderCount > 0 ? t('readyProviderCount').replace('${count}', String(readyProviderCount)) : t('optionalNotConnected');
   const updateSetupLabel = updateStatus
-    ? (updateStatus.error
-      ? 'Could not check for updates'
+      ? (updateStatus.error
+       ? t('updateStatusFailed')
       : updateStatus.update_capability === 'source'
-        ? 'Managed outside app'
-        : (updateStatus.update_available ? `Update available: ${updateStatus.latest_version}` : `Up to date: ${updateStatus.current_version}`))
-    : 'Unavailable';
+        ? t('updateSourceManaged')
+        : (updateStatus.update_available ? `${t('updateAvailableVersion')}: ${updateStatus.latest_version}` : `${t('upToDate')} ${t('updateCurrentVersion')}: ${updateStatus.current_version}`))
+    : t('providerStateUnavailable');
   const refreshUpdateStatus = () => onRefreshUpdateStatus().catch(() => {
-    setUpdateMessage('Could not check app updates.');
+    setUpdateMessage(t('updateStatusFailed'));
     return undefined;
   });
   const beginUpdate = async (cancelActiveGenerationJobs: boolean) => {
@@ -247,7 +294,7 @@ export default function ConfigPanel({
       await refreshUpdateStatus();
       onUpdateInstalled(result.target_version, result.requires_manual_restart);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Could not install update.';
+      const message = err instanceof Error ? err.message : t('updateInstallFailed');
       if (message.includes('active_generation_jobs')) setShowActiveUpdateConfirm(true);
       setUpdateMessage(message);
     } finally {
@@ -262,14 +309,17 @@ export default function ConfigPanel({
     void beginUpdate(false);
   };
   const restartInstruction = updateInstalled?.requiresManualRestart
-    ? 'Stop the running Terminal server, then start Image Prompt Library again to use the new version.'
-    : 'The update has been installed. The macOS service restart has been scheduled; reconnect after it comes back online.';
+    ? t('updateTerminalHelp')
+    : t('updateServiceHelp');
   const brokenImageCount = cleanupPreview?.broken_image_records.length || 0;
   const unreferencedFileCount = cleanupPreview?.unreferenced_files.length || 0;
   const cleanupHasWork = brokenImageCount > 0 || unreferencedFileCount > 0;
   const applyCleanup = async () => {
-    if (!cleanupHasWork || !cleanupPreview) return;
-    if (!confirm(`Clean up ${brokenImageCount} broken image records and ${unreferencedFileCount} unreferenced files?`)) return;
+    if (!cleanupHasWork || !cleanupPreview || cleanupInFlightRef.current) return;
+    if (!confirm(t('cleanupConfirmation').replace('${broken}', String(brokenImageCount)).replace('${files}', String(unreferencedFileCount)))) return;
+    cleanupInFlightRef.current = true;
+    const requestId = cleanupRequestRef.current + 1;
+    cleanupRequestRef.current = requestId;
     setCleanupBusy(true);
     setCleanupMessage(undefined);
     try {
@@ -278,20 +328,30 @@ export default function ConfigPanel({
         remove_broken_image_records: brokenImageCount > 0,
         remove_unreferenced_files: unreferencedFileCount > 0,
       });
-      setCleanupPreview(result);
-      setCleanupMessage(`Removed ${result.removed_broken_image_records} broken records and ${result.removed_unreferenced_files} files.`);
-      onLibraryCleanup();
+      if (cleanupRequestRef.current === requestId) {
+        setCleanupPreview(result);
+        setCleanupMessage(t('cleanupDone').replace('${broken}', String(result.removed_broken_image_records)).replace('${files}', String(result.removed_unreferenced_files)));
+        onLibraryCleanup();
+      }
     } catch (err) {
-      setCleanupMessage(err instanceof Error ? err.message : 'Could not apply cleanup.');
+      if (cleanupRequestRef.current === requestId) setCleanupMessage(err instanceof Error ? err.message : t('cleanupApplyFailed'));
     } finally {
-      setCleanupBusy(false);
+      if (cleanupRequestRef.current === requestId) {
+        cleanupInFlightRef.current = false;
+        setCleanupBusy(false);
+      }
     }
   };
 
   return (
-    <aside
+    <>
+      {open && <div className="drawer-scrim" aria-hidden="true" onClick={closePanel} />}
+      <aside
       ref={drawerRef}
+      id="config-drawer"
       className={`config drawer ${open ? 'open' : ''}`}
+      role="dialog"
+      aria-modal="true"
       aria-label={t('config')}
       aria-hidden={!open}
       inert={!open}
@@ -309,25 +369,6 @@ export default function ConfigPanel({
           <X size={20} strokeWidth={2.25} />
         </button>
       </div>
-
-      {!isDemoMode && (
-        <section className="setting-group local-setup-section">
-          <h3>{t('localSetup')}</h3>
-          <p className="muted">{t('localSetupHelp')}</p>
-          <dl className="local-setup-list">
-            <div><dt>{t('appVersion')}</dt><dd><code>{cfg?.version || updateStatus?.current_version || 'unknown'}</code></dd></div>
-            <div><dt>{t('libraryPath')}</dt><dd><code>{cfg?.library_path || 'unavailable'}</code></dd></div>
-            <div><dt>{t('databasePath')}</dt><dd><code>{cfg?.database_path || 'unavailable'}</code></dd></div>
-            <div><dt>{t('updateStatusLabel')}</dt><dd>{updateSetupLabel}</dd></div>
-            <div><dt>{t('generationStatusLabel')}</dt><dd>{generationSetupLabel}</dd></div>
-          </dl>
-          <div className="local-setup-commands" aria-label={t('setupCommands')}>
-            <p><span>{t('statusCommandHelp')}</span><code>image-prompt-library status</code></p>
-            <p><span>{t('doctorCommandHelp')}</span><code>image-prompt-library doctor</code></p>
-            <p><span>{t('firstRunSampleHelp')}</span><code>image-prompt-library sample-data en</code></p>
-          </div>
-        </section>
-      )}
 
       <section className="setting-group">
         <h3>{t('uiLanguage')}</h3>
@@ -360,85 +401,73 @@ export default function ConfigPanel({
         </div>
       </section>
 
-      <section className="setting-group range-setting">
-        <div className="setting-title-row">
-          <h3>{t('globalThumbnails')}</h3>
-          <strong>{globalThumbnailBudget}</strong>
+      <section className="setting-group">
+        <h3>{t('appearance')}</h3>
+        <p className="muted">{t('appearanceHelp')}</p>
+        <div className="appearance-control" role="radiogroup" aria-label={t('appearance')}>
+          {([
+            ['gallery_vermilion', 'appearanceGalleryVermilion'],
+            ['pine_archive', 'appearancePineArchive'],
+            ['aubergine_ink', 'appearanceAubergineInk'],
+          ] as const).map(([preset, label]) => (
+            <button
+              key={preset}
+              type="button"
+              role="radio"
+              aria-checked={appearance === preset}
+              className={appearance === preset ? 'active' : ''}
+              onClick={() => onAppearance(preset)}
+            >
+              <span className={`appearance-swatch appearance-swatch-${preset}`} aria-hidden="true" />
+              <span>{t(label)}</span>
+            </button>
+          ))}
         </div>
-        <p className="muted">{t('globalThumbnailsHelp')}</p>
-        <input
-          type="range"
-          min={GLOBAL_BUDGET_MIN}
-          max={GLOBAL_BUDGET_MAX}
-          step={GLOBAL_BUDGET_STEP}
-          value={globalThumbnailBudget}
-          aria-label={t('globalThumbnailBudget')}
-          onChange={event => onGlobalThumbnailBudget(Number(event.currentTarget.value))}
-        />
-        <div className="range-ticks"><span>{t('calm')}</span><span>{t('balanced')}</span><span>{t('dense')}</span></div>
-      </section>
-
-      <section className="setting-group range-setting">
-        <div className="setting-title-row">
-          <h3>{t('focusThumbnails')}</h3>
-          <strong>{focusThumbnailBudget}</strong>
-        </div>
-        <p className="muted">{t('focusThumbnailsHelp')}</p>
-        <input
-          type="range"
-          min={FOCUS_BUDGET_MIN}
-          max={FOCUS_BUDGET_MAX}
-          step={FOCUS_BUDGET_STEP}
-          value={focusThumbnailBudget}
-          aria-label={t('focusThumbnailBudget')}
-          onChange={event => onFocusThumbnailBudget(Number(event.currentTarget.value))}
-        />
-        <div className="range-ticks"><span>{t('compact')}</span><span>{t('gallery')}</span><span>{t('full')}</span></div>
       </section>
 
       <section className="setting-group app-update-section">
-        <h3>App update</h3>
-        {!updateStatus && <p className="muted">Checking for updates…</p>}
+         <h3>{t('appUpdate')}</h3>
+         {!updateStatus && <p className="muted">{t('updateChecking')}</p>}
         {updateInstalled ? (
           <div className="update-card update-complete-card" role="status">
-            <p className="update-kicker">Update installed</p>
-            <p className="update-title">{updateInstalled.requiresManualRestart ? <>Restart required to finish updating to <code>{updateInstalled.targetVersion}</code>.</> : updateInstalled.message}</p>
+             <p className="update-kicker">{t('updateInstalled')}</p>
+             <p className="update-title">{updateInstalled.requiresManualRestart ? <>{t('updateRestartRequired')} <code>{updateInstalled.targetVersion}</code>.</> : updateInstalled.message}</p>
             <p className="provider-help">{restartInstruction}</p>
             {updateInstalled.requiresManualRestart && <p className="update-command-hint"><code>image-prompt-library start</code></p>}
           </div>
         ) : updateStatus?.error ? (
-          <p className="muted">Could not check for updates.</p>
+           <p className="muted">{t('updateStatusFailed')}</p>
         ) : updateStatus?.update_capability === 'source' ? (
-          <p className="muted">This source checkout is managed outside the app. Update it with your development workflow.</p>
+           <p className="muted">{t('updateSourceManaged')}</p>
         ) : updateStatus?.update_capability === 'command_only' && updateStatus.update_available ? (
           <div className="update-card">
-            <p className="muted"><strong>Update available</strong>: <code>{updateStatus.latest_version}</code></p>
-            <p className="muted">Windows updates run from PowerShell. Use:</p>
+             <p className="muted"><strong>{t('updateAvailableVersion')}</strong>: <code>{updateStatus.latest_version}</code></p>
+             <p className="muted">{t('updatePowerShellHint')}</p>
             {updateStatus.update_command && <p className="update-command-hint"><code>{updateStatus.update_command}</code></p>}
-            {updateStatus.release_url && <a className="secondary" href={updateStatus.release_url} target="_blank" rel="noreferrer">View release</a>}
+             {updateStatus.release_url && <a className="secondary" href={updateStatus.release_url} target="_blank" rel="noreferrer">{t('viewRelease')}</a>}
           </div>
         ) : updateStatus && !updateStatus.update_available ? (
-          <p className="muted">Image Prompt Library is up to date. Current version: <code>{updateStatus.current_version}</code></p>
+           <p className="muted">{t('upToDate')} {t('updateCurrentVersion')}: <code>{updateStatus.current_version}</code></p>
         ) : updateStatus?.update_available && (
           <div className="update-card">
-            <p className="muted"><strong>Update available</strong>: <code>{updateStatus.latest_version}</code></p>
-            <p className="muted">Current version: <code>{updateStatus.current_version}</code></p>
+             <p className="muted"><strong>{t('updateAvailableVersion')}</strong>: <code>{updateStatus.latest_version}</code></p>
+             <p className="muted">{t('updateCurrentVersion')}: <code>{updateStatus.current_version}</code></p>
             {showActiveUpdateConfirm ? (
               <div className="update-warning">
-                <p>Updating requires restarting the app.</p>
-                <p>There are {updateStatus.active_generation_jobs.running} generation jobs running and {updateStatus.active_generation_jobs.queued} queued. If you continue now, unfinished jobs will be cancelled and unfinished results will not be saved.</p>
+                 <p>{t('updateRequiresRestart')}</p>
+                 <p>{t('updateActiveJobs').replace('${running}', String(updateStatus.active_generation_jobs.running)).replace('${queued}', String(updateStatus.active_generation_jobs.queued))}</p>
                 <div className="provider-actions">
-                  <button className="secondary" onClick={() => setShowActiveUpdateConfirm(false)} disabled={updateBusy}>Update later</button>
-                  <button className="danger" onClick={() => beginUpdate(true)} disabled={updateBusy}>Cancel jobs and update</button>
+                   <button className="secondary" onClick={() => setShowActiveUpdateConfirm(false)} disabled={updateBusy}>{t('updateLater')}</button>
+                   <button className="danger" onClick={() => beginUpdate(true)} disabled={updateBusy}>{t('cancelJobsAndUpdate')}</button>
                 </div>
               </div>
             ) : (
               <div className="provider-actions">
-                <button className="primary" onClick={requestUpdate} disabled={updateBusy}>{updateBusy ? 'Installing…' : 'Update and restart'}</button>
-                {updateStatus.release_url && <a className="secondary" href={updateStatus.release_url} target="_blank" rel="noreferrer">View release</a>}
+               <button className="primary" onClick={requestUpdate} disabled={updateBusy}>{updateBusy ? t('installing') : t('updateAndRestart')}</button>
+               {updateStatus.release_url && <a className="secondary" href={updateStatus.release_url} target="_blank" rel="noreferrer">{t('viewRelease')}</a>}
               </div>
             )}
-            <p className="provider-help">{updateStatus.requires_manual_restart ? 'This app is running from Terminal. After installation, stop the server and start it again to use the new version.' : 'This app is running as a macOS service. The updater can restart the service after installation.'}</p>
+            <p className="provider-help">{updateStatus.requires_manual_restart ? t('updateTerminalHelp') : t('updateServiceHelp')}</p>
           </div>
         )}
         {updateMessage && <p className="provider-message">{updateMessage}</p>}
@@ -446,15 +475,19 @@ export default function ConfigPanel({
 
       {!isDemoMode && (
         <section className="setting-group cleanup-section">
-          <h3>Library cleanup</h3>
-          <p className="muted">Local maintenance for missing image rows and unused media files.</p>
-          <div className="cleanup-counts">
-            <span><strong>{brokenImageCount}</strong> broken image records</span>
-            <span><strong>{unreferencedFileCount}</strong> unreferenced files</span>
-          </div>
+           <h3>{t('cleanupTitle')}</h3>
+           <p className="muted">{t('cleanupHelp')}</p>
+           {!cleanupPreview && <p className="cleanup-precheck-state" role="status">{t('cleanupPrecheck')}</p>}
+           {cleanupPreview && cleanupHasWork && (
+            <div className="cleanup-counts">
+              <span><strong>{brokenImageCount}</strong> {t('brokenImageRecords')}</span>
+              <span><strong>{unreferencedFileCount}</strong> {t('unreferencedFiles')}</span>
+            </div>
+          )}
+          {cleanupPreview && !cleanupHasWork && <p className="cleanup-empty-state" role="status">{t('cleanupNoWork')}</p>}
           <div className="provider-actions">
-            <button className="secondary" onClick={loadCleanupPreview} disabled={cleanupBusy}>{cleanupBusy ? 'Checking...' : 'Preview cleanup'}</button>
-            <button className="danger" onClick={applyCleanup} disabled={cleanupBusy || !cleanupHasWork}>Apply cleanup</button>
+             <button className="secondary" onClick={loadCleanupPreview} disabled={cleanupBusy}>{cleanupBusy ? t('checking') : t('previewCleanup')}</button>
+             {cleanupPreview && cleanupHasWork && <button className="danger" onClick={applyCleanup} disabled={cleanupBusy}>{t('applyCleanup')}</button>}
           </div>
           {cleanupMessage && <p className="provider-message">{cleanupMessage}</p>}
         </section>
@@ -462,34 +495,34 @@ export default function ConfigPanel({
 
       <section ref={providersSectionRef} className="setting-group provider-section" tabIndex={-1} aria-labelledby="config-providers-title">
         <h3 id="config-providers-title">{t('providers')}</h3>
-        <p className="muted">Generation providers are optional. The core library remains usable without OAuth.</p>
+        <p className="muted">{t('providerSetupHelp')}</p>
         <div className="provider-list">
           {providers.map(provider => (
             <article className={`provider-card state-${provider.state}`} key={provider.provider}>
               <div className="provider-card-head">
                 <div>
                   <strong>{provider.provider === 'openai_codex_oauth_native' ? 'ChatGPT / Codex OAuth' : provider.display_name}</strong>
-                  <span>{provider.optional ? 'Optional provider' : 'Built in'}</span>
+                  <span>{provider.optional ? t('providerOptional') : t('providerBuiltIn')}</span>
                 </div>
-                <b>{providerStateLabel(provider)}</b>
+                <b>{providerStateLabel(provider, t)}</b>
               </div>
-              <p className="muted">{featureSummary(provider)}</p>
+              <p className="muted">{featureSummary(provider, t)}</p>
               {provider.provider === 'openai_codex_oauth_native' && (
                 <div className="provider-actions">
                   {provider.state === 'not_configured' && (
-                    <p className="provider-help">Set IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID or ~/.image-prompt-library/config.json locally to enable Connect.</p>
+                    <p className="provider-help">{t('providerClientHelp')}</p>
                   )}
-                  {provider.account_id && <p className="provider-help">Account: <code>{provider.account_id}</code></p>}
+                  {provider.account_id && <p className="provider-help">{t('providerAccount')}: <code>{provider.account_id}</code></p>}
                   {authStart && (
                     <div className="provider-auth-box">
-                      <p>Open <a href={authStart.verification_url || authStart.verification_uri_complete || authStart.verification_uri} target="_blank" rel="noreferrer">verification_url</a> and enter code <code>user_code: {authStart.user_code}</code>.</p>
-                      <button className="secondary" onClick={pollCodexAuth} disabled={providerBusy}>Check authorization</button>
+                      <p><a href={authStart.verification_url || authStart.verification_uri_complete || authStart.verification_uri} target="_blank" rel="noreferrer">{t('providerVerification')}</a> <code>{authStart.user_code}</code></p>
+                      <button className="secondary" onClick={pollCodexAuth} disabled={providerBusy}>{t('checkAuthorization')}</button>
                     </div>
                   )}
                   {!provider.authenticated && !authStart && (
-                    <button className="secondary" onClick={startCodexAuth} disabled={isDemoMode || provider.state === 'not_configured' || providerBusy}>Connect</button>
+                    <button className="secondary" onClick={startCodexAuth} disabled={isDemoMode || provider.state === 'not_configured' || providerBusy}>{t('connect')}</button>
                   )}
-                  {provider.authenticated && <button className="secondary" onClick={disconnectCodexAuth} disabled={providerBusy}>Disconnect</button>}
+                  {provider.authenticated && <button className="secondary" onClick={disconnectCodexAuth} disabled={providerBusy}>{t('disconnect')}</button>}
                 </div>
               )}
             </article>
@@ -498,8 +531,25 @@ export default function ConfigPanel({
         {providerMessage && <p className="provider-message">{providerMessage}</p>}
       </section>
 
-      <p>{t('libraryPath')}: <code>{cfg?.library_path}</code></p>
-      <p>{t('databasePath')}: <code>{cfg?.database_path}</code></p>
-    </aside>
+      {!isDemoMode && (
+        <section className="setting-group local-setup-section">
+          <h3>{t('systemInformation')}</h3>
+          <p className="muted">{t('localSetupHelp')}</p>
+          <dl className="local-setup-list">
+            <div><dt>{t('appVersion')}</dt><dd><code>{cfg?.version || updateStatus?.current_version || 'unknown'}</code></dd></div>
+            <div><dt>{t('libraryPath')}</dt><dd><code>{cfg?.library_path || 'unavailable'}</code></dd></div>
+            <div><dt>{t('databasePath')}</dt><dd><code>{cfg?.database_path || 'unavailable'}</code></dd></div>
+            <div><dt>{t('updateStatusLabel')}</dt><dd>{updateSetupLabel}</dd></div>
+            <div><dt>{t('generationStatusLabel')}</dt><dd>{generationSetupLabel}</dd></div>
+          </dl>
+          <div className="local-setup-commands" aria-label={t('setupCommands')}>
+            <p><span>{t('statusCommandHelp')}</span><code>image-prompt-library status</code></p>
+            <p><span>{t('doctorCommandHelp')}</span><code>image-prompt-library doctor</code></p>
+            <p><span>{t('firstRunSampleHelp')}</span><code>image-prompt-library sample-data en</code></p>
+          </div>
+        </section>
+      )}
+      </aside>
+    </>
   );
 }

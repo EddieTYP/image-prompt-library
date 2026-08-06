@@ -24,6 +24,8 @@ irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts
 
 The installer downloads a release only when its manifest advertises the `windows-powershell-v1` capability, verifies the release checksum before extraction, creates a version-local Python runtime, starts the app in the background, and opens the browser.
 
+Without `-Version`, the installer selects the newest compatible stable release and skips drafts and prereleases. To test `v0.10.0` while it is a prerelease, download the script and pass `-Version v0.10.0` explicitly.
+
 The public bare command resolves to `%LOCALAPPDATA%\ImagePromptLibrary\bin\image-prompt-library.cmd`. The CMD shim launches its differently named internal PowerShell delegate with `-NoProfile -ExecutionPolicy Bypass -File`, so normal commands continue to work when the caller's Windows PowerShell execution policy is `Restricted`.
 
 To inspect the script before running it:
@@ -77,6 +79,7 @@ The current logs are `%LOCALAPPDATA%\ImagePromptLibrary\logs\app.out.log` and `a
 ```powershell
 image-prompt-library update
 image-prompt-library update --version v0.8.0
+image-prompt-library update --version v0.10.0  # explicit prerelease testing
 image-prompt-library rollback
 image-prompt-library backup
 image-prompt-library verify-backup C:\path\to\backup.tar.gz
@@ -125,6 +128,8 @@ image-prompt-library start
 
 `image-prompt-library start` runs the local server in the current terminal. Keep it open, then visit <http://127.0.0.1:8000/> in your browser. Press `Ctrl-C` in that terminal to stop the server.
 
+The command above selects the newest compatible stable release and skips drafts and prereleases. To test `v0.10.0` while it is a prerelease, use the specific-release command below with `--version v0.10.0`.
+
 ## First run
 
 A fresh local library starts empty. Click `+ Add` in the app to create your first prompt card, or import the optional starter sample library:
@@ -154,6 +159,8 @@ The selected release must have matching GitHub Release assets:
 - `image-prompt-library-<version>.manifest.json`
 
 Release tags use `v<major>.<minor>.<patch>` with an optional SemVer prerelease suffix; build-metadata suffixes (`+...`) are not accepted so GitHub asset filenames stay exact. The release workflow binds a schema-v2 manifest to the exact tag commit. The installer verifies the manifest identity and schema, exact checksum sidecar filename, archive SHA256, required payload, and safe archive-member rules before switching `app/current` to the new version.
+
+Publishing a release as a prerelease does not make it the default update. After the same tag and assets pass the Windows, macOS, and Linux release gate, that existing GitHub release can be promoted to stable without retagging or re-uploading it.
 
 On Unix/WSL, custom install-prefix and private-library paths must be dedicated Image Prompt Library directories. The private library must be a physical directory separate from the install prefix; a symlinked path, either directory nested inside the other, filesystem root, or any delete target that contains your home directory is rejected. If an older local configuration uses one of those layouts, move the app and library to separate dedicated physical directories, update `IMAGE_PROMPT_LIBRARY_PATH`, and rerun the update. Uninstall also refuses an `IMAGE_PROMPT_LIBRARY_PREFIX` symlink; invoke it through the physical installed path instead.
 
@@ -222,6 +229,8 @@ Update to the latest release:
 ```bash
 image-prompt-library update
 ```
+
+This selects the newest compatible stable release. Use `image-prompt-library update --version v0.10.0` only when intentionally testing that prerelease.
 
 Install or switch to a specific version:
 
