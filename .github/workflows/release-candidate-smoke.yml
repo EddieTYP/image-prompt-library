@@ -114,8 +114,6 @@ jobs:
           python-version: '3.11'
 
       - name: Install update and rollback at default paths
-        env:
-          PYTHON: python
         run: |
           set -euo pipefail
           test ! -e "$HOME/.image-prompt-library"

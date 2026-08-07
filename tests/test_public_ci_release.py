@@ -187,6 +187,7 @@ def test_release_candidate_smoke_uses_public_assets_and_default_user_paths():
     assert 'test ! -e "$HOME/.image-prompt-library"' in workflow
     assert 'test ! -e "$HOME/ImagePromptLibrary"' in workflow
     assert 'bash "$installer" --version "$BASELINE_VERSION"' in workflow
+    assert "PYTHON: python" not in workflow
     assert '"$app" update --version "$CANDIDATE_VERSION"' in workflow
     assert 'if "$app" rollback; then' in workflow
     assert 'bash "$candidate_installer" --version "$CANDIDATE_VERSION"' in workflow
