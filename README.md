@@ -173,4 +173,4 @@ Privacy model:
 
 ## Project status
 
-`v0.9.0` remains the current stable release. The `v0.10.0` candidate adds the Explore Collections directory, browser-local Appearance presets, continuous Generation-set review, and browser-origin and concurrent result-action hardening. It will remain a prerelease until the release gate passes, so normal install and update commands continue to select the stable release.
+`v0.10.0` is the current stable release. It adds Explore Collections, three appearance choices, and a smoother review flow for generated image sets. It also strengthens local data and credential safeguards. `v0.9.0` remains available from GitHub Releases if you need the previous version.
