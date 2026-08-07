@@ -24,7 +24,7 @@ irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts
 
 The installer downloads a release only when its manifest advertises the `windows-powershell-v1` capability, verifies the release checksum before extraction, creates a version-local Python runtime, starts the app in the background, and opens the browser.
 
-Without `-Version`, the installer selects the newest compatible stable release and skips drafts and prereleases. To test `v0.10.0` while it is a prerelease, download the script and pass `-Version v0.10.0` explicitly.
+Without `-Version`, the installer selects the newest compatible stable release, currently `v0.10.0`, and skips drafts and prereleases. Use `-Version` only when you want to pin a specific release.
 
 The public bare command resolves to `%LOCALAPPDATA%\ImagePromptLibrary\bin\image-prompt-library.cmd`. The CMD shim launches its differently named internal PowerShell delegate with `-NoProfile -ExecutionPolicy Bypass -File`, so normal commands continue to work when the caller's Windows PowerShell execution policy is `Restricted`.
 
@@ -78,8 +78,7 @@ The current logs are `%LOCALAPPDATA%\ImagePromptLibrary\logs\app.out.log` and `a
 
 ```powershell
 image-prompt-library update
-image-prompt-library update --version v0.8.0
-image-prompt-library update --version v0.10.0  # explicit prerelease testing
+image-prompt-library update --version v0.10.0  # pin a specific release
 image-prompt-library rollback
 image-prompt-library backup
 image-prompt-library verify-backup C:\path\to\backup.tar.gz
@@ -128,7 +127,7 @@ image-prompt-library start
 
 `image-prompt-library start` runs the local server in the current terminal. Keep it open, then visit <http://127.0.0.1:8000/> in your browser. Press `Ctrl-C` in that terminal to stop the server.
 
-The command above selects the newest compatible stable release and skips drafts and prereleases. To test `v0.10.0` while it is a prerelease, use the specific-release command below with `--version v0.10.0`.
+The command above selects the newest compatible stable release, currently `v0.10.0`, and skips drafts and prereleases. Use `--version` only when you want to pin a specific release.
 
 ## First run
 
@@ -230,7 +229,7 @@ Update to the latest release:
 image-prompt-library update
 ```
 
-This selects the newest compatible stable release. Use `image-prompt-library update --version v0.10.0` only when intentionally testing that prerelease.
+This selects the newest compatible stable release, currently `v0.10.0`. Use `--version` only when you want to pin a specific release.
 
 Install or switch to a specific version:
 

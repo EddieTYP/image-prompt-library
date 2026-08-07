@@ -161,4 +161,4 @@ Privacy model：
 
 ## Project status
 
-`v0.9.0` 仍是目前 stable release。`v0.10.0` candidate 已包括 Explore Collections directory、瀏覽器本機 Appearance presets、連續 Generation-set review，以及 browser-origin 和 concurrent result-action hardening。通過 release gate 前會保持 prerelease，所以一般 install／update 仍只會選 stable release。
+`v0.10.0` 已是目前 stable release。新版加入 Explore Collections、三款介面配色，同更順暢嘅批次生成結果檢視流程，亦加強本機資料及憑證保護。需要上一個版本時，仍可喺 GitHub Releases 下載 `v0.9.0`。

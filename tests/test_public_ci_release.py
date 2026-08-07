@@ -224,22 +224,43 @@ def test_release_candidate_smoke_uses_public_assets_and_default_user_paths():
     assert "prerelease=false" not in workflow
 
 
-def test_v010_release_docs_define_prerelease_gate_and_stable_update_behavior():
+def test_v010_release_docs_define_stable_update_behavior():
     notes_path = ROOT / "docs" / "releases" / "v0.10.0.md"
     assert notes_path.exists()
     notes = notes_path.read_text(encoding="utf-8")
     installation = (ROOT / "docs" / "INSTALLATION.md").read_text(encoding="utf-8")
+    readmes = (
+        (ROOT / "README.md").read_text(encoding="utf-8"),
+        (ROOT / "README_zh-TW.md").read_text(encoding="utf-8"),
+        (ROOT / "README_zh-CN.md").read_text(encoding="utf-8"),
+    )
     posix_installer = (ROOT / "scripts" / "install.sh").read_text(encoding="utf-8")
     windows_installer = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.10.0" in notes
-    assert "prerelease candidate" in notes
+    assert "`v0.10.0` is the current stable release" in notes
     assert "Explore" in notes
-    assert "Appearance" in notes
-    assert "Continuous Generation-set review" in notes
-    assert "No paid generation request" in notes
-    assert "Normal install and update commands skip prereleases" in notes
-    assert "v0.10.0" in installation
+    assert "appearance choices" in notes
+    assert "Generation review" in notes
+    assert "Normal install and update commands select it by default" in notes
+    assert "newest compatible stable release" in installation
+    assert "currently `v0.10.0`" in installation
+    assert "To test `v0.10.0` while it is a prerelease" not in installation
+    assert "only when intentionally testing that prerelease" not in installation
+    assert "prerelease candidate" not in notes.lower()
+    assert "stable promotion" not in notes.lower()
+    assert "## Release gate" not in notes
+    assert "No paid generation request" not in notes
+    assert "`v0.10.0` is the current stable release" in readmes[0]
+    assert "`v0.10.0` 已是目前 stable release" in readmes[1]
+    assert "`v0.10.0` 已是当前 stable release" in readmes[2]
+    assert "`v0.9.0` remains the current stable release" not in readmes[0]
+    assert "`v0.9.0` 仍是目前 stable release" not in readmes[1]
+    assert "`v0.9.0` 仍是当前 stable release" not in readmes[2]
+    for readme in readmes:
+        assert "`v0.9.0`" in readme
+        assert "candidate" not in readme.lower()
+        assert "release gate" not in readme.lower()
     assert 'release.get("prerelease")' in posix_installer
     assert "$candidate.prerelease" in windows_installer
 
