@@ -169,7 +169,7 @@ export default function App() {
   }, []);
   const refreshTags = () => api.tags().then(setTags).catch(() => setTags([]));
   const refreshAppConfig = () => api.config().then(setAppConfig).catch(() => setAppConfig(undefined));
-  const refreshUpdateStatus = useCallback(() => api.updateStatus().then(status => {
+  const refreshUpdateStatus = useCallback((refresh = false) => api.updateStatus(refresh).then(status => {
     setUpdateStatus(status);
     if (!status.update_available) setRestartRequiredVersion(undefined);
     return status;

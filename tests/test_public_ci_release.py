@@ -265,6 +265,20 @@ def test_v010_release_docs_define_stable_update_behavior():
     assert "$candidate.prerelease" in windows_installer
 
 
+def test_v0101_release_notes_explain_the_update_fix_to_users():
+    notes_path = ROOT / "docs" / "releases" / "v0.10.1.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text(encoding="utf-8")
+
+    assert "# Image Prompt Library v0.10.1" in notes
+    assert "shared anonymous request limit" in notes
+    assert "Opening Settings reuses the recent result" in notes
+    assert "Check for updates" in notes
+    assert "older compatible stable release" in notes
+    assert "release gate" not in notes.lower()
+    assert "paid generation" not in notes.lower()
+
+
 def test_v082_release_docs_and_smoke_cover_exact_v080_posix_migration():
     workflow = (ROOT / ".github" / "workflows" / "release-candidate-smoke.yml").read_text(encoding="utf-8")
     installation = (ROOT / "docs" / "INSTALLATION.md").read_text(encoding="utf-8")

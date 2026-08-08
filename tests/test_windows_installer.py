@@ -1902,6 +1902,7 @@ $Version = 'latest'
 $Repo = 'EddieTYP/image-prompt-library'
 $Capability = 'windows-powershell-v1'
 $script:RequestedPages = @()
+function Resolve-LatestReleaseTag {{ throw 'Latest release is incompatible' }}
 function Get-ApiJson {{
     param([string]$Uri)
     $script:RequestedPages += $Uri
@@ -1929,6 +1930,54 @@ $resolved
     assert result.stdout.strip().splitlines()[-1] == "v0.8.0"
     assert "page=2" in result.stdout
     assert "per_page=100&page=$page" in read("scripts/install.ps1")
+
+
+def test_windows_installer_latest_release_avoids_github_api_when_compatible():
+    assert '$final.Scheme.Equals("https"' in read("scripts/install.ps1")
+    result = run_installer_function(
+        """
+$ReleaseBaseUrl = ''
+$Version = 'latest'
+$Repo = 'EddieTYP/image-prompt-library'
+$Capability = 'windows-powershell-v1'
+function Resolve-LatestReleaseTag { return 'v0.10.1' }
+function Get-ApiJson { throw 'GitHub API must not be used' }
+function New-ReleaseSpec {
+    param([string]$Tag, [string]$BaseUrl, [object[]]$Assets)
+    return [pscustomobject]@{ Version = $Tag }
+}
+function Test-ApiReleaseCompatibility { param([object]$Release); return $true }
+(Resolve-Release).Version
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout.strip().splitlines()[-1] == "v0.10.1"
+
+
+def test_windows_installer_explicit_version_avoids_github_api():
+    result = run_installer_function(
+        """
+$ReleaseBaseUrl = ''
+$Version = 'v0.10.1'
+$Repo = 'EddieTYP/image-prompt-library'
+$Capability = 'windows-powershell-v1'
+function Get-ApiJson { throw 'GitHub API must not be used' }
+function New-ReleaseSpec {
+    param([string]$Tag, [string]$BaseUrl, [object[]]$Assets)
+    return [pscustomobject]@{ Version = $Tag; BaseUrl = $BaseUrl }
+}
+function Test-ApiReleaseCompatibility { param([object]$Release); return $true }
+$release = Resolve-Release
+$release.Version
+$release.BaseUrl
+"""
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    lines = result.stdout.strip().splitlines()
+    assert lines[-2] == "v0.10.1"
+    assert lines[-1] == "https://github.com/EddieTYP/image-prompt-library/releases/download/v0.10.1"
 
 
 def test_windows_installer_rejects_overlapping_app_and_library_paths():

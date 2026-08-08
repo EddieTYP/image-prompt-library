@@ -172,9 +172,41 @@ resolve_latest_version() {
 import json
 import re
 import sys
+import urllib.parse
 import urllib.request
 repo = sys.argv[1]
 pattern = re.compile(r"^v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?")
+try:
+    request = urllib.request.Request(
+        f"https://github.com/{repo}/releases/latest",
+        headers={"User-Agent": "image-prompt-library-installer"},
+    )
+    with urllib.request.urlopen(request) as response:
+        final_url = response.geturl()
+    parsed = urllib.parse.urlparse(final_url)
+    path = urllib.parse.unquote(parsed.path).rstrip("/")
+    prefix = f"/{repo}/releases/tag/"
+    tag = path[len(prefix):] if parsed.scheme == "https" and parsed.netloc.lower() == "github.com" and path.startswith(prefix) else ""
+    match = pattern.fullmatch(tag)
+    canonical = "v" + tag.lstrip("v")
+    manifest_url = f"https://github.com/{repo}/releases/download/{canonical}/image-prompt-library-{canonical}.manifest.json"
+    if match and match.group(4) is None:
+        with urllib.request.urlopen(manifest_url) as response:
+            manifest = json.load(response)
+        capabilities = manifest.get("capabilities") if isinstance(manifest, dict) else None
+        if (
+            manifest.get("name") == "image-prompt-library"
+            and manifest.get("version") == canonical
+            and manifest.get("artifact") == f"image-prompt-library-{canonical}.tar.gz"
+            and isinstance(capabilities, list)
+            and "posix-shell-v1" in capabilities
+        ):
+            print(canonical)
+            raise SystemExit(0)
+except SystemExit:
+    raise
+except Exception:
+    pass
 page = 1
 while True:
     url = f"https://api.github.com/repos/{repo}/releases?per_page=100&page={page}"

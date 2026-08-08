@@ -81,7 +81,7 @@ export default function ConfigPanel({
   appearance: AppearancePreset;
   onAppearance: (appearance: AppearancePreset) => void;
   updateStatus?: AppUpdateStatus;
-  onRefreshUpdateStatus: () => Promise<AppUpdateStatus | undefined>;
+  onRefreshUpdateStatus: (refresh?: boolean) => Promise<AppUpdateStatus | undefined>;
   onUpdateInstalled: (targetVersion: string, requiresManualRestart: boolean) => void;
   onLibraryCleanup?: () => void;
 }) {
@@ -94,6 +94,7 @@ export default function ConfigPanel({
   const [providerMessage, setProviderMessage] = useState<string>();
   const [providerBusy, setProviderBusy] = useState(false);
   const [updateBusy, setUpdateBusy] = useState(false);
+  const [updateCheckBusy, setUpdateCheckBusy] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string>();
   const [updateInstalled, setUpdateInstalled] = useState<{ targetVersion: string; requiresManualRestart: boolean; message: string }>();
   const [showActiveUpdateConfirm, setShowActiveUpdateConfirm] = useState(false);
@@ -150,9 +151,8 @@ export default function ConfigPanel({
       return;
     }
     api.config().then(setCfg).catch(() => undefined);
-    onRefreshUpdateStatus().catch(() => undefined);
     loadProviders();
-  }, [open, onRefreshUpdateStatus, loadProviders, loadCleanupPreview]);
+  }, [open, loadProviders, loadCleanupPreview]);
 
   useEffect(() => {
     if (!open) return;
@@ -278,10 +278,19 @@ export default function ConfigPanel({
         ? t('updateSourceManaged')
         : (updateStatus.update_available ? `${t('updateAvailableVersion')}: ${updateStatus.latest_version}` : `${t('upToDate')} ${t('updateCurrentVersion')}: ${updateStatus.current_version}`))
     : t('providerStateUnavailable');
-  const refreshUpdateStatus = () => onRefreshUpdateStatus().catch(() => {
+  const refreshUpdateStatus = () => onRefreshUpdateStatus(false).catch(() => {
     setUpdateMessage(t('updateStatusFailed'));
     return undefined;
   });
+  const checkForUpdates = async () => {
+    setUpdateCheckBusy(true);
+    setUpdateMessage(undefined);
+    try {
+      await onRefreshUpdateStatus(true);
+    } finally {
+      setUpdateCheckBusy(false);
+    }
+  };
   const beginUpdate = async (cancelActiveGenerationJobs: boolean) => {
     if (!updateStatus?.latest_version) return;
     setUpdateBusy(true);
@@ -468,6 +477,13 @@ export default function ConfigPanel({
               </div>
             )}
             <p className="provider-help">{updateStatus.requires_manual_restart ? t('updateTerminalHelp') : t('updateServiceHelp')}</p>
+          </div>
+        )}
+        {!isDemoMode && !updateInstalled && updateStatus?.update_capability !== 'source' && (
+          <div className="provider-actions">
+            <button className="secondary" onClick={checkForUpdates} disabled={!updateStatus || updateBusy || updateCheckBusy}>
+              {updateCheckBusy ? t('updateChecking') : t('checkForUpdates')}
+            </button>
           </div>
         )}
         {updateMessage && <p className="provider-message">{updateMessage}</p>}

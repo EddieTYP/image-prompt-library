@@ -426,8 +426,8 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "choose_python()" in install
     assert "python3.13 python3.12 python3.11 python3.10 python3 python" in install
     assert "PYTHON=/path/to/python3.10" in install
+    assert "https://github.com/{repo}/releases/latest" in install
     assert "api.github.com/repos/{repo}/releases?per_page=100&page={page}" in install
-    assert "releases/latest" not in install
     assert "image-prompt-library-{canonical}.manifest.json" in install
     assert "image-prompt-library-{canonical}.tar.gz" in install
     assert "sha256" in install.lower()
@@ -1005,8 +1005,12 @@ def test_posix_latest_release_skips_prerelease_and_installs_stable(tmp_path):
         f"FIRST_PAGE = {first_page!r}\n"
         f"RELEASES = {releases!r}\n"
         "_original = urllib.request.urlopen\n"
+        "class Response(io.BytesIO):\n"
+        "    def __init__(self, data, url): super().__init__(data); self.url = url\n"
+        "    def geturl(self): return self.url\n"
         "def _open(url, *args, **kwargs):\n"
         "    value = getattr(url, 'full_url', str(url))\n"
+        f"    if value.endswith('/releases/latest'): return Response(b'', 'https://github.com/EddieTYP/image-prompt-library/releases/tag/{incompatible_version}')\n"
         "    if '/releases?per_page=' in value:\n"
         "        page = urllib.parse.parse_qs(urllib.parse.urlparse(value).query).get('page', ['1'])[0]\n"
         "        return io.BytesIO(json.dumps(FIRST_PAGE if page == '1' else RELEASES).encode())\n"
@@ -1043,6 +1047,48 @@ def test_posix_latest_release_skips_prerelease_and_installs_stable(tmp_path):
     assert result.returncode == 0, result.stdout + result.stderr
     assert (prefix / "app" / "versions" / stable_version).is_dir()
     assert not (prefix / "app" / "versions" / "v9.0.0-rc.1").exists()
+
+
+def test_posix_explicit_version_does_not_use_github_api(tmp_path):
+    version = "v9.9.7-test"
+    release_dir = package_release(tmp_path, version)
+    mock_python = tmp_path / "mock-python"
+    mock_python.mkdir()
+    (mock_python / "sitecustomize.py").write_text(
+        "import os, pathlib, urllib.request\n"
+        "_original = urllib.request.urlopen\n"
+        "def _open(url, *args, **kwargs):\n"
+        "    value = getattr(url, 'full_url', str(url))\n"
+        "    if 'api.github.com' in value: raise AssertionError('GitHub API must not be used')\n"
+        "    if '/releases/download/' in value: return open(pathlib.Path(os.environ['MOCK_RELEASE_DIR']) / value.rsplit('/', 1)[-1], 'rb')\n"
+        "    return _original(url, *args, **kwargs)\n"
+        "urllib.request.urlopen = _open\n",
+        encoding="utf-8",
+    )
+    prefix = tmp_path / "prefix"
+    env = {
+        **os.environ,
+        "PYTHON": sys.executable,
+        "PYTHONPATH": str(mock_python),
+        "MOCK_RELEASE_DIR": str(release_dir),
+        "IMAGE_PROMPT_LIBRARY_INSTALL_SKIP_RUNTIME_SETUP": "1",
+    }
+    env.pop("IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL", None)
+
+    result = subprocess.run(
+        [
+            "bash", "scripts/install.sh", "--version", version,
+            "--prefix", str(prefix), "--library-path", str(tmp_path / "library"), "--no-shim",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (prefix / "app" / "versions" / version).is_dir()
 
 
 def test_posix_installer_reconciles_owned_remnants_and_same_version_is_safe(tmp_path):
