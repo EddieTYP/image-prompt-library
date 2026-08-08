@@ -173,4 +173,4 @@ Privacy model:
 
 ## Project status
 
-`v0.10.0` is the current stable release. It adds Explore Collections, three appearance choices, and a smoother review flow for generated image sets. It also strengthens local data and credential safeguards. `v0.9.0` remains available from GitHub Releases if you need the previous version.
+`v0.10.1` is the current stable release. It includes the Explore Collections, appearance choices, generation review improvements, and local-data safeguards introduced in `v0.10.0`, and fixes update checks when GitHub's public request limit is reached. `v0.10.0` remains available from GitHub Releases if you need the previous version.
