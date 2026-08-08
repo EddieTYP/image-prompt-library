@@ -7,10 +7,12 @@ import re
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import unquote, urlparse
+from urllib.request import Request as UrlRequest
 from urllib.request import url2pathname, urlopen
 
 from fastapi import APIRouter, HTTPException, Request
@@ -31,8 +33,13 @@ RELEASE_RE = re.compile(
 )
 SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 DEFAULT_RELEASE_BASE_URL = "https://github.com/EddieTYP/image-prompt-library/releases/download"
+LATEST_RELEASE_URL = "https://github.com/EddieTYP/image-prompt-library/releases/latest"
 UPDATE_TIMEOUT_SECONDS = 180
 UPDATE_LOCK = threading.Lock()
+UPDATE_CHECK_CACHE_LOCK = threading.Lock()
+UPDATE_CHECK_SUCCESS_TTL_SECONDS = 24 * 60 * 60
+UPDATE_CHECK_FAILURE_TTL_SECONDS = 15 * 60
+_UPDATE_CHECK_CACHE: tuple[tuple[str, str], float, str | None, bool] | None = None
 
 
 class ReleaseCheckError(RuntimeError):
@@ -122,6 +129,12 @@ def open_url_bytes(url: str, timeout: int = 5) -> bytes:
         return response.read()
 
 
+def resolve_url(url: str, timeout: int = 5) -> str:
+    request = UrlRequest(url, headers={"User-Agent": "image-prompt-library"})
+    with urlopen(request, timeout=timeout) as response:  # noqa: S310 - controlled GitHub release URL.
+        return response.geturl()
+
+
 def validate_version(version: str) -> str:
     version = version.strip()
     if not RELEASE_RE.match(version):
@@ -205,7 +218,7 @@ def github_release_versions(limit: int = 10) -> list[str]:
             f"image-prompt-library-{tag}.tar.gz.sha256",
             f"image-prompt-library-{tag}.manifest.json",
         }
-        if required.issubset(asset_names):
+        if required.issubset(asset_names) and release_manifest_is_compatible(tag):
             versions.append(tag)
             accepted += 1
             if accepted >= limit:
@@ -213,12 +226,75 @@ def github_release_versions(limit: int = 10) -> list[str]:
     return sorted(set(versions), key=version_sort_key, reverse=True)
 
 
+def release_manifest_is_compatible(version: str) -> bool:
+    try:
+        manifest = json.loads(open_url_text(release_asset_urls(version)["manifest"], timeout=5))
+    except Exception:
+        return False
+    capability = "windows-powershell-v1" if sys.platform == "win32" else "posix-shell-v1"
+    return bool(
+        isinstance(manifest, dict)
+        and manifest.get("name") == "image-prompt-library"
+        and manifest.get("version") == version
+        and manifest.get("artifact") == f"image-prompt-library-{version}.tar.gz"
+        and isinstance(manifest.get("capabilities"), list)
+        and capability in manifest["capabilities"]
+    )
+
+
+def github_latest_release_version() -> str:
+    try:
+        final_url = resolve_url(LATEST_RELEASE_URL, timeout=5)
+    except Exception as exc:
+        raise ReleaseCheckError("Latest release check failed") from exc
+    parsed = urlparse(final_url)
+    path = unquote(parsed.path).rstrip("/")
+    prefix = "/EddieTYP/image-prompt-library/releases/tag/"
+    trusted_pointer = (
+        parsed.scheme == "https"
+        and parsed.netloc.lower() == "github.com"
+        and path.startswith(prefix)
+    )
+    version = path[len(prefix):] if trusted_pointer else ""
+    if not RELEASE_RE.match(version) or not is_stable_version(version):
+        raise ReleaseCheckError("Latest release pointer is invalid")
+    if not release_manifest_is_compatible(version):
+        raise ReleaseCheckError("Latest release is incomplete or incompatible")
+    return version
+
+
 def latest_complete_release() -> str | None:
     if local_release_root() is not None:
         local_versions = local_release_versions()
         return local_versions[0] if local_versions else None
+    try:
+        return github_latest_release_version()
+    except ReleaseCheckError:
+        pass
     versions = github_release_versions()
     return versions[0] if versions else None
+
+
+def cached_latest_complete_release(*, force_refresh: bool = False) -> str | None:
+    global _UPDATE_CHECK_CACHE
+    key = (release_base_url(), sys.platform)
+    with UPDATE_CHECK_CACHE_LOCK:
+        now = time.monotonic()
+        if _UPDATE_CHECK_CACHE:
+            cached_key, expires_at, cached_latest, cached_failure = _UPDATE_CHECK_CACHE
+        else:
+            cached_key, expires_at, cached_latest, cached_failure = None, 0.0, None, False
+        if not force_refresh and cached_key == key and expires_at > now:
+            if cached_failure:
+                raise ReleaseCheckError("Release check failed")
+            return cached_latest
+        try:
+            latest = latest_complete_release()
+        except (ReleaseCheckError, HTTPException, URLError, OSError, ValueError, json.JSONDecodeError):
+            _UPDATE_CHECK_CACHE = (key, now + UPDATE_CHECK_FAILURE_TTL_SECONDS, None, True)
+            raise
+        _UPDATE_CHECK_CACHE = (key, now + UPDATE_CHECK_SUCCESS_TTL_SECONDS, latest, False)
+        return latest
 
 
 def verify_complete_release(version: str) -> dict[str, str]:
@@ -335,7 +411,7 @@ def schedule_launchd_restart() -> None:
 
 
 @router.get("/update-status", response_model=UpdateStatus)
-def get_update_status(request: Request):
+def get_update_status(request: Request, refresh: bool = False):
     current = os.environ.get("IMAGE_PROMPT_LIBRARY_VERSION") or resolve_app_version(app_root())
     active = active_generation_jobs(request.app.state.library_path)
     update_capability, update_reason = detect_update_capability()
@@ -352,7 +428,7 @@ def get_update_status(request: Request):
             requires_manual_restart=service_mode != "launchd",
         )
     try:
-        latest = latest_complete_release()
+        latest = cached_latest_complete_release(force_refresh=refresh)
     except (ReleaseCheckError, HTTPException, URLError, OSError, ValueError, json.JSONDecodeError) as exc:
         return UpdateStatus(
             current_version=current,

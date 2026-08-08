@@ -495,6 +495,32 @@ function Get-ApiJson {
     return $response.Content | ConvertFrom-Json
 }
 
+function Resolve-LatestReleaseTag {
+    $request = [Net.HttpWebRequest]::Create("https://github.com/$Repo/releases/latest")
+    $request.AllowAutoRedirect = $true
+    $request.MaximumAutomaticRedirections = 10
+    $request.UserAgent = "image-prompt-library-installer"
+    $response = $null
+    try {
+        $response = $request.GetResponse()
+        $final = $response.ResponseUri
+    } finally {
+        if ($response) { $response.Dispose() }
+    }
+    $prefix = "/$Repo/releases/tag/"
+    if (-not $final.Scheme.Equals("https", [StringComparison]::OrdinalIgnoreCase) -or
+        -not $final.IsDefaultPort -or
+        -not $final.Host.Equals("github.com", [StringComparison]::OrdinalIgnoreCase) -or
+        -not $final.AbsolutePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Latest release pointer is invalid."
+    }
+    $tag = [Uri]::UnescapeDataString($final.AbsolutePath.Substring($prefix.Length)).TrimEnd('/')
+    if (-not (Test-VersionToken -Value $tag) -or $tag.Contains('-')) {
+        throw "Latest release pointer is invalid."
+    }
+    return $tag
+}
+
 function Assert-GitHubAssetUri {
     param([string]$Uri)
     $parsed = $null
@@ -574,13 +600,20 @@ function Resolve-Release {
     }
     $apiBase = "https://api.github.com/repos/$Repo/releases"
     if ($Version -ne "latest") {
-        $encoded = [Uri]::EscapeDataString($Version)
-        $apiRelease = Get-ApiJson -Uri "$apiBase/tags/$encoded"
-        $release = New-ReleaseSpec -Tag ([string]$apiRelease.tag_name) -BaseUrl ([string]$apiRelease.html_url) -Assets @($apiRelease.assets)
+        $base = "https://github.com/$Repo/releases/download/$Version"
+        $release = New-ReleaseSpec -Tag $Version -BaseUrl $base
         if (-not (Test-ApiReleaseCompatibility -Release $release)) {
             throw "Release $Version does not advertise required capability $Capability."
         }
         return $release
+    }
+    try {
+        $latestTag = Resolve-LatestReleaseTag
+        $latestBase = "https://github.com/$Repo/releases/download/$latestTag"
+        $latest = New-ReleaseSpec -Tag $latestTag -BaseUrl $latestBase
+        if (Test-ApiReleaseCompatibility -Release $latest) { return $latest }
+    } catch {
+        # Fall back to the release list so an older compatible stable release remains installable.
     }
     $page = 1
     while ($true) {

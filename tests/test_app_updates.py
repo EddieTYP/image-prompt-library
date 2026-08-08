@@ -12,6 +12,11 @@ from backend.services.generation_jobs import GenerationJobRepository
 from backend.schemas import GenerationJobCreate
 
 
+@pytest.fixture(autouse=True)
+def reset_update_check_cache(monkeypatch):
+    monkeypatch.setattr("backend.routers.app_updates._UPDATE_CHECK_CACHE", None)
+
+
 def write_release_assets(root: Path, version: str = "v9.9.9"):
     root.mkdir(parents=True, exist_ok=True)
     artifact = root / f"image-prompt-library-{version}.tar.gz"
@@ -165,6 +170,135 @@ def test_local_release_root_is_authoritative_and_auto_discovery_is_stable(tmp_pa
     assert latest_complete_release() is None
 
 
+def test_latest_web_redirect_avoids_rate_limited_api(monkeypatch):
+    monkeypatch.delenv("IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL", raising=False)
+    monkeypatch.setattr("backend.routers.app_updates.sys.platform", "darwin")
+    monkeypatch.setattr(
+        "backend.routers.app_updates.resolve_url",
+        lambda *_args, **_kwargs: "https://github.com/EddieTYP/image-prompt-library/releases/tag/v2.0.0",
+    )
+    monkeypatch.setattr(
+        "backend.routers.app_updates.open_url_text",
+        lambda *_args, **_kwargs: json.dumps({
+            "name": "image-prompt-library",
+            "version": "v2.0.0",
+            "artifact": "image-prompt-library-v2.0.0.tar.gz",
+            "capabilities": ["posix-shell-v1"],
+        }),
+    )
+    monkeypatch.setattr(
+        "backend.routers.app_updates.github_release_versions",
+        lambda: (_ for _ in ()).throw(AssertionError("rate-limited API fallback")),
+    )
+
+    from backend.routers.app_updates import latest_complete_release
+
+    assert latest_complete_release() == "v2.0.0"
+
+
+def test_incompatible_latest_falls_back_to_older_compatible_release(monkeypatch):
+    monkeypatch.delenv("IMAGE_PROMPT_LIBRARY_RELEASE_BASE_URL", raising=False)
+    monkeypatch.setattr("backend.routers.app_updates.sys.platform", "darwin")
+    monkeypatch.setattr(
+        "backend.routers.app_updates.resolve_url",
+        lambda *_args, **_kwargs: "https://github.com/EddieTYP/image-prompt-library/releases/tag/v3.0.0",
+    )
+    releases = []
+    for version in ("v3.0.0", "v2.0.0"):
+        releases.append({
+            "tag_name": version,
+            "draft": False,
+            "prerelease": False,
+            "assets": [{"name": name} for name in (
+                f"image-prompt-library-{version}.tar.gz",
+                f"image-prompt-library-{version}.tar.gz.sha256",
+                f"image-prompt-library-{version}.manifest.json",
+            )],
+        })
+
+    def fake_open(url, **_kwargs):
+        if "api.github.com" in url:
+            return json.dumps(releases)
+        version = "v3.0.0" if "/v3.0.0/" in url else "v2.0.0"
+        capability = "windows-powershell-v1" if version == "v3.0.0" else "posix-shell-v1"
+        return json.dumps({
+            "name": "image-prompt-library",
+            "version": version,
+            "artifact": f"image-prompt-library-{version}.tar.gz",
+            "capabilities": [capability],
+        })
+
+    monkeypatch.setattr("backend.routers.app_updates.open_url_text", fake_open)
+
+    from backend.routers.app_updates import latest_complete_release
+
+    assert latest_complete_release() == "v2.0.0"
+
+
+def test_update_check_cache_reuses_success_and_failure(monkeypatch):
+    calls = []
+    clock = [100.0]
+    monkeypatch.setattr("backend.routers.app_updates.release_base_url", lambda: "https://releases.example.test")
+    monkeypatch.setattr("backend.routers.app_updates.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("backend.routers.app_updates.latest_complete_release", lambda: calls.append("success") or "v2.0.0")
+
+    from backend.routers import app_updates
+
+    assert app_updates.UPDATE_CHECK_SUCCESS_TTL_SECONDS == 24 * 60 * 60
+    assert app_updates.UPDATE_CHECK_FAILURE_TTL_SECONDS == 15 * 60
+    assert app_updates.cached_latest_complete_release() == "v2.0.0"
+    assert app_updates.cached_latest_complete_release() == "v2.0.0"
+    assert calls == ["success"]
+    clock[0] += app_updates.UPDATE_CHECK_SUCCESS_TTL_SECONDS
+    assert app_updates.cached_latest_complete_release() == "v2.0.0"
+    assert calls == ["success", "success"]
+
+    app_updates._UPDATE_CHECK_CACHE = None
+    monkeypatch.setattr(
+        "backend.routers.app_updates.latest_complete_release",
+        lambda: calls.append("failure") or (_ for _ in ()).throw(app_updates.ReleaseCheckError("rate limited")),
+    )
+    with pytest.raises(app_updates.ReleaseCheckError):
+        app_updates.cached_latest_complete_release()
+    with pytest.raises(app_updates.ReleaseCheckError):
+        app_updates.cached_latest_complete_release()
+    assert calls == ["success", "success", "failure"]
+    clock[0] += app_updates.UPDATE_CHECK_FAILURE_TTL_SECONDS
+    with pytest.raises(app_updates.ReleaseCheckError):
+        app_updates.cached_latest_complete_release()
+    assert calls == ["success", "success", "failure", "failure"]
+
+
+def test_manual_update_check_bypasses_cached_result(monkeypatch):
+    calls = []
+    monkeypatch.setattr("backend.routers.app_updates.release_base_url", lambda: "https://releases.example.test")
+    monkeypatch.setattr(
+        "backend.routers.app_updates.latest_complete_release",
+        lambda: calls.append("check") or "v2.0.0",
+    )
+
+    from backend.routers import app_updates
+
+    assert app_updates.cached_latest_complete_release() == "v2.0.0"
+    assert app_updates.cached_latest_complete_release() == "v2.0.0"
+    assert app_updates.cached_latest_complete_release(force_refresh=True) == "v2.0.0"
+    assert calls == ["check", "check"]
+
+
+def test_update_status_refresh_query_bypasses_cache(tmp_path, monkeypatch):
+    enable_packaged_mode(tmp_path, monkeypatch)
+    refresh_values = []
+    monkeypatch.setattr(
+        "backend.routers.app_updates.cached_latest_complete_release",
+        lambda *, force_refresh=False: refresh_values.append(force_refresh) or None,
+    )
+    client = TestClient(create_app(library_path=tmp_path / "library"))
+
+    assert client.get("/api/update-status").status_code == 200
+    assert client.get("/api/update-status?refresh=true").status_code == 200
+    assert refresh_values == [False, True]
+
+
 @pytest.mark.parametrize(
     "version",
     ["1.2.3", "v1.02.3", "v1.2.3-01", "v1.2.3-a..b", "v1.2.3+foo", "v1.2.3+foo..bar"],
@@ -191,13 +325,29 @@ def test_github_discovery_filters_before_limit_and_skips_prerelease(monkeypatch)
             "image-prompt-library-v2.0.0.manifest.json",
         )],
     })
-    monkeypatch.setattr("backend.routers.app_updates.open_url_text", lambda *_args, **_kwargs: json.dumps(releases))
+    monkeypatch.setattr("backend.routers.app_updates.sys.platform", "darwin")
+
+    def fake_open(url, **_kwargs):
+        if "api.github.com" in url:
+            return json.dumps(releases)
+        return json.dumps({
+            "name": "image-prompt-library",
+            "version": "v2.0.0",
+            "artifact": "image-prompt-library-v2.0.0.tar.gz",
+            "capabilities": ["posix-shell-v1"],
+        })
+
+    monkeypatch.setattr("backend.routers.app_updates.open_url_text", fake_open)
 
     assert github_release_versions(limit=1) == ["v2.0.0"]
 
 
 def test_malformed_github_release_data_is_a_surfaced_check_error(tmp_path, monkeypatch):
     monkeypatch.setattr("backend.routers.app_updates.open_url_text", lambda *_args, **_kwargs: json.dumps([{"tag_name": "v2.0.0", "assets": None}]))
+    monkeypatch.setattr(
+        "backend.routers.app_updates.resolve_url",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("unavailable")),
+    )
     monkeypatch.setattr("backend.routers.app_updates.sys.platform", "darwin")
     enable_packaged_mode(tmp_path, monkeypatch)
 
@@ -330,6 +480,8 @@ def test_frontend_static_update_wizard_contract():
     i18n = (root / "frontend" / "src" / "utils" / "i18n.ts").read_text(encoding="utf-8")
 
     assert "updateStatus:" in client
+    assert "updateStatus: (refresh = false)" in client
+    assert "/api/update-status?refresh=true" in client
     assert "startAppUpdate:" in client
     assert "t('appUpdate')" in config
     assert "t('cancelJobsAndUpdate')" in config
@@ -337,6 +489,10 @@ def test_frontend_static_update_wizard_contract():
     assert "Wait" not in config and "等待" not in config
     assert "t('updateRestartRequired')" in config
     assert "t('updateStatusFailed')" in config
+    assert "t('checkForUpdates')" in config
+    assert "onRefreshUpdateStatus(true)" in config
+    assert "!isDemoMode && !updateInstalled" in config
+    assert "onRefreshUpdateStatus().catch" not in config
     assert "t('updateSourceManaged')" in config
     assert "t('updatePowerShellHint')" in config
     assert "result.requires_manual_restart" in config
@@ -345,5 +501,6 @@ def test_frontend_static_update_wizard_contract():
     assert "handleUpdateInstalled" in app
     assert "updateBadgeLabel" in topbar
     assert "appUpdate: 'App update'" in i18n
+    assert "checkForUpdates: 'Check for updates'" in i18n
     assert "cancelJobsAndUpdate: 'Cancel jobs and update'" in i18n
     assert "updateAvailable: 'Update available'" in i18n
