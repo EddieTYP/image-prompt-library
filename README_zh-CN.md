@@ -161,4 +161,4 @@ Privacy model：
 
 ## Project status
 
-`v0.10.0` 已是当前 stable release。新版加入 Explore Collections、三种界面配色和更顺畅的批次生成结果查看流程，并加强本地数据和凭据保护。需要上一个版本时，仍可从 GitHub Releases 下载 `v0.9.0`。
+`v0.10.1` 已是当前 stable release。除了包含 `v0.10.0` 的 Explore Collections、三种界面配色、批次生成结果查看流程和本地数据保护，也修复 GitHub 公开查询次数用尽时更新检查会失败的问题。需要上一个版本时，仍可从 GitHub Releases 下载 `v0.10.0`。

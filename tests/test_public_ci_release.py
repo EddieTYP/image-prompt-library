@@ -228,6 +228,7 @@ def test_v010_release_docs_define_stable_update_behavior():
     notes_path = ROOT / "docs" / "releases" / "v0.10.0.md"
     assert notes_path.exists()
     notes = notes_path.read_text(encoding="utf-8")
+    current_notes = (ROOT / "docs" / "releases" / "v0.10.1.md").read_text(encoding="utf-8")
     installation = (ROOT / "docs" / "INSTALLATION.md").read_text(encoding="utf-8")
     readmes = (
         (ROOT / "README.md").read_text(encoding="utf-8"),
@@ -238,27 +239,31 @@ def test_v010_release_docs_define_stable_update_behavior():
     windows_installer = (ROOT / "scripts" / "install.ps1").read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.10.0" in notes
-    assert "`v0.10.0` is the current stable release" in notes
+    assert "`v0.10.0` introduced the features below" in notes
+    assert "`v0.10.1` is the current stable release" in current_notes
     assert "Explore" in notes
     assert "appearance choices" in notes
     assert "Generation review" in notes
-    assert "Normal install and update commands select it by default" in notes
+    assert "Normal install and update commands select it by default" in current_notes
     assert "newest compatible stable release" in installation
-    assert "currently `v0.10.0`" in installation
+    assert "currently `v0.10.1`" in installation
     assert "To test `v0.10.0` while it is a prerelease" not in installation
     assert "only when intentionally testing that prerelease" not in installation
     assert "prerelease candidate" not in notes.lower()
     assert "stable promotion" not in notes.lower()
     assert "## Release gate" not in notes
     assert "No paid generation request" not in notes
-    assert "`v0.10.0` is the current stable release" in readmes[0]
-    assert "`v0.10.0` 已是目前 stable release" in readmes[1]
-    assert "`v0.10.0` 已是当前 stable release" in readmes[2]
+    assert "`v0.10.1` is the current stable release" in readmes[0]
+    assert "`v0.10.1` 已是目前 stable release" in readmes[1]
+    assert "`v0.10.1` 已是当前 stable release" in readmes[2]
+    assert "`v0.10.0` is the current stable release" not in readmes[0]
+    assert "`v0.10.0` 已是目前 stable release" not in readmes[1]
+    assert "`v0.10.0` 已是当前 stable release" not in readmes[2]
     assert "`v0.9.0` remains the current stable release" not in readmes[0]
     assert "`v0.9.0` 仍是目前 stable release" not in readmes[1]
     assert "`v0.9.0` 仍是当前 stable release" not in readmes[2]
     for readme in readmes:
-        assert "`v0.9.0`" in readme
+        assert "`v0.10.0`" in readme
         assert "candidate" not in readme.lower()
         assert "release gate" not in readme.lower()
     assert 'release.get("prerelease")' in posix_installer
@@ -271,7 +276,8 @@ def test_v0101_release_notes_explain_the_update_fix_to_users():
     notes = notes_path.read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.10.1" in notes
-    assert "shared anonymous request limit" in notes
+    assert "`v0.10.1` is the current stable release" in notes
+    assert "public request limit" in notes
     assert "Opening Settings reuses the recent result" in notes
     assert "Check for updates" in notes
     assert "older compatible stable release" in notes
