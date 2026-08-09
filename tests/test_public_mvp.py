@@ -109,18 +109,18 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "structured search filters" in readme
     assert "batch reference management" in readme
     assert "cleanup tools" in readme
-    assert "attach to the current item" in readme
+    assert "attach it to its unchanged source item when available" in readme
     assert "mobile browsing preview" not in readme
     assert "next-release mobile browsing and management plan" not in readme
     assert "a calmer first-run experience" in readme
-    assert "local inbox" in readme
+    assert "Work queue" in readme
     assert "local media files" not in readme
-    assert "review generated results in the local inbox" in readme.lower()
+    assert "review completed results from the **work queue**" in readme.lower()
     assert "Local Generation Studio" not in readme
     assert "archived 0.3 preview" not in readme
     assert "archived 0.2 preview" not in readme
     assert "archived 0.1 alpha demo" not in readme
-    assert "read-only online demo" in readme.lower()
+    assert "online read-only demo" in readme.lower()
     assert "ChatGPT / Codex OAuth" in readme
     assert "generate images" in readme.lower()
     assert "Current stable release:" in readme
@@ -130,14 +130,14 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "唯讀 sample library" not in readme
     assert "Privacy model" in readme
     assert "install the app locally" in readme
-    assert "Add/Edit, private library management, and image generation are local-install features" in readme
+    assert "Editing, private-library management, and generation are available only in a local install" in readme
     assert "Local installs can optionally connect ChatGPT / Codex OAuth" in readme
     assert "generate from a new prompt or from an existing saved reference" in readme
     assert "`{{variables}}`" in readme
     assert "`{{subject}}`" in readme
     assert "Manage a private library" in readme
     assert "## Add your own prompts\n" not in readme
-    assert "save as a new item" in readme.lower()
+    assert "save as new item" in readme.lower()
     assert "openai_codex_oauth_native" not in readme
     assert "GenerationJob" not in readme
     assert "IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID" not in readme
@@ -150,13 +150,71 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "current stable release" in readme.lower()
 
     screenshots = [
-        "public-demo-v0.6-533-references.png",
-        "generation-provider-connected.png",
+        "local-app-library-overview.jpg",
+        "local-app-explore.jpg",
+        "local-app-detail.jpg",
+        "public-demo-explore.png",
     ]
     for filename in screenshots:
         relative_path = f"docs/assets/screenshots/{filename}"
         assert relative_path in readme
         assert (ROOT / relative_path).exists()
+
+
+def test_readmes_lead_with_the_local_product_and_label_the_online_demo():
+    readmes = {
+        "README.md": ("## Online read-only demo", "## Sample data and attribution"),
+        "README_zh-TW.md": ("## 線上唯讀 demo", "## Sample data 與 attribution"),
+        "README_zh-CN.md": ("## 线上只读 demo", "## Sample data 与 attribution"),
+    }
+    screenshot_paths = [
+        "docs/assets/screenshots/local-app-library-overview.jpg",
+        "docs/assets/screenshots/local-app-explore.jpg",
+        "docs/assets/screenshots/local-app-detail.jpg",
+        "docs/assets/screenshots/public-demo-explore.png",
+    ]
+
+    for filename, (demo_heading, sample_heading) in readmes.items():
+        content = (ROOT / filename).read_text()
+        positions = [content.index(path) for path in screenshot_paths]
+
+        assert positions == sorted(positions)
+        assert screenshot_paths[0] in content[: content.index("## ")]
+        assert content.count(screenshot_paths[3]) == 1
+        assert content.index(demo_heading) < positions[3] < content.index(sample_heading)
+
+
+def test_generation_guide_uses_current_product_screenshots():
+    guide = (ROOT / "docs" / "GENERATION.md").read_text()
+
+    for filename in ["generation-review-result.jpg", "generation-save-as-new-item.jpg"]:
+        relative_path = f"assets/screenshots/{filename}"
+        assert relative_path in guide
+        assert (ROOT / "docs" / relative_path).exists()
+
+    assert "generation-provider-connected.png" not in guide
+    assert "generation-composer-running.png" not in guide
+    assert "generation-composer-result.png" not in guide
+    assert guide.index("generation-review-result.jpg") < guide.index("generation-save-as-new-item.jpg")
+
+
+def test_documentation_screenshot_extensions_match_file_content():
+    screenshots = [
+        "docs/assets/screenshots/local-app-library-overview.jpg",
+        "docs/assets/screenshots/local-app-explore.jpg",
+        "docs/assets/screenshots/local-app-detail.jpg",
+        "docs/assets/screenshots/generation-review-result.jpg",
+        "docs/assets/screenshots/generation-save-as-new-item.jpg",
+        "docs/assets/screenshots/public-demo-explore.png",
+    ]
+
+    for relative_path in screenshots:
+        path = ROOT / relative_path
+        data = path.read_bytes()
+        if path.suffix == ".jpg":
+            assert data.startswith(b"\xff\xd8\xff")
+        else:
+            assert data.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_gpt_image_2_skill_public_import_scripts_are_not_shipped():

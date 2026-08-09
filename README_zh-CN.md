@@ -16,21 +16,16 @@
 
 你的私人 library 会留在自己的电脑：本地 SQLite、本地图片文件，没有 hosted database，没有内置云端同步，也不需要注册账号。
 
+<p align="center">
+  <img src="docs/assets/screenshots/local-app-library-overview.jpg" alt="Library 显示已保存的图片和 prompt 卡片" width="100%" />
+</p>
+<p align="center"><sub>本地 Library 集中保存图片、prompt、collection 和 tag。</sub></p>
+
 ## 为什么做这个
 
 生成图片多了之后，最麻烦的往往不是再生一张，而是找回之前哪个 prompt 好用、哪张图适合参考、当时用了什么来源和变体。
 
-Image Prompt Library 就是为这件事而做：把分散在聊天记录、文件夹和截图里的 prompt/image references，整理成一个可浏览、可搜索、可追溯来源的本地 library。你可以把它当成自己的 prompt catalogue，也可以先用公开 demo 逛一圈 sample gallery。
-
-**线上只读 demo：** <https://eddietyp.github.io/image-prompt-library/>
-
-公开 demo 收录了 **533 个 prompt/image references**，整理自两个慷慨开放的上游 gallery：[`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill)（**CC BY 4.0**）和 [`freestylefly/awesome-gpt-image-2`](https://github.com/freestylefly/awesome-gpt-image-2)（**MIT**）。内容涵盖 UI 与界面、海报与排版、商品与电商、图表与信息可视化、技术图解、摄影写实、角色人物、建筑空间、叙事场景和插画风格。每个案例都以图片卡片呈现；如来源资料有提供，也会保留英文、繁体中文、简体中文的 prompt variant。
-
-<p align="center">
-  <img src="docs/assets/screenshots/public-demo-v0.6-533-references.png" alt="Image Prompt Library public demo showing 533 prompt references" width="100%" />
-</p>
-
-你可以用 demo 快速找灵感、看 prompt 结构、复制公开 sample prompt，或者比较不同 prompt 写法对出图效果的影响。GitHub Pages demo 是静态只读版本；新增、编辑、私人 library 管理和图片生成，都在本地安装版使用。
+Image Prompt Library 就是为这件事而做：把分散在聊天记录、文件夹和截图里的 prompt/image references，整理成一个可浏览、可搜索、可追溯来源的本地 library。你可以把它当成自己的 prompt catalogue。
 
 当前 stable release：[GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest)。版本包括 structured search 与 sorting、batch reference management、cleanup tools、versioned install/update/rollback、原生 Windows 安装、更清晰的首次使用流程，以及 optional local generation 的 OAuth session recovery hardening。
 
@@ -85,8 +80,13 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 - **保存来源脉络：** 原始 prompt、来源资料、翻译或转换后的 variant 可以放在同一张卡片。
 - **管理私人 library：** 新增 / 编辑自己的 prompt card、结果图、reference image、tag、note、source URL 和 collection。
 - **一键复制 prompt：** 打开 item，选择语言或来源 variant，直接复制。
-- **本地生成：** 本地安装版可选择连接 ChatGPT / Codex OAuth，一次生成 1、3、5 或 10 张图片，再连续检查每个结果并选择保存、附加、丢弃或重试。
+- **本地生成：** 本地安装版可选择连接 ChatGPT / Codex OAuth，一次生成 1、3、5 或 10 张图片，再连续检查每个结果并选择保存、丢弃或重试；如果结果来自未修改的已保存参考，也可以附加回原参考。
 - **保持 local-first：** database 和图片文件都留在本地 library directory。
+
+<p align="center">
+  <img src="docs/assets/screenshots/local-app-explore.jpg" alt="Explore 按 collection 显示图片参考" width="100%" />
+</p>
+<p align="center"><sub>在 Explore 按 collection 浏览已保存的 references。</sub></p>
 
 ## 搜索 library
 
@@ -104,6 +104,11 @@ awesome-gpt-image-2
 
 搜索可以配合 collection filter：先在 **Filters** 选 collection，再输入 keyword，就可以只在这个 collection 里找。
 
+<p align="center">
+  <img src="docs/assets/screenshots/local-app-detail.jpg" alt="Reference detail 显示图片、prompt、tag 和来源" width="100%" />
+</p>
+<p align="center"><sub>打开 reference，查看图片、prompt、tag 和来源。</sub></p>
+
 ## 本地生成
 
 本地安装版可以选择连接 ChatGPT / Codex OAuth，不需要在 app 里放 OpenAI API key。你需要一个有图片生成权限的 ChatGPT account/subscription。
@@ -113,16 +118,23 @@ awesome-gpt-image-2
 1. 启动本地 app，打开 **Config**。
 2. 连接 **ChatGPT / Codex OAuth**，在浏览器完成 device-login approval。
 3. 回到 Image Prompt Library，由新 prompt 或已保存 reference 开始生成。Prompt 可以用 `{{主体}}` 或 `{{风格}}` 这类变量；composer 会先要求填值。
-4. 在本地 inbox review 生成结果。
-5. 把结果 attach 到当前 item，或另存成可再编辑 metadata 的新 item。
-
-<p align="center">
-  <img src="docs/assets/screenshots/generation-provider-connected.png" alt="Config drawer showing ChatGPT / Codex OAuth connected for local image generation" width="360" />
-</p>
+4. 在 **工作队列** 查看已完成的结果。
+5. 选择 **另存为新参考**；如果结果来自未经修改的已保存参考，也可以用 **附加到当前参考**。另存前可以先编辑 metadata。
 
 公开 GitHub Pages demo 不会执行 live generation，也不会开放新增 / 编辑等修改操作。
 
 当前生成行为、限制和 benchmark notes，请看 [`docs/GENERATION.md`](docs/GENERATION.md)。
+
+## 线上只读 demo
+
+公开 demo：<https://eddietyp.github.io/image-prompt-library/>。其中收录 **533 个带来源与授权信息的 prompt/image references**，来自 [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill)（**CC BY 4.0**）和 [`freestylefly/awesome-gpt-image-2`](https://github.com/freestylefly/awesome-gpt-image-2)（**MIT**）。如上游提供，也会显示不同语言的 prompt variants。
+
+<p align="center">
+  <img src="docs/assets/screenshots/public-demo-explore.png" alt="线上只读 demo 显示 Explore collections" width="100%" />
+</p>
+<p align="center"><sub>线上 demo 只供浏览；编辑和生成需要本地安装。</sub></p>
+
+你可以用 demo 浏览 collections、搜索案例、查看 prompt 结构和复制公开 sample prompts。它不会开放编辑、私人 library 管理或图片生成。
 
 ## Sample data 与 attribution
 
