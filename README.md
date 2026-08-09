@@ -16,20 +16,14 @@
 
 Your private library stays on your machine: local SQLite, local image files, no hosted database, no built-in cloud sync, and no account required.
 
+<p align="center">
+  <img src="docs/assets/screenshots/local-app-library-overview.jpg" alt="Library view with saved image and prompt cards" width="100%" />
+</p>
+<p align="center"><sub>Your local Library keeps images, prompts, collections, and tags together.</sub></p>
 
 ## Introduction
 
 Image Prompt Library is built for the moment when image-generation prompts become reusable knowledge rather than one-off chat messages.
-
-**Browse the read-only online demo:** <https://eddietyp.github.io/image-prompt-library/>
-
-The public demo is a browsable catalogue of **533 prompt/image references** gathered from two generous upstream galleries: [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill) (**CC BY 4.0**) and [`freestylefly/awesome-gpt-image-2`](https://github.com/freestylefly/awesome-gpt-image-2) (**MIT**). It covers UI and interface design, posters and typography, product and e-commerce imagery, charts and infographics, technical diagrams, photography, character portraits, architecture, storytelling scenes, and illustration styles. Each reference is shown as an image-first card, with English, Traditional Chinese, and Simplified Chinese prompt variants where available.
-
-<p align="center">
-  <img src="docs/assets/screenshots/public-demo-v0.6-533-references.png" alt="Image Prompt Library public demo showing 533 prompt references" width="100%" />
-</p>
-
-Use the online demo as a visual prompt catalogue: search for ideas, inspect prompt structure, copy public sample prompts, and compare how different prompt styles map to different image outputs. The GitHub Pages demo is intentionally static and read-only: Add/Edit, private library management, and image generation are local-install features.
 
 If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate new images through ChatGPT / Codex OAuth while keeping your SQLite database and image files on your own computer.
 
@@ -93,8 +87,13 @@ For update, rollback, service mode, uninstall, WSL, and source-development setup
 - **Preserve prompt provenance:** keep original/source prompt variants and translated or converted variants side by side.
 - **Manage a private library:** add/edit your own prompt cards, result images, optional reference images, tags, notes, source URLs, and collections.
 - **Copy reusable prompts:** open an item, choose the prompt language/source variant, and copy it with one click.
-- **Generate locally:** connect optional ChatGPT / Codex OAuth in a local install with a ChatGPT subscription that has image-generation access, fill `{{variables}}` in reusable prompts, generate 1, 3, 5, or 10 results, then review each result continuously to save as a new item, attach to the current item, discard, or retry it.
+- **Generate locally:** connect optional ChatGPT / Codex OAuth in a local install with a ChatGPT subscription that has image-generation access, fill `{{variables}}` in reusable prompts, generate 1, 3, 5, or 10 results, then review each result to save, discard, retry, or attach it to its unchanged source item when available.
 - **Stay local-first:** your database and image files remain in your local library directory.
+
+<p align="center">
+  <img src="docs/assets/screenshots/local-app-explore.jpg" alt="Explore view with image-led collections" width="100%" />
+</p>
+<p align="center"><sub>Browse saved references by collection in Explore.</sub></p>
 
 ## Searching the library
 
@@ -116,6 +115,11 @@ Search also works with collection filters: choose a collection from **Filters**,
 
 Select multiple cards to favorite, move, archive, restore, or delete references together; use `archived:true` to review archived references before restoring them. In local **Config**, preview cleanup before removing broken image records or unreferenced media stored in the local library folder.
 
+<p align="center">
+  <img src="docs/assets/screenshots/local-app-detail.jpg" alt="Reference detail view with image, prompt, tags, and source" width="100%" />
+</p>
+<p align="center"><sub>Open a reference to view its image, prompt, tags, and source.</sub></p>
+
 ## Local generation
 
 Local installs can optionally connect ChatGPT / Codex OAuth and generate images without adding an OpenAI API key to the app. You will need a ChatGPT account/subscription with access to image generation.
@@ -125,16 +129,23 @@ Basic flow:
 1. Start the local app and open **Config**.
 2. Connect **ChatGPT / Codex OAuth** and approve the device-login flow in your browser.
 3. Return to Image Prompt Library and generate from a new prompt or from an existing saved reference. Prompts can include variables such as `{{subject}}` or `{{style}}`; the composer asks for values before sending the final prompt.
-4. Review generated results in the local inbox.
-5. Attach the result to the current item, or save it as a new item with editable metadata.
-
-<p align="center">
-  <img src="docs/assets/screenshots/generation-provider-connected.png" alt="Config drawer showing ChatGPT / Codex OAuth connected for local image generation" width="360" />
-</p>
+4. Review completed results from the **Work queue**.
+5. Choose **Save as new item**, or use **Attach to current item** when the result came from an unchanged saved reference. You can edit the new item's metadata before saving.
 
 The public GitHub Pages demo never performs live generation and does not expose mutation controls.
 
 For current generation behavior, limitations, and benchmark notes, see [`docs/GENERATION.md`](docs/GENERATION.md).
+
+## Online read-only demo
+
+Browse the public demo at <https://eddietyp.github.io/image-prompt-library/>. It contains **533 attributed prompt/image references** from [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill) (**CC BY 4.0**) and [`freestylefly/awesome-gpt-image-2`](https://github.com/freestylefly/awesome-gpt-image-2) (**MIT**). Each reference keeps its source and license; prompt variants are shown when available.
+
+<p align="center">
+  <img src="docs/assets/screenshots/public-demo-explore.png" alt="Online read-only demo showing Explore collections" width="100%" />
+</p>
+<p align="center"><sub>The online demo is read-only; editing and generation require a local install.</sub></p>
+
+Use the demo to browse collections, search examples, inspect prompts, and copy public sample prompts. Editing, private-library management, and generation are available only in a local install.
 
 ## Sample data and attribution
 

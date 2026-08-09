@@ -10,9 +10,9 @@ Once connected, you can:
 - Queue a `Generation set` of 3, 5, or 10 independent variations from the same prompt and settings.
 - Generate a variant from an existing reference.
 - Review generated results before saving them into the library.
-- Attach a result to the current item.
+- Attach a result to its unchanged source item when available.
 - Save a result as a new item with editable metadata.
-- Keep generated-output provenance such as provider, model, source item, generation job, and timestamps.
+- Keep useful generation details such as provider, model, original item, and batch position.
 - Use prompt variables such as `{{subject}}`, `{{style}}`, or `{{主體}}` in reusable template prompts and fill them before each generation.
 
 No OpenAI API key is required by the app for the ChatGPT / Codex OAuth path. Advanced provider configuration is available for users who need it, but the normal flow is handled from the Config drawer.
@@ -27,93 +27,48 @@ For an existing unsafe override, move the file manually to `~/.image-prompt-libr
 
 ## Connect the provider
 
-Open **Config → Providers**. The in-app generation provider is **ChatGPT / Codex OAuth**. Manual upload is an internal fallback for existing library import paths, not a selectable generation provider.
+Open **Config → Providers**, then choose **Connect** under **ChatGPT / Codex OAuth**. Follow the authorization link, enter the one-time code, approve the request, then return to Image Prompt Library and choose **Check authorization**.
 
-<p align="center">
-  <img src="assets/screenshots/generation-provider-unset.png" alt="Providers panel showing ChatGPT / Codex OAuth not connected" width="320" />
-</p>
-
-Choose **Connect**. The app opens a device-login step: follow the verification link, enter the displayed user code, and then return to Image Prompt Library to check authorization.
-
-<p align="center">
-  <img src="assets/screenshots/generation-provider-device-url.png" alt="Providers panel showing the OAuth verification URL and user code entry step" width="320" />
-</p>
-
-The browser approval page may say **Codex CLI** because the current provider uses the Codex OAuth device flow behind the scenes. Only approve it if you started the flow yourself from your local Image Prompt Library app.
-
-<p align="center">
-  <img src="assets/screenshots/generation-codex-cli-oauth-device.png" alt="Browser device authorization page for Codex CLI OAuth" width="460" />
-</p>
-
-After approval, the provider card should show **Connected** and list the available generation modes. Account details should be treated as private; the screenshot below is redacted.
-
-<p align="center">
-  <img src="assets/screenshots/generation-provider-connected.png" alt="Providers panel showing ChatGPT / Codex OAuth connected for local image generation" width="320" />
-</p>
+The browser may label the request **Codex CLI**. Only approve a flow you started from your local Image Prompt Library app. When setup is complete, the provider shows **Connected**.
 
 ## Generate and review results
 
-Open the local generation composer, type a prompt, choose the desired controls, and run **Generate** for one image. The adjacent choice offers **Generate ×3**, **Generate ×5**, and **Generate ×10**; each option states how many generation requests it will use. Manual result upload remains single-image. Use double braces for reusable fields, for example `A portrait of {{subject}} in {{style}}`; the composer shows fields for each variable and previews the resolved prompt before sending.
+Open **Create image**, enter a prompt, and choose settings. **Generate** creates one result; the adjacent menu creates 3, 5, or 10. Each result uses a separate generation request. Template prompts can include `{{variables}}`; the composer previews the resolved prompt before sending.
 
-A multi-image choice is created atomically: either the whole `Generation set` is queued or none of it is. The composer and Generation queue show exact finished, running, queued, ready, failed, and cancelled counts. **Cancel remaining** cancels only queued or running members. During review, Save as new, Attach, Discard, and Retry move to the next unreviewed result while keeping the original batch position. **Use as draft** pauses the review and **Resume review** returns to the remaining results. The final summary shows saved, attached, discarded, retrying, failed, and cancelled outcomes. Failed members are retried individually rather than with a set-wide retry.
+Review completed results from the **Work queue**. For each result, choose **Save as new item**, **Use result as edit input**, **Retry**, or **Discard**. **Attach to current item** is also available when the result came from an unchanged saved reference. **Use as draft** copies the result's prompt and reusable settings back into the composer. Batch review keeps each result's position and advances to the next unfinished result. Using a result as a draft or edit input pauses review; **Continue review** returns to the remaining results.
 
-This review session is browser-local. If Generation is closed or the page is refreshed, unfinished and replacement jobs remain available through the existing Work Queue rather than a new backend review record.
-
-Deleting a source reference does not cancel its queued or running jobs. Those jobs become detached; completed results remain in the Generation queue and can be saved as new references.
+Queued and running jobs remain in the Work queue if you close or refresh the page. Deleting a source reference does not cancel them; completed detached results can still be saved as new items.
 
 <p align="center">
-  <img src="assets/screenshots/generation-composer-running.png" alt="Local generation composer showing an image job in progress" width="100%" />
+  <img src="assets/screenshots/generation-review-result.jpg" alt="Generation review showing the first result in a three-result batch" width="100%" />
 </p>
+<p align="center"><sub>Review each result before you save, reuse, retry, or discard it.</sub></p>
 
-When the result appears, you can inspect the generated image, download it, attach it to the current item, create another variant, or delete the result.
+Before saving a result as a new reference, edit its details. The read-only generation record shows the provider, model, batch position, and original item when available. Internal identifiers are not displayed.
 
 <p align="center">
-  <img src="assets/screenshots/generation-composer-result.png" alt="Local generation composer showing a generated apple image result" width="100%" />
+  <img src="assets/screenshots/generation-save-as-new-item.jpg" alt="Save as new reference with editable details for result 1 of 3" width="100%" />
 </p>
-
-If you save a result as a new library item, review and edit the metadata first. The save screen shows a short generation record with the provider, model, source item, and batch position. Internal job and item identifiers remain stored for provenance but are not shown as normal user-facing text.
-
-<p align="center">
-  <img src="assets/screenshots/generation-save-as-new-item.png" alt="Save generated image as a new item with editable metadata and readonly provenance" width="100%" />
-</p>
+<p align="center"><sub>Edit the details before saving the result to your library.</sub></p>
 
 ## When generation fails
 
-The composer and Generation queue use the job's classified `metadata.error_kind` rather than trying to infer a new category from provider text:
+The app gives a short next step for each failure:
 
-- `policy_violation`: edit the prompt, or retry the unchanged job if appropriate.
-- `rate_limited`: the failed job stays failed for manual retry, while the app pauses that provider's queue and later continues untouched queued jobs automatically.
-- `provider_unavailable`: retry shortly; the existing prompt and references remain with the job.
-- `auth_required`: open **Config → Providers**, reconnect, then retry.
-- `unknown`: retry, or edit the prompt before creating another job.
+- If the prompt is blocked, edit it and generate again.
+- If the provider rate-limits requests, the failed result stays available for manual retry while untouched queued jobs wait.
+- If the provider is unavailable, retry shortly; the prompt and references stay with the job.
+- If authorization is required, open **Config → Providers**, reconnect, then retry.
+- For other failures, retry the result or edit the prompt first.
 
 The composer can show the sanitized provider error under **Provider details** as secondary diagnostic text. The queue intentionally shows only the classified guidance. Neither surface displays credentials or unsanitized provider responses.
 
 ## Current provider notes
 
-The current stable release includes the `openai_codex_oauth_native` provider path labelled in the UI as **ChatGPT / Codex OAuth**. Compatibility maintenance may be needed if the upstream OAuth or generation service changes.
+The local queue has no artificial submission cap and runs up to five generation jobs at once. Additional jobs wait in the Work queue.
 
-The current local composer supports attached input images for reference/edit-style generation jobs. Current operational notes include:
-
-- The persisted queue has no artificial submission cap. A single local app process runs up to five native-provider jobs concurrently; the 10-worker live experiment is QA-only and does not change this production limit.
-- On HTTP 429, the provider queue honours a valid `Retry-After` delay up to five minutes. Without one, it uses 60, 120, 240, then at most 300 seconds across repeated incidents. The failed request is not retried automatically.
-- Generation requests ask only for the final image (`partial_images: 0`); partial previews are intentionally deferred.
-- Normal OAuth token renewal is coordinated locally and should not interrupt Config or generation. If the provider is temporarily unreachable, try again shortly; reconnect only when the app explicitly says OAuth needs attention.
-- Failed-job retry, stalled-job recovery, and backend-restart recovery preserve their existing semantics.
-- Final live-provider QA remains useful for fresh OAuth onboarding, an expired/revoked session, a temporary provider outage, and one low-cost generation request.
-
-Maintainers can run the separate, opt-in 10-worker experiment against an isolated QA library without changing the product limit:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\codex_native_oauth_smoke.py experiment-10 --library <isolated-qa-library> --prompt "A simple blue circle on white" --quality low --confirm-live
-```
-
-This sends 10 real generation requests. Its worker count measures only the local test harness; provider-side scheduling and rate-limit behaviour remain authoritative.
+If the provider reports a rate limit, the app pauses that provider's queue before continuing untouched queued jobs. The failed result stays failed until you retry it. Normal OAuth renewal happens in the background; reconnect only when the app says authorization is required.
 
 ## Benchmark note
 
-While building Image Prompt Library's Image 2.0 generation workflow, the project also benchmarked which Codex/ChatGPT backend tool-calling model and quality setting worked best for this app. The test covered GPT-5.5, GPT-5.4, and GPT-5.3-Codex across Low, Medium, and High quality.
-
-The practical beta default is **GPT-5.4 + High**: acceptable speed with the strongest visual quality in those tests. Users can still change both the tool-calling model and quality setting manually.
-
-See the benchmark notes and images in [`generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md`](generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md).
+For a historical comparison of model and quality settings, see [`generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md`](generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md).
