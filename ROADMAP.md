@@ -2,7 +2,7 @@
 
 ## Current stable direction
 
-Image Prompt Library is a local-first prompt and image manager. The current stable release is `v0.8.2`; its public GitHub Pages demo is a static, read-only catalogue of attributed prompt/image references. Private-library management, local data, and optional ChatGPT / Codex OAuth generation remain local-install features. The application code is AGPL-3.0-or-later, with commercial licensing available for organizations that need different terms.
+Image Prompt Library is a local-first prompt and image manager. The current stable release is `v0.10.1`; its public GitHub Pages demo is a static, read-only catalogue of attributed prompt/image references. Private-library management, local data, and optional ChatGPT / Codex OAuth generation remain local-install features. The application code is AGPL-3.0-or-later, with commercial licensing available for organizations that need different terms.
 
 The project does not provide hosted accounts, checkout, payments, SaaS sync, or a hosted private library. SQLite data, images, prompts, and provider state stay on the user's machine.
 
@@ -30,7 +30,7 @@ The focused Generation Input & Reference Polish milestone is complete. Generatio
 
 Manual retry, stalled-job recovery, provider-failure classification and guidance, backend-restart recovery, and the credential-path boundary are complete. OAuth credentials and session configuration are app-owned outside the library by default, and current backup, sample, and demo paths omit them.
 
-Post-`v0.8.2` work on `main` adds atomic Generation sets of 1, 3, 5, or 10 jobs, exact queue progress, a production concurrency cap of five, provider pause/backoff handling, and individual review/retry semantics. These changes are merged but are not part of the current stable release until the next release is published.
+`v0.9.0` added atomic Generation sets of 1, 3, 5, or 10 jobs, exact queue progress, a production concurrency cap of five, provider pause/backoff handling, individual review/retry semantics, and portable credential-free backup and safe restore. `v0.10.0` completed the Explore/Library redesign, Appearance presets, and continuous Generation-set review. `v0.10.1` hardened update checks against GitHub's shared anonymous request limit.
 
 ### D. External inspiration import — deferred
 
@@ -40,11 +40,13 @@ If this lane resumes, adapters must still feed candidate prompts, media, provena
 
 ## Prioritized outstanding work
 
-1. **Portable backup and safe restore — `v0.9.0` release milestone** — replace the former partial, operator-managed archive procedure with a validated export/import contract. Preserve credentials and session data outside the archive; cover accepted library media plus required generation data; reject unsafe archive paths and links; validate before mutation; and preserve the original library if restore fails.
-2. **Explore clarity — required before `v1.0.0`** — replace the constellation with a two-level desktop/mobile discovery flow based on existing Collections. With no active collection or search, Explore shows a normal-scroll directory of non-empty Collections using existing localized names, counts, and preview images without cropping source images. Selecting a Collection keeps the user in Explore, applies the existing collection filter state, and opens a natural-ratio image feed; an active search shows the matching Explore feed, and clearing the search or collection returns to the directory with prior state preserved. Reuse existing collection, filter, item-detail, and image-ratio data; do not add a new taxonomy or library data model. When this revamp ships, rename the visible `Cards` mode to `Library`. Explore item detail keeps Copy, Download, Generate, and Edit, but does not expose selection or batch management; full management remains in Library.
-3. **Colour themes — separate visual milestone** — add two browser-local light palettes: the current warm appearance as `Canvas Light`, and the G/H-inspired neutral-blue appearance as `Studio Light`. Use semantic colour tokens, accessible contrast, and the same preference in local installs and the static demo. Keep this separate from the Explore interaction change; dark mode and system-theme following remain out of scope until separately approved.
-4. **Library batch UX quick wins (B)** — add a concise batch `Tag` tooltip and replace the batch `Move` free-text collection prompt with an existing-collection selector. This is independent patch-sized work and may ship between larger milestones.
-5. **Library multi-image management** — generation already supports ordered multi-image inputs. After safe restore is available, add item-level controls to delete, reorder, and change image role or primary selection without duplicating generation reference controls.
+1. **Library batch UX quick wins** — replace the browser's raw batch `Tag` and `Move` prompts with small in-app controls. `Tag` should accept multiple tags and suggest existing tags; `Move` should select an existing Collection instead of asking the user to type its name exactly. Reuse the current batch endpoints and selection state.
+2. **LLM-assisted title suggestion** — add an explicit `Suggest title` action to Library create/edit and generated-result save flows. Use the connected provider only after the user asks, show the proposed title before applying it, and never overwrite an existing title automatically.
+3. **Multi-image Library items and grouped batch results** — let a user save selected results from one Generation set into one Library item and review them in one detail modal. Add item-level controls to choose the primary image, reorder images, change image roles, and remove an image. Preserve per-image generation provenance and reuse the current queue, result review, and reference flows.
+4. **OpenAI generation capability refresh** — reconcile the visible orchestrator list with the current GPT-5.6 family, decide the recommended default through the app's real ChatGPT / Codex OAuth path, and present a plain-language `Recommended` choice alongside explicit model IDs. Keep `gpt-image-2`, add an optional transparent-background PNG output, and recheck supported size, quality, background, format, compression, and partial-image parameters before implementation. Do not imply that the LLM chooses its own orchestrator model when the request contract requires one.
+5. **xAI / Grok Imagine provider feasibility** — scope `grok-imagine-image-2.0` as a separate API-key and usage-billed provider. Verify credential storage, backup/demo exclusion, generation and edit parity, reference limits, returned-media handling, errors, rate limits, privacy, and cost display before deciding whether to implement it. Do not reuse or weaken the ChatGPT / Codex OAuth boundary.
+
+`v0.10.0` implemented Explore clarity: a normal-scroll directory of non-empty Collections, natural-ratio previews that open item detail directly, Collection heading/count routing into filtered `Library`, and the visible `Cards` rename to `Library`. Explore item detail keeps Copy, Download, Generate, and Edit while selection and batch management remain in Library. It also includes three browser-local light Appearance presets displayed as `Red`, `Green`, and `Purple` (`朱紅`、`松綠`、`茄紫`); their existing internal identifiers remain unchanged. Dark mode, system-theme following, and an arbitrary colour picker remain out of scope.
 
 The former responsive vertical-constellation follow-up is superseded by Explore clarity and should not be implemented as a second browsing model.
 
@@ -52,11 +54,11 @@ The former responsive vertical-constellation follow-up is superseded by Explore 
 
 These are product and release groups, not promised version numbers. Small independent fixes may ship between them when they do not broaden the main milestone.
 
-1. **Data safety and `v0.9.0` release closure** — finish Portable backup and safe restore, then cut `v0.9.0` with both the already-merged post-`v0.8.2` Generation-set work and the new recovery contract. Require cross-platform restore regression coverage, the existing generation queue/concurrency checks, and a release gate appropriate to data replacement.
-2. **Explore clarity** — ship the Collections directory and natural-ratio Explore feed together on desktop, mobile, and GitHub Pages. Preserve search/filter/detail state and keep the static demo read-only. This is the required browsing revamp before `v1.0.0`.
-3. **Colour themes** — establish the semantic token boundary and ship `Canvas Light` plus `Studio Light` as a separate, fully regression-tested visual update after the Explore interaction has settled.
-4. **Library management follow-ups** — take the batch `Tag`/`Move` quick wins as a small patch, then scope multi-image delete/reorder/role/primary management against the shipped restore boundary. Multi-image management should not hold `v1.0.0` if its data-integrity scope is not ready.
-5. **`v1.0.0` readiness** — run final Windows and POSIX install/update/rollback/restore checks, desktop/mobile and static-demo QA, migration and privacy checks, and documentation alignment. Do not use the `v1.0.0` release gate to introduce a new provider, import architecture, account system, or other unrelated feature.
+1. **Library workflow patch** — replace the `Tag` and `Move` browser prompts and add the opt-in title suggestion without changing batch endpoints or silently spending provider quota.
+2. **Generation capability decision** — test the current GPT-5.6 orchestrators and transparent PNG through the real provider path, then lock the model labels, default, supported parameters, and acceptance criteria before implementation.
+3. **Multi-image Library milestone** — implement grouped batch-result save and the item image-management controls as one coherent data-integrity and UX change.
+4. **Provider decision** — complete the xAI / Grok feasibility and privacy review separately. A new provider should not be bundled into the multi-image milestone or block `v1.0.0` unless explicitly promoted.
+5. **`v1.0.0` readiness** — run final Windows and POSIX install/update/rollback/restore checks, desktop/mobile and static-demo QA, migration and privacy checks, and documentation alignment. Do not use the `v1.0.0` release gate to introduce import architecture, an account system, or other unrelated work.
 
 ## Later or optional work
 
