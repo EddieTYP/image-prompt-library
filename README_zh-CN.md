@@ -173,4 +173,4 @@ Privacy model：
 
 ## Project status
 
-`v0.10.1` 已是当前 stable release。除了包含 `v0.10.0` 的 Explore Collections、三种界面配色、批次生成结果查看流程和本地数据保护，也修复 GitHub 公开查询次数用尽时更新检查会失败的问题。需要上一个版本时，仍可从 GitHub Releases 下载 `v0.10.0`。
+`v0.10.2` 已是当前 stable release。除了保留 `v0.10.0` 和 `v0.10.1` 的 Explore、生成结果查看、本地数据保护和更新检查改进，也更新了 GPT-5.6 generation model 选项。`gpt-5.6-terra` 是建议默认值，也可以明确选择 `gpt-5.6-sol` 或 `gpt-5.6-luna`。需要上一个版本时，仍可从 GitHub Releases 下载 `v0.10.1`。
