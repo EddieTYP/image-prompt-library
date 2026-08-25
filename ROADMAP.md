@@ -2,7 +2,7 @@
 
 ## Current stable direction
 
-Image Prompt Library is a local-first prompt and image manager. The current stable release is `v0.10.1`; its public GitHub Pages demo is a static, read-only catalogue of attributed prompt/image references. Private-library management, local data, and optional ChatGPT / Codex OAuth generation remain local-install features. The application code is AGPL-3.0-or-later, with commercial licensing available for organizations that need different terms.
+Image Prompt Library is a local-first prompt and image manager. The current stable release is `v0.10.2`; its public GitHub Pages demo is a static, read-only catalogue of attributed prompt/image references. Private-library management, local data, and optional ChatGPT / Codex OAuth generation remain local-install features. The application code is AGPL-3.0-or-later, with commercial licensing available for organizations that need different terms.
 
 The project does not provide hosted accounts, checkout, payments, SaaS sync, or a hosted private library. SQLite data, images, prompts, and provider state stay on the user's machine.
 
@@ -30,7 +30,9 @@ The focused Generation Input & Reference Polish milestone is complete. Generatio
 
 Manual retry, stalled-job recovery, provider-failure classification and guidance, backend-restart recovery, and the credential-path boundary are complete. OAuth credentials and session configuration are app-owned outside the library by default, and current backup, sample, and demo paths omit them.
 
-`v0.9.0` added atomic Generation sets of 1, 3, 5, or 10 jobs, exact queue progress, a production concurrency cap of five, provider pause/backoff handling, individual review/retry semantics, and portable credential-free backup and safe restore. `v0.10.0` completed the Explore/Library redesign, Appearance presets, and continuous Generation-set review. `v0.10.1` hardened update checks against GitHub's shared anonymous request limit.
+`v0.9.0` added atomic Generation sets of 1, 3, 5, or 10 jobs, exact queue progress, a production concurrency cap of five, provider pause/backoff handling, individual review/retry semantics, and portable credential-free backup and safe restore. `v0.10.0` completed the Explore/Library redesign, Appearance presets, and continuous Generation-set review. `v0.10.1` hardened update checks against GitHub's shared anonymous request limit. `v0.10.2` refreshed the built-in GPT-5.6 orchestrator choices, made `gpt-5.6-terra` the recommended default, and retained explicit `gpt-5.6-sol`, `gpt-5.6-luna`, and custom configured choices.
+
+The capability check through the app's ChatGPT / Codex OAuth path found that `gpt-image-2` rejects transparent backgrounds there. `v0.10.2` therefore keeps PNG output opaque and does not expose a transparent-output control. Revisit this only if the provider capability changes.
 
 ### D. External inspiration import — deferred
 
@@ -43,8 +45,7 @@ If this lane resumes, adapters must still feed candidate prompts, media, provena
 1. **Library batch UX quick wins** — replace the browser's raw batch `Tag` and `Move` prompts with small in-app controls. `Tag` should accept multiple tags and suggest existing tags; `Move` should select an existing Collection instead of asking the user to type its name exactly. Reuse the current batch endpoints and selection state.
 2. **LLM-assisted title suggestion** — add an explicit `Suggest title` action to Library create/edit and generated-result save flows. Use the connected provider only after the user asks, show the proposed title before applying it, and never overwrite an existing title automatically.
 3. **Multi-image Library items and grouped batch results** — let a user save selected results from one Generation set into one Library item and review them in one detail modal. Add item-level controls to choose the primary image, reorder images, change image roles, and remove an image. Preserve per-image generation provenance and reuse the current queue, result review, and reference flows.
-4. **OpenAI generation capability refresh** — reconcile the visible orchestrator list with the current GPT-5.6 family, decide the recommended default through the app's real ChatGPT / Codex OAuth path, and present a plain-language `Recommended` choice alongside explicit model IDs. Keep `gpt-image-2`, add an optional transparent-background PNG output, and recheck supported size, quality, background, format, compression, and partial-image parameters before implementation. Do not imply that the LLM chooses its own orchestrator model when the request contract requires one.
-5. **xAI / Grok Imagine provider feasibility** — scope `grok-imagine-image-2.0` as a separate API-key and usage-billed provider. Verify credential storage, backup/demo exclusion, generation and edit parity, reference limits, returned-media handling, errors, rate limits, privacy, and cost display before deciding whether to implement it. Do not reuse or weaken the ChatGPT / Codex OAuth boundary.
+4. **xAI / Grok Imagine provider feasibility** — scope `grok-imagine-image-2.0` as a separate API-key and usage-billed provider. Verify credential storage, backup/demo exclusion, generation and edit parity, reference limits, returned-media handling, errors, rate limits, privacy, and cost display before deciding whether to implement it. Do not reuse or weaken the ChatGPT / Codex OAuth boundary.
 
 `v0.10.0` implemented Explore clarity: a normal-scroll directory of non-empty Collections, natural-ratio previews that open item detail directly, Collection heading/count routing into filtered `Library`, and the visible `Cards` rename to `Library`. Explore item detail keeps Copy, Download, Generate, and Edit while selection and batch management remain in Library. It also includes three browser-local light Appearance presets displayed as `Red`, `Green`, and `Purple` (`朱紅`、`松綠`、`茄紫`); their existing internal identifiers remain unchanged. Dark mode, system-theme following, and an arbitrary colour picker remain out of scope.
 
@@ -55,10 +56,9 @@ The former responsive vertical-constellation follow-up is superseded by Explore 
 These are product and release groups, not promised version numbers. Small independent fixes may ship between them when they do not broaden the main milestone.
 
 1. **Library workflow patch** — replace the `Tag` and `Move` browser prompts and add the opt-in title suggestion without changing batch endpoints or silently spending provider quota.
-2. **Generation capability decision** — test the current GPT-5.6 orchestrators and transparent PNG through the real provider path, then lock the model labels, default, supported parameters, and acceptance criteria before implementation.
-3. **Multi-image Library milestone** — implement grouped batch-result save and the item image-management controls as one coherent data-integrity and UX change.
-4. **Provider decision** — complete the xAI / Grok feasibility and privacy review separately. A new provider should not be bundled into the multi-image milestone or block `v1.0.0` unless explicitly promoted.
-5. **`v1.0.0` readiness** — run final Windows and POSIX install/update/rollback/restore checks, desktop/mobile and static-demo QA, migration and privacy checks, and documentation alignment. Do not use the `v1.0.0` release gate to introduce import architecture, an account system, or other unrelated work.
+2. **Multi-image Library milestone** — implement grouped batch-result save and the item image-management controls as one coherent data-integrity and UX change.
+3. **Provider decision** — complete the xAI / Grok feasibility and privacy review separately. A new provider should not be bundled into the multi-image milestone or block `v1.0.0` unless explicitly promoted.
+4. **`v1.0.0` readiness** — run final Windows and POSIX install/update/rollback/restore checks, desktop/mobile and static-demo QA, migration and privacy checks, and documentation alignment. Do not use the `v1.0.0` release gate to introduce import architecture, an account system, or other unrelated work.
 
 ## Later or optional work
 

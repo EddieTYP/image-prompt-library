@@ -338,7 +338,7 @@ def test_public_npm_dependencies_are_pinned():
     assert '"name": "image-prompt-library"' in package_json
     assert '"name": "image-prompt-library"' in package_lock
     assert '"react": "19.2.5"' in package_json
-    assert '"vite": "8.0.10"' in package_json
+    assert '"vite": "8.2.2"' in package_json
 
 
 def test_public_repo_hygiene_files_exist():

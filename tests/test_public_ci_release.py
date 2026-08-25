@@ -228,7 +228,7 @@ def test_v010_release_docs_define_stable_update_behavior():
     notes_path = ROOT / "docs" / "releases" / "v0.10.0.md"
     assert notes_path.exists()
     notes = notes_path.read_text(encoding="utf-8")
-    current_notes = (ROOT / "docs" / "releases" / "v0.10.1.md").read_text(encoding="utf-8")
+    current_notes = (ROOT / "docs" / "releases" / "v0.10.2.md").read_text(encoding="utf-8")
     installation = (ROOT / "docs" / "INSTALLATION.md").read_text(encoding="utf-8")
     readmes = (
         (ROOT / "README.md").read_text(encoding="utf-8"),
@@ -240,22 +240,22 @@ def test_v010_release_docs_define_stable_update_behavior():
 
     assert "# Image Prompt Library v0.10.0" in notes
     assert "`v0.10.0` introduced the features below" in notes
-    assert "`v0.10.1` is the current stable release" in current_notes
+    assert "`v0.10.2` is the current stable release" in current_notes
     assert "Explore" in notes
     assert "appearance choices" in notes
     assert "Generation review" in notes
     assert "Normal install and update commands select it by default" in current_notes
     assert "newest compatible stable release" in installation
-    assert "currently `v0.10.1`" in installation
+    assert "currently `v0.10.2`" in installation
     assert "To test `v0.10.0` while it is a prerelease" not in installation
     assert "only when intentionally testing that prerelease" not in installation
     assert "prerelease candidate" not in notes.lower()
     assert "stable promotion" not in notes.lower()
     assert "## Release gate" not in notes
     assert "No paid generation request" not in notes
-    assert "`v0.10.1` is the current stable release" in readmes[0]
-    assert "`v0.10.1` 已是目前 stable release" in readmes[1]
-    assert "`v0.10.1` 已是当前 stable release" in readmes[2]
+    assert "`v0.10.2` is the current stable release" in readmes[0]
+    assert "`v0.10.2` 已是目前 stable release" in readmes[1]
+    assert "`v0.10.2` 已是当前 stable release" in readmes[2]
     assert "`v0.10.0` is the current stable release" not in readmes[0]
     assert "`v0.10.0` 已是目前 stable release" not in readmes[1]
     assert "`v0.10.0` 已是当前 stable release" not in readmes[2]
@@ -276,11 +276,27 @@ def test_v0101_release_notes_explain_the_update_fix_to_users():
     notes = notes_path.read_text(encoding="utf-8")
 
     assert "# Image Prompt Library v0.10.1" in notes
-    assert "`v0.10.1` is the current stable release" in notes
+    assert "`v0.10.2` is the current stable release" in notes
     assert "public request limit" in notes
     assert "Opening Settings reuses the recent result" in notes
     assert "Check for updates" in notes
     assert "older compatible stable release" in notes
+    assert "release gate" not in notes.lower()
+    assert "paid generation" not in notes.lower()
+
+
+def test_v0102_release_notes_explain_the_generation_model_refresh_to_users():
+    notes_path = ROOT / "docs" / "releases" / "v0.10.2.md"
+    assert notes_path.exists()
+    notes = notes_path.read_text(encoding="utf-8")
+
+    assert "# Image Prompt Library v0.10.2" in notes
+    assert "`v0.10.2` is the current stable release" in notes
+    assert "Normal install and update commands select it by default" in notes
+    assert "`gpt-5.6-terra` is the recommended default" in notes
+    assert "`gpt-5.6-sol`" in notes
+    assert "`gpt-5.6-luna`" in notes
+    assert "`gpt-image-2` remains the image model" in notes
     assert "release gate" not in notes.lower()
     assert "paid generation" not in notes.lower()
 

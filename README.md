@@ -184,4 +184,4 @@ Privacy model:
 
 ## Project status
 
-`v0.10.1` is the current stable release. It includes the Explore Collections, appearance choices, generation review improvements, and local-data safeguards introduced in `v0.10.0`, and fixes update checks when GitHub's public request limit is reached. `v0.10.0` remains available from GitHub Releases if you need the previous version.
+`v0.10.2` is the current stable release. It keeps the Explore, generation-review, local-data, and update-check improvements from `v0.10.0` and `v0.10.1`, and refreshes the generation model choices for the GPT-5.6 family. `gpt-5.6-terra` is the recommended default, with `gpt-5.6-sol` and `gpt-5.6-luna` available as explicit alternatives. `v0.10.1` remains available from GitHub Releases if you need the previous version.
