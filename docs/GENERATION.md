@@ -71,4 +71,8 @@ If the provider reports a rate limit, the app pauses that provider's queue befor
 
 ## Benchmark note
 
-For a historical comparison of model and quality settings, see [`generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md`](generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md).
+While building Image Prompt Library's Image 2.0 generation workflow, the project benchmarked GPT-5.5, GPT-5.4, and GPT-5.3-Codex across Low, Medium, and High quality. These are historical results, not the current model catalogue.
+
+The current app receives its selectable orchestrator models and default from provider status. The shipped default remains `gpt-5.6-luna` with High quality until the GPT-5.6 model refresh is tested through the app's ChatGPT / Codex OAuth path. Users can still change both settings manually.
+
+See the benchmark notes and images in [`generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md`](generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md).
