@@ -661,6 +661,17 @@ test('batch review leaves a resolved stage and exposes session-only item targets
   assert.match(generation, /openReviewTarget\(reviewTargetId, reviewTargetTitle\)/);
 });
 
+test('generation composer exposes the refreshed recommended model list', async () => {
+  const [generation, translations] = await Promise.all([
+    readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/utils/i18n.ts`, 'utf8'),
+  ]);
+
+  assert.match(generation, /\['gpt-5\.6-terra', 'gpt-5\.6-sol', 'gpt-5\.6-luna'\]/);
+  assert.match(generation, /recommendedOrchestratorModel[\s\S]*?generationRecommended/);
+  assert.equal((translations.match(/generationRecommended:/g) || []).length, 3);
+});
+
 test('Library card keeps desktop actions and exposes a compact mobile More trigger', () => {
   const html = renderToStaticMarkup(React.createElement(ItemCard, {
     t,

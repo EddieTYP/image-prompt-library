@@ -811,9 +811,9 @@ def test_codex_native_device_flow_rejects_invalid_upstream_json(tmp_path, monkey
 def test_codex_native_uses_verified_default_image_orchestration_models():
     from backend.services.openai_codex_native import CODEX_CHAT_MODEL, DEFAULT_CODEX_ORCHESTRATOR_MODELS, codex_orchestrator_models
 
-    assert CODEX_CHAT_MODEL == "gpt-5.6-luna"
-    assert DEFAULT_CODEX_ORCHESTRATOR_MODELS == ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.5", "gpt-5.4"]
-    assert codex_orchestrator_models() == ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.5", "gpt-5.4"]
+    assert CODEX_CHAT_MODEL == "gpt-5.6-terra"
+    assert DEFAULT_CODEX_ORCHESTRATOR_MODELS == ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"]
+    assert codex_orchestrator_models() == ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"]
 
 
 def test_codex_native_filters_known_text_only_orchestrator_models_from_env(monkeypatch):
@@ -821,7 +821,7 @@ def test_codex_native_filters_known_text_only_orchestrator_models_from_env(monke
 
     from backend.services.openai_codex_native import codex_orchestrator_models
 
-    assert codex_orchestrator_models() == ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.5", "gpt-5.4"]
+    assert codex_orchestrator_models() == ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4"]
 
 
 def test_codex_native_status_exposes_orchestrator_and_image_models(tmp_path, monkeypatch):
@@ -836,8 +836,8 @@ def test_codex_native_status_exposes_orchestrator_and_image_models(tmp_path, mon
 
     codex = next(provider for provider in c.get("/api/generation-providers").json() if provider["provider"] == "openai_codex_oauth_native")
 
-    assert codex["orchestrator_models"] == ["gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.5", "gpt-5.4"]
-    assert codex["default_orchestrator_model"] == "gpt-5.6-luna"
+    assert codex["orchestrator_models"] == ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.5"]
+    assert codex["default_orchestrator_model"] == "gpt-5.6-terra"
     assert codex["image_models"] == ["gpt-image-2"]
     assert codex["default_image_model"] == "gpt-image-2"
 
@@ -1066,7 +1066,7 @@ def test_codex_native_injects_requested_aspect_ratio_and_records_effective_promp
         "size": None,
         "quality": "high",
         "image_model": "gpt-image-2",
-        "orchestrator_model": "gpt-5.6-luna",
+        "orchestrator_model": "gpt-5.6-terra",
     }
     assert payload["metadata"]["requested_aspect_ratio"] == "4:3"
     assert payload["metadata"]["aspect_ratio_prompt_injection"] == "Make the aspect ratio 4:3."
