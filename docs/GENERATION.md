@@ -35,6 +35,8 @@ The browser may label the request **Codex CLI**. Only approve a flow you started
 
 Open **Create image**, enter a prompt, and choose settings. **Generate** creates one result; the adjacent menu creates 3, 5, or 10. Each result uses a separate generation request. Template prompts can include `{{variables}}`; the composer previews the resolved prompt before sending.
 
+The model menu offers three GPT-5.6 choices. **Recommended · gpt-5.6-terra** is the balanced default, `gpt-5.6-sol` is the highest-capability option, and `gpt-5.6-luna` is the lighter option for simpler or higher-volume work. Existing custom model overrides remain available after these built-in choices.
+
 Review completed results from the **Work queue**. For each result, choose **Save as new item**, **Use result as edit input**, **Retry**, or **Discard**. **Attach to current item** is also available when the result came from an unchanged saved reference. **Use as draft** copies the result's prompt and reusable settings back into the composer. Batch review keeps each result's position and advances to the next unfinished result. Using a result as a draft or edit input pauses review; **Continue review** returns to the remaining results.
 
 Queued and running jobs remain in the Work queue if you close or refresh the page. Deleting a source reference does not cancel them; completed detached results can still be saved as new items.
@@ -73,6 +75,6 @@ If the provider reports a rate limit, the app pauses that provider's queue befor
 
 While building Image Prompt Library's Image 2.0 generation workflow, the project benchmarked GPT-5.5, GPT-5.4, and GPT-5.3-Codex across Low, Medium, and High quality. These are historical results, not the current model catalogue.
 
-The current app receives its selectable orchestrator models and default from provider status. The shipped default remains `gpt-5.6-luna` with High quality until the GPT-5.6 model refresh is tested through the app's ChatGPT / Codex OAuth path. Users can still change both settings manually.
+The current app receives its selectable orchestrator models and default from provider status. The built-in choices are `gpt-5.6-terra`, `gpt-5.6-sol`, and `gpt-5.6-luna`; `gpt-5.6-terra` is the recommended default. Users can still change the model and quality manually.
 
 See the benchmark notes and images in [`generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md`](generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md).

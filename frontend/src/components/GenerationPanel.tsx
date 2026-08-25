@@ -284,7 +284,7 @@ export default function GenerationPanel({
   const [activeGenerationSet, setActiveGenerationSet] = useState<GenerationJobSetRecord>();
   const [providerQueueStates, setProviderQueueStates] = useState<GenerationProviderQueueState[]>([]);
   const [provider, setProvider] = useState('openai_codex_oauth_native');
-  const [orchestratorModel, setOrchestratorModel] = useState('gpt-5.6-luna');
+  const [orchestratorModel, setOrchestratorModel] = useState('gpt-5.6-terra');
   const [aspectRatio, setAspectRatio] = useState('auto');
   const [quality, setQuality] = useState('high');
   const [openControl, setOpenControl] = useState<'aspect' | 'quality' | 'model' | null>(null);
@@ -414,7 +414,9 @@ export default function GenerationPanel({
   const compactProviderMessage = compactProviderReadinessLabel(selectedProvider, t);
   const selectedProviderQueueState = providerQueueStates.find(state => state.provider === provider);
   const selectedProviderPauseSeconds = selectedProviderQueueState ? providerPauseSeconds(selectedProviderQueueState, queueClock) : 0;
-  const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.6-luna'];
+  const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6-luna'];
+  const recommendedOrchestratorModel = selectedProvider?.default_orchestrator_model || orchestratorModels[0];
+  const orchestratorModelLabel = (model: string) => model === recommendedOrchestratorModel ? `${t('generationRecommended')} · ${model}` : model;
   const templateVariables = useMemo(() => promptVariablesEnabled ? extractPromptTemplateVariableRecords(promptText) : [], [promptVariablesEnabled, promptText]);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
   const hasTemplateVariables = templateVariables.length > 0;
@@ -602,7 +604,7 @@ export default function GenerationPanel({
         const firstReady = automatedProviders.find(providerCanGenerate) || automatedProviders[0];
         if (firstReady) {
           setProvider(firstReady.provider);
-          setOrchestratorModel(firstReady.default_orchestrator_model || firstReady.orchestrator_models?.[0] || 'gpt-5.6-luna');
+          setOrchestratorModel(firstReady.default_orchestrator_model || firstReady.orchestrator_models?.[0] || 'gpt-5.6-terra');
         }
       })
       .catch(() => {
@@ -2002,14 +2004,14 @@ export default function GenerationPanel({
                     )}
                   </div>
                   <div className="generation-control-wrap generation-model-control">
-                     <button ref={element => { controlTriggerRefs.current.model = element; }} className="generation-control-trigger generation-model-trigger generation-has-long-value" type="button" onClick={() => setOpenControl(openControl === 'model' ? null : 'model')} disabled={provider !== 'openai_codex_oauth_native'} aria-label={`${t('queueModel')}: ${orchestratorModel}`} title={orchestratorModel}>
+                     <button ref={element => { controlTriggerRefs.current.model = element; }} className="generation-control-trigger generation-model-trigger generation-has-long-value" type="button" onClick={() => setOpenControl(openControl === 'model' ? null : 'model')} disabled={provider !== 'openai_codex_oauth_native'} aria-label={`${t('queueModel')}: ${orchestratorModelLabel(orchestratorModel)}`} title={orchestratorModelLabel(orchestratorModel)}>
                       <img className="generation-control-icon" src={brainAiIcon} alt="" aria-hidden="true" />
-                      <span className="generation-control-value">{orchestratorModel}</span>
+                      <span className="generation-control-value">{orchestratorModelLabel(orchestratorModel)}</span>
                     </button>
                     {openControl === 'model' && (
                       <div className="generation-control-popover" role="menu">
                         {orchestratorModels.map(model => (
-                          <button key={model} type="button" className={orchestratorModel === model ? 'is-selected' : ''} onClick={() => { setOrchestratorModel(model); closeGenerationControl('model'); }}>{model}</button>
+                          <button key={model} type="button" className={orchestratorModel === model ? 'is-selected' : ''} onClick={() => { setOrchestratorModel(model); closeGenerationControl('model'); }}>{orchestratorModelLabel(model)}</button>
                         ))}
                       </div>
                     )}
