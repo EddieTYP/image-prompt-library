@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { Archive, ArchiveRestore, Check, FolderInput, Plus, Star, Tags, Trash2, XCircle } from 'lucide-react';
+import { Archive, ArchiveRestore, Check, Ellipsis, FolderInput, Plus, Star, Tags, Trash2, XCircle } from 'lucide-react';
 import { api, isDemoMode } from './api/client';
 import TopBar from './components/TopBar';
 import FiltersPanel from './components/FiltersPanel';
@@ -11,6 +11,7 @@ import ItemEditorModal from './components/ItemEditorModal';
 import GenerationPanel from './components/GenerationPanel';
 import GenerationQueueDrawer from './components/GenerationQueueDrawer';
 import ConfigPanel from './components/ConfigPanel';
+import BatchActionDialog from './components/BatchActionDialog';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
 import { useModalFocus } from './hooks/useModalFocus';
@@ -116,6 +117,9 @@ export default function App() {
   const [appConfig, setAppConfig] = useState<AppConfig>();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(() => new Set());
+  const [batchActionDialog, setBatchActionDialog] = useState<'tags' | 'move'>();
+  const [selectionActionsOpen, setSelectionActionsOpen] = useState(false);
+  const selectionActionsRef = useRef<HTMLDivElement>(null);
   const [batchBusy, setBatchBusy] = useState(false);
   const batchActionInFlightRef = useRef(false);
   const detailDeleteInFlightRef = useRef(false);
@@ -140,6 +144,21 @@ export default function App() {
   useEffect(() => {
     applyAppearance(appearance);
   }, [appearance]);
+  useEffect(() => {
+    if (!selectionActionsOpen) return undefined;
+    const closeOutside = (event: PointerEvent) => {
+      if (!selectionActionsRef.current?.contains(event.target as Node)) setSelectionActionsOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectionActionsOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [selectionActionsOpen]);
   useEffect(() => () => {
     if (viewTransitionTimerRef.current !== undefined) window.clearTimeout(viewTransitionTimerRef.current);
     document.documentElement.removeAttribute('data-view-transition');
@@ -240,7 +259,7 @@ export default function App() {
   const clearCluster = () => setClusterId(undefined);
   const saved = () => { refreshClusters(); refreshLibraryTotal(); refreshTags(); setItemsReloadKey(k => k + 1); };
   const clearSelection = () => setSelectedItemIds(new Set());
-  const exitSelectionMode = () => { setSelectionMode(false); clearSelection(); };
+  const exitSelectionMode = () => { setBatchActionDialog(undefined); setSelectionActionsOpen(false); setSelectionMode(false); clearSelection(); };
   const deleted = () => { setDetailId(undefined); setEditing(undefined); setFocusedGenerationJobId(undefined); setGenerationSourceItem(undefined); exitSelectionMode(); refreshClusters(); refreshLibraryTotal(); refreshTags(); setItemsReloadKey(k => k + 1); };
   const refreshAfterBatch = () => { refreshClusters(); refreshLibraryTotal(); refreshTags(); setItemsReloadKey(k => k + 1); };
   const updatePreferredLanguage = (language: PromptCopyLanguage) => {
@@ -410,8 +429,8 @@ export default function App() {
       detailDeleteInFlightRef.current = false;
     }
   };
-  const runBatchAction = async (action: ItemBatchAction, extra: { tags?: string[]; cluster_name?: string } = {}) => {
-    if (!selectedItemIds.size || batchActionInFlightRef.current) return;
+  const runBatchAction = async (action: ItemBatchAction, extra: { tags?: string[]; cluster_id?: string; cluster_name?: string } = {}) => {
+    if (!selectedItemIds.size || batchActionInFlightRef.current) return false;
     batchActionInFlightRef.current = true;
     setBatchBusy(true);
     const attemptedIds = new Set(selectedItemIds);
@@ -434,11 +453,13 @@ export default function App() {
           tone: 'error',
           duration: 4200,
         });
-        return;
+        return true;
       }
       exitSelectionMode();
+      return true;
     } catch {
       setToast({ title: t('saveFailed'), tone: 'error' });
+      return false;
     } finally {
       batchActionInFlightRef.current = false;
       setBatchBusy(false);
@@ -449,17 +470,10 @@ export default function App() {
     if (!confirm(t('deleteSelectedReferencesConfirm').replace('${selectedItemIds.size}', String(selectedItemIds.size)))) return;
     await runBatchAction('delete');
   };
-  const batchArchiveSelected = () => runBatchAction(showingArchivedItems ? 'unarchive' : 'archive');
-  const batchFavoriteSelected = () => runBatchAction('favorite');
-  const batchAddTagsSelected = () => {
-    const value = prompt(t('tagSelectedReferences'));
-    const tags = (value || '').split(',').map(tag => tag.trim()).filter(Boolean);
-    if (tags.length) runBatchAction('add_tags', { tags });
-  };
-  const batchMoveSelected = () => {
-    const cluster_name = (prompt(t('moveSelectedReferences')) || '').trim();
-    if (cluster_name) runBatchAction('move_collection', { cluster_name });
-  };
+  const batchArchiveSelected = () => { setSelectionActionsOpen(false); runBatchAction(showingArchivedItems ? 'unarchive' : 'archive'); };
+  const batchFavoriteSelected = () => { setSelectionActionsOpen(false); runBatchAction('favorite'); };
+  const batchAddTagsSelected = () => { setSelectionActionsOpen(false); setBatchActionDialog('tags'); };
+  const batchMoveSelected = () => { setSelectionActionsOpen(false); setBatchActionDialog('move'); };
   const editSummary = async (item: { id: string }) => {
     if (editingItemId === item.id) return;
     const requestId = editItemRequestRef.current + 1;
@@ -478,7 +492,7 @@ export default function App() {
   };
   const showManagementActions = !isDemoMode && view === 'cards';
   const drawerModalOpen = filtersOpen || configOpen || generationQueueOpen;
-  const blockingModalOpen = !hasChosenUiLanguage || Boolean(detailId || editorOpen || standaloneGenerationOpen);
+  const blockingModalOpen = !hasChosenUiLanguage || Boolean(detailId || editorOpen || standaloneGenerationOpen || batchActionDialog);
   const showFloatingActions = Boolean(hasChosenUiLanguage && !selectionMode && !filtersOpen && !configOpen && !detailId);
   const floatingActionsHidden = editorOpen || standaloneGenerationOpen;
   const updateBadgeLabel = restartRequiredVersion
@@ -529,18 +543,58 @@ export default function App() {
     </div>
     {view === 'cards' && selectionMode && !isDemoMode && (
       <div className="selection-toolbar" role="toolbar" aria-label={t('selectReferences')} aria-busy={batchBusy} inert={blockingModalOpen} aria-hidden={blockingModalOpen || undefined}>
-        <button type="button" className="selection-toolbar-button" onClick={exitSelectionMode} disabled={batchBusy}>{t('cancel')}</button>
+        <button type="button" className="selection-toolbar-button selection-toolbar-cancel" onClick={exitSelectionMode} disabled={batchBusy}>{t('cancel')}</button>
         <span className="selection-toolbar-count">{selectedItemIds.size} {t('selectedReferences')}</span>
         <div className="selection-toolbar-secondary">
-          <button type="button" className="selection-toolbar-button" onClick={batchArchiveSelected} disabled={!selectedItemIds.size || batchBusy}>
+          <button type="button" className="selection-toolbar-button selection-toolbar-desktop-action" onClick={batchArchiveSelected} disabled={!selectedItemIds.size || batchBusy}>
             {showingArchivedItems ? <ArchiveRestore size={16} /> : <Archive size={16} />} {showingArchivedItems ? t('restoreSelectedReferences') : t('archiveSelectedReferences')}
           </button>
-          <button type="button" className="selection-toolbar-button" onClick={batchFavoriteSelected} disabled={!selectedItemIds.size || batchBusy}><Star size={16} /> {t('favoriteSelectedReferences')}</button>
+          <button type="button" className="selection-toolbar-button selection-toolbar-desktop-action" onClick={batchFavoriteSelected} disabled={!selectedItemIds.size || batchBusy}><Star size={16} /> {t('favoriteSelectedReferences')}</button>
           <button type="button" className="selection-toolbar-button" onClick={batchAddTagsSelected} disabled={!selectedItemIds.size || batchBusy}><Tags size={16} /> {t('tagSelectedReferences')}</button>
           <button type="button" className="selection-toolbar-button" onClick={batchMoveSelected} disabled={!selectedItemIds.size || batchBusy}><FolderInput size={16} /> {t('moveSelectedReferences')}</button>
         </div>
-        <button type="button" className="selection-toolbar-delete" onClick={deleteSelectedItems} disabled={!selectedItemIds.size || batchBusy}><Trash2 size={16} /> {t('deleteSelectedReferences')}</button>
+        <div ref={selectionActionsRef} className="selection-toolbar-more-shell">
+          <button
+            type="button"
+            className="selection-toolbar-button selection-toolbar-more-trigger"
+            aria-haspopup="menu"
+            aria-expanded={selectionActionsOpen}
+            onClick={() => setSelectionActionsOpen(open => !open)}
+            disabled={!selectedItemIds.size || batchBusy}
+          >
+            <Ellipsis size={17} /> <span>{t('batchMoreActions')}</span>
+          </button>
+          {selectionActionsOpen && (
+            <div className="selection-toolbar-menu" role="menu" aria-label={t('moreActions')}>
+              <button type="button" role="menuitem" onClick={batchFavoriteSelected}><Star size={17} /> {t('favoriteSelectedReferences')}</button>
+              <button type="button" role="menuitem" onClick={batchArchiveSelected}>
+                {showingArchivedItems ? <ArchiveRestore size={17} /> : <Archive size={17} />} {showingArchivedItems ? t('restoreSelectedReferences') : t('archiveSelectedReferences')}
+              </button>
+              <button type="button" role="menuitem" className="danger" onClick={() => { setSelectionActionsOpen(false); deleteSelectedItems(); }}><Trash2 size={17} /> {t('deleteSelectedReferences')}</button>
+            </div>
+          )}
+        </div>
+        <button type="button" className="selection-toolbar-delete selection-toolbar-desktop-delete" onClick={deleteSelectedItems} disabled={!selectedItemIds.size || batchBusy}><Trash2 size={16} /> {t('deleteSelectedReferences')}</button>
       </div>
+    )}
+    {batchActionDialog && (
+      <BatchActionDialog
+        mode={batchActionDialog}
+        selectedCount={selectedItemIds.size}
+        tags={tags}
+        clusters={localizedClusters}
+        busy={batchBusy}
+        t={t}
+        onClose={() => setBatchActionDialog(undefined)}
+        onApplyTags={async tagNames => {
+          const completed = await runBatchAction('add_tags', { tags: tagNames });
+          if (completed) setBatchActionDialog(undefined);
+        }}
+        onApplyCollection={async collection => {
+          const completed = await runBatchAction('move_collection', { cluster_id: collection.id });
+          if (completed) setBatchActionDialog(undefined);
+        }}
+      />
     )}
     {/* Static-test compatibility marker: !isDemoMode && <button className="fab" */}
     {!isDemoMode && showFloatingActions && (
