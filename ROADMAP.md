@@ -18,7 +18,7 @@ Published download/install verification, Windows handled-failure recovery, sourc
 
 ### B. Library power-user polish — current milestone complete
 
-The completed milestone added clearer search, sort, and filter state; backend-backed batch management; preview-first cleanup; and stronger metadata/provenance handling.
+The completed milestone added clearer search, sort, and filter state; backend-backed batch management; preview-first cleanup; and stronger metadata/provenance handling. Batch `Tag` and `Move` now use searchable in-app controls instead of browser prompts, including multi-select tag suggestions and an existing-Collection picker.
 
 Any future library work should be driven by observed usability problems rather than reopening this milestone broadly.
 
@@ -42,8 +42,8 @@ If this lane resumes, adapters must still feed candidate prompts, media, provena
 
 ## Prioritized outstanding work
 
-1. **Library batch UX quick wins** — replace the browser's raw batch `Tag` and `Move` prompts with small in-app controls. `Tag` should accept multiple tags and suggest existing tags; `Move` should select an existing Collection instead of asking the user to type its name exactly. Reuse the current batch endpoints and selection state.
-2. **LLM-assisted title suggestion** — add an explicit `Suggest title` action to Library create/edit and generated-result save flows. Use the connected provider only after the user asks, show the proposed title before applying it, and never overwrite an existing title automatically.
+1. **LLM-assisted title suggestion** — add an explicit `Suggest title` action to Library create/edit and generated-result save flows. Use the connected provider only after the user asks, show the proposed title before applying it, and never overwrite an existing title automatically.
+2. **Generated-image provider and model provenance** — preserve the actual provider and model for each generated image through attach, save-as-new, retry, and batch review. Show a concise `Generated with` summary in item detail; keep legacy missing values empty and never expose credentials, raw provider responses, or internal job IDs.
 3. **Multi-image Library items and grouped batch results** — let a user save selected results from one Generation set into one Library item and review them in one detail modal. Add item-level controls to choose the primary image, reorder images, change image roles, and remove an image. Preserve per-image generation provenance and reuse the current queue, result review, and reference flows.
 4. **xAI / Grok Imagine provider feasibility** — scope `grok-imagine-image-2.0` as a separate API-key and usage-billed provider. Verify credential storage, backup/demo exclusion, generation and edit parity, reference limits, returned-media handling, errors, rate limits, privacy, and cost display before deciding whether to implement it. Do not reuse or weaken the ChatGPT / Codex OAuth boundary.
 
@@ -55,7 +55,7 @@ The former responsive vertical-constellation follow-up is superseded by Explore 
 
 These are product and release groups, not promised version numbers. Small independent fixes may ship between them when they do not broaden the main milestone.
 
-1. **Library workflow patch** — replace the `Tag` and `Move` browser prompts and add the opt-in title suggestion without changing batch endpoints or silently spending provider quota.
+1. **`v0.11.0` Library workflow group** — combine the completed batch-action polish with opt-in title suggestion and reliable generated-image provider/model display. Keep each change independently reviewable and never spend provider quota without an explicit user action.
 2. **Multi-image Library milestone** — implement grouped batch-result save and the item image-management controls as one coherent data-integrity and UX change.
 3. **Provider decision** — complete the xAI / Grok feasibility and privacy review separately. A new provider should not be bundled into the multi-image milestone or block `v1.0.0` unless explicitly promoted.
 4. **`v1.0.0` readiness** — run final Windows and POSIX install/update/rollback/restore checks, desktop/mobile and static-demo QA, migration and privacy checks, and documentation alignment. Do not use the `v1.0.0` release gate to introduce import architecture, an account system, or other unrelated work.

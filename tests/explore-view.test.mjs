@@ -13,6 +13,7 @@ let ExploreView;
 let CardsView;
 let ItemCard;
 let GenerationQueueDrawer;
+let BatchActionDialog;
 let groupGenerationQueueJobs;
 let generationQueueBatchCounts;
 
@@ -44,6 +45,7 @@ const labels = {
   unfavorite: 'Unfavorite',
   edit: 'Edit',
   moreActions: 'More actions',
+  batchMoreActions: 'More',
   saved: 'Saved',
   workQueue: 'Work queue',
   generationQueue: 'Generation queue',
@@ -51,6 +53,19 @@ const labels = {
   noGenerationActivity: 'No generation activity',
   generationActivityHelp: 'New and completed jobs will appear here.',
   showImage: 'Show image',
+  batchTagTitle: 'Tag selected references',
+  batchMoveTitle: 'Move selected references',
+  selectedReferences: 'selected',
+  searchOrCreateTags: 'Search or create tags',
+  searchCollections: 'Search collections',
+  selectedTags: 'Selected tags',
+  createTag: 'Create “${tag}”',
+  noTagsFound: 'No tags found',
+  applyTags: 'Apply tags',
+  moveReferences: 'Move references',
+  close: 'Close',
+  cancel: 'Cancel',
+  saving: 'Saving…',
 };
 const t = key => labels[key] || key;
 
@@ -134,10 +149,42 @@ before(async () => {
   ({ default: CardsView } = await vite.ssrLoadModule('/src/components/CardsView.tsx'));
   ({ default: ItemCard } = await vite.ssrLoadModule('/src/components/ItemCard.tsx'));
   ({ default: GenerationQueueDrawer, groupGenerationQueueJobs, generationQueueBatchCounts } = await vite.ssrLoadModule('/src/components/GenerationQueueDrawer.tsx'));
+  ({ default: BatchActionDialog } = await vite.ssrLoadModule('/src/components/BatchActionDialog.tsx'));
 });
 
 after(async () => {
   await vite?.close();
+});
+
+test('batch tag and move actions use in-app searchable dialogs', async () => {
+  const shared = {
+    selectedCount: 3,
+    busy: false,
+    t,
+    onClose: () => {},
+    onApplyTags: async () => {},
+    onApplyCollection: async () => {},
+  };
+  const tags = [{ id: 'tag-1', name: 'poster', kind: 'user', count: 12 }];
+  const clusters = [{ id: 'cluster-1', name: 'Campaigns', count: 7, preview_images: [] }];
+  const tagHtml = renderToStaticMarkup(React.createElement(BatchActionDialog, { ...shared, mode: 'tags', tags, clusters }));
+  const moveHtml = renderToStaticMarkup(React.createElement(BatchActionDialog, { ...shared, mode: 'move', tags, clusters }));
+
+  assert.match(tagHtml, /role="dialog"/);
+  assert.match(tagHtml, /Search or create tags/);
+  assert.match(tagHtml, /#poster/);
+  assert.match(tagHtml, /Apply tags/);
+  assert.match(moveHtml, /role="radiogroup"/);
+  assert.match(moveHtml, /Search collections/);
+  assert.match(moveHtml, /Campaigns/);
+  assert.match(moveHtml, /Move references/);
+
+  const app = await readFile(`${ROOT}/frontend/src/App.tsx`, 'utf8');
+  const styles = await readFile(`${ROOT}/frontend/src/styles.css`, 'utf8');
+  assert.doesNotMatch(app, /prompt\(t\('tagSelectedReferences'\)\)/);
+  assert.doesNotMatch(app, /prompt\(t\('moveSelectedReferences'\)\)/);
+  assert.match(app, /<BatchActionDialog/);
+  assert.match(styles, /@media\(max-width:760px\)\{\.modal-backdrop\.batch-action-backdrop\{align-items:flex-end/);
 });
 
 test('Explore directory lists only non-empty Collections with uncropped preview metadata', () => {
@@ -734,6 +781,14 @@ test('Explore wiring preserves Library management, semantic appearance, and rest
 
   assert.match(app, /nextView !== 'cards'/);
   assert.match(app, /view === 'cards' && selectionMode/);
+  assert.match(app, /className="selection-toolbar-button selection-toolbar-more-trigger"[\s\S]*?aria-haspopup="menu"[\s\S]*?aria-expanded=\{selectionActionsOpen\}/);
+  assert.match(app, /className="selection-toolbar-menu" role="menu"/);
+  assert.match(app, /className="selection-toolbar-delete selection-toolbar-desktop-delete"/);
+  assert.match(styles, /\.selection-toolbar\{[^}]*gap:2px;[^}]*border-radius:18px/);
+  assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.selection-toolbar\{[^}]*grid-template-columns:auto minmax\(58px,1fr\) auto auto auto/);
+  assert.match(styles, /\.selection-toolbar-secondary\{display:contents\}/);
+  assert.doesNotMatch(styles, /\.selection-toolbar\{[^}]*flex-wrap:wrap/);
+  assert.equal((translations.match(/batchMoreActions:/g) || []).length, 3);
   assert.match(app, /app-command-dock[\s\S]*?<GenerationQueueDrawer[\s\S]*?className="floating-action-rail"/);
   assert.equal((app.match(/className="fab select-fab"/g) || []).length, 1);
   assert.match(app, /dataScopeMatches/);
@@ -796,7 +851,7 @@ test('Explore wiring preserves Library management, semantic appearance, and rest
   assert.match(topBar, /className=\{`vista-button filter-button[\s\S]*?aria-label=\{t\('filters'\)\}/);
   assert.match(topBar, /className="logo-wordmark" lang="en"/);
   assert.match(topBar, /inert=\{modalOpen\} aria-hidden=\{modalOpen \|\| undefined\}/);
-  assert.match(app, /const blockingModalOpen = !hasChosenUiLanguage \|\| Boolean\(detailId \|\| editorOpen \|\| standaloneGenerationOpen\)/);
+  assert.match(app, /const blockingModalOpen = !hasChosenUiLanguage \|\| Boolean\(detailId \|\| editorOpen \|\| standaloneGenerationOpen \|\| batchActionDialog\)/);
   assert.match(app, /allowDelete=\{showManagementActions\}/);
   assert.match(editorModal, /allowDelete && persistedItem/);
   assert.match(editorModal, /if \(!allowDelete \|\| !persistedItem \|\| deleting \|\| saving\) return;/);
@@ -887,7 +942,7 @@ test('Explore wiring preserves Library management, semantic appearance, and rest
   assert.match(app, /if \(libraryTotalRequestRef\.current === requestId\) setLibraryTotal/);
   assert.match(app, /const \[generationQueueRefreshKey, setGenerationQueueRefreshKey\]/);
   assert.match(app, /const batchActionInFlightRef = useRef\(false\)/);
-  assert.match(app, /if \(!selectedItemIds\.size \|\| batchActionInFlightRef\.current\) return;/);
+  assert.match(app, /if \(!selectedItemIds\.size \|\| batchActionInFlightRef\.current\) return false;/);
   assert.match(app, /const cancelPendingEdit = \(\) => \{/);
   assert.match(app, /const openGenerationQueue = \(\) => \{[\s\S]*?cancelPendingEdit\(\)/);
   assert.match(app, /if \(result\.failed > 0\)/);
