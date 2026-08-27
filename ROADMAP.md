@@ -18,7 +18,7 @@ Published download/install verification, Windows handled-failure recovery, sourc
 
 ### B. Library power-user polish — current milestone complete
 
-The completed milestone added clearer search, sort, and filter state; backend-backed batch management; preview-first cleanup; and stronger metadata/provenance handling. Batch `Tag` and `Move` now use searchable in-app controls instead of browser prompts, including multi-select tag suggestions and an existing-Collection picker.
+The completed milestone added clearer search, sort, and filter state; backend-backed batch management; preview-first cleanup; and stronger metadata/provenance handling. Batch `Tag` and `Move` now use searchable in-app controls instead of browser prompts, including multi-select tag suggestions and an existing-Collection picker. Library create/edit and generated-result save flows also provide an explicit, opt-in `Suggest title` action that previews the suggestion before applying it.
 
 Any future library work should be driven by observed usability problems rather than reopening this milestone broadly.
 
@@ -42,10 +42,9 @@ If this lane resumes, adapters must still feed candidate prompts, media, provena
 
 ## Prioritized outstanding work
 
-1. **LLM-assisted title suggestion** — add an explicit `Suggest title` action to Library create/edit and generated-result save flows. Use the connected provider only after the user asks, show the proposed title before applying it, and never overwrite an existing title automatically.
-2. **Generated-image provider and model provenance** — preserve the actual provider and model for each generated image through attach, save-as-new, retry, and batch review. Show a concise `Generated with` summary in item detail; keep legacy missing values empty and never expose credentials, raw provider responses, or internal job IDs.
-3. **Multi-image Library items and grouped batch results** — let a user save selected results from one Generation set into one Library item and review them in one detail modal. Add item-level controls to choose the primary image, reorder images, change image roles, and remove an image. Preserve per-image generation provenance and reuse the current queue, result review, and reference flows.
-4. **xAI / Grok Imagine provider feasibility** — scope `grok-imagine-image-2.0` as a separate API-key and usage-billed provider. Verify credential storage, backup/demo exclusion, generation and edit parity, reference limits, returned-media handling, errors, rate limits, privacy, and cost display before deciding whether to implement it. Do not reuse or weaken the ChatGPT / Codex OAuth boundary.
+1. **Generated-image provider and model provenance** — preserve the actual provider and model for each generated image through attach, save-as-new, retry, and batch review. Show a concise `Generated with` summary in item detail; keep legacy missing values empty and never expose credentials, raw provider responses, or internal job IDs.
+2. **Multi-image Library items and grouped batch results** — let a user save selected results from one Generation set into one Library item and review them in one detail modal. Add item-level controls to choose the primary image, reorder images, change image roles, and remove an image. Preserve per-image generation provenance and reuse the current queue, result review, and reference flows.
+3. **xAI / Grok Imagine provider feasibility** — scope `grok-imagine-image-2.0` as a separate API-key and usage-billed provider. Verify credential storage, backup/demo exclusion, generation and edit parity, reference limits, returned-media handling, errors, rate limits, privacy, and cost display before deciding whether to implement it. Do not reuse or weaken the ChatGPT / Codex OAuth boundary.
 
 `v0.10.0` implemented Explore clarity: a normal-scroll directory of non-empty Collections, natural-ratio previews that open item detail directly, Collection heading/count routing into filtered `Library`, and the visible `Cards` rename to `Library`. Explore item detail keeps Copy, Download, Generate, and Edit while selection and batch management remain in Library. It also includes three browser-local light Appearance presets displayed as `Red`, `Green`, and `Purple` (`朱紅`、`松綠`、`茄紫`); their existing internal identifiers remain unchanged. Dark mode, system-theme following, and an arbitrary colour picker remain out of scope.
 

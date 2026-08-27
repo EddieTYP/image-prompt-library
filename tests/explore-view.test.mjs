@@ -762,7 +762,7 @@ test('Config provider actions clear busy on close without accepting stale result
 });
 
 test('Explore wiring preserves Library management, semantic appearance, and restrained motion', async () => {
-  const [app, cards, explore, config, styles, translations, toggle, topBar, generationPanel, queueDrawer, editorModal, modalFocus, appearance, itemCard] = await Promise.all([
+  const [app, cards, explore, config, styles, translations, toggle, topBar, generationPanel, queueDrawer, editorModal, suggestedTitleField, modalFocus, appearance, itemCard] = await Promise.all([
     readFile(`${ROOT}/frontend/src/App.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/CardsView.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/ExploreView.tsx`, 'utf8'),
@@ -774,6 +774,7 @@ test('Explore wiring preserves Library management, semantic appearance, and rest
     readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/GenerationQueueDrawer.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/ItemEditorModal.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/SuggestedTitleField.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/hooks/useModalFocus.ts`, 'utf8'),
     readFile(`${ROOT}/frontend/src/utils/appearance.ts`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/ItemCard.tsx`, 'utf8'),
@@ -867,7 +868,7 @@ test('Explore wiring preserves Library management, semantic appearance, and rest
   assert.doesNotMatch(queueDrawer, /document\.addEventListener\('pointerdown'/);
   assert.doesNotMatch(queueDrawer, /role=\{canOpenJob\(job\) \? 'button'/);
   assert.match(editorModal, /aria-labelledby="reference-editor-title"/);
-  assert.match(editorModal, /data-modal-initial-focus/);
+  assert.match(suggestedTitleField, /data-modal-initial-focus/);
   assert.match(generationPanel, /data-modal-initial-focus/);
   assert.match(generationPanel, /handleModalKeyDown/);
   assert.match(generationPanel, /fullscreenCloseRef\.current/);
@@ -1202,4 +1203,22 @@ test('Explore/detail CSS keeps responsive grids, token controls, CJK hierarchy, 
   assert.match(styles, /html:lang\(zh-Hant\) \.app-command-dock \.fab,[\s\S]*?font-weight:700/);
   assert.match(styles, /@media\(prefers-reduced-motion:reduce\)\{[\s\S]*?\.generation-sibling-navigation button\{transition:none!important\}[\s\S]*?transform:translateY\(-50%\)/);
   assert.doesNotMatch(styles, /html:lang\(zh-Hant\) \.metadata-inline-edit/);
+});
+
+test('title suggestions are explicit, prompt-only, and shared by both save flows', async () => {
+  const [field, client, editor, generation] = await Promise.all([
+    readFile(`${ROOT}/frontend/src/components/SuggestedTitleField.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/api/client.ts`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/ItemEditorModal.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
+  ]);
+
+  assert.match(field, /api\.suggestTitle\(\{ prompt_text: requestedPrompt \}\)/);
+  assert.match(field, /setSuggestion\(result\.title\)/);
+  assert.match(field, /onClick=\{\(\) => \{ onChange\(suggestion\); setSuggestion\(''\); \}\}/);
+  assert.doesNotMatch(field, /onChange\(result\.title\)/);
+  assert.match(client, /suggestTitle: \(_payload: TitleSuggestionRequest\) => demoReadOnly\(\)/);
+  assert.match(client, /openai-codex-native\/suggest-title/);
+  assert.match(editor, /<SuggestedTitleField[^>]*promptText=\{titleSuggestionPrompt\}/);
+  assert.match(generation, /<SuggestedTitleField[^>]*promptText=\{metadataDraft\.prompts\?\.\[0\]\?\.text \|\| ''\}/);
 });

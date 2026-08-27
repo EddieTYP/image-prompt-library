@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { useModalFocus } from '../hooks/useModalFocus';
 import type { ClusterRecord, ItemDetail, TagRecord } from '../types';
 import type { Translator } from '../utils/i18n';
+import SuggestedTitleField from './SuggestedTitleField';
 
 function promptText(item: ItemDetail | undefined, language: string) {
   return item?.prompts.find(prompt => prompt.language === language)?.text || '';
@@ -76,6 +77,11 @@ export default function ItemEditorModal({
 
   const hasExistingResultImage = Boolean(persistedItem?.images?.some(image => image.role === 'result_image'));
   const hasPrompt = Boolean(zhHantPrompt.trim() || zhHansPrompt.trim() || englishPrompt.trim());
+  const titleSuggestionPrompt = (
+    originalLanguage === 'zh_hant' ? zhHantPrompt
+      : originalLanguage === 'zh_hans' ? zhHansPrompt
+        : englishPrompt
+  ).trim() || englishPrompt.trim() || zhHantPrompt.trim() || zhHansPrompt.trim();
   const missingRequiredImage = !hasExistingResultImage && !resultFile;
   const [saveError, setSaveError] = useState('');
   const filteredClusters = useMemo(() => {
@@ -213,10 +219,7 @@ export default function ItemEditorModal({
         </div>
 
         <div className="editor-grid">
-          <label className="field field-title">
-            <span>{t('title')}</span>
-            <input data-modal-initial-focus placeholder={t('titlePlaceholder')} value={title} onChange={e => setTitle(e.target.value)} />
-          </label>
+          <SuggestedTitleField className="field field-title" value={title} promptText={titleSuggestionPrompt} t={t} onChange={setTitle} autoFocus />
           <label className="field">
             <span>{t('collection')}</span>
             <input list="collection-suggestions" placeholder={t('collectionPlaceholder')} value={cluster} onChange={e => setCluster(e.target.value)} />

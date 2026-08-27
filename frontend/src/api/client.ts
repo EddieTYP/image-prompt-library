@@ -1,4 +1,4 @@
-import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationJobSetCreate, GenerationJobSetRecord, GenerationProviderStatus, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemList, ItemSortMode, ItemSummary, TagRecord, UploadImageRole } from '../types';
+import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationJobSetCreate, GenerationJobSetRecord, GenerationProviderStatus, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemList, ItemSortMode, ItemSummary, TagRecord, TitleSuggestionRequest, TitleSuggestionResponse, UploadImageRole } from '../types';
 import { DEFAULT_ITEM_SORT } from '../utils/searchSort';
 
 const API = '';
@@ -104,6 +104,32 @@ function demoReadOnly(): Promise<never> {
   return Promise.reject(new Error('The online sandbox is read-only. Run Image Prompt Library locally to create your own private library.'));
 }
 
+export class TitleSuggestionRequestError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = 'TitleSuggestionRequestError';
+  }
+}
+
+async function suggestTitleRequest(payload: TitleSuggestionRequest): Promise<TitleSuggestionResponse> {
+  const response = await fetch(`${API}/api/generation-providers/openai-codex-native/suggest-title`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    let message = '';
+    try {
+      const body = await response.json() as { detail?: unknown };
+      if (typeof body.detail === 'string') message = body.detail;
+    } catch {
+      message = '';
+    }
+    throw new TitleSuggestionRequestError(response.status, message || 'Title suggestion failed.');
+  }
+  return response.json();
+}
+
 export const mediaUrl = (path?: string) => {
   if (!path) return '';
   if (isDemoMode && path.startsWith('demo-data/')) return demoUrl(path);
@@ -161,6 +187,7 @@ export const api = isDemoMode ? {
   codexNativeAuthStart: () => demoReadOnly(),
   codexNativeAuthPoll: (_payload: CodexNativeAuthPollRequest) => demoReadOnly(),
   codexNativeAuthDisconnect: () => demoReadOnly(),
+  suggestTitle: (_payload: TitleSuggestionRequest) => demoReadOnly(),
   generationJobs: () => Promise.resolve<GenerationJobList>({
     jobs: [],
     total: 0,
@@ -205,6 +232,7 @@ export const api = isDemoMode ? {
   codexNativeAuthStart: () => json<CodexNativeAuthStart>('/api/generation-providers/openai-codex-native/auth/start', { method: 'POST' }),
   codexNativeAuthPoll: (payload: CodexNativeAuthPollRequest) => json<CodexNativeAuthPollResponse>('/api/generation-providers/openai-codex-native/auth/poll', { method: 'POST', body: JSON.stringify(payload) }),
   codexNativeAuthDisconnect: () => json<GenerationProviderStatus>('/api/generation-providers/openai-codex-native/auth/disconnect', { method: 'POST' }),
+  suggestTitle: suggestTitleRequest,
   generationJobs: (params: Record<string, string | number | boolean | undefined> = {}) => { const qs = new URLSearchParams(); Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)); }); return json<GenerationJobList>(`/api/generation-jobs?${qs}`); },
   generationJob: (id: string) => json<GenerationJobRecord>(`/api/generation-jobs/${id}`),
   createGenerationJob: (payload: GenerationJobCreate) => json<GenerationJobRecord>('/api/generation-jobs', { method: 'POST', body: JSON.stringify(payload) }),

@@ -14,6 +14,7 @@ import { resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage } fro
 import { extractPromptTemplateVariableRecords, resolvePromptTemplate } from '../utils/promptTemplateVariables';
 import { createGenerationReviewSession, generationResultPosition, generationReviewNext, generationReviewOpenContext, generationReviewSlotNavigation, generationReviewSummary, generationSiblingNavigation, isActionableGenerationResult, mapGenerationRetryJobs, mapGenerationRetryToReviewSlot, reconcileGenerationReviewSession, resolveGenerationReviewSlot, retainPendingRetryJobIds, type GenerationReviewSession } from '../utils/generationSiblings';
 import { useModalFocus } from '../hooks/useModalFocus';
+import SuggestedTitleField from './SuggestedTitleField';
 
 function providerReady(provider: GenerationProviderStatus) {
   return Boolean(provider.available && provider.authenticated && provider.configured);
@@ -2249,7 +2250,7 @@ export default function GenerationPanel({
               {jobResultUrl(reviewJob) && <img src={jobResultUrl(reviewJob)} alt={t('saveGeneratedResultPreview')} />}
               <div className="save-new-fields">
                 {renderReferenceTray(jobAttachments(reviewJob), true)}
-                 <label><span>{t('title')}</span><input data-modal-initial-focus value={metadataDraft.title || ''} onChange={event => updateMetadataDraft({ title: event.currentTarget.value })} /></label>
+                <SuggestedTitleField value={metadataDraft.title || ''} promptText={metadataDraft.prompts?.[0]?.text || ''} t={t} onChange={title => updateMetadataDraft({ title })} autoFocus />
                 <label><span>{t('collection')}</span><input list="save-new-collection-suggestions" value={metadataDraft.cluster_name || ''} onChange={event => updateMetadataDraft({ cluster_name: event.currentTarget.value })} /></label>
                 <datalist id="save-new-collection-suggestions">
                   {filteredMetadataClusters.map(collection => <option key={collection.id} value={collection.name} />)}
