@@ -6,6 +6,7 @@ from backend.services.openai_codex_native import (
     CodexNativeAuthError,
     CodexNativeAuthStore,
     CodexNativeRateLimitError,
+    CodexNativeRequestError,
     CodexNativeTemporaryError,
     OpenAICodexNativeProvider,
 )
@@ -98,5 +99,7 @@ def openai_codex_native_suggest_title(payload: CodexNativeTitleSuggestionRequest
         raise HTTPException(status_code=429, detail="Title suggestion is temporarily rate limited.", headers=headers) from exc
     except CodexNativeTemporaryError as exc:
         raise HTTPException(status_code=503, detail="Title suggestion is temporarily unavailable.") from exc
+    except CodexNativeRequestError as exc:
+        raise HTTPException(status_code=502, detail="Could not suggest a title.") from exc
     except CodexNativeAuthError as exc:
         raise HTTPException(status_code=409, detail="Connect ChatGPT / Codex OAuth before suggesting a title.") from exc

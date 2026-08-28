@@ -1673,7 +1673,28 @@ def test_title_suggestion_request_contains_prompt_text_only(tmp_path, monkeypatc
         "role": "user",
         "content": [{"type": "input_text", "text": "A neon library in the rain"}],
     }]
+    assert "max_output_tokens" not in captured["json"]
     assert "tools" not in captured["json"]
+
+
+def test_title_suggestion_does_not_report_upstream_bad_request_as_login_required(tmp_path, monkeypatch):
+    import httpx
+
+    from backend.services import openai_codex_native
+    from backend.services.openai_codex_native import (
+        CodexNativeAuthStore,
+        CodexNativeRequestError,
+        OpenAICodexNativeProvider,
+    )
+
+    auth_store = CodexNativeAuthStore(tmp_path / "auth.json")
+    auth_store.save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh"})
+    http_client = httpx.Client
+    transport = httpx.MockTransport(lambda _request: httpx.Response(400))
+    monkeypatch.setattr(openai_codex_native.httpx, "Client", lambda *args, **kwargs: http_client(transport=transport))
+
+    with pytest.raises(CodexNativeRequestError):
+        OpenAICodexNativeProvider(auth_store=auth_store)._collect_title_text("A neon library in the rain")
 
 
 def test_title_suggestion_api_passes_only_library_and_prompt(tmp_path, monkeypatch):
@@ -1701,6 +1722,7 @@ def test_title_suggestion_api_passes_only_library_and_prompt(tmp_path, monkeypat
 
 @pytest.mark.parametrize(("error_type", "status_code", "retry_after"), [
     ("auth", 409, None),
+    ("request", 502, None),
     ("temporary", 503, None),
     ("rate_limit", 429, "75"),
 ])
@@ -1708,12 +1730,14 @@ def test_title_suggestion_api_returns_sanitized_errors(tmp_path, monkeypatch, er
     from backend.services.openai_codex_native import (
         CodexNativeAuthError,
         CodexNativeRateLimitError,
+        CodexNativeRequestError,
         CodexNativeTemporaryError,
         OpenAICodexNativeProvider,
     )
 
     errors = {
         "auth": CodexNativeAuthError("refresh-secret"),
+        "request": CodexNativeRequestError("provider raw response refresh-secret"),
         "temporary": CodexNativeTemporaryError("provider raw response refresh-secret"),
         "rate_limit": CodexNativeRateLimitError("provider raw response refresh-secret", retry_after_seconds=75),
     }

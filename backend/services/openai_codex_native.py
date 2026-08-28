@@ -228,6 +228,10 @@ class CodexNativeTemporaryError(CodexNativeAuthError):
     pass
 
 
+class CodexNativeRequestError(RuntimeError):
+    pass
+
+
 class CodexNativeRateLimitError(CodexNativeAuthError):
     def __init__(self, message: str, *, retry_after_seconds: int | None = None):
         super().__init__(message)
@@ -913,7 +917,6 @@ class OpenAICodexNativeProvider:
                 "role": "user",
                 "content": [{"type": "input_text", "text": prompt_text}],
             }],
-            "max_output_tokens": 80,
             "stream": True,
         }
         deltas: list[str] = []
@@ -932,7 +935,9 @@ class OpenAICodexNativeProvider:
                             )
                         if response.status_code == 408 or response.status_code >= 500:
                             raise CodexNativeTemporaryError(message)
-                        raise CodexNativeAuthError(message)
+                        if response.status_code in {401, 403}:
+                            raise CodexNativeAuthError(message)
+                        raise CodexNativeRequestError(message)
                     for line in response.iter_lines():
                         if not line or not line.startswith("data:"):
                             continue
