@@ -709,14 +709,25 @@ test('batch review leaves a resolved stage and exposes session-only item targets
 });
 
 test('generation composer exposes the refreshed recommended model list', async () => {
-  const [generation, translations] = await Promise.all([
+  const [generation, translations, styles] = await Promise.all([
     readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/utils/i18n.ts`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/styles.css`, 'utf8'),
   ]);
 
   assert.match(generation, /\['gpt-5\.6-terra', 'gpt-5\.6-sol', 'gpt-5\.6-luna'\]/);
   assert.match(generation, /recommendedOrchestratorModel[\s\S]*?generationRecommended/);
+  assert.match(generation, /generation-model-option-copy[\s\S]*?generation-model-option-check/);
+  assert.match(styles, /\.generation-model-option-copy\{display:grid;gap:2px/);
+  assert.match(styles, /\.generation-control-popover button\.is-selected\{background:transparent;/);
   assert.equal((translations.match(/generationRecommended:/g) || []).length, 3);
+});
+
+test('generation cancel action keeps its text inside a readable pill', async () => {
+  const styles = await readFile(`${ROOT}/frontend/src/styles.css`, 'utf8');
+
+  assert.match(styles, /\.generation-stage-actions\.generation-cancel-actions\{[^}]*flex-wrap:nowrap/);
+  assert.match(styles, /\.generation-cancel-actions \.stage-action\.danger\{width:auto;min-width:78px;[^}]*padding:0 15px/);
 });
 
 test('Library card keeps desktop actions and exposes a compact mobile More trigger', () => {

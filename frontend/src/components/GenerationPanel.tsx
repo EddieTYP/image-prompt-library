@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, Clipboard, Clock3, Download, FilePlus2, Images, Maximize2, Paperclip, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Clipboard, Clock3, Download, FilePlus2, Images, Maximize2, Paperclip, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react';
 import aspectRatioIcon from '../assets/generation-controls/aspect-ratio.png';
 import brainAiIcon from '../assets/generation-controls/model.png';
 import qualityIcon from '../assets/generation-controls/quality.png';
@@ -2011,9 +2011,18 @@ export default function GenerationPanel({
                     </button>
                     {openControl === 'model' && (
                       <div className="generation-control-popover" role="menu">
-                        {orchestratorModels.map(model => (
-                          <button key={model} type="button" className={orchestratorModel === model ? 'is-selected' : ''} onClick={() => { setOrchestratorModel(model); closeGenerationControl('model'); }}>{orchestratorModelLabel(model)}</button>
-                        ))}
+                        {orchestratorModels.map(model => {
+                          const selected = orchestratorModel === model;
+                          return (
+                            <button key={model} type="button" role="menuitemradio" aria-checked={selected} className={selected ? 'is-selected' : ''} onClick={() => { setOrchestratorModel(model); closeGenerationControl('model'); }}>
+                              <span className="generation-model-option-copy">
+                                <strong>{model}</strong>
+                                {model === recommendedOrchestratorModel && <small>{t('generationRecommended')}</small>}
+                              </span>
+                              {selected && <Check className="generation-model-option-check" size={15} aria-hidden="true" />}
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
