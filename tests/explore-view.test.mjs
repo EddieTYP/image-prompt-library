@@ -717,9 +717,13 @@ test('generation composer exposes the refreshed recommended model list', async (
 
   assert.match(generation, /\['gpt-5\.6-terra', 'gpt-5\.6-sol', 'gpt-5\.6-luna'\]/);
   assert.match(generation, /recommendedOrchestratorModel[\s\S]*?generationRecommended/);
-  assert.match(generation, /generation-model-option-copy[\s\S]*?generation-model-option-check/);
+  assert.equal((generation.match(/generation-control-option-check/g) || []).length, 3);
+  assert.match(generation, /role="menuitemradio" aria-checked=\{selected\}[\s\S]*?generation-control-option-label/);
+  assert.match(generation, /generation-model-option-copy[\s\S]*?generation-control-option-check/);
   assert.match(styles, /\.generation-model-option-copy\{display:grid;gap:2px/);
-  assert.match(styles, /\.generation-control-popover button\.is-selected\{background:transparent;/);
+  assert.match(styles, /\.generation-control-popover button\{[^}]*font-size:13px;[^}]*font-weight:700/);
+  assert.match(styles, /\.generation-control-popover button\.is-selected\{background:rgb\(var\(--studio-accent-rgb\) \/ \.1\);color:var\(--studio-ink\);font-weight:750;box-shadow:none/);
+  assert.doesNotMatch(styles, /box-shadow:inset 3px 0 0 var\(--studio-accent\)/);
   assert.equal((translations.match(/generationRecommended:/g) || []).length, 3);
 });
 

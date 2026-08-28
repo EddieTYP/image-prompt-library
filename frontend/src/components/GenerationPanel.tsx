@@ -1985,9 +1985,15 @@ export default function GenerationPanel({
                     </button>
                     {openControl === 'aspect' && (
                       <div className="generation-control-popover" role="menu">
-                        {ASPECT_RATIO_OPTIONS.map(option => (
-                           <button key={option.value} type="button" className={aspectRatio === option.value ? 'is-selected' : ''} onClick={() => { setAspectRatio(option.value); closeGenerationControl('aspect'); }}>{optionLabel(ASPECT_RATIO_OPTIONS, option.value, t)}</button>
-                        ))}
+                        {ASPECT_RATIO_OPTIONS.map(option => {
+                          const selected = aspectRatio === option.value;
+                          return (
+                            <button key={option.value} type="button" role="menuitemradio" aria-checked={selected} className={selected ? 'is-selected' : ''} onClick={() => { setAspectRatio(option.value); closeGenerationControl('aspect'); }}>
+                              <span className="generation-control-option-label">{optionLabel(ASPECT_RATIO_OPTIONS, option.value, t)}</span>
+                              {selected && <Check className="generation-control-option-check" size={15} aria-hidden="true" />}
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1998,9 +2004,15 @@ export default function GenerationPanel({
                     </button>
                     {openControl === 'quality' && (
                       <div className="generation-control-popover" role="menu">
-                        {QUALITY_OPTIONS.map(option => (
-                           <button key={option.value} type="button" className={quality === option.value ? 'is-selected' : ''} onClick={() => { setQuality(option.value); closeGenerationControl('quality'); }}>{optionLabel(QUALITY_OPTIONS, option.value, t)}</button>
-                        ))}
+                        {QUALITY_OPTIONS.map(option => {
+                          const selected = quality === option.value;
+                          return (
+                            <button key={option.value} type="button" role="menuitemradio" aria-checked={selected} className={selected ? 'is-selected' : ''} onClick={() => { setQuality(option.value); closeGenerationControl('quality'); }}>
+                              <span className="generation-control-option-label">{optionLabel(QUALITY_OPTIONS, option.value, t)}</span>
+                              {selected && <Check className="generation-control-option-check" size={15} aria-hidden="true" />}
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -2019,7 +2031,7 @@ export default function GenerationPanel({
                                 <strong>{model}</strong>
                                 {model === recommendedOrchestratorModel && <small>{t('generationRecommended')}</small>}
                               </span>
-                              {selected && <Check className="generation-model-option-check" size={15} aria-hidden="true" />}
+                              {selected && <Check className="generation-control-option-check" size={15} aria-hidden="true" />}
                             </button>
                           );
                         })}
