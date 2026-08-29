@@ -225,7 +225,7 @@ button{color:inherit}
 .generation-history-control::after{display:none}
 .generation-control-popover{position:absolute;left:0;bottom:calc(100% + 8px);min-width:132px;z-index:40;display:grid;gap:2px;padding:6px;border:1px solid var(--studio-hairline);border-radius:12px;background:var(--studio-surface);box-shadow:0 16px 40px rgba(56,46,47,.16)}
 .generation-model-control .generation-control-popover{min-width:min(224px,calc(100vw - 48px));max-width:calc(100vw - 48px)}
-.generation-control-popover button{max-width:100%;min-height:42px;display:grid;grid-template-columns:minmax(0,1fr) 18px;align-items:center;gap:10px;overflow-wrap:anywhere;text-align:left;border:0;border-radius:8px;background:transparent;padding:7px 9px 7px 10px;color:var(--studio-ink);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+.generation-control-popover button{max-width:100%;min-height:40px;display:grid;grid-template-columns:minmax(0,1fr) 18px;align-items:center;gap:10px;overflow-wrap:anywhere;text-align:left;border:0;border-radius:8px;background:transparent;padding:7px 9px 7px 10px;color:var(--studio-ink);font:inherit;font-size:13px;font-weight:700;cursor:pointer}
 .generation-control-popover button:hover{background:rgb(var(--studio-accent-rgb) / .06)}
 .generation-control-popover button:focus-visible{background:rgb(var(--studio-accent-rgb) / .06);outline:2px solid rgb(var(--studio-accent-rgb) / .32);outline-offset:-2px}
 .generation-control-popover button.is-selected{background:rgb(var(--studio-accent-rgb) / .1);color:var(--studio-ink);font-weight:750;box-shadow:none}
@@ -293,6 +293,7 @@ button{color:inherit}
   .generation-compact-controls{position:relative;z-index:5;overflow:visible;padding-bottom:2px;scrollbar-width:none}
   .generation-compact-controls::-webkit-scrollbar{display:none}
   .generation-control-wrap,.generation-control-trigger{width:40px;min-width:40px;height:40px;min-height:40px}
+  .generation-control-popover button{min-height:44px}
   .generation-control-icon{width:21px;height:21px}
   .generation-stage-actions{max-width:calc(100% - 24px);overflow:visible}
   .generation-primary-action{width:auto;min-width:0;height:40px;min-height:40px;margin-top:0;padding:0 10px}
