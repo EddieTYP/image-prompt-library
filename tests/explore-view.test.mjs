@@ -983,9 +983,12 @@ test('Explore wiring preserves Library management, semantic appearance, and rest
 });
 
 test('Explore detail boundary keeps local mutation actions while gating management controls', async () => {
-  const [app, detail] = await Promise.all([
+  const [app, detail, styles, types, i18n] = await Promise.all([
     readFile(`${ROOT}/frontend/src/App.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/ItemDetailModal.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/styles.css`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/types.ts`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/utils/i18n.ts`, 'utf8'),
   ]);
 
   assert.match(app, /const showManagementActions = !isDemoMode && view === 'cards';/);
@@ -1008,6 +1011,13 @@ test('Explore detail boundary keeps local mutation actions while gating manageme
   assert.equal((detail.match(/\{selectedImage && <a className="modal-icon-button download-button"/g) || []).length, 2);
   assert.match(detail, /mobile-generate-variant-button"[\s\S]*?aria-label=\{t\('generateVariant'\)\}[\s\S]*?mobile-generate-variant-label">\{t\('generate'\)\}/);
   assert.match(detail, /generate-variant-button"[\s\S]*?aria-label=\{t\('generateVariant'\)\}[\s\S]*?>\{t\('generate'\)\}<\/button>/);
+  assert.match(detail, /generationSourceLabel\(selectedImage\)/);
+  assert.match(detail, /className="image-generation-provenance"[\s\S]*?t\('generatedWith'\)/);
+  assert.match(detail, /openai_codex_oauth_native'[\s\S]*?ChatGPT \/ Codex/);
+  assert.match(types, /generation_provider\?: string \| null; generation_model\?: string \| null/);
+  assert.match(i18n, /generatedWith: 'Generated with'/);
+  assert.match(styles, /\.image-generation-provenance\{[^}]*font-size:12px/);
+  assert.doesNotMatch(styles, /\.image-generation-provenance\{[^}]*(?:background|border|box-shadow):/);
 });
 
 test('batch review closure keeps save, provenance, references, and mobile actions compact', async () => {

@@ -91,6 +91,9 @@ button{color:inherit}
 .detail-side-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px;margin:0 0 2px}
 .detail-side-primary-actions{display:inline-flex;align-items:center;min-width:0;gap:6px}
 .metadata-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.image-generation-provenance{display:flex;align-items:baseline;gap:6px;margin:2px 0 12px;color:var(--studio-muted,var(--muted));font-size:12px;line-height:1.35}
+.image-generation-provenance span{font-weight:700}
+.image-generation-provenance strong{color:var(--studio-ink,var(--ink));font-weight:800}
 .source-icon-link{display:inline-flex;align-items:center;color:#6f6b62;border-radius:999px;padding:4px}
 .inline-editable{border-radius:12px;transition:background .16s ease,box-shadow .16s ease;cursor:text}
 .inline-editable:hover,.inline-editable:focus-visible{background:rgba(109,74,255,.07);box-shadow:0 0 0 1px rgba(109,74,255,.12);outline:0}
