@@ -30,6 +30,13 @@ class ImageRecord(BaseModel):
     sort_order: int = 0
     created_at: str
 
+class ItemImageUpdate(BaseModel):
+    id: str
+    role: Literal["result_image", "reference_image"] = "result_image"
+
+class ItemImagesUpdate(BaseModel):
+    images: List[ItemImageUpdate] = Field(min_length=1)
+
 class ClusterRecord(BaseModel):
     id: str
     name: str
@@ -264,6 +271,9 @@ class GenerationJobAcceptAsNewItemRequest(BaseModel):
     source_url: Optional[str] = None
     author: Optional[str] = None
     notes: Optional[str] = None
+
+class GenerationJobAcceptIntoItemRequest(BaseModel):
+    item_id: str
 
 class GenerationJobList(BaseModel):
     jobs: List[GenerationJobRecord]

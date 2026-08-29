@@ -437,6 +437,123 @@ def test_generation_job_can_accept_result_as_new_variant_item(tmp_path):
     assert original_after["images"] == []
 
 
+def test_generation_set_results_can_be_saved_into_one_library_item(tmp_path):
+    c = client(tmp_path)
+    created = c.post("/api/generation-jobs/sets", json={
+        "job": {
+            "provider": "test_provider",
+            "model": "batch-test-model",
+            "prompt_language": "en",
+            "prompt_text": "Three coordinated poster variations",
+        },
+        "count": 3,
+    }).json()
+    first, second = created["jobs"][:2]
+    c.post(
+        f"/api/generation-jobs/{first['id']}/result",
+        files={"file": ("first.png", png_bytes("purple"), "image/png")},
+    )
+    c.post(
+        f"/api/generation-jobs/{second['id']}/result",
+        files={"file": ("second.png", png_bytes("green"), "image/png")},
+    )
+
+    saved = c.post(
+        f"/api/generation-jobs/{first['id']}/accept-as-new-item",
+        json={"title": "Poster variation set"},
+    ).json()
+    grouped = c.post(
+        f"/api/generation-jobs/{second['id']}/accept-into-item",
+        json={"item_id": saved["item"]["id"]},
+    )
+
+    assert grouped.status_code == 200
+    payload = grouped.json()
+    assert payload["job"]["status"] == "accepted"
+    assert payload["item"]["id"] == saved["item"]["id"]
+    assert len(payload["item"]["images"]) == 2
+    assert [image["role"] for image in payload["item"]["images"]] == ["result_image", "result_image"]
+    assert {image["generation_provider"] for image in payload["item"]["images"]} == {"test_provider"}
+    assert {image["generation_model"] for image in payload["item"]["images"]} == {"batch-test-model"}
+
+
+def test_accept_into_missing_item_leaves_generation_result_reviewable(tmp_path):
+    c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "Keep this result reviewable",
+    }).json()
+    c.post(
+        f"/api/generation-jobs/{job['id']}/result",
+        files={"file": ("generated.png", png_bytes("blue"), "image/png")},
+    )
+
+    response = c.post(
+        f"/api/generation-jobs/{job['id']}/accept-into-item",
+        json={"item_id": "missing-item"},
+    )
+
+    assert response.status_code == 404
+    after = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert after["status"] == "succeeded"
+    assert after["accepted_image_id"] is None
+
+
+def test_interrupted_accept_into_item_resumes_only_with_same_target(tmp_path, monkeypatch):
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    target = repo.items.create_item(
+        ItemCreate(title="Grouped result target", prompts=[PromptIn(language="en", text="target", is_original=True)])
+    )
+    other = repo.items.create_item(
+        ItemCreate(title="Other target", prompts=[PromptIn(language="en", text="other", is_original=True)])
+    )
+    job = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="grouped result"))
+    repo.stage_result(job.id, png_bytes("teal"), "generated.png")
+
+    class SimulatedCrash(BaseException):
+        pass
+
+    record_artifacts = repo._record_acceptance_artifacts
+    record_calls = 0
+
+    def crash_after_image_write(*args, **kwargs):
+        nonlocal record_calls
+        record_calls += 1
+        if record_calls == 2:
+            raise SimulatedCrash()
+        return record_artifacts(*args, **kwargs)
+
+    monkeypatch.setattr(repo, "_record_acceptance_artifacts", crash_after_image_write)
+    with pytest.raises(SimulatedCrash):
+        repo.accept_result(job.id, target.id)
+
+    crashed = repo.get_job(job.id)
+    assert crashed.metadata["_generation_accept_artifacts"]["item_id"] == target.id
+    assert len(repo.items.get_item(target.id).images) == 1
+    stale_at = (datetime.now(timezone.utc) - timedelta(minutes=11)).isoformat()
+    stale_metadata = dict(crashed.metadata)
+    stale_metadata["_generation_accept_claim_at"] = stale_at
+    with connect(library) as conn:
+        conn.execute(
+            "UPDATE generation_jobs SET metadata=?, updated_at=? WHERE id=?",
+            (json.dumps(stale_metadata), stale_at, job.id),
+        )
+        conn.commit()
+
+    with pytest.raises(GenerationJobConflict, match="interrupted save"):
+        repo.discard_job(job.id)
+    with pytest.raises(GenerationJobConflict, match="same target item"):
+        repo.accept_result(job.id, other.id)
+
+    monkeypatch.setattr(repo, "_record_acceptance_artifacts", record_artifacts)
+    accepted = repo.accept_result(job.id, target.id)
+    assert accepted.job.status == "accepted"
+    assert accepted.item.id == target.id
+    assert len(repo.items.get_item(target.id).images) == 1
+    assert repo.items.get_item(other.id).images == []
+
+
 def test_accept_as_new_item_defaults_author_to_current_local_user_not_source_author(tmp_path):
     c = client(tmp_path)
     source_item = create_source_item(c, author="Original Artist")

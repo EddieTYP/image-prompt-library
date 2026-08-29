@@ -1194,9 +1194,15 @@ class GenerationJobRepository:
                 image_ids.append(image.id)
         return created_images
 
-    def _claim_acceptance(self, job_id: str, *, require_source_item: bool) -> tuple[GenerationJobRecord, str]:
+    def _claim_acceptance(
+        self,
+        job_id: str,
+        *,
+        require_source_item: bool,
+        acceptance_mode: str | None = None,
+    ) -> tuple[GenerationJobRecord, str]:
         claim_token = new_id("accept")
-        requested_mode = "existing_item" if require_source_item else "new_item"
+        requested_mode = acceptance_mode or ("existing_item" if require_source_item else "new_item")
         with connect(self.library_path) as conn:
             conn.execute("BEGIN IMMEDIATE")
             row = conn.execute("SELECT * FROM generation_jobs WHERE id=?", (job_id,)).fetchone()
@@ -1395,16 +1401,48 @@ class GenerationJobRepository:
             conn.commit()
         return self.get_job(job_id)
 
-    def accept_result(self, job_id: str) -> GenerationJobAcceptResult:
-        job, claim_token = self._claim_acceptance(job_id, require_source_item=True)
+    def accept_result(self, job_id: str, target_item_id: str | None = None) -> GenerationJobAcceptResult:
+        job, claim_token = self._claim_acceptance(
+            job_id,
+            require_source_item=target_item_id is None,
+            acceptance_mode="existing_item" if target_item_id else None,
+        )
+        destination_item_id = target_item_id or job.source_item_id
+        if not destination_item_id:
+            self._release_acceptance(job_id, claim_token)
+            raise GenerationJobConflict("A target item is required to accept this result")
+        try:
+            self.items.get_item(destination_item_id)
+        except Exception:
+            self._release_acceptance(job_id, claim_token)
+            raise
+        acceptance_mode = "existing_item"
         created_images: list[tuple[object, StoredImageInput]] = []
         finalized = False
         try:
-            input_reference_images = self._prepare_input_reference_images(job, claim_token=claim_token)
+            artifacts = self._acceptance_artifacts(job.metadata)
+            artifact_item_id = artifacts.get("item_id") if artifacts.get("mode") == acceptance_mode else None
+            if artifact_item_id and artifact_item_id != destination_item_id:
+                self._release_acceptance(job_id, claim_token)
+                raise GenerationJobConflict(
+                    "This result has an interrupted save. Resume it with the same target item."
+                )
+            if target_item_id:
+                artifacts = self._record_acceptance_artifacts(
+                    job.id,
+                    claim_token,
+                    mode=acceptance_mode,
+                    item_id=destination_item_id,
+                    references_complete=True,
+                )
+            input_reference_images = (
+                self._prepare_input_reference_images(job, claim_token=claim_token)
+                if target_item_id is None
+                else []
+            )
             self._require_acceptance_claim(job.id, claim_token)
             result_image = self._prepare_result_image(job)
             self._require_acceptance_claim(job.id, claim_token)
-            artifacts = self._acceptance_artifacts(job.metadata)
             self._require_acceptance_claim(job.id, claim_token)
             result_stored = self._store_prepared_image(result_image)
             if not self._refresh_acceptance_claim(job.id, claim_token):
@@ -1425,20 +1463,20 @@ class GenerationJobRepository:
                 role="result_image",
             )
             image = None
-            if artifacts.get("mode") == "existing_item" and artifacts.get("item_id") == job.source_item_id:
+            if artifacts.get("mode") == acceptance_mode and artifacts.get("item_id") == destination_item_id:
                 image_id = artifacts.get("result_image_id")
                 if image_id:
                     try:
                         candidate = self.items.get_image(str(image_id))
-                        if candidate.item_id == job.source_item_id and candidate.role == "result_image":
+                        if candidate.item_id == destination_item_id and candidate.role == "result_image":
                             image = candidate
                     except KeyError:
                         pass
             if image is None:
-                image = self._find_existing_image(job.source_item_id, result_input)
+                image = self._find_existing_image(destination_item_id, result_input)
             if image is None:
                 try:
-                    image = self.items.add_image(job.source_item_id, result_input)
+                    image = self.items.add_image(destination_item_id, result_input)
                 except Exception:
                     if self._acceptance_claim_can_cleanup(job.id, claim_token):
                         self._remove_unreferenced_image_files({
@@ -1448,42 +1486,43 @@ class GenerationJobRepository:
                 created_images.append((image, result_input))
                 if not self._refresh_acceptance_claim(job.id, claim_token):
                     if self._acceptance_claim_can_cleanup(job.id, claim_token):
-                        self._remove_created_images(job.source_item_id, created_images)
+                        self._remove_created_images(destination_item_id, created_images)
                     raise GenerationJobConflict("Generation job acceptance claim is no longer owned")
             image_ids = [image.id]
             self._record_acceptance_artifacts(
                 job.id,
                 claim_token,
-                mode="existing_item",
-                item_id=job.source_item_id,
+                mode=acceptance_mode,
+                item_id=destination_item_id,
                 result_image_id=image.id,
                 image_ids=image_ids,
-                references_complete=False,
+                references_complete=target_item_id is not None,
             )
-            created_images.extend(self._store_input_reference_images(
-                input_reference_images,
-                job.source_item_id,
-                copy_library_images=False,
-                image_ids=image_ids,
-                claim_job_id=job.id,
-                claim_token=claim_token,
-            ))
+            if target_item_id is None:
+                created_images.extend(self._store_input_reference_images(
+                    input_reference_images,
+                    destination_item_id,
+                    copy_library_images=False,
+                    image_ids=image_ids,
+                    claim_job_id=job.id,
+                    claim_token=claim_token,
+                ))
             self._record_acceptance_artifacts(
                 job.id,
                 claim_token,
-                mode="existing_item",
-                item_id=job.source_item_id,
+                mode=acceptance_mode,
+                item_id=destination_item_id,
                 result_image_id=image.id,
                 image_ids=image_ids,
                 references_complete=True,
             )
             accepted_job = self._finalize_acceptance(job_id, image.id, claim_token)
             finalized = True
-            return GenerationJobAcceptResult(job=accepted_job, item=self.items.get_item(job.source_item_id))
+            return GenerationJobAcceptResult(job=accepted_job, item=self.items.get_item(destination_item_id))
         except Exception:
             if not finalized and self._acceptance_claim_can_cleanup(job_id, claim_token):
                 try:
-                    self._remove_created_images(job.source_item_id, created_images)
+                    self._remove_created_images(destination_item_id, created_images)
                 finally:
                     self._release_acceptance(job_id, claim_token)
             raise

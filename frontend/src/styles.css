@@ -1351,6 +1351,27 @@ body:has(.modal-backdrop),body:has(.drawer.open),body:has(.generation-queue-draw
 .notes-field textarea{min-height:92px}
 .origin-marker{border-color:#cfc2c9;border-radius:7px;background:var(--studio-accent-soft);color:var(--studio-accent-strong)}
 .origin-marker.active{border-color:var(--studio-accent);background:var(--studio-accent);color:var(--studio-surface)}
+.item-image-manager{grid-column:1/-1;display:grid;gap:11px;padding:13px;border:1px solid var(--studio-hairline);border-radius:12px;background:rgba(244,240,231,.52)}
+.item-image-manager>header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.item-image-manager>header>span{display:grid;gap:3px}
+.item-image-manager>header strong{color:var(--studio-ink);font-size:13px}
+.item-image-manager>header small{color:var(--studio-muted);font-size:11px;line-height:1.35}
+.item-image-manager>header>b{min-width:27px;padding:4px 8px;border-radius:999px;background:var(--studio-accent-soft);color:var(--studio-accent-strong);font-size:11px;text-align:center}
+.item-image-manager-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:8px}
+.item-image-manager-row{position:relative;display:grid;grid-template-columns:68px minmax(0,1fr);gap:9px 11px;min-width:0;padding:9px;border:1px solid var(--studio-hairline);border-radius:10px;background:rgb(var(--studio-surface-rgb) / .82)}
+.item-image-manager-row.is-primary{border-color:rgb(var(--studio-accent-rgb) / .45);background:rgb(var(--studio-accent-rgb) / .06)}
+.item-image-manager-preview{position:relative;grid-row:1/3;width:68px;height:68px;overflow:hidden;border-radius:8px;background:var(--studio-canvas-deep)}
+.item-image-manager-preview img{display:block;width:100%;height:100%;object-fit:cover}
+.item-image-manager-preview span{position:absolute;left:4px;bottom:4px;display:inline-flex;align-items:center;gap:3px;padding:3px 5px;border-radius:999px;background:rgb(var(--studio-surface-rgb) / .92);color:var(--studio-accent-strong);font-size:9px;font-weight:800;box-shadow:0 2px 8px rgba(35,30,25,.12)}
+.item-image-manager-row>label{display:grid;gap:4px;padding-right:24px}
+.item-image-manager-row>label>span{color:var(--studio-muted);font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+.item-image-manager-row select{width:100%;min-width:0;height:32px;padding:0 28px 0 9px;border:1px solid var(--studio-hairline);border-radius:8px;background:var(--studio-surface);color:var(--studio-ink);font:inherit;font-size:12px}
+.item-image-manager-actions{display:flex;align-items:center;gap:5px}
+.item-image-manager-actions button{width:30px;height:30px;padding:0;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--studio-ink);display:grid;place-items:center;cursor:pointer}
+.item-image-manager-actions button:hover,.item-image-manager-actions button:focus-visible{border-color:var(--studio-hairline);background:var(--studio-surface);outline:0}
+.item-image-manager-actions button.remove{margin-left:auto;color:#9a3412}
+.item-image-manager-actions button:disabled{opacity:.28;cursor:not-allowed}
+.item-image-position{position:absolute;right:9px;top:9px;color:var(--studio-muted);font-size:10px;font-variant-numeric:tabular-nums}
 .result-drop-zone,.reference-drop-zone{
   grid-column:auto;
   min-height:118px;
@@ -1847,6 +1868,11 @@ body:has(.modal-backdrop),body:has(.drawer.open),body:has(.generation-queue-draw
   .tag-suggestions::-webkit-scrollbar{display:none}
   .tag-suggestions button{flex:0 0 auto}
   .prompt-field-zh-hant,.prompt-field-zh-hans,.result-drop-zone,.reference-drop-zone{grid-column:1/-1}
+  .item-image-manager{padding:11px}
+  .item-image-manager-list{grid-template-columns:minmax(0,1fr)}
+  .item-image-manager-row{grid-template-columns:62px minmax(0,1fr);gap:8px 10px}
+  .item-image-manager-preview{width:62px;height:62px}
+  .item-image-manager-actions{flex-wrap:wrap}
   .prompt-field textarea{min-height:126px}
   .editor-actions{padding:10px 14px calc(10px + env(safe-area-inset-bottom))}
   .editor-actions button{min-height:44px}

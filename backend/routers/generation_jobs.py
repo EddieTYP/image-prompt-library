@@ -5,6 +5,7 @@ from PIL import UnidentifiedImageError
 
 from backend.schemas import (
     GenerationJobAcceptAsNewItemRequest,
+    GenerationJobAcceptIntoItemRequest,
     GenerationJobAcceptResult,
     GenerationJobCreate,
     GenerationJobList,
@@ -228,6 +229,17 @@ def accept_generation_job(job_id: str, request: Request):
         return GenerationJobAcceptResult(job=_sanitize_generation_job_record(result.job), item=result.item)
     except KeyError as exc:
         raise HTTPException(status_code=404) from exc
+    except GenerationJobConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/{job_id}/accept-into-item", response_model=GenerationJobAcceptResult)
+def accept_generation_job_into_item(job_id: str, payload: GenerationJobAcceptIntoItemRequest, request: Request):
+    try:
+        result = repo(request).accept_result(job_id, target_item_id=payload.item_id)
+        return GenerationJobAcceptResult(job=_sanitize_generation_job_record(result.job), item=result.item)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Item not found") from exc
     except GenerationJobConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

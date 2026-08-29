@@ -528,6 +528,75 @@ def test_result_image_is_primary_even_when_reference_uploaded_first(tmp_path):
     assert cluster["preview_item_ids"] == [item["id"]]
 
 
+def test_item_images_can_be_reordered_reclassified_and_removed_atomically(tmp_path):
+    c = client(tmp_path)
+    library = tmp_path / "library"
+    item = c.post("/api/items", json=create_payload()).json()
+    first = c.post(
+        f"/api/items/{item['id']}/images",
+        data={"role": "result_image"},
+        files={"file": ("first.png", png_bytes(color=(1, 2, 3)), "image/png")},
+    ).json()
+    removed = c.post(
+        f"/api/items/{item['id']}/images",
+        data={"role": "result_image"},
+        files={"file": ("removed.png", png_bytes(color=(4, 5, 6)), "image/png")},
+    ).json()
+    primary = c.post(
+        f"/api/items/{item['id']}/images",
+        data={"role": "result_image"},
+        files={"file": ("primary.png", png_bytes(color=(7, 8, 9)), "image/png")},
+    ).json()
+    reference = c.post(
+        f"/api/items/{item['id']}/images",
+        data={"role": "reference_image"},
+        files={"file": ("reference.png", png_bytes(color=(10, 11, 12)), "image/png")},
+    ).json()
+
+    response = c.put(f"/api/items/{item['id']}/images", json={"images": [
+        {"id": primary["id"], "role": "result_image"},
+        {"id": first["id"], "role": "reference_image"},
+        {"id": reference["id"], "role": "reference_image"},
+    ]})
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert [image["id"] for image in detail["images"]] == [primary["id"], first["id"], reference["id"]]
+    assert [image["role"] for image in detail["images"]] == ["result_image", "reference_image", "reference_image"]
+    assert detail["first_image"]["id"] == primary["id"]
+    assert not (library / removed["original_path"]).exists()
+    assert not (library / removed["thumb_path"]).exists()
+    assert not (library / removed["preview_path"]).exists()
+
+
+def test_item_images_must_keep_one_result_and_belong_to_the_item(tmp_path):
+    c = client(tmp_path)
+    item = c.post("/api/items", json=create_payload()).json()
+    other = c.post("/api/items", json=create_payload(title="Other item")).json()
+    result = c.post(
+        f"/api/items/{item['id']}/images",
+        data={"role": "result_image"},
+        files={"file": ("result.png", png_bytes(), "image/png")},
+    ).json()
+    other_result = c.post(
+        f"/api/items/{other['id']}/images",
+        data={"role": "result_image"},
+        files={"file": ("other.png", png_bytes(color=(1, 2, 3)), "image/png")},
+    ).json()
+
+    no_result = c.put(f"/api/items/{item['id']}/images", json={"images": [
+        {"id": result["id"], "role": "reference_image"},
+    ]})
+    wrong_item = c.put(f"/api/items/{item['id']}/images", json={"images": [
+        {"id": other_result["id"], "role": "result_image"},
+    ]})
+
+    assert no_result.status_code == 400
+    assert wrong_item.status_code == 400
+    detail = c.get(f"/api/items/{item['id']}").json()
+    assert [(image["id"], image["role"]) for image in detail["images"]] == [(result["id"], "result_image")]
+
+
 def test_cluster_preview_item_ids_disambiguate_deduplicated_image_paths(tmp_path):
     c = client(tmp_path)
     first = c.post("/api/items", json=create_payload(title="First shared image")).json()
