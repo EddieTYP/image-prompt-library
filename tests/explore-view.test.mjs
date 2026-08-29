@@ -721,7 +721,9 @@ test('generation composer exposes the refreshed recommended model list', async (
   assert.match(generation, /role="menuitemradio" aria-checked=\{selected\}[\s\S]*?generation-control-option-label/);
   assert.match(generation, /generation-model-option-copy[\s\S]*?generation-control-option-check/);
   assert.match(styles, /\.generation-model-option-copy\{display:grid;gap:2px/);
-  assert.match(styles, /\.generation-control-popover button\{[^}]*font-size:13px;[^}]*font-weight:700/);
+  assert.match(styles, /\.generation-control-popover\{[^}]*gap:2px;padding:6px/);
+  assert.match(styles, /\.generation-control-popover button\{[^}]*min-height:42px;[^}]*font-size:13px;[^}]*font-weight:700/);
+  assert.doesNotMatch(styles, /\.generation-model-control \.generation-control-popover button\{/);
   assert.match(styles, /\.generation-control-popover button\.is-selected\{background:rgb\(var\(--studio-accent-rgb\) \/ \.1\);color:var\(--studio-ink\);font-weight:750;box-shadow:none/);
   assert.doesNotMatch(styles, /box-shadow:inset 3px 0 0 var\(--studio-accent\)/);
   assert.equal((translations.match(/generationRecommended:/g) || []).length, 3);
