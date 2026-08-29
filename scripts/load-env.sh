@@ -11,7 +11,7 @@ image_prompt_library_load_env_file() {
     key="${line%%=*}"
     value="${line#*=}"
     case "$key" in
-      IMAGE_PROMPT_LIBRARY_PATH|IMAGE_PROMPT_LIBRARY_AUTH_PATH|IMAGE_PROMPT_LIBRARY_CONFIG_PATH|BACKEND_HOST|BACKEND_PORT|FRONTEND_PORT|BACKUP_DIR)
+      IMAGE_PROMPT_LIBRARY_PATH|IMAGE_PROMPT_LIBRARY_AUTH_PATH|IMAGE_PROMPT_LIBRARY_CONFIG_PATH|XAI_API_KEY|BACKEND_HOST|BACKEND_PORT|FRONTEND_PORT|BACKUP_DIR)
         printf -v "$key" '%s' "$value"
         export "$key"
         ;;

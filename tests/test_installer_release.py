@@ -475,6 +475,8 @@ def test_installer_and_runtime_scripts_define_versioned_install_contract():
     assert "migrate_legacy_v080_management" in appctl
     assert ".rollback-migration.json" in appctl
     assert "scripts/load-env.sh" in appctl
+    assert "XAI_API_KEY" in appctl
+    assert "XAI_API_KEY" in read("scripts/appctl.ps1")
     assert "source_controller_version" in appctl
     assert "legacy_sha256" in appctl
     assert "os.O_NOFOLLOW" in appctl
@@ -2437,13 +2439,14 @@ def test_posix_env_consumers_share_literal_allowlisted_parser(tmp_path):
         "IMAGE_PROMPT_LIBRARY_PATH=C:/Library With Spaces\n"
         "BACKEND_HOST=$(touch should-not-run)\n"
         "BACKEND_PORT=8123\n"
+        "XAI_API_KEY=xai-secret-literal\n"
         "UNSUPPORTED=$(touch should-not-run)\n",
         encoding="utf-8",
     )
     command = (
         f"source {shlex.quote(git_bash_path(ROOT / 'scripts' / 'load-env.sh'))}; "
         f"image_prompt_library_load_env_file {shlex.quote(git_bash_path(env_file))}; "
-        "printf '%s\\n' \"$IMAGE_PROMPT_LIBRARY_PATH\" \"$BACKEND_HOST\" \"$BACKEND_PORT\""
+        "printf '%s\\n' \"$IMAGE_PROMPT_LIBRARY_PATH\" \"$BACKEND_HOST\" \"$BACKEND_PORT\" \"$XAI_API_KEY\""
     )
 
     result = subprocess.run(
@@ -2459,6 +2462,7 @@ def test_posix_env_consumers_share_literal_allowlisted_parser(tmp_path):
         "C:/Library With Spaces",
         "$(touch should-not-run)",
         "8123",
+        "xai-secret-literal",
     ]
     assert not marker.exists()
 

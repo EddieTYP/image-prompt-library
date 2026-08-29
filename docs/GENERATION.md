@@ -1,6 +1,6 @@
 # Local Generation Guide
 
-Local installs can optionally connect **ChatGPT / Codex OAuth** for image generation. The GitHub Pages Online Read Only Demo stays read-only and does not expose generation or mutation controls.
+Local installs can generate images through **ChatGPT / Codex OAuth** or an optional **xAI Grok Imagine** API key. The GitHub Pages Online Read Only Demo stays read-only and does not expose generation or mutation controls.
 
 ## What the local generation flow does
 
@@ -15,7 +15,7 @@ Once connected, you can:
 - Keep useful generation details such as provider, model, original item, and batch position.
 - Use prompt variables such as `{{subject}}`, `{{style}}`, or `{{主體}}` in reusable template prompts and fill them before each generation.
 
-No OpenAI API key is required by the app for the ChatGPT / Codex OAuth path. Advanced provider configuration is available for users who need it, but the normal flow is handled from the Config drawer.
+No OpenAI API key is required for the ChatGPT / Codex OAuth path. xAI is separate, usage-billed, and only becomes available after you set `XAI_API_KEY` locally.
 
 ## Privacy boundary
 
@@ -23,19 +23,25 @@ Generation is local-install only. The public GitHub Pages demo does not perform 
 
 The app-owned OAuth store and local provider config must resolve outside the active library. If `IMAGE_PROMPT_LIBRARY_AUTH_PATH` or `IMAGE_PROMPT_LIBRARY_CONFIG_PATH` resolves to the library itself or any child path, startup stops before the database or credential files are read. Library-managed media roots (`originals`, `thumbs`, `previews`, `generation-results`, and `generation-references`) must also resolve inside the library; external symlink or junction targets are rejected so they cannot alias app-owned state. The app does not move or delete an unsafe file automatically.
 
-For an existing unsafe override, move the file manually to `~/.image-prompt-library/auth.json` or `~/.image-prompt-library/config.json`, update or unset the override, then restart. Treat any older backup that may contain the file as sensitive; reconnect the provider if the credential may have been exposed. Tokens must never be committed to git, sample bundles, backups, or GitHub Pages exports.
+For an existing unsafe override, move the file manually to `~/.image-prompt-library/auth.json` or `~/.image-prompt-library/config.json`, update or unset the override, then restart. Treat any older backup that may contain the file as sensitive; reconnect the provider if the credential may have been exposed. OAuth tokens and `XAI_API_KEY` must never be committed to git, sample bundles, backups, or GitHub Pages exports.
 
-## Connect the provider
+## Set up a provider
 
 Open **Config → Providers**, then choose **Connect** under **ChatGPT / Codex OAuth**. Follow the authorization link, enter the one-time code, approve the request, then return to Image Prompt Library and choose **Check authorization**.
 
 The browser may label the request **Codex CLI**. Only approve a flow you started from your local Image Prompt Library app. When setup is complete, the provider shows **Connected**.
 
+To use xAI, add `XAI_API_KEY` to the local `.env` file and restart the app. The key remains in the local process environment and is not written into the Library database, generation metadata, backups, samples, or the public demo. The Config drawer shows whether xAI is configured but never displays the key.
+
+xAI generation sends the prompt and any reference images to xAI. Its current API policy retains requests and responses for 30 days by default; eligible teams can opt into Zero Data Retention. Check the current [xAI security policy](https://docs.x.ai/developers/faq/security) before using sensitive material.
+
 ## Generate and review results
 
-Open **Create image**, enter a prompt, and choose settings. **Generate** creates one result; the adjacent menu creates 3, 5, or 10. Each result uses a separate generation request. Template prompts can include `{{variables}}`; the composer previews the resolved prompt before sending.
+Open **Create image**, choose the provider, enter a prompt, and select the available settings. **Generate** creates one result; the adjacent menu creates 3, 5, or 10. Each result uses a separate generation request. Template prompts can include `{{variables}}`; the composer previews the resolved prompt before sending.
 
 The model menu offers three GPT-5.6 choices. **Recommended · gpt-5.6-terra** is the balanced default, `gpt-5.6-sol` is the highest-capability option, and `gpt-5.6-luna` is the lighter option for simpler or higher-volume work. Existing custom model overrides remain available after these built-in choices.
+
+For xAI, the app uses `grok-imagine-image-2.0` at 1K resolution. Low and Medium quality are available, and image edits can use up to three ordered reference images. Results are requested as base64 media and saved locally instead of depending on temporary hosted URLs. Current xAI pricing is US$0.04 per 1K Low image, US$0.06 per 1K Medium image, plus US$0.01 for each reference image; confirm the current [model pricing](https://docs.x.ai/developers/models/grok-imagine-image-2.0) before a large batch.
 
 Review completed results from the **Work queue**. For each result, choose **Save as new item**, **Use result as edit input**, **Retry**, or **Discard**. **Attach to current item** is also available when the result came from an unchanged saved reference. **Use as draft** copies the result's prompt and reusable settings back into the composer. Batch review keeps each result's position and advances to the next unfinished result. Using a result as a draft or edit input pauses review; **Continue review** returns to the remaining results.
 
@@ -69,7 +75,7 @@ The composer can show the sanitized provider error under **Provider details** as
 
 The local queue has no artificial submission cap and runs up to five generation jobs at once. Additional jobs wait in the Work queue.
 
-If the provider reports a rate limit, the app pauses that provider's queue before continuing untouched queued jobs. The failed result stays failed until you retry it. Normal OAuth renewal happens in the background; reconnect only when the app says authorization is required.
+If a provider reports a rate limit, the app pauses only that provider's queue before continuing untouched queued jobs. The failed result stays failed until you retry it. Normal OAuth renewal happens in the background; reconnect only when the app says authorization is required. For xAI authentication errors, correct `XAI_API_KEY` and restart the app.
 
 ## Benchmark note
 
