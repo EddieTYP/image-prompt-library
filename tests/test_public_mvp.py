@@ -131,7 +131,7 @@ def test_public_readme_includes_product_story_and_screenshots():
     assert "Privacy model" in readme
     assert "install the app locally" in readme
     assert "Editing, private-library management, and generation are available only in a local install" in readme
-    assert "They can also use a separately billed xAI Grok Imagine API key" in readme
+    assert "Local installs can optionally connect ChatGPT / Codex OAuth" in readme
     assert "generate from a new prompt or from an existing saved reference" in readme
     assert "`{{variables}}`" in readme
     assert "`{{subject}}`" in readme
@@ -270,7 +270,6 @@ def test_public_install_helper_files_exist_and_document_local_data():
     assert "BACKEND_HOST=127.0.0.1" in env_example
     assert "BACKEND_PORT=8000" in env_example
     assert "FRONTEND_PORT=5177" in env_example
-    assert "XAI_API_KEY" in env_example
     assert "8787" not in env_example
 
     assert "python3 -m venv .venv" in setup_script
@@ -363,7 +362,7 @@ def test_public_repo_hygiene_files_exist():
     assert "Run tests" in contributing
     assert "Current stable direction" in roadmap
     assert "commercial licensing" in roadmap.lower()
-    assert "provider credentials" in roadmap
+    assert "provider state" in roadmap
     assert "Reporting a vulnerability" in security
     assert "127.0.0.1" in security
     assert "do not expose the app directly to the public internet" in security

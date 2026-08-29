@@ -80,7 +80,7 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 - **保存來源脈絡：** 原始 prompt、來源資料、翻譯或轉換後的 variant 可以放在同一張卡片。
 - **管理私人 library：** 新增 / 編輯自己的 prompt card、結果圖、reference image、tag、note、source URL 和 collection。
 - **一鍵複製 prompt：** 打開 item，選擇語言或來源 variant，直接複製。
-- **本地生成：** 本地安裝版可選擇 ChatGPT / Codex OAuth 或 xAI Grok Imagine API key，一次生成 1、3、5 或 10 張圖片，再連續檢視每個結果並選擇儲存、捨棄或重試；如結果來自未修改的已保存參考，亦可附加回原參考。
+- **本地生成：** 本地安裝版可選擇連接 ChatGPT / Codex OAuth，一次生成 1、3、5 或 10 張圖片，再連續檢視每個結果並選擇儲存、捨棄或重試；如結果來自未修改的已保存參考，亦可附加回原參考。
 - **保持 local-first：** database 和圖片檔案都留在本地 library directory。
 
 <p align="center">
@@ -111,12 +111,12 @@ awesome-gpt-image-2
 
 ## 本地生成
 
-本地安裝版可使用 ChatGPT / Codex OAuth，不需要在 app 裡放 OpenAI API key；亦可使用獨立收費的 xAI Grok Imagine API key。供應商設定、privacy、價格、quality 與參考圖片上限請看生成指南。
+本地安裝版可以選擇連接 ChatGPT / Codex OAuth，不需要在 app 裡放 OpenAI API key。你需要一個有圖片生成權限的 ChatGPT account/subscription。
 
 基本流程：
 
 1. 啟動本地 app，打開 **Config**。
-2. 在 **供應商** 連接 **ChatGPT / Codex** 並完成 device-login approval，或加入 **xAI Grok Imagine** API key。
+2. 連接 **ChatGPT / Codex OAuth**，在瀏覽器完成 device-login approval。
 3. 回到 Image Prompt Library，由新 prompt 或已保存 reference 開始生成。Prompt 可以用 `{{主體}}` 或 `{{風格}}` 之類的變數；composer 會先要求填值。
 4. 在 **工作佇列** 檢視已完成的結果。
 5. 選擇 **另存為新參考**；如果結果來自未經修改的已保存參考，亦可用 **附加至目前參考**。另存前可先編輯 metadata。
@@ -152,7 +152,7 @@ Sample package details 和 checksums 請看 [`sample-data/README.md`](sample-dat
 ## 文件
 
 - [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — install、update、rollback、service mode、uninstall、platform notes。
-- [`docs/GENERATION.md`](docs/GENERATION.md) — provider setup、generation workflow、result review、privacy、價格及目前限制。
+- [`docs/GENERATION.md`](docs/GENERATION.md) — ChatGPT / Codex OAuth generation workflow、result review、目前限制、benchmark link。
 - [`docs/BACKUP_AND_RESTORE.md`](docs/BACKUP_AND_RESTORE.md) — portable backup payload、credential boundary、驗證及 safe restore 行為。
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — source setup、dev mode、configuration、data layout、backup。
 - [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — 常見 runtime 和 setup 問題。

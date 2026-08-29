@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { KeyRound, LogIn, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { X } from 'lucide-react';
 import { api, isDemoMode } from '../api/client';
 import { restoreFocusAfterMotion } from '../hooks/useModalFocus';
 import type { AppearancePreset, AppConfig, AppUpdateStatus, CleanupPreview, CodexNativeAuthStart, GenerationProviderStatus } from '../types';
@@ -26,7 +26,7 @@ function featureSummary(provider: GenerationProviderStatus, t: Translator) {
     provider.features.image_edit ? t('providerFeatureImageEdit') : undefined,
     provider.features.manual_result_upload ? t('providerFeatureManualUpload') : undefined,
   ].filter(Boolean);
-  return features.length ? features.join(', ') : t('providerFeaturesNone');
+  return features.length ? features.join(' · ') : t('providerFeaturesNone');
 }
 
 const FOCUSABLE_SELECTOR = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -51,28 +51,6 @@ const providerFallback: GenerationProviderStatus[] = [
     features: { text_to_image: false, text_reference_to_image: false, image_edit: false },
     token_present: false,
     account_id: null,
-  },
-  {
-    provider: 'xai_api',
-    display_name: 'xAI Grok Imagine',
-    auth_mode: 'api_key_env',
-    optional: true,
-    configured: false,
-    authenticated: false,
-    available: false,
-    state: 'not_configured',
-    reason: 'provider_status_unavailable',
-    features: { text_to_image: false, text_reference_to_image: false, image_edit: false },
-    image_models: ['grok-imagine-image-2.0'],
-    default_image_model: 'grok-imagine-image-2.0',
-    quality_options: ['low', 'medium'],
-    default_quality: 'medium',
-    max_input_images: 3,
-    retention_days: 30,
-    supports_zero_data_retention: true,
-    credential_source: null,
-    managed_by_environment: false,
-    key_present: false,
   },
 ];
 
@@ -114,9 +92,7 @@ export default function ConfigPanel({
   const [cleanupMessage, setCleanupMessage] = useState<string>();
   const [authStart, setAuthStart] = useState<CodexNativeAuthStart>();
   const [providerMessage, setProviderMessage] = useState<string>();
-  const [xaiMessage, setXaiMessage] = useState<{ text: string; tone: 'success' | 'error' }>();
   const [providerBusy, setProviderBusy] = useState(false);
-  const [xaiAPIKey, setXaiAPIKey] = useState('');
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateCheckBusy, setUpdateCheckBusy] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string>();
@@ -172,8 +148,6 @@ export default function ConfigPanel({
       providersRequestRef.current += 1;
       providerActionRequestRef.current += 1;
       setProviderBusy(false);
-      setXaiAPIKey('');
-      setXaiMessage(undefined);
       return;
     }
     api.config().then(setCfg).catch(() => undefined);
@@ -208,8 +182,6 @@ export default function ConfigPanel({
     providersRequestRef.current += 1;
     providerActionRequestRef.current += 1;
     setProviderBusy(false);
-    setXaiAPIKey('');
-    setXaiMessage(undefined);
     closeMotionCleanupRef.current?.();
     const fallbacks = Array.from(document.querySelectorAll<HTMLElement>('.config-button, .toolbar-search input'));
     // Static compatibility marker: focusFirstAvailable([opener, ...fallbacks]) runs after drawer exit.
@@ -291,47 +263,6 @@ export default function ConfigPanel({
     } catch (err) {
       if (providerActionRequestRef.current !== requestId) return;
       setProviderMessage(err instanceof Error ? err.message : t('oauthDisconnectFailed'));
-    } finally {
-      if (providerActionRequestRef.current === requestId) setProviderBusy(false);
-    }
-  };
-
-  const saveXAIAPIKey = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const apiKey = xaiAPIKey.trim();
-    if (!apiKey) return;
-    const requestId = providerActionRequestRef.current + 1;
-    providerActionRequestRef.current = requestId;
-    setProviderBusy(true);
-    setXaiMessage(undefined);
-    try {
-      await api.xaiAPIKeySave(apiKey);
-      if (providerActionRequestRef.current !== requestId) return;
-      setXaiAPIKey('');
-      await loadProviders();
-      setXaiMessage({ text: t('xaiKeySaved'), tone: 'success' });
-    } catch {
-      if (providerActionRequestRef.current !== requestId) return;
-      setXaiMessage({ text: t('xaiKeySaveFailed'), tone: 'error' });
-    } finally {
-      if (providerActionRequestRef.current === requestId) setProviderBusy(false);
-    }
-  };
-
-  const removeXAIAPIKey = async () => {
-    const requestId = providerActionRequestRef.current + 1;
-    providerActionRequestRef.current = requestId;
-    setProviderBusy(true);
-    setXaiMessage(undefined);
-    try {
-      await api.xaiAPIKeyDelete();
-      if (providerActionRequestRef.current !== requestId) return;
-      setXaiAPIKey('');
-      await loadProviders();
-      setXaiMessage({ text: t('xaiKeyRemoved'), tone: 'success' });
-    } catch {
-      if (providerActionRequestRef.current !== requestId) return;
-      setXaiMessage({ text: t('xaiKeyRemoveFailed'), tone: 'error' });
     } finally {
       if (providerActionRequestRef.current === requestId) setProviderBusy(false);
     }
@@ -582,23 +513,17 @@ export default function ConfigPanel({
         <h3 id="config-providers-title">{t('providers')}</h3>
         <p className="muted">{t('providerSetupHelp')}</p>
         <div className="provider-list">
-          {providers.map(provider => {
-            const isCodex = provider.provider === 'openai_codex_oauth_native';
-            const isXAI = provider.provider === 'xai_api';
-            return (
-              <article className={`provider-card state-${provider.state}`} key={provider.provider}>
+          {providers.map(provider => (
+            <article className={`provider-card state-${provider.state}`} key={provider.provider}>
               <div className="provider-card-head">
-                <div className="provider-identity">
-                  <span className="provider-auth-icon" aria-hidden="true">{isCodex ? <LogIn size={17} /> : <KeyRound size={17} />}</span>
-                  <div>
-                    <strong>{isCodex ? 'ChatGPT / Codex' : provider.display_name}</strong>
-                    <span>{isCodex ? t('providerCodexMethod') : t('providerXaiMethod')}</span>
-                  </div>
+                <div>
+                  <strong>{provider.provider === 'openai_codex_oauth_native' ? 'ChatGPT / Codex OAuth' : provider.display_name}</strong>
+                  <span>{provider.optional ? t('providerOptional') : t('providerBuiltIn')}</span>
                 </div>
                 <b>{providerStateLabel(provider, t)}</b>
               </div>
-              <p className="provider-capabilities">{featureSummary(provider, t)}</p>
-              {isCodex && (
+              <p className="muted">{featureSummary(provider, t)}</p>
+              {provider.provider === 'openai_codex_oauth_native' && (
                 <div className="provider-actions">
                   {provider.state === 'not_configured' && (
                     <p className="provider-help">{t('providerClientHelp')}</p>
@@ -616,55 +541,10 @@ export default function ConfigPanel({
                   {provider.authenticated && <button className="secondary" onClick={disconnectCodexAuth} disabled={providerBusy}>{t('disconnect')}</button>}
                 </div>
               )}
-              {isXAI && (
-                <div className="provider-xai-details">
-                  {isDemoMode ? (
-                    <p className="provider-help">{t('providerLocalAppOnly')}</p>
-                  ) : provider.managed_by_environment ? (
-                    <p className="provider-credential-state">{t('xaiCredentialEnvironment')}</p>
-                  ) : (
-                    <>
-                      <form className="provider-key-form" onSubmit={saveXAIAPIKey}>
-                        <div className="provider-key-label-row">
-                          <label htmlFor="xai-api-key">{t('xaiAPIKeyLabel')}</label>
-                          <a href="https://console.x.ai/" target="_blank" rel="noreferrer">{t('xaiGetAPIKey')}</a>
-                        </div>
-                        <div className="provider-key-controls">
-                          <input
-                            id="xai-api-key"
-                            type="password"
-                            value={xaiAPIKey}
-                            onChange={event => {
-                              setXaiAPIKey(event.currentTarget.value);
-                              setXaiMessage(undefined);
-                            }}
-                            placeholder={provider.configured ? t('xaiReplaceKeyPlaceholder') : 'xai-...'}
-                            autoComplete="off"
-                            spellCheck={false}
-                            disabled={providerBusy}
-                          />
-                          <button className="secondary" type="submit" disabled={providerBusy || !xaiAPIKey.trim()}>{provider.configured ? t('replaceKey') : t('saveKey')}</button>
-                        </div>
-                        <p className="provider-help">{provider.configured ? t('xaiCredentialLocal') : t('xaiProviderHelp')}</p>
-                      </form>
-                      {xaiMessage && <p className={`provider-message is-${xaiMessage.tone}`} role="status">{xaiMessage.text}</p>}
-                      {provider.configured && <button className="provider-remove-key" type="button" onClick={removeXAIAPIKey} disabled={providerBusy}>{t('removeKey')}</button>}
-                    </>
-                  )}
-                  <details className="provider-disclosure">
-                    <summary>{t('xaiProviderDetails')}</summary>
-                    <div>
-                      <p>{t('xaiProviderPrivacy')}</p>
-                      <p>{t('xaiProviderPricing')}</p>
-                    </div>
-                  </details>
-                </div>
-              )}
-              </article>
-            );
-          })}
+            </article>
+          ))}
         </div>
-        {providerMessage && <p className="provider-message" role="status">{providerMessage}</p>}
+        {providerMessage && <p className="provider-message">{providerMessage}</p>}
       </section>
 
       {!isDemoMode && (

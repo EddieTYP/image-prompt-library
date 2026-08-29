@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from backend.config import validate_app_owned_paths
 from backend.services.openai_codex_native import (
     CodexDeviceCodeFlow,
     CodexNativeAuthError,
@@ -11,7 +10,6 @@ from backend.services.openai_codex_native import (
     CodexNativeTemporaryError,
     OpenAICodexNativeProvider,
 )
-from backend.services.xai_api import XAIAPIAuthError, XAIAPIKeyStore, xai_status
 
 router = APIRouter(prefix="/generation-providers", tags=["generation-providers"])
 
@@ -27,10 +25,6 @@ class CodexNativeTitleSuggestionRequest(BaseModel):
 
 class CodexNativeTitleSuggestionResponse(BaseModel):
     title: str
-
-
-class XAIAPIKeyRequest(BaseModel):
-    api_key: str = Field(min_length=8, max_length=4096)
 
 
 @router.get("")
@@ -57,7 +51,6 @@ def list_generation_providers(request: Request):
             },
         },
         CodexNativeAuthStore().status(),
-        xai_status(),
     ]
 
 
@@ -91,32 +84,6 @@ def openai_codex_native_auth_disconnect(request: Request):
     store = CodexNativeAuthStore()
     store.delete_tokens()
     return store.status()
-
-
-@router.post("/xai-api/api-key")
-def xai_api_key_save(payload: XAIAPIKeyRequest, request: Request):
-    if xai_status().get("managed_by_environment"):
-        raise HTTPException(status_code=409, detail="xAI is managed by the XAI_API_KEY environment variable.")
-    try:
-        validate_app_owned_paths(request.app.state.library_path)
-        store = XAIAPIKeyStore()
-        store.save_key(payload.api_key)
-        return xai_status(store)
-    except (ValueError, XAIAPIAuthError, OSError) as exc:
-        raise HTTPException(status_code=409, detail="Could not save the xAI API key securely.") from exc
-
-
-@router.delete("/xai-api/api-key")
-def xai_api_key_delete(request: Request):
-    if xai_status().get("managed_by_environment"):
-        raise HTTPException(status_code=409, detail="xAI is managed by the XAI_API_KEY environment variable.")
-    try:
-        validate_app_owned_paths(request.app.state.library_path)
-        store = XAIAPIKeyStore()
-        store.delete_key()
-        return xai_status(store)
-    except (ValueError, OSError) as exc:
-        raise HTTPException(status_code=409, detail="Could not remove the saved xAI API key.") from exc
 
 
 @router.post("/openai-codex-native/suggest-title", response_model=CodexNativeTitleSuggestionResponse)

@@ -708,37 +708,19 @@ test('batch review leaves a resolved stage and exposes session-only item targets
   assert.match(generation, /openReviewTarget\(reviewTargetId, reviewTargetTitle\)/);
 });
 
-test('generation composer exposes provider-aware model, quality, and reference limits', async () => {
-  const [generation, config, client, translations, styles] = await Promise.all([
+test('generation composer exposes the refreshed recommended model list', async () => {
+  const [generation, translations, styles] = await Promise.all([
     readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
-    readFile(`${ROOT}/frontend/src/components/ConfigPanel.tsx`, 'utf8'),
-    readFile(`${ROOT}/frontend/src/api/client.ts`, 'utf8'),
     readFile(`${ROOT}/frontend/src/utils/i18n.ts`, 'utf8'),
     readFile(`${ROOT}/frontend/src/styles.css`, 'utf8'),
   ]);
 
   assert.match(generation, /\['gpt-5\.6-terra', 'gpt-5\.6-sol', 'gpt-5\.6-luna'\]/);
   assert.match(generation, /recommendedOrchestratorModel[\s\S]*?generationRecommended/);
-  assert.equal((generation.match(/generation-control-option-check/g) || []).length, 4);
+  assert.equal((generation.match(/generation-control-option-check/g) || []).length, 3);
   assert.match(generation, /role="menuitemradio" aria-checked=\{selected\}[\s\S]*?generation-control-option-label/);
   assert.match(generation, /generation-model-option-copy[\s\S]*?generation-control-option-check/);
-  assert.match(generation, /generation-provider-trigger[\s\S]*?providers\.map\(option/);
-  assert.match(generation, /selectedProvider\?\.quality_options[\s\S]*?providerMaxInputImages/);
-  assert.match(generation, /model: selectedImageModel \|\| null/);
-  assert.match(config, /provider: 'xai_api'[\s\S]*?xaiProviderPricing/);
-  assert.match(client, /provider: 'xai_api'[\s\S]*?max_input_images: 3/);
-  assert.match(config, /xaiAPIKeySave[\s\S]*?type="password"/);
-  assert.match(config, /xaiAPIKeyDelete/);
-  assert.match(config, /provider-disclosure[\s\S]*?xaiProviderPrivacy[\s\S]*?xaiProviderPricing/);
-  assert.match(client, /xaiAPIKeySave:[\s\S]*?generation-providers\/xai-api\/api-key/);
-  assert.match(client, /xaiAPIKeyDelete:[\s\S]*?generation-providers\/xai-api\/api-key/);
-  assert.equal((translations.match(/providerPicker:/g) || []).length, 3);
-  assert.equal((translations.match(/xaiAPIKeyLabel:/g) || []).length, 3);
-  assert.match(styles, /\.drawer\.config \.provider-list\{gap:0;border-top:1px solid var\(--studio-hairline\)/);
-  assert.match(styles, /\.drawer\.config \.provider-card\{[\s\S]*?border-radius:0;[\s\S]*?background:transparent;[\s\S]*?box-shadow:none/);
-  assert.match(styles, /\.provider-key-controls\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/);
   assert.match(styles, /\.generation-model-option-copy\{display:grid;gap:2px/);
-  assert.match(styles, /\.generation-provider-trigger\{[^}]*background:transparent/);
   assert.match(styles, /\.generation-control-popover\{[^}]*gap:2px;padding:6px/);
   assert.match(styles, /\.generation-control-popover button\{[^}]*min-height:40px;[^}]*font-size:13px;[^}]*font-weight:700/);
   assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.generation-control-popover button\{min-height:44px\}/);
@@ -791,10 +773,10 @@ test('Library card keeps desktop actions and exposes a compact mobile More trigg
 test('Config provider actions clear busy on close without accepting stale results', async () => {
   const config = await readFile(`${ROOT}/frontend/src/components/ConfigPanel.tsx`, 'utf8');
 
-  assert.match(config, /if \(!open\) \{\s*providersRequestRef\.current \+= 1;\s*providerActionRequestRef\.current \+= 1;\s*setProviderBusy\(false\);\s*setXaiAPIKey\(''\);\s*setXaiMessage\(undefined\);\s*return;/);
+  assert.match(config, /if \(!open\) \{\s*providersRequestRef\.current \+= 1;\s*providerActionRequestRef\.current \+= 1;\s*setProviderBusy\(false\);\s*return;/);
   assert.match(config, /useEffect\(\(\) => \(\) => \{\s*providersRequestRef\.current \+= 1;\s*providerActionRequestRef\.current \+= 1;\s*closeMotionCleanupRef\.current\?\.\(\);\s*\}, \[\]\);/);
   assert.match(config, /const closePanel = \(\) => \{\s*providersRequestRef\.current \+= 1;\s*providerActionRequestRef\.current \+= 1;\s*setProviderBusy\(false\);[\s\S]*?onClose\(\);/);
-  assert.equal((config.match(/if \(providerActionRequestRef\.current === requestId\) setProviderBusy\(false\);/g) || []).length, 5);
+  assert.equal((config.match(/if \(providerActionRequestRef\.current === requestId\) setProviderBusy\(false\);/g) || []).length, 3);
 });
 
 test('Explore wiring preserves Library management, semantic appearance, and restrained motion', async () => {
@@ -1031,7 +1013,6 @@ test('Explore detail boundary keeps local mutation actions while gating manageme
   assert.match(detail, /generate-variant-button"[\s\S]*?aria-label=\{t\('generateVariant'\)\}[\s\S]*?>\{t\('generate'\)\}<\/button>/);
   assert.match(detail, /generationSourceLabel\(selectedImage\)/);
   assert.match(detail, /className="image-generation-provenance"[\s\S]*?t\('generatedWith'\)/);
-  assert.match(detail, /provider === 'xai' \|\| provider === 'xai_api'/);
   assert.match(detail, /openai_codex_oauth_native'[\s\S]*?ChatGPT \/ Codex/);
   assert.match(types, /generation_provider\?: string \| null; generation_model\?: string \| null/);
   assert.match(i18n, /generatedWith: 'Generated with'/);
