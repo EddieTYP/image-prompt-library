@@ -1,4 +1,4 @@
-import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationJobSetCreate, GenerationJobSetRecord, GenerationProviderStatus, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemList, ItemSortMode, ItemSummary, TagRecord, TitleSuggestionRequest, TitleSuggestionResponse, UploadImageRole } from '../types';
+import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationJobSetCreate, GenerationJobSetRecord, GenerationProviderStatus, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemImageUpdate, ItemList, ItemSortMode, ItemSummary, TagRecord, TitleSuggestionRequest, TitleSuggestionResponse, UploadImageRole } from '../types';
 import { DEFAULT_ITEM_SORT } from '../utils/searchSort';
 
 const API = '';
@@ -151,6 +151,7 @@ export const api = isDemoMode ? {
   batchItems: (_payload: ItemBatchRequest) => demoReadOnly(),
   favorite: (_id: string) => demoReadOnly(),
   uploadImage: (_id: string, _file: File, _role: UploadImageRole = 'result_image') => demoReadOnly(),
+  updateImages: (_id: string, _images: ItemImageUpdate[]) => demoReadOnly(),
   generationProviders: () => Promise.resolve<GenerationProviderStatus[]>([
     {
       provider: 'manual_upload',
@@ -205,6 +206,7 @@ export const api = isDemoMode ? {
   runGenerationJob: (_id: string) => demoReadOnly(),
   uploadGenerationResult: (_id: string, _file: File) => demoReadOnly(),
   acceptGenerationJob: (_id: string) => demoReadOnly(),
+  acceptGenerationJobIntoItem: (_id: string, _itemId: string) => demoReadOnly(),
   acceptGenerationJobAsNewItem: (_id: string, _payload?: GenerationJobAcceptAsNewItemPayload) => demoReadOnly(),
   cancelGenerationJob: (_id: string) => demoReadOnly(),
   retryGenerationJob: (_id: string) => demoReadOnly(),
@@ -228,6 +230,7 @@ export const api = isDemoMode ? {
   batchItems: (payload: ItemBatchRequest) => json<ItemBatchResult>('/api/items/batch', { method: 'POST', body: JSON.stringify(payload) }),
   favorite: (id: string) => json<ItemDetail>(`/api/items/${id}/favorite`, { method: 'POST' }),
   uploadImage: (id: string, file: File, role: UploadImageRole = 'result_image') => { const fd = new FormData(); fd.set('file', file); fd.set('role', role); return json(`/api/items/${id}/images`, { method: 'POST', body: fd }); },
+  updateImages: (id: string, images: ItemImageUpdate[]) => json<ItemDetail>(`/api/items/${id}/images`, { method: 'PUT', body: JSON.stringify({ images }) }),
   generationProviders: () => json<GenerationProviderStatus[]>('/api/generation-providers'),
   codexNativeAuthStart: () => json<CodexNativeAuthStart>('/api/generation-providers/openai-codex-native/auth/start', { method: 'POST' }),
   codexNativeAuthPoll: (payload: CodexNativeAuthPollRequest) => json<CodexNativeAuthPollResponse>('/api/generation-providers/openai-codex-native/auth/poll', { method: 'POST', body: JSON.stringify(payload) }),
@@ -242,6 +245,7 @@ export const api = isDemoMode ? {
   runGenerationJob: (id: string) => json<GenerationJobRecord>(`/api/generation-jobs/${id}/run`, { method: 'POST' }),
   uploadGenerationResult: (id: string, file: File) => { const fd = new FormData(); fd.set('file', file); return json<GenerationJobRecord>(`/api/generation-jobs/${id}/result`, { method: 'POST', body: fd }); },
   acceptGenerationJob: (id: string) => json<GenerationJobAcceptResult>(`/api/generation-jobs/${id}/accept`, { method: 'POST' }),
+  acceptGenerationJobIntoItem: (id: string, itemId: string) => json<GenerationJobAcceptResult>(`/api/generation-jobs/${id}/accept-into-item`, { method: 'POST', body: JSON.stringify({ item_id: itemId }) }),
   acceptGenerationJobAsNewItem: (id: string, payload: GenerationJobAcceptAsNewItemPayload = {}) => json<GenerationJobAcceptResult>(`/api/generation-jobs/${id}/accept-as-new-item`, { method: 'POST', body: JSON.stringify(payload) }),
   cancelGenerationJob: (id: string) => json<GenerationJobRecord>(`/api/generation-jobs/${id}/cancel`, { method: 'POST' }),
   retryGenerationJob: (id: string) => json<GenerationJobRecord>(`/api/generation-jobs/${id}/retry`, { method: 'POST' }),

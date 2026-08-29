@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from contextlib import suppress
 from .db import connect, init_db
-from .schemas import ClusterRecord, ImageRecord, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemList, ItemSummary, ItemUpdate, PromptIn, PromptRecord, TagRecord
+from .schemas import ClusterRecord, ImageRecord, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemImagesUpdate, ItemList, ItemSummary, ItemUpdate, PromptIn, PromptRecord, TagRecord
 from .services.credential_safety import sanitize_structured_credentials
 from .services.search_query import parse_item_search_query
 from .services.text_normalize import to_traditional
@@ -406,6 +406,57 @@ class ItemRepository:
 
     def get_image(self, image_id: str) -> ImageRecord:
         return self._image_by_id(image_id)
+
+    def update_images(self, item_id: str, payload: ItemImagesUpdate) -> ItemDetail:
+        image_ids = [image.id for image in payload.images]
+        image_id_set = set(image_ids)
+        if len(image_ids) != len(image_id_set):
+            raise ValueError("Image ids must be unique")
+        if not any(image.role == "result_image" for image in payload.images):
+            raise ValueError("An item must keep at least one result image")
+
+        with connect(self.library_path) as conn:
+            if conn.execute("SELECT 1 FROM items WHERE id=?", (item_id,)).fetchone() is None:
+                raise KeyError(item_id)
+            rows = conn.execute("SELECT * FROM images WHERE item_id=?", (item_id,)).fetchall()
+            existing_by_id = {row["id"]: row for row in rows}
+            unknown_ids = image_id_set - set(existing_by_id)
+            if unknown_ids:
+                raise ValueError("Image does not belong to this item")
+
+            removed_rows = [row for image_id, row in existing_by_id.items() if image_id not in image_id_set]
+            for sort_order, image in enumerate(payload.images):
+                conn.execute(
+                    "UPDATE images SET role=?, sort_order=? WHERE id=? AND item_id=?",
+                    (image.role, sort_order, image.id, item_id),
+                )
+            if removed_rows:
+                conn.executemany(
+                    "DELETE FROM images WHERE id=? AND item_id=?",
+                    [(row["id"], item_id) for row in removed_rows],
+                )
+            conn.execute("UPDATE items SET updated_at=? WHERE id=?", (now(), item_id))
+
+            candidate_paths = {
+                path
+                for row in removed_rows
+                for path in (row["original_path"], row["thumb_path"], row["preview_path"])
+                if path
+            }
+            still_used = {
+                path
+                for path in candidate_paths
+                if conn.execute(
+                    """SELECT 1 FROM images
+                       WHERE original_path=? OR thumb_path=? OR preview_path=?
+                       LIMIT 1""",
+                    (path, path, path),
+                ).fetchone() is not None
+            }
+            conn.commit()
+
+        self._remove_unreferenced_media_files(candidate_paths - still_used)
+        return self.get_item(item_id)
 
     def _tags(self, conn, item_id: str) -> list[TagRecord]:
         rows = conn.execute("SELECT t.id,t.name,t.kind,0 as count FROM tags t JOIN item_tags it ON it.tag_id=t.id WHERE it.item_id=? ORDER BY t.name", (item_id,)).fetchall()

@@ -408,6 +408,10 @@ export default function GenerationPanel({
     () => batchReviewSession ? generationReviewSummary(jobs, batchReviewSession, pendingRetryJobIds) : undefined,
     [batchReviewSession, jobs, pendingRetryJobIds],
   );
+  const groupedBatchTarget = useMemo(() => {
+    const targetSlot = batchReviewSession?.slots.find(slot => slot.resolution === 'saved' && slot.targetItemId);
+    return targetSlot?.targetItemId ? { id: targetSlot.targetItemId, title: targetSlot.targetItemTitle } : undefined;
+  }, [batchReviewSession]);
   const batchReviewActive = Boolean(batchReviewSession);
   const selectedProvider = useMemo(() => providers.find(candidate => candidate.provider === provider), [providers, provider]);
   const selectedProviderCanGenerate = providerCanGenerate(selectedProvider);
@@ -1000,6 +1004,37 @@ export default function GenerationPanel({
         const resolvedSession = resolveGenerationReviewSlot(reviewSession, acceptedJob, 'attached', {
           targetItemId: result.item?.id,
           targetItemTitle: result.item?.title,
+          resultPath: job.result_path || undefined,
+        });
+        setBatchReviewSession(resolvedSession);
+        onAcceptedRef.current(undefined, t('imageAddedToItem'));
+        advanceBatchReview(acceptedJob, resolvedSession, nextJobs);
+      } else {
+        queueAccepted(result.item, t('imageAddedToItem'));
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : t('generationAcceptFailed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const acceptIntoGroupedItem = async (job: GenerationJobRecord) => {
+    if (!groupedBatchTarget) return;
+    const reviewSession = ensureBatchReviewSession(job);
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await api.acceptGenerationJobIntoItem(job.id, groupedBatchTarget.id);
+      const acceptedJob = result.job.result_path ? result.job : { ...result.job, result_path: job.result_path };
+      invalidateGenerationRefreshRequests();
+      const nextJobs = updateGenerationJobs(current => current.map(candidate => candidate.id === acceptedJob.id ? acceptedJob : candidate));
+      onQueueChangedRef.current?.();
+      setMessage(t('imageAddedToItem'));
+      if (reviewSession) {
+        const resolvedSession = resolveGenerationReviewSlot(reviewSession, acceptedJob, 'attached', {
+          targetItemId: result.item.id,
+          targetItemTitle: result.item.title,
           resultPath: job.result_path || undefined,
         });
         setBatchReviewSession(resolvedSession);
@@ -1698,6 +1733,11 @@ export default function GenerationPanel({
 
   const renderStageActions = (job: GenerationJobRecord) => (
     <div className="generation-stage-actions" aria-label={t('resultActions')}>
+      {groupedBatchTarget && (
+        <button className="stage-action" onClick={() => acceptIntoGroupedItem(job)} disabled={busy} aria-label={t('addToGroupedItem').replace('${item}', groupedBatchTarget.title || t('viewItem'))} title={t('addToGroupedItem').replace('${item}', groupedBatchTarget.title || t('viewItem'))}>
+          <Images size={16} aria-hidden="true" />
+        </button>
+      )}
       {canAttachToSourceItem(job) && (
         <button className="stage-action" onClick={() => acceptAttach(job)} disabled={busy} aria-label={t('attachToCurrentItem')} title={t('attachToCurrentItem')}>
           <Paperclip size={16} aria-hidden="true" />

@@ -1020,6 +1020,30 @@ test('Explore detail boundary keeps local mutation actions while gating manageme
   assert.doesNotMatch(styles, /\.image-generation-provenance\{[^}]*(?:background|border|box-shadow):/);
 });
 
+test('multi-image Library management and grouped batch save reuse existing modals', async () => {
+  const [editor, generation, client, styles, i18n] = await Promise.all([
+    readFile(`${ROOT}/frontend/src/components/ItemEditorModal.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/api/client.ts`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/styles.css`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/utils/i18n.ts`, 'utf8'),
+  ]);
+
+  assert.match(client, /updateImages: \(id: string, images: ItemImageUpdate\[\]\)/);
+  assert.match(client, /acceptGenerationJobIntoItem: \(id: string, itemId: string\)/);
+  assert.match(editor, /className="item-image-manager"/);
+  assert.match(editor, /await api\.updateImages\(saved\.id/);
+  assert.match(editor, /makePrimaryImage\(image\.id\)/);
+  assert.match(editor, /updateImageRole\(image\.id/);
+  assert.match(editor, /removeImage\(image\.id\)/);
+  assert.match(generation, /const groupedBatchTarget = useMemo/);
+  assert.match(generation, /api\.acceptGenerationJobIntoItem\(job\.id, groupedBatchTarget\.id\)/);
+  assert.match(generation, /t\('addToGroupedItem'\)/);
+  assert.match(styles, /\.item-image-manager-list\{[^}]*grid-template-columns:repeat\(auto-fit,minmax\(300px,1fr\)\)/);
+  assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.item-image-manager-list\{grid-template-columns:minmax\(0,1fr\)\}/);
+  assert.match(i18n, /addToGroupedItem: 'Add to “\$\{item\}”'/);
+});
+
 test('batch review closure keeps save, provenance, references, and mobile actions compact', async () => {
   const [generation, itemCard, styles] = await Promise.all([
     readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),

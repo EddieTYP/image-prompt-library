@@ -1,6 +1,7 @@
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from PIL import UnidentifiedImageError
 from backend.repositories import ItemRepository, StoredImageInput
+from backend.schemas import ItemDetail, ItemImagesUpdate
 from backend.services.image_store import store_image
 router = APIRouter()
 
@@ -24,3 +25,13 @@ async def upload_image(request: Request, item_id: str, file: UploadFile = File(.
         raise HTTPException(400, str(exc)) from exc
     rec = repository.add_image(item_id, StoredImageInput(stored.original_path, stored.thumb_path, stored.preview_path, width=stored.width, height=stored.height, file_sha256=stored.file_sha256, role=role))
     return rec
+
+@router.put("/items/{item_id}/images", response_model=ItemDetail)
+def update_images(request: Request, item_id: str, payload: ItemImagesUpdate):
+    repository = ItemRepository(request.app.state.library_path)
+    try:
+        return repository.update_images(item_id, payload)
+    except KeyError as exc:
+        raise HTTPException(404, "Item not found") from exc
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc

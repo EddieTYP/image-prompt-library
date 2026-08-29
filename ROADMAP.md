@@ -20,6 +20,8 @@ Published download/install verification, Windows handled-failure recovery, sourc
 
 The completed milestone added clearer search, sort, and filter state; backend-backed batch management; preview-first cleanup; and stronger metadata/provenance handling. Batch `Tag` and `Move` now use searchable in-app controls instead of browser prompts, including multi-select tag suggestions and an existing-Collection picker. Library create/edit and generated-result save flows also provide an explicit, opt-in `Suggest title` action that previews the suggestion before applying it.
 
+One Library item can now hold a complete image set. Edit lets users choose the primary image, reorder images, change result/reference roles, and remove individual images. Generation batch review can add later results to the item created from the first result, while each image keeps its own provider and model details.
+
 Any future library work should be driven by observed usability problems rather than reopening this milestone broadly.
 
 ### C. Generation workflow hardening — current milestone complete on `main`
@@ -42,9 +44,7 @@ If this lane resumes, adapters must still feed candidate prompts, media, provena
 
 ## Prioritized outstanding work
 
-1. **Generated-image provider and model provenance** — preserve the actual provider and model for each generated image through attach, save-as-new, retry, and batch review. Show a concise `Generated with` summary in item detail; keep legacy missing values empty and never expose credentials, raw provider responses, or internal job IDs.
-2. **Multi-image Library items and grouped batch results** — let a user save selected results from one Generation set into one Library item and review them in one detail modal. Add item-level controls to choose the primary image, reorder images, change image roles, and remove an image. Preserve per-image generation provenance and reuse the current queue, result review, and reference flows.
-3. **xAI / Grok Imagine provider feasibility** — scope `grok-imagine-image-2.0` as a separate API-key and usage-billed provider. Verify credential storage, backup/demo exclusion, generation and edit parity, reference limits, returned-media handling, errors, rate limits, privacy, and cost display before deciding whether to implement it. Do not reuse or weaken the ChatGPT / Codex OAuth boundary.
+1. **xAI / Grok Imagine provider feasibility** — scope `grok-imagine-image-2.0` as a separate API-key and usage-billed provider. Verify credential storage, backup/demo exclusion, generation and edit parity, reference limits, returned-media handling, errors, rate limits, privacy, and cost display before deciding whether to implement it. Do not reuse or weaken the ChatGPT / Codex OAuth boundary.
 
 `v0.10.0` implemented Explore clarity: a normal-scroll directory of non-empty Collections, natural-ratio previews that open item detail directly, Collection heading/count routing into filtered `Library`, and the visible `Cards` rename to `Library`. Explore item detail keeps Copy, Download, Generate, and Edit while selection and batch management remain in Library. It also includes three browser-local light Appearance presets displayed as `Red`, `Green`, and `Purple` (`朱紅`、`松綠`、`茄紫`); their existing internal identifiers remain unchanged. Dark mode, system-theme following, and an arbitrary colour picker remain out of scope.
 
@@ -54,10 +54,9 @@ The former responsive vertical-constellation follow-up is superseded by Explore 
 
 These are product and release groups, not promised version numbers. Small independent fixes may ship between them when they do not broaden the main milestone.
 
-1. **`v0.11.0` Library workflow group** — combine the completed batch-action polish with opt-in title suggestion and reliable generated-image provider/model display. Keep each change independently reviewable and never spend provider quota without an explicit user action.
-2. **Multi-image Library milestone** — implement grouped batch-result save and the item image-management controls as one coherent data-integrity and UX change.
-3. **Provider decision** — complete the xAI / Grok feasibility and privacy review separately. A new provider should not be bundled into the multi-image milestone or block `v1.0.0` unless explicitly promoted.
-4. **`v1.0.0` readiness** — run final Windows and POSIX install/update/rollback/restore checks, desktop/mobile and static-demo QA, migration and privacy checks, and documentation alignment. Do not use the `v1.0.0` release gate to introduce import architecture, an account system, or other unrelated work.
+1. **`v0.11.0` Library workflow group** — combine the completed batch-action polish, opt-in title suggestion, reliable generated-image provider/model display, and multi-image Library workflow. Never spend provider quota without an explicit user action.
+2. **Provider decision** — complete the xAI / Grok feasibility and privacy review separately. A new provider should not block `v1.0.0` unless explicitly promoted.
+3. **`v1.0.0` readiness** — run final Windows and POSIX install/update/rollback/restore checks, desktop/mobile and static-demo QA, migration and privacy checks, and documentation alignment. Do not use the `v1.0.0` release gate to introduce import architecture, an account system, or other unrelated work.
 
 ## Later or optional work
 
