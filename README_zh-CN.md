@@ -116,7 +116,7 @@ awesome-gpt-image-2
 基本流程：
 
 1. 启动本地 app，打开 **Config**。
-2. 在 **供应商** 连接 **ChatGPT / Codex** 并完成 device-login approval，或添加 **xAI Grok Imagine** API key。
+2. 连接 **ChatGPT / Codex OAuth**，在浏览器完成 device-login approval。
 3. 回到 Image Prompt Library，由新 prompt 或已保存 reference 开始生成。Prompt 可以用 `{{主体}}` 或 `{{风格}}` 这类变量；composer 会先要求填值。
 4. 在 **工作队列** 查看已完成的结果。
 5. 选择 **另存为新参考**；如果结果来自未经修改的已保存参考，也可以用 **附加到当前参考**。另存前可以先编辑 metadata。

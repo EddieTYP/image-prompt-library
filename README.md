@@ -127,7 +127,7 @@ Local installs can use ChatGPT / Codex OAuth without adding an OpenAI API key to
 Basic flow:
 
 1. Start the local app and open **Config**.
-2. Under **Providers**, either connect **ChatGPT / Codex** and approve the device-login flow, or add an **xAI Grok Imagine** API key.
+2. Connect **ChatGPT / Codex OAuth** and approve the device-login flow in your browser.
 3. Return to Image Prompt Library and generate from a new prompt or from an existing saved reference. Prompts can include variables such as `{{subject}}` or `{{style}}`; the composer asks for values before sending the final prompt.
 4. Review completed results from the **Work queue**.
 5. Choose **Save as new item**, or use **Attach to current item** when the result came from an unchanged saved reference. You can edit the new item's metadata before saving.

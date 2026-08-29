@@ -727,16 +727,7 @@ test('generation composer exposes provider-aware model, quality, and reference l
   assert.match(generation, /model: selectedImageModel \|\| null/);
   assert.match(config, /provider: 'xai_api'[\s\S]*?xaiProviderPricing/);
   assert.match(client, /provider: 'xai_api'[\s\S]*?max_input_images: 3/);
-  assert.match(config, /xaiAPIKeySave[\s\S]*?type="password"/);
-  assert.match(config, /xaiAPIKeyDelete/);
-  assert.match(config, /provider-disclosure[\s\S]*?xaiProviderPrivacy[\s\S]*?xaiProviderPricing/);
-  assert.match(client, /xaiAPIKeySave:[\s\S]*?generation-providers\/xai-api\/api-key/);
-  assert.match(client, /xaiAPIKeyDelete:[\s\S]*?generation-providers\/xai-api\/api-key/);
   assert.equal((translations.match(/providerPicker:/g) || []).length, 3);
-  assert.equal((translations.match(/xaiAPIKeyLabel:/g) || []).length, 3);
-  assert.match(styles, /\.drawer\.config \.provider-list\{gap:0;border-top:1px solid var\(--studio-hairline\)/);
-  assert.match(styles, /\.drawer\.config \.provider-card\{[\s\S]*?border-radius:0;[\s\S]*?background:transparent;[\s\S]*?box-shadow:none/);
-  assert.match(styles, /\.provider-key-controls\{display:grid;grid-template-columns:minmax\(0,1fr\) auto/);
   assert.match(styles, /\.generation-model-option-copy\{display:grid;gap:2px/);
   assert.match(styles, /\.generation-provider-trigger\{[^}]*background:transparent/);
   assert.match(styles, /\.generation-control-popover\{[^}]*gap:2px;padding:6px/);
@@ -791,10 +782,10 @@ test('Library card keeps desktop actions and exposes a compact mobile More trigg
 test('Config provider actions clear busy on close without accepting stale results', async () => {
   const config = await readFile(`${ROOT}/frontend/src/components/ConfigPanel.tsx`, 'utf8');
 
-  assert.match(config, /if \(!open\) \{\s*providersRequestRef\.current \+= 1;\s*providerActionRequestRef\.current \+= 1;\s*setProviderBusy\(false\);\s*setXaiAPIKey\(''\);\s*setXaiMessage\(undefined\);\s*return;/);
+  assert.match(config, /if \(!open\) \{\s*providersRequestRef\.current \+= 1;\s*providerActionRequestRef\.current \+= 1;\s*setProviderBusy\(false\);\s*return;/);
   assert.match(config, /useEffect\(\(\) => \(\) => \{\s*providersRequestRef\.current \+= 1;\s*providerActionRequestRef\.current \+= 1;\s*closeMotionCleanupRef\.current\?\.\(\);\s*\}, \[\]\);/);
   assert.match(config, /const closePanel = \(\) => \{\s*providersRequestRef\.current \+= 1;\s*providerActionRequestRef\.current \+= 1;\s*setProviderBusy\(false\);[\s\S]*?onClose\(\);/);
-  assert.equal((config.match(/if \(providerActionRequestRef\.current === requestId\) setProviderBusy\(false\);/g) || []).length, 5);
+  assert.equal((config.match(/if \(providerActionRequestRef\.current === requestId\) setProviderBusy\(false\);/g) || []).length, 3);
 });
 
 test('Explore wiring preserves Library management, semantic appearance, and restrained motion', async () => {

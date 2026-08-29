@@ -1540,81 +1540,8 @@ body:has(.modal-backdrop),body:has(.drawer.open),body:has(.generation-queue-draw
 .generation-compact-controls.has-provider-attention .generation-provider-readiness{max-width:none;flex:1 1 auto}
 .generation-provider-connect{min-height:36px;flex:0 0 auto;padding:0 10px;border:1px solid var(--studio-accent);border-radius:9px;background:var(--studio-accent-soft);color:var(--studio-accent-strong);font:inherit;font-size:12px;font-weight:700;white-space:nowrap;cursor:pointer}
 .generation-provider-connect:hover,.generation-provider-connect:focus-visible{outline:2px solid var(--studio-accent);outline-offset:2px}
-.drawer.config{width:min(410px,100vw)}
-.drawer.config .provider-list{gap:0;border-top:1px solid var(--studio-hairline)}
-.drawer.config .provider-card{
-  padding:15px 0;
-  border:0;
-  border-bottom:1px solid var(--studio-hairline);
-  border-radius:0;
-  background:transparent;
-  box-shadow:none;
-}
-.provider-card-head{align-items:center}
-.provider-identity{display:flex;align-items:center;gap:10px;min-width:0}
-.provider-auth-icon{
-  width:32px;
-  height:32px;
-  flex:0 0 32px;
-  display:grid!important;
-  place-items:center;
-  margin:0!important;
-  border-radius:8px;
-  background:var(--studio-accent-soft);
-  color:var(--studio-accent-strong)!important;
-}
-.provider-auth-icon svg{display:block}
-.provider-identity>div{min-width:0}
-.provider-card-head strong{color:var(--studio-ink);font-size:14px;line-height:1.25}
-.provider-card-head .provider-identity span:not(.provider-auth-icon){margin-top:2px;color:var(--studio-muted);font-size:11px;font-weight:600;line-height:1.3}
-.provider-card-head b{padding:4px 7px;background:var(--studio-canvas-deep);color:var(--studio-muted);font-size:10px;font-weight:700}
-.provider-card.state-connected .provider-card-head b,.provider-card.state-available .provider-card-head b{background:var(--studio-accent-soft);color:var(--studio-accent-strong)}
-.provider-card.state-not_configured .provider-card-head b,.provider-card.state-demo_unavailable .provider-card-head b{background:var(--studio-canvas-deep);color:var(--studio-muted)}
-.provider-capabilities{margin:9px 0 0;color:var(--studio-muted);font-size:11px;line-height:1.45}
-.drawer.config .provider-actions{gap:8px;margin-top:10px}
-.drawer.config .provider-actions button{min-height:38px;border:1px solid var(--studio-hairline);border-radius:9px;background:var(--studio-surface);color:var(--studio-ink);box-shadow:none}
-.drawer.config .provider-actions button:hover,.drawer.config .provider-actions button:focus-visible{border-color:var(--studio-accent);background:var(--studio-accent-soft);color:var(--studio-accent-strong);transform:none;outline:0}
-.provider-xai-details{display:grid;gap:9px;margin-top:10px}
-.provider-xai-details .provider-help{margin:0;line-height:1.45}
-.provider-key-form{display:grid;gap:7px}
-.provider-key-label-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.provider-key-label-row label{color:var(--studio-ink);font-size:12px;font-weight:700}
-.provider-key-label-row a{color:var(--studio-accent-strong);font-size:11px;font-weight:650;text-decoration:none}
-.provider-key-label-row a:hover,.provider-key-label-row a:focus-visible{text-decoration:underline;outline:0}
-.provider-key-controls{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px}
-.provider-key-controls input{
-  width:100%;
-  min-width:0;
-  height:40px;
-  padding:0 10px;
-  border:1px solid var(--studio-hairline);
-  border-radius:9px;
-  background:var(--studio-surface);
-  color:var(--studio-ink);
-  outline:0;
-}
-.provider-key-controls input:focus{border-color:var(--studio-accent);box-shadow:0 0 0 2px rgb(var(--studio-accent-rgb) / .14)}
-.provider-key-controls input:disabled{opacity:.55;cursor:not-allowed}
-.provider-key-controls button{min-height:40px;padding:0 12px;border:1px solid var(--studio-hairline);border-radius:9px;background:var(--studio-surface);color:var(--studio-ink);font-size:12px;font-weight:700;white-space:nowrap;box-shadow:none}
-.provider-key-controls button:hover,.provider-key-controls button:focus-visible{border-color:var(--studio-accent);background:var(--studio-accent-soft);color:var(--studio-accent-strong);transform:none;outline:0}
-.provider-key-controls button:disabled{opacity:.45;cursor:not-allowed}
-.provider-credential-state{margin:0;padding:9px 10px;border-radius:9px;background:var(--studio-canvas-deep);color:var(--studio-muted);font-size:12px;line-height:1.45}
-.provider-remove-key{justify-self:start;padding:2px 0;border:0;background:transparent;color:#963d34;font:inherit;font-size:11px;font-weight:650;cursor:pointer}
-.provider-remove-key:hover,.provider-remove-key:focus-visible{color:#7f3029;text-decoration:underline;outline:0}
-.provider-remove-key:disabled{opacity:.45;cursor:not-allowed}
-.provider-disclosure{border-top:1px solid var(--studio-hairline);padding-top:9px;color:var(--studio-muted);font-size:11px}
-.provider-disclosure summary{width:max-content;max-width:100%;color:var(--studio-muted);font-weight:650;cursor:pointer}
-.provider-disclosure summary:hover,.provider-disclosure summary:focus-visible{color:var(--studio-accent-strong);outline:0}
-.provider-disclosure div{display:grid;gap:6px;padding-top:7px}
-.provider-disclosure p{margin:0;line-height:1.45}
-.provider-message{margin-top:10px;line-height:1.45}
-.provider-message.is-success{color:var(--studio-accent-strong)}
-.provider-message.is-error{color:#963d34}
-@media(max-width:520px){
-  .drawer.config{width:100vw;padding:16px}
-  .provider-key-controls{grid-template-columns:minmax(0,1fr)}
-  .provider-key-controls button{width:100%}
-}
+.provider-xai-details{display:grid;gap:6px}
+.provider-xai-details .provider-help{margin:0}
 .generation-primary-action,.generation-generate-split .generation-primary-action{
   border-color:transparent;
   border-radius:10px 0 0 10px;
