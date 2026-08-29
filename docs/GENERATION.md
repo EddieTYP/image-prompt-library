@@ -15,7 +15,7 @@ Once connected, you can:
 - Keep useful generation details such as provider, model, original item, and batch position.
 - Use prompt variables such as `{{subject}}`, `{{style}}`, or `{{主體}}` in reusable template prompts and fill them before each generation.
 
-No OpenAI API key is required for the ChatGPT / Codex OAuth path. xAI is separate, usage-billed, and only becomes available after you set `XAI_API_KEY` locally.
+No OpenAI API key is required for the ChatGPT / Codex OAuth path. xAI is separate and usage-billed. You can add its API key directly under **Config → Providers**, or manage it with the `XAI_API_KEY` environment variable.
 
 ## Privacy boundary
 
@@ -23,7 +23,7 @@ Generation is local-install only. The public GitHub Pages demo does not perform 
 
 The app-owned OAuth store and local provider config must resolve outside the active library. If `IMAGE_PROMPT_LIBRARY_AUTH_PATH` or `IMAGE_PROMPT_LIBRARY_CONFIG_PATH` resolves to the library itself or any child path, startup stops before the database or credential files are read. Library-managed media roots (`originals`, `thumbs`, `previews`, `generation-results`, and `generation-references`) must also resolve inside the library; external symlink or junction targets are rejected so they cannot alias app-owned state. The app does not move or delete an unsafe file automatically.
 
-For an existing unsafe override, move the file manually to `~/.image-prompt-library/auth.json` or `~/.image-prompt-library/config.json`, update or unset the override, then restart. Treat any older backup that may contain the file as sensitive; reconnect the provider if the credential may have been exposed. OAuth tokens and `XAI_API_KEY` must never be committed to git, sample bundles, backups, or GitHub Pages exports.
+For an existing unsafe override, move the file manually to `~/.image-prompt-library/auth.json` or `~/.image-prompt-library/config.json`, update or unset the override, then restart. Treat any older backup that may contain the file as sensitive; reconnect the provider if the credential may have been exposed. OAuth tokens and xAI API keys must never be committed to git, sample bundles, backups, or GitHub Pages exports.
 
 ## Set up a provider
 
@@ -31,9 +31,11 @@ Open **Config → Providers**, then choose **Connect** under **ChatGPT / Codex O
 
 The browser may label the request **Codex CLI**. Only approve a flow you started from your local Image Prompt Library app. When setup is complete, the provider shows **Connected**.
 
-To use xAI, add `XAI_API_KEY` to the local `.env` file and restart the app. The key remains in the local process environment and is not written into the Library database, generation metadata, backups, samples, or the public demo. The Config drawer shows whether xAI is configured but never displays the key.
+To use xAI, paste its API key into **xAI Grok Imagine** and choose **Save key**. The app writes it to its local credential file outside the Library, never returns the key to the browser after saving, and never writes it into the Library database, generation metadata, backups, samples, or the public demo. You can replace or remove the saved key from the same screen.
 
-xAI generation sends the prompt and any reference images to xAI. Its current API policy retains requests and responses for 30 days by default; eligible teams can opt into Zero Data Retention. Check the current [xAI security policy](https://docs.x.ai/developers/faq/security) before using sensitive material.
+Advanced setups can provide `XAI_API_KEY` through the local process environment instead. An environment key takes precedence over the saved key; while it is active, Config shows that the credential is environment-managed and does not offer replace or remove controls.
+
+xAI generation sends the prompt and any reference images to xAI. Its current API policy retains requests and responses for 30 days by default; eligible teams can opt into Zero Data Retention. Check the current [xAI security policy](https://docs.x.ai/console/faq/security) before using sensitive material.
 
 ## Generate and review results
 
@@ -75,7 +77,7 @@ The composer can show the sanitized provider error under **Provider details** as
 
 The local queue has no artificial submission cap and runs up to five generation jobs at once. Additional jobs wait in the Work queue.
 
-If a provider reports a rate limit, the app pauses only that provider's queue before continuing untouched queued jobs. The failed result stays failed until you retry it. Normal OAuth renewal happens in the background; reconnect only when the app says authorization is required. For xAI authentication errors, correct `XAI_API_KEY` and restart the app.
+If a provider reports a rate limit, the app pauses only that provider's queue before continuing untouched queued jobs. The failed result stays failed until you retry it. Normal OAuth renewal happens in the background; reconnect only when the app says authorization is required. For xAI authentication errors, replace the saved key under **Config → Providers**. If the key is environment-managed, correct `XAI_API_KEY` and restart the app.
 
 ## Benchmark note
 

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 import os
+import tempfile
 import time
 from io import BytesIO
 from pathlib import Path
@@ -11,6 +13,7 @@ from typing import Any
 import httpx
 from PIL import Image, UnidentifiedImageError
 
+from backend.config import resolve_auth_path
 from backend.services.generation_jobs import (
     GenerationJobConflict,
     GenerationJobRepository,
@@ -48,16 +51,73 @@ class XAIAPITemporaryError(XAIAPIError):
     pass
 
 
-def xai_api_key() -> str:
-    return os.environ.get("XAI_API_KEY", "").strip()
+class XAIAPIKeyStore:
+    """App-owned xAI key store kept beside, but separate from, Codex OAuth tokens."""
+
+    def __init__(self, path: Path | str | None = None):
+        auth_path = resolve_auth_path()
+        self.path = Path(path).expanduser() if path is not None else auth_path.with_name("xai-api-key.json")
+
+    def save_key(self, api_key: str) -> None:
+        key = str(api_key or "").strip()
+        if len(key) < 8:
+            raise XAIAPIAuthError("Enter a valid xAI API key")
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            self.path.parent.chmod(0o700)
+        except OSError:
+            pass
+        payload = json.dumps({"provider": PROVIDER_ID, "auth_mode": "api_key_local", "api_key": key}, indent=2)
+        fd, temp_name = tempfile.mkstemp(prefix="xai-auth-", suffix=".tmp", dir=self.path.parent)
+        temp_path = Path(temp_name)
+        handle = None
+        try:
+            if hasattr(os, "fchmod"):
+                os.fchmod(fd, 0o600)
+            handle = os.fdopen(fd, "w", encoding="utf-8")
+            handle.write(payload)
+            handle.close()
+            handle = None
+            os.replace(temp_path, self.path)
+            self.path.chmod(0o600)
+        except Exception:
+            try:
+                if handle is not None:
+                    handle.close()
+                temp_path.unlink(missing_ok=True)
+            finally:
+                raise
+
+    def read_key(self) -> str:
+        if not self.path.is_file():
+            return ""
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            return ""
+        key = payload.get("api_key") if isinstance(payload, dict) else None
+        return key.strip() if isinstance(key, str) else ""
+
+    def delete_key(self) -> None:
+        self.path.unlink(missing_ok=True)
 
 
-def xai_status() -> dict[str, Any]:
-    configured = bool(xai_api_key())
+def xai_api_key(key_store: XAIAPIKeyStore | None = None) -> str:
+    environment_key = os.environ.get("XAI_API_KEY", "").strip()
+    if environment_key:
+        return environment_key
+    return (key_store or XAIAPIKeyStore()).read_key()
+
+
+def xai_status(key_store: XAIAPIKeyStore | None = None) -> dict[str, Any]:
+    store = key_store or XAIAPIKeyStore()
+    environment_managed = bool(os.environ.get("XAI_API_KEY", "").strip())
+    local_key_present = bool(store.read_key())
+    configured = environment_managed or local_key_present
     return {
         "provider": PROVIDER_ID,
         "display_name": DISPLAY_NAME,
-        "auth_mode": AUTH_MODE,
+        "auth_mode": AUTH_MODE if environment_managed else "api_key_local",
         "optional": True,
         "configured": configured,
         "authenticated": configured,
@@ -65,8 +125,11 @@ def xai_status() -> dict[str, Any]:
         "state": "available" if configured else "not_configured",
         "reason": None if configured else "missing_api_key",
         "status": "ready" if configured else "unavailable",
-        "message": None if configured else "Set XAI_API_KEY locally, then restart the app.",
+        "message": None if configured else "Add an xAI API key in Config before generating.",
         "can_generate": configured,
+        "credential_source": "environment" if environment_managed else ("local_store" if local_key_present else None),
+        "managed_by_environment": environment_managed,
+        "key_present": configured,
         "features": {
             "text_to_image": configured,
             "text_reference_to_image": configured,
@@ -146,7 +209,13 @@ class XAIAPIProvider:
         http_client: httpx.Client | None = None,
         base_url: str = BASE_URL,
     ):
-        self.api_key = xai_api_key() if api_key is None else api_key.strip()
+        if api_key is None:
+            status = xai_status()
+            self.api_key = xai_api_key()
+            self.auth_mode = str(status["auth_mode"])
+        else:
+            self.api_key = api_key.strip()
+            self.auth_mode = AUTH_MODE
         self.timeout = timeout
         self.http_client = http_client
         self.base_url = base_url.rstrip("/")
@@ -184,7 +253,7 @@ class XAIAPIProvider:
         repo.mark_running(job_id)
         try:
             if not self.api_key:
-                raise XAIAPIAuthError("Set XAI_API_KEY locally, then restart the app")
+                raise XAIAPIAuthError("Add an xAI API key in Config before generating")
             parameters = job.parameters or {}
             input_images = self._input_image_data_urls(job, Path(library_path))
             quality = _normalize_quality(parameters.get("quality"))
@@ -200,7 +269,7 @@ class XAIAPIProvider:
             suffix = ".png" if mime_type == "image/png" else ".jpg"
             metadata = {
                 "provider": PROVIDER_ID,
-                "auth_mode": AUTH_MODE,
+                "auth_mode": self.auth_mode,
                 "model": MODEL,
                 "image_model": MODEL,
                 "quality": quality,
