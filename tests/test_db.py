@@ -12,7 +12,7 @@ def test_init_db_creates_required_tables(tmp_path: Path):
         assert {"items", "prompts", "images", "clusters", "tags", "item_tags", "imports", "item_search", "schema_migrations"} <= tables
         assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         image_columns = {row[1] for row in conn.execute("PRAGMA table_info(images)")}
-        assert "role" in image_columns
+        assert {"role", "generation_provider", "generation_model"} <= image_columns
         images_sql = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='images'").fetchone()[0]
         assert "CHECK(role IN ('result_image', 'reference_image'))" in images_sql
         prompt_columns = {row[1] for row in conn.execute("PRAGMA table_info(prompts)")}

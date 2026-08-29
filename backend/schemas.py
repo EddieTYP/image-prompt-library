@@ -24,6 +24,8 @@ class ImageRecord(BaseModel):
     width: Optional[int] = None
     height: Optional[int] = None
     file_sha256: Optional[str] = None
+    generation_provider: Optional[str] = None
+    generation_model: Optional[str] = None
     role: str = "result_image"
     sort_order: int = 0
     created_at: str

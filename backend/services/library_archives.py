@@ -388,6 +388,8 @@ def _validate_schema_contract(conn: sqlite3.Connection, ledger: list[str]) -> No
         required_columns.setdefault("generation_jobs", set()).update(
             {"generation_group_id", "generation_group_index", "generation_group_size"}
         )
+    if migration_count >= 11:
+        required_columns.setdefault("images", set()).update({"generation_provider", "generation_model"})
     for table, expected in required_columns.items():
         actual = {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")}
         missing_columns = sorted(expected - actual)

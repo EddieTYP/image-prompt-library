@@ -3,7 +3,7 @@ export type AppearancePreset = 'gallery_vermilion' | 'pine_archive' | 'aubergine
 export type UploadImageRole = 'result_image' | 'reference_image';
 export type UiLanguage = 'zh_hant' | 'zh_hans' | 'en';
 export interface PromptRecord { id: string; item_id: string; language: string; text: string; is_primary: boolean; is_original?: boolean; provenance?: Record<string, unknown> }
-export interface ImageRecord { id: string; item_id: string; original_path: string; thumb_path?: string; preview_path?: string; width?: number; height?: number; role?: UploadImageRole }
+export interface ImageRecord { id: string; item_id: string; original_path: string; thumb_path?: string; preview_path?: string; width?: number; height?: number; generation_provider?: string | null; generation_model?: string | null; role?: UploadImageRole }
 export interface ClusterRecord { id: string; name: string; names?: Partial<Record<UiLanguage, string>>; description?: string; count: number; preview_images: string[]; preview_item_ids?: string[] }
 export interface TagRecord { id: string; name: string; kind: string; count: number }
 export interface AppConfig { version: string; library_path: string; database_path: string; preferred_prompt_language?: string; features?: { camelot?: { percival?: boolean } } }

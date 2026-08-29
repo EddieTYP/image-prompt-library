@@ -209,6 +209,8 @@ def test_generation_job_can_stage_result_and_accept_into_source_item(tmp_path):
     assert item["images"][0]["original_path"].startswith("originals/")
     assert item["images"][0]["thumb_path"].startswith("thumbs/")
     assert item["images"][0]["preview_path"].startswith("previews/")
+    assert item["images"][0]["generation_provider"] == "manual_upload"
+    assert item["images"][0]["generation_model"] == "manual-test-model"
 
     assert c.post(f"/api/generation-jobs/{job['id']}/accept").status_code == 409
 
@@ -420,6 +422,8 @@ def test_generation_job_can_accept_result_as_new_variant_item(tmp_path):
     assert new_item["title"].startswith("Source prompt")
     assert new_item["images"][0]["id"] == payload["job"]["accepted_image_id"]
     assert new_item["images"][0]["role"] == "result_image"
+    assert new_item["images"][0]["generation_provider"] == "manual_upload"
+    assert new_item["images"][0]["generation_model"] == "manual-test-model"
     assert new_item["prompts"][0]["text"] == "A cinematic moonlit robot holding a lantern"
     assert new_item["prompts"][0]["is_original"] is True
     provenance = new_item["prompts"][0]["provenance"]
@@ -728,6 +732,30 @@ def test_generation_job_clones_generation_result_inputs_so_source_stays_discarda
     assert (tmp_path / "library" / cloned_input["result_path"]).is_file()
 
 
+def test_generated_result_reference_keeps_source_job_provenance_when_saved(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    source = repo.create_job(GenerationJobCreate(
+        provider="openai_codex_oauth_native",
+        model="gpt-image-2",
+        prompt_text="first draft",
+    ))
+    source = repo.stage_result(source.id, png_bytes("blue"), "source.png")
+    downstream = repo.create_job(GenerationJobCreate(
+        provider="manual_upload",
+        model="manual-test-model",
+        prompt_text="refine first draft",
+        parameters={"input_images": [{"result_path": source.result_path, "name": "source.png"}]},
+    ))
+    repo.stage_result(downstream.id, png_bytes("green"), "generated.png")
+
+    accepted = repo.accept_result_as_new_item(downstream.id)
+
+    assert [image.role for image in accepted.item.images] == ["result_image", "reference_image"]
+    reference = accepted.item.images[1]
+    assert reference.generation_provider == "openai_codex_oauth_native"
+    assert reference.generation_model == "gpt-image-2"
+
+
 def test_generation_job_uses_ordered_library_image_references_without_duplicate_attach(tmp_path):
     c = client(tmp_path)
     source_item = create_source_item(c)
@@ -835,6 +863,12 @@ def test_generation_job_save_as_new_copies_library_reference_and_keeps_provenanc
         files={"file": ("reference.png", png_bytes("purple"), "image/png")},
         data={"role": "reference_image"},
     ).json()
+    with connect(tmp_path / "library") as conn:
+        conn.execute(
+            "UPDATE images SET generation_provider=?, generation_model=? WHERE id=?",
+            ("openai_codex_oauth_native", "gpt-image-2", reference["id"]),
+        )
+        conn.commit()
     job = c.post("/api/generation-jobs", json={
         "source_item_id": source_item["id"],
         "provider": "manual_upload",
@@ -848,6 +882,8 @@ def test_generation_job_save_as_new_copies_library_reference_and_keeps_provenanc
     assert accepted.status_code == 200
     item = accepted.json()["item"]
     assert [image["role"] for image in item["images"]] == ["result_image", "reference_image"]
+    assert item["images"][1]["generation_provider"] == "openai_codex_oauth_native"
+    assert item["images"][1]["generation_model"] == "gpt-image-2"
     provenance = item["prompts"][0]["provenance"]
     assert provenance["source_generation_job_id"] == job["id"]
     assert provenance["parameters"]["input_images"][0]["image_id"] == reference["id"]
@@ -2222,6 +2258,24 @@ def test_stage_result_merges_provider_metadata_without_dropping_retry_provenance
     assert reloaded.metadata.get("_generation_accept_claim") is None
     assert reloaded.metadata.get("_generation_accept_artifacts") is None
     assert reloaded.metadata.get("reference_image_copies") is None
+
+
+def test_retry_result_keeps_provider_and_model_when_saved(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    original = repo.create_job(GenerationJobCreate(
+        provider="openai_codex_oauth_native",
+        model="gpt-image-2",
+        prompt_text="retry provenance",
+    ))
+    repo.mark_failed(original.id, "temporary failure")
+    retry = repo.retry_failed_job(original.id)
+    repo.stage_result(retry.id, png_bytes("white"), "generated.png")
+
+    accepted = repo.accept_result_as_new_item(retry.id)
+
+    image = accepted.item.images[0]
+    assert image.generation_provider == "openai_codex_oauth_native"
+    assert image.generation_model == "gpt-image-2"
 
 
 def test_stage_result_sanitizes_provider_metadata_before_storage_and_api_output(tmp_path):

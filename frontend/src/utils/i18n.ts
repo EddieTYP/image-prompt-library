@@ -26,7 +26,7 @@ type TranslationKey =
   | 'batchTagTitle' | 'batchMoveTitle' | 'searchOrCreateTags' | 'selectedTags' | 'createTag' | 'noTagsFound' | 'applyTags' | 'moveReferences'
   | 'primaryNavigation' | 'appHome' | 'currentFilters' | 'preferredPromptLanguage'
   | 'collectionFilters' | 'itemActions' | 'promptLanguage' | 'promptText' | 'source' | 'defaultModel' | 'localReference'
-  | 'imageGeneratedFrom' | 'author' | 'sourceUrl' | 'notes' | 'addNote' | 'origin' | 'markAsOriginal' | 'originalPromptHelp'
+  | 'imageGeneratedFrom' | 'generatedWith' | 'author' | 'sourceUrl' | 'notes' | 'addNote' | 'origin' | 'markAsOriginal' | 'originalPromptHelp'
   | 'more'
   | 'onlineReadOnlyDemo' | 'runLocallyForPrivateLibrary' | 'localInstallHighlights' | 'viewOnGitHub'
   | 'chooseLanguage' | 'chooseLanguageHelp' | 'changeLanguageLater'
@@ -89,7 +89,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     batchTagTitle: '為已選參考加標籤', batchMoveTitle: '移動已選參考', searchOrCreateTags: '搜尋或新增標籤', selectedTags: '已選標籤', createTag: '新增「${tag}」', noTagsFound: '找不到標籤', applyTags: '套用標籤', moveReferences: '移動參考',
     primaryNavigation: '主要導覽', appHome: 'Image Prompt Library 首頁', currentFilters: '目前篩選', preferredPromptLanguage: '偏好 prompt 語言',
     collectionFilters: 'Collection 篩選', itemActions: '項目操作', promptLanguage: 'Prompt 語言', promptText: 'Prompt 文字', source: '來源', defaultModel: 'ChatGPT Image', localReference: '本機參考',
-    imageGeneratedFrom: '圖片生成來源', author: '作者', sourceUrl: '來源 URL', notes: '備註', addNote: '新增備註', origin: '原文', markAsOriginal: '標記為原文', originalPromptHelp: '原文 prompt 通常最接近 sample image 的生成結果。',
+    imageGeneratedFrom: '圖片生成來源', generatedWith: '生成自', author: '作者', sourceUrl: '來源 URL', notes: '備註', addNote: '新增備註', origin: '原文', markAsOriginal: '標記為原文', originalPromptHelp: '原文 prompt 通常最接近 sample image 的生成結果。',
     more: '顯示更多',
     onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: '新增／編輯／生成需要本機安裝，請在本機運行以建立你的私人 prompt library。', localInstallHighlights: '本機版支援私人編輯、多張生成及完整備份與還原', viewOnGitHub: '在 GitHub 查看',
     chooseLanguage: '選擇介面語言', chooseLanguageHelp: '請選擇你想使用的介面語言。', changeLanguageLater: '之後可在設定中更改。',
@@ -150,7 +150,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     batchTagTitle: '为已选参考添加标签', batchMoveTitle: '移动已选参考', searchOrCreateTags: '搜索或新增标签', selectedTags: '已选标签', createTag: '新增“${tag}”', noTagsFound: '找不到标签', applyTags: '应用标签', moveReferences: '移动参考',
     primaryNavigation: '主要导航', appHome: 'Image Prompt Library 首页', currentFilters: '当前筛选', preferredPromptLanguage: '偏好 prompt 语言',
     collectionFilters: 'Collection 筛选', itemActions: '项目操作', promptLanguage: 'Prompt 语言', promptText: 'Prompt 文字', source: '来源', defaultModel: 'ChatGPT Image', localReference: '本地参考',
-    imageGeneratedFrom: '图片生成来源', author: '作者', sourceUrl: '来源 URL', notes: '备注', addNote: '新增备注', origin: '原文', markAsOriginal: '标记为原文', originalPromptHelp: '原文 prompt 通常最接近 sample image 的生成结果。',
+    imageGeneratedFrom: '图片生成来源', generatedWith: '生成自', author: '作者', sourceUrl: '来源 URL', notes: '备注', addNote: '新增备注', origin: '原文', markAsOriginal: '标记为原文', originalPromptHelp: '原文 prompt 通常最接近 sample image 的生成结果。',
     more: '显示更多',
     onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: '新增／编辑／生成需要本机安装，请在本机运行以建立你的私人 prompt library。', localInstallHighlights: '本机版支持私人编辑、多张生成及完整备份与还原', viewOnGitHub: '在 GitHub 查看',
     chooseLanguage: '选择界面语言', chooseLanguageHelp: '请选择你想使用的界面语言。', changeLanguageLater: '之后可在设置中更改。',
@@ -230,7 +230,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
     batchTagTitle: 'Tag selected references', batchMoveTitle: 'Move selected references', searchOrCreateTags: 'Search or create tags', selectedTags: 'Selected tags', createTag: 'Create “${tag}”', noTagsFound: 'No tags found', applyTags: 'Apply tags', moveReferences: 'Move references',
     primaryNavigation: 'Primary navigation', appHome: 'Image Prompt Library home', currentFilters: 'Current filters', preferredPromptLanguage: 'Preferred prompt language',
     collectionFilters: 'Collection filters', itemActions: 'Item actions', promptLanguage: 'Prompt language', promptText: 'Prompt text', source: 'Source', defaultModel: 'ChatGPT Image', localReference: 'Local reference',
-    imageGeneratedFrom: 'Image generated from', author: 'Author', sourceUrl: 'Source URL', notes: 'Notes', addNote: 'Add note', origin: 'Origin', markAsOriginal: 'Mark as origin', originalPromptHelp: 'The source/original prompt is usually closest to the sample image result.',
+    imageGeneratedFrom: 'Image generated from', generatedWith: 'Generated with', author: 'Author', sourceUrl: 'Source URL', notes: 'Notes', addNote: 'Add note', origin: 'Origin', markAsOriginal: 'Mark as origin', originalPromptHelp: 'The source/original prompt is usually closest to the sample image result.',
     more: 'Show more',
     onlineReadOnlyDemo: 'Online Read Only Demo', runLocallyForPrivateLibrary: 'Add/edit/generation require local install; run locally to create your private prompt library.', localInstallHighlights: 'Local install adds private editing, multi-image generation, and complete backup and restore', viewOnGitHub: 'View on GitHub',
     chooseLanguage: 'Choose your language', chooseLanguageHelp: 'Choose the interface language you want to use.', changeLanguageLater: 'You can change this later in Config.',

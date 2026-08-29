@@ -53,6 +53,8 @@ class StoredImageInput:
     width: int | None = None
     height: int | None = None
     file_sha256: str | None = None
+    generation_provider: str | None = None
+    generation_model: str | None = None
     role: str = "result_image"
 
 class ItemRepository:
@@ -386,8 +388,8 @@ class ItemRepository:
             iid = new_id("img")
             ts = now()
             order = conn.execute("SELECT COALESCE(MAX(sort_order),-1)+1 FROM images WHERE item_id=?", (item_id,)).fetchone()[0]
-            conn.execute("""INSERT INTO images(id,item_id,original_path,thumb_path,preview_path,remote_url,width,height,file_sha256,role,sort_order,created_at)
-                VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""", (iid,item_id,image.original_path,image.thumb_path,image.preview_path,image.remote_url,image.width,image.height,image.file_sha256,image.role,order,ts))
+            conn.execute("""INSERT INTO images(id,item_id,original_path,thumb_path,preview_path,remote_url,width,height,file_sha256,generation_provider,generation_model,role,sort_order,created_at)
+                VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)""", (iid,item_id,image.original_path,image.thumb_path,image.preview_path,image.remote_url,image.width,image.height,image.file_sha256,image.generation_provider,image.generation_model,image.role,order,ts))
             conn.commit()
         return self._image_by_id(iid)
 

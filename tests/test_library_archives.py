@@ -827,8 +827,10 @@ def test_known_older_schema_is_migrated_only_in_staging(tmp_path):
     with db.connect(active) as connection:
         ledger = [row[0] for row in connection.execute("SELECT version FROM schema_migrations ORDER BY rowid")]
         tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        image_columns = {row[1] for row in connection.execute("PRAGMA table_info(images)")}
     assert ledger == db.MIGRATIONS
     assert {"generation_sets", "provider_queue_states"}.issubset(tables)
+    assert {"generation_provider", "generation_model"}.issubset(image_columns)
     with db.connect(old_library) as connection:
         assert connection.execute("SELECT version FROM schema_migrations ORDER BY rowid").fetchall()[-1][0] == db.MIGRATIONS[-2]
 

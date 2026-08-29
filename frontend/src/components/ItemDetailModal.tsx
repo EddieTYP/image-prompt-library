@@ -34,6 +34,20 @@ function isReferenceImage(image?: ImageRecord) {
   return image?.role === 'reference_image';
 }
 
+function generationProviderLabel(provider?: string | null) {
+  if (!provider || provider === 'manual_upload') return '';
+  if (provider === 'openai_codex_oauth_native') return 'ChatGPT / Codex';
+  if (provider === 'xai') return 'xAI';
+  return provider.replace(/[_-]+/g, ' ').replace(/\b\w/g, character => character.toUpperCase());
+}
+
+function generationSourceLabel(image?: ImageRecord) {
+  if (!image) return '';
+  return [generationProviderLabel(image.generation_provider), image.generation_model]
+    .filter((value, index, values) => value && values.indexOf(value) === index)
+    .join(' · ');
+}
+
 function resolvePromptRecord<T extends { language: string; text: string }>(
   prompts: T[],
   selectedLanguage: string,
@@ -328,6 +342,7 @@ export default function ItemDetailModal({
   const uniqueImages = dedupeImages(item?.images || []);
   const primaryImage = selectPrimaryImage(uniqueImages);
   const selectedImage = uniqueImages.find(image => image.id === selectedImageId) || primaryImage;
+  const selectedImageGenerationSource = generationSourceLabel(selectedImage);
   const selectedImageIndex = selectedImage ? uniqueImages.findIndex(image => image.id === selectedImage.id) : -1;
   const heroStyle = selectedImage?.width && selectedImage.height
     ? ({ '--detail-image-aspect-ratio': `${selectedImage.width} / ${selectedImage.height}` } as CSSProperties)
@@ -596,6 +611,12 @@ export default function ItemDetailModal({
                     </a>
                   )}
                 </p>
+                {selectedImageGenerationSource && (
+                  <p className="image-generation-provenance">
+                    <span>{t('generatedWith')}</span>
+                    <strong>{selectedImageGenerationSource}</strong>
+                  </p>
+                )}
 
                 <div className="prompt-blocks" aria-label={t('promptLanguage')}>
                   {(() => {

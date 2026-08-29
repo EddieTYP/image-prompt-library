@@ -39,6 +39,7 @@ class GenerationJobConflict(ValueError):
 
 
 MAX_GENERATION_INPUT_IMAGES = 4
+PreparedReferenceImage = tuple[bytes, str, str | None, str | None, str | None]
 STALE_RUNNING_JOB_AFTER = timedelta(minutes=10)
 STALE_RUNNING_JOB_ERROR = "Generation took too long and may have stalled. Retry to run it again."
 GENERATION_RESULT_ROOT = "generation-results"
@@ -915,19 +916,35 @@ class GenerationJobRepository:
             return []
         return [raw for raw in raw_images[:MAX_GENERATION_INPUT_IMAGES] if isinstance(raw, dict)]
 
+    def _generation_job_provenance(self, source_job_id: object) -> tuple[str | None, str | None]:
+        if not isinstance(source_job_id, str) or not source_job_id:
+            return None, None
+        with connect(self.library_path) as conn:
+            row = conn.execute(
+                "SELECT provider, model FROM generation_jobs WHERE id=?",
+                (source_job_id,),
+            ).fetchone()
+        if row is None:
+            return None, None
+        provider = str(row["provider"]).strip() if row["provider"] else None
+        model = str(row["model"]).strip() if row["model"] else None
+        return provider or None, model or None
+
     def _prepare_input_reference_images(
         self,
         job: GenerationJobRecord,
         *,
         claim_token: str | None = None,
-    ) -> list[tuple[bytes, str, str | None]]:
-        prepared: list[tuple[bytes, str, str | None]] = []
+    ) -> list[PreparedReferenceImage]:
+        prepared: list[PreparedReferenceImage] = []
         for index, spec in enumerate(self._input_image_specs(job)):
             if claim_token is not None:
                 self._require_acceptance_claim(job.id, claim_token)
             name = str(spec.get("name") or f"generation-reference-{index + 1}.png")
             data: bytes | None = None
             source_image_id: str | None = None
+            generation_provider: str | None = None
+            generation_model: str | None = None
             image_id = spec.get("image_id")
             if spec.get("source") == "library" and isinstance(image_id, str) and image_id:
                 result_path = spec.get("result_path")
@@ -939,10 +956,17 @@ class GenerationJobRepository:
                     )
                     data = source_path.read_bytes()
                     name = Path(result_path).name
+                    try:
+                        source_image = self.items.get_image(image_id)
+                    except KeyError:
+                        source_image = None
                 else:
-                    image, source_path, _ = self.resolve_library_reference(image_id)
+                    source_image, source_path, _ = self.resolve_library_reference(image_id)
                     data = source_path.read_bytes()
-                    name = Path(image.original_path).name
+                    name = Path(source_image.original_path).name
+                if source_image is not None:
+                    generation_provider = source_image.generation_provider
+                    generation_model = source_image.generation_model
                 source_image_id = image_id
             result_path = spec.get("result_path")
             if data is None and isinstance(result_path, str) and result_path:
@@ -962,7 +986,11 @@ class GenerationJobRepository:
                     raise GenerationJobConflict("Generation edit input image contains invalid image data") from exc
             if data:
                 _validate_storeable_image_bytes(data)
-                prepared.append((data, name, source_image_id))
+                if generation_provider is None and generation_model is None:
+                    generation_provider, generation_model = self._generation_job_provenance(
+                        spec.get("source_generation_job_id")
+                    )
+                prepared.append((data, name, source_image_id, generation_provider, generation_model))
         return prepared
 
     def _remove_unreferenced_image_files(self, paths: set[str]) -> None:
@@ -1088,7 +1116,7 @@ class GenerationJobRepository:
 
     def _store_input_reference_images(
         self,
-        prepared_images: list[tuple[bytes, str, str | None]],
+        prepared_images: list[PreparedReferenceImage],
         item_id: str,
         *,
         copy_library_images: bool,
@@ -1108,7 +1136,7 @@ class GenerationJobRepository:
                 self._remove_unreferenced_image_files(paths)
             self._remove_created_images(item_id, [*created_images, *(extra_images or [])])
 
-        for data, name, source_image_id in prepared_images:
+        for data, name, source_image_id, generation_provider, generation_model in prepared_images:
             if not claim_still_owned():
                 cleanup_lost_claim()
                 raise GenerationJobConflict("Generation job acceptance claim is no longer owned")
@@ -1137,6 +1165,8 @@ class GenerationJobRepository:
                 width=stored.width,
                 height=stored.height,
                 file_sha256=stored.file_sha256,
+                generation_provider=generation_provider,
+                generation_model=generation_model,
                 role="reference_image",
             )
             existing = self._find_existing_image(item_id, image_input)
@@ -1390,6 +1420,8 @@ class GenerationJobRepository:
                 width=result_stored.width,
                 height=result_stored.height,
                 file_sha256=result_stored.file_sha256,
+                generation_provider=job.provider,
+                generation_model=job.model,
                 role="result_image",
             )
             image = None
@@ -1555,6 +1587,8 @@ class GenerationJobRepository:
                 width=result_stored.width,
                 height=result_stored.height,
                 file_sha256=result_stored.file_sha256,
+                generation_provider=job.provider,
+                generation_model=job.model,
                 role="result_image",
             )
             image = None
