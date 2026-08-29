@@ -73,7 +73,7 @@ const QUALITY_OPTIONS = [
   { value: 'high', label: 'High' },
 ];
 
-const DEFAULT_MAX_EDIT_ATTACHMENTS = 4;
+const MAX_EDIT_ATTACHMENTS = 4;
 const MAX_OPEN_CONTEXT_ACTIVE_FETCHES = 16;
 const HISTORY_FOCUSABLE_SELECTOR = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 const SAVE_NEW_LANGUAGE_OPTIONS = [
@@ -288,7 +288,7 @@ export default function GenerationPanel({
   const [orchestratorModel, setOrchestratorModel] = useState('gpt-5.6-terra');
   const [aspectRatio, setAspectRatio] = useState('auto');
   const [quality, setQuality] = useState('high');
-  const [openControl, setOpenControl] = useState<'aspect' | 'quality' | 'model' | 'provider' | null>(null);
+  const [openControl, setOpenControl] = useState<'aspect' | 'quality' | 'model' | null>(null);
   const [generationCountMenuOpen, setGenerationCountMenuOpen] = useState(false);
   const [cancelSetBusy, setCancelSetBusy] = useState(false);
   const [queueClock, setQueueClock] = useState(() => Date.now());
@@ -338,7 +338,7 @@ export default function GenerationPanel({
   const generationCountTriggerRef = useRef<HTMLButtonElement | null>(null);
   const generationCountFocusOnOpenRef = useRef(false);
   const generationCountCloseTimerRef = useRef<number | undefined>(undefined);
-  const controlTriggerRefs = useRef<Record<'aspect' | 'quality' | 'model' | 'provider', HTMLButtonElement | null>>({ aspect: null, quality: null, model: null, provider: null });
+  const controlTriggerRefs = useRef<Record<'aspect' | 'quality' | 'model', HTMLButtonElement | null>>({ aspect: null, quality: null, model: null });
   const referenceAddTriggerRef = useRef<HTMLButtonElement | null>(null);
   const referenceAddWrapRef = useRef<HTMLDivElement | null>(null);
   const historyTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -422,11 +422,6 @@ export default function GenerationPanel({
   const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6-luna'];
   const recommendedOrchestratorModel = selectedProvider?.default_orchestrator_model || orchestratorModels[0];
   const orchestratorModelLabel = (model: string) => model === recommendedOrchestratorModel ? `${t('generationRecommended')} · ${model}` : model;
-  const providerQualityOptions = QUALITY_OPTIONS.filter(option => !selectedProvider?.quality_options?.length || selectedProvider.quality_options.includes(option.value));
-  const providerMaxInputImages = selectedProvider?.max_input_images || DEFAULT_MAX_EDIT_ATTACHMENTS;
-  const hasExcessInputImages = editAttachments.length > providerMaxInputImages;
-  const selectedImageModel = selectedProvider?.default_image_model || selectedProvider?.image_models?.[0] || (provider === 'openai_codex_oauth_native' ? 'gpt-image-2' : '');
-  const selectedModelLabel = provider === 'openai_codex_oauth_native' ? orchestratorModelLabel(orchestratorModel) : selectedImageModel;
   const templateVariables = useMemo(() => promptVariablesEnabled ? extractPromptTemplateVariableRecords(promptText) : [], [promptVariablesEnabled, promptText]);
   const [templateValues, setTemplateValues] = useState<Record<string, string>>({});
   const hasTemplateVariables = templateVariables.length > 0;
@@ -439,16 +434,6 @@ export default function GenerationPanel({
   const isHistoryReview = Boolean(historyReviewJob);
   const canUseResultActions = (job?: GenerationJobRecord) => Boolean(job && job.status === 'succeeded' && !job.accepted_image_id && job.result_path);
   const canDiscardTransientResult = (job?: GenerationJobRecord) => canUseResultActions(job) && Boolean(job?.result_path?.startsWith(`generation-results/${job.id}/`));
-  const selectGenerationProvider = (nextProvider: GenerationProviderStatus) => {
-    setProvider(nextProvider.provider);
-    if (nextProvider.provider === 'openai_codex_oauth_native') {
-      setOrchestratorModel(nextProvider.default_orchestrator_model || nextProvider.orchestrator_models?.[0] || 'gpt-5.6-terra');
-    }
-    if (nextProvider.quality_options?.length && !nextProvider.quality_options.includes(quality)) {
-      setQuality(nextProvider.default_quality || nextProvider.quality_options[0]);
-    }
-    closeGenerationControl('provider');
-  };
   const ensureBatchReviewSession = (job?: GenerationJobRecord) => {
     if (!job?.generation_group_id || (job.generation_group_size || 1) <= 1) return undefined;
     batchReviewCursorJobIdRef.current = job.id;
@@ -625,7 +610,6 @@ export default function GenerationPanel({
         if (firstReady) {
           setProvider(firstReady.provider);
           setOrchestratorModel(firstReady.default_orchestrator_model || firstReady.orchestrator_models?.[0] || 'gpt-5.6-terra');
-          setQuality(firstReady.default_quality || (firstReady.quality_options?.includes('high') ? 'high' : firstReady.quality_options?.[0]) || 'high');
         }
       })
       .catch(() => {
@@ -886,7 +870,7 @@ export default function GenerationPanel({
 
   const createJob = async (count: GenerationSetCount = 1) => {
     const prompt = promptText.trim();
-    if (!prompt || hasMissingTemplateValues || !resolvedPrompt || !selectedProviderCanGenerate || hasExcessInputImages || (provider === 'manual_upload' && count !== 1)) return;
+    if (!prompt || hasMissingTemplateValues || !resolvedPrompt || !selectedProviderCanGenerate || (provider === 'manual_upload' && count !== 1)) return;
     const preservePausedReview = Boolean(batchReviewSession && batchReviewPaused);
     setBusy(true);
     setMessage('');
@@ -908,7 +892,7 @@ export default function GenerationPanel({
         source_item_id: item?.id,
         mode: attachments.length > 0 ? 'image_edit' : 'text_to_image',
         provider,
-        model: selectedImageModel || null,
+        model: provider === 'openai_codex_oauth_native' ? 'gpt-image-2' : null,
         prompt_language: defaultPromptLanguage,
         prompt_text: sourcePrompt,
         edited_prompt_text: jobEditedPromptText,
@@ -917,7 +901,7 @@ export default function GenerationPanel({
           requested_aspect_ratio: aspectRatio,
           aspect_ratio_prompt_injection: aspectRatio !== 'auto',
           quality,
-          ...(provider === 'openai_codex_oauth_native' ? { orchestrator_model: orchestratorModel } : {}),
+          orchestrator_model: orchestratorModel,
           input_images: attachments,
           ...templateParameters,
         },
@@ -1284,7 +1268,7 @@ export default function GenerationPanel({
   const addUploadedAttachments = async (files: FileList | null) => {
     const nextFiles = Array.from(files || []).filter(file => file.type.startsWith('image/'));
     if (nextFiles.length === 0) return;
-    const slots = providerMaxInputImages - editAttachments.length;
+    const slots = MAX_EDIT_ATTACHMENTS - editAttachments.length;
     const limitedFiles = nextFiles.slice(0, Math.max(0, slots));
     try {
       const loaded = await Promise.all(limitedFiles.map(file => new Promise<EditAttachment>((resolve, reject) => {
@@ -1293,9 +1277,9 @@ export default function GenerationPanel({
         reader.onerror = () => reject(reader.error || new Error(t('attachmentReadFailed')));
         reader.readAsDataURL(file);
       })));
-      setEditAttachments(current => [...current, ...loaded].slice(0, providerMaxInputImages));
+      setEditAttachments(current => [...current, ...loaded].slice(0, MAX_EDIT_ATTACHMENTS));
       setMessage(loaded.length < nextFiles.length
-        ? t('attachmentsAdded').replace('${count}', String(loaded.length)).replace('${limit}', String(providerMaxInputImages))
+        ? t('attachmentsAdded').replace('${count}', String(loaded.length)).replace('${limit}', String(MAX_EDIT_ATTACHMENTS))
         : t('attachmentAdded'));
     } catch {
       setMessage(t('attachmentReadFailed'));
@@ -1320,7 +1304,7 @@ export default function GenerationPanel({
 
   const addLibraryAttachment = (image: ImageRecord, title: string) => {
     setEditAttachments(current => {
-      if (current.length >= providerMaxInputImages || current.some(attachment => attachment.imageId === image.id)) return current;
+      if (current.length >= MAX_EDIT_ATTACHMENTS || current.some(attachment => attachment.imageId === image.id)) return current;
       return [...current, libraryAttachment(image, title)];
     });
   };
@@ -1384,7 +1368,7 @@ export default function GenerationPanel({
   };
 
   const addResultAsAttachment = (job: GenerationJobRecord, pauseBatchReview = false) => {
-    if (!job.result_path || editAttachments.length >= providerMaxInputImages) return;
+    if (!job.result_path || editAttachments.length >= MAX_EDIT_ATTACHMENTS) return;
     const reviewSession = pauseBatchReview ? ensureBatchReviewSession(job) : undefined;
     setEditAttachments(current => {
       if (current.some(attachment => attachment.resultPath === job.result_path)) return current;
@@ -1395,7 +1379,7 @@ export default function GenerationPanel({
         previewUrl: jobResultUrl(job),
         resultPath: job.result_path || undefined,
       };
-      return [...current, resultAttachment].slice(0, providerMaxInputImages);
+      return [...current, resultAttachment].slice(0, MAX_EDIT_ATTACHMENTS);
     });
     setHistoryReviewJobId(undefined);
     if (reviewSession) setBatchReviewPaused(true);
@@ -1708,7 +1692,7 @@ export default function GenerationPanel({
     <div className={`generation-reference-tray${readOnly ? ' is-readonly' : ''}`} aria-label={readOnly ? t('generationReferencesUsed') : t('generationReferences')}>
       <div className="generation-reference-tray-head">
         <strong>{readOnly ? t('generationReferencesUsed') : t('generationReferences')}</strong>
-        <span>{attachments.length} / {readOnly ? Math.max(attachments.length, providerMaxInputImages) : providerMaxInputImages}</span>
+        <span>{attachments.length} / {MAX_EDIT_ATTACHMENTS}</span>
       </div>
       <div className="generation-reference-row">
         <div className="generation-reference-items">
@@ -1730,7 +1714,7 @@ export default function GenerationPanel({
           </div>
           ))}
         </div>
-        {!readOnly && attachments.length < providerMaxInputImages && (
+        {!readOnly && attachments.length < MAX_EDIT_ATTACHMENTS && (
           <div ref={referenceAddWrapRef} className="generation-reference-add-wrap">
             <button ref={referenceAddTriggerRef} type="button" className="generation-reference-add" onClick={() => setReferenceMenuOpen(current => !current)} aria-label={t('addGenerationReference')} aria-haspopup="menu" aria-expanded={referenceMenuOpen}><Plus size={16} /> {t('add')}</button>
             {referenceMenuOpen && (
@@ -1762,7 +1746,7 @@ export default function GenerationPanel({
       <button ref={saveAsNewTriggerRef} className="stage-action" onClick={() => openSaveAsNewReview(job)} disabled={busy} aria-label={t('saveAsNewItem')} title={t('saveAsNewItem')}>
         <FilePlus2 size={16} aria-hidden="true" />
       </button>
-      <button className="stage-action" onClick={() => addResultAsAttachment(job, true)} disabled={busy || editAttachments.length >= providerMaxInputImages || !job.result_path} aria-label={t('useResultAsEditInput')} title={t('useResultAsEditInput')}>
+      <button className="stage-action" onClick={() => addResultAsAttachment(job, true)} disabled={busy || editAttachments.length >= MAX_EDIT_ATTACHMENTS || !job.result_path} aria-label={t('useResultAsEditInput')} title={t('useResultAsEditInput')}>
         <Plus size={16} aria-hidden="true" />
       </button>
       <button className="stage-action" onClick={() => discardAndRetryJob(job)} disabled={busy} aria-label={t('retry')} title={t('retry')}>
@@ -2060,7 +2044,7 @@ export default function GenerationPanel({
                     </button>
                     {openControl === 'quality' && (
                       <div className="generation-control-popover" role="menu">
-                        {providerQualityOptions.map(option => {
+                        {QUALITY_OPTIONS.map(option => {
                           const selected = quality === option.value;
                           return (
                             <button key={option.value} type="button" role="menuitemradio" aria-checked={selected} className={selected ? 'is-selected' : ''} onClick={() => { setQuality(option.value); closeGenerationControl('quality'); }}>
@@ -2073,9 +2057,9 @@ export default function GenerationPanel({
                     )}
                   </div>
                   <div className="generation-control-wrap generation-model-control">
-                     <button ref={element => { controlTriggerRefs.current.model = element; }} className="generation-control-trigger generation-model-trigger generation-has-long-value" type="button" onClick={() => setOpenControl(openControl === 'model' ? null : 'model')} disabled={provider !== 'openai_codex_oauth_native' || orchestratorModels.length < 2} aria-label={`${t('queueModel')}: ${selectedModelLabel}`} title={selectedModelLabel}>
+                     <button ref={element => { controlTriggerRefs.current.model = element; }} className="generation-control-trigger generation-model-trigger generation-has-long-value" type="button" onClick={() => setOpenControl(openControl === 'model' ? null : 'model')} disabled={provider !== 'openai_codex_oauth_native'} aria-label={`${t('queueModel')}: ${orchestratorModelLabel(orchestratorModel)}`} title={orchestratorModelLabel(orchestratorModel)}>
                       <img className="generation-control-icon" src={brainAiIcon} alt="" aria-hidden="true" />
-                      <span className="generation-control-value">{selectedModelLabel}</span>
+                      <span className="generation-control-value">{orchestratorModelLabel(orchestratorModel)}</span>
                     </button>
                     {openControl === 'model' && (
                       <div className="generation-control-popover" role="menu">
@@ -2095,35 +2079,7 @@ export default function GenerationPanel({
                     )}
                   </div>
                   <input ref={attachmentInputRef} className="generation-attachment-input" type="file" accept="image/*" multiple onChange={event => addUploadedAttachments(event.currentTarget.files)} />
-                  <div className="generation-provider-status generation-provider-control">
-                    <button
-                      ref={element => { controlTriggerRefs.current.provider = element; }}
-                      className="generation-provider-trigger"
-                      type="button"
-                      onClick={() => setOpenControl(openControl === 'provider' ? null : 'provider')}
-                      aria-label={`${t('providerPicker')}: ${selectedProvider?.display_name || provider}`}
-                      aria-haspopup="menu"
-                      aria-expanded={openControl === 'provider'}
-                    >
-                      <span>{selectedProvider?.display_name || provider}</span>
-                      <ChevronDown size={14} aria-hidden="true" />
-                    </button>
-                    {openControl === 'provider' && (
-                      <div className="generation-control-popover generation-provider-popover" role="menu" aria-label={t('providerPicker')}>
-                        {providers.map(option => {
-                          const selected = provider === option.provider;
-                          return (
-                            <button key={option.provider} type="button" role="menuitemradio" aria-checked={selected} className={selected ? 'is-selected' : ''} onClick={() => selectGenerationProvider(option)}>
-                              <span className="generation-provider-option-copy">
-                                <strong>{option.display_name}</strong>
-                                <small>{compactProviderReadinessLabel(option, t)}</small>
-                              </span>
-                              {selected && <Check className="generation-control-option-check" size={15} aria-hidden="true" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                  <div className="generation-provider-status">
                     <span className={`generation-provider-readiness ${selectedProviderCanGenerate ? 'is-ready' : 'needs-attention'}`} title={selectedProviderMessage} aria-label={selectedProviderMessage}>
                       {compactProviderMessage}
                     </span>
@@ -2151,7 +2107,7 @@ export default function GenerationPanel({
                       className="primary generation-primary-action"
                       type="button"
                       onClick={() => createJob(1)}
-                      disabled={busy || !selectedProviderCanGenerate || hasExcessInputImages || !promptText.trim() || hasMissingTemplateValues}
+                      disabled={busy || !selectedProviderCanGenerate || !promptText.trim() || hasMissingTemplateValues}
                        aria-label={`${t('generate')} 1`}
                      >{t('generate')}</button>
                     <button
@@ -2178,7 +2134,7 @@ export default function GenerationPanel({
                           generationCountFocusOnOpenRef.current = true;
                           setGenerationCountMenuOpen(true);
                         }}
-                        disabled={busy || !selectedProviderCanGenerate || hasExcessInputImages || !promptText.trim() || hasMissingTemplateValues}
+                        disabled={busy || !selectedProviderCanGenerate || !promptText.trim() || hasMissingTemplateValues}
                       ><ChevronDown size={17} aria-hidden="true" /></button>
                     {generationCountMenuOpen && (
                        <div id="generation-count-menu" className="generation-count-menu" role="menu" aria-label={t('generateVariations')}>
@@ -2193,9 +2149,6 @@ export default function GenerationPanel({
                   </div>
                     <button ref={historyTriggerRef} className="generation-history-control" onClick={openHistoryDrawer} aria-label={t('history')} title={t('history')} type="button"><Clock3 size={17} /></button>
                 </div>
-                {hasExcessInputImages && (
-                  <p className="generation-reference-limit" role="alert">{t('providerReferenceLimit').replace('${provider}', selectedProvider?.display_name || provider).replace('${limit}', String(providerMaxInputImages))}</p>
-                )}
                 {selectedProviderQueueState && selectedProviderPauseSeconds > 0 && (
                    <section className="generation-provider-pause" aria-label={`${t('generationQueuePaused')}: ${selectedProviderQueueState.paused_until || ''}`}>
                      <strong>{t('generationQueuePaused')}</strong>
@@ -2252,7 +2205,7 @@ export default function GenerationPanel({
             <section ref={referencePickerDialogRef} className="generation-reference-picker" role="dialog" aria-modal="true" aria-label={referencePicker === 'library' ? t('chooseImagesFromLibrary') : t('chooseRecentGenerationResult')} onClick={event => event.stopPropagation()} onKeyDown={handleReferencePickerKeyDown} tabIndex={-1}>
               <div className="drawer-head">
                 <div>
-                <p className="drawer-eyebrow">{t('generationReferences')} · {editAttachments.length} / {providerMaxInputImages}</p>
+                <p className="drawer-eyebrow">{t('generationReferences')} · {editAttachments.length} / {MAX_EDIT_ATTACHMENTS}</p>
                 <h3>{referencePicker === 'library' ? t('chooseFromLibrary') : t('chooseRecentResult')}</h3>
                 </div>
                 <button className="modal-icon-button" type="button" onClick={closeReferencePicker} aria-label={t('closeReferencePicker')}><X size={20} /></button>
@@ -2279,7 +2232,7 @@ export default function GenerationPanel({
                     {libraryItem.images.map(image => {
                       const selected = editAttachments.some(attachment => attachment.imageId === image.id);
                       return (
-                        <button type="button" className={`generation-reference-picker-card${selected ? ' is-selected' : ''}`} key={image.id} onClick={() => addLibraryAttachment(image, libraryItem.title)} disabled={selected || editAttachments.length >= providerMaxInputImages}>
+                        <button type="button" className={`generation-reference-picker-card${selected ? ' is-selected' : ''}`} key={image.id} onClick={() => addLibraryAttachment(image, libraryItem.title)} disabled={selected || editAttachments.length >= MAX_EDIT_ATTACHMENTS}>
                           <img src={mediaUrl(image.preview_path || image.thumb_path || image.original_path)} alt="" loading="lazy" />
                           <span><b>{image.role === 'reference_image' ? t('reference') : t('result')}</b><em>{selected ? t('selected') : t('addReference')}</em></span>
                         </button>
@@ -2293,7 +2246,7 @@ export default function GenerationPanel({
                   {recentJobs.map(job => {
                     const selected = editAttachments.some(attachment => attachment.resultPath === job.result_path);
                     return (
-                      <button type="button" className={`generation-reference-picker-card${selected ? ' is-selected' : ''}`} key={job.id} onClick={() => addResultAsAttachment(job)} disabled={selected || editAttachments.length >= providerMaxInputImages}>
+                      <button type="button" className={`generation-reference-picker-card${selected ? ' is-selected' : ''}`} key={job.id} onClick={() => addResultAsAttachment(job)} disabled={selected || editAttachments.length >= MAX_EDIT_ATTACHMENTS}>
                         {job.result_path && <img src={jobResultUrl(job)} alt="" loading="lazy" />}
                         <span><b>{jobPrompt(job) || t('generatedResult')}</b><em>{selected ? t('selected') : t('generatedResult')}</em></span>
                       </button>

@@ -14,7 +14,7 @@
 
 **Image Prompt Library** is a local-first visual library for generated images and the prompts behind them. Save useful image results, preserve the prompt and source metadata, organize references into collections and tags, and find them again as an image-first catalogue.
 
-Your stored private library stays on your machine: local SQLite, local image files, no hosted database, no built-in cloud sync, and no account required. Generation sends only the prompt and reference images you choose to the selected provider.
+Your private library stays on your machine: local SQLite, local image files, no hosted database, no built-in cloud sync, and no account required.
 
 <p align="center">
   <img src="docs/assets/screenshots/local-app-library-overview.jpg" alt="Library view with saved image and prompt cards" width="100%" />
@@ -25,7 +25,7 @@ Your stored private library stays on your machine: local SQLite, local image fil
 
 Image Prompt Library is built for the moment when image-generation prompts become reusable knowledge rather than one-off chat messages.
 
-If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate images through a configured provider while keeping your SQLite database and saved image files on your own computer.
+If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate new images through ChatGPT / Codex OAuth while keeping your SQLite database and image files on your own computer.
 
 Current stable release: [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest). It includes native Windows installation, structured search and sorting, batch reference management, cleanup tools, versioned install/update/rollback, a calmer first-run experience, and hardened OAuth session recovery for optional local generation.
 
@@ -87,7 +87,7 @@ For update, rollback, service mode, uninstall, WSL, and source-development setup
 - **Preserve prompt provenance:** keep original/source prompt variants and translated or converted variants side by side.
 - **Manage a private library:** add/edit your own prompt cards, result images, optional reference images, tags, notes, source URLs, and collections.
 - **Copy reusable prompts:** open an item, choose the prompt language/source variant, and copy it with one click.
-- **Generate locally:** use optional ChatGPT / Codex OAuth or an xAI Grok Imagine API key, fill `{{variables}}` in reusable prompts, generate 1, 3, 5, or 10 results, then review each result to save, discard, retry, or attach it to its unchanged source item when available.
+- **Generate locally:** connect optional ChatGPT / Codex OAuth in a local install with a ChatGPT subscription that has image-generation access, fill `{{variables}}` in reusable prompts, generate 1, 3, 5, or 10 results, then review each result to save, discard, retry, or attach it to its unchanged source item when available.
 - **Stay local-first:** your database and image files remain in your local library directory.
 
 <p align="center">
@@ -122,7 +122,7 @@ Select multiple cards to favorite, move, archive, restore, or delete references 
 
 ## Local generation
 
-Local installs can use ChatGPT / Codex OAuth without adding an OpenAI API key to the app. They can also use a separately billed xAI Grok Imagine API key. Provider-specific setup, privacy, pricing, quality, and reference limits are explained in the generation guide.
+Local installs can optionally connect ChatGPT / Codex OAuth and generate images without adding an OpenAI API key to the app. You will need a ChatGPT account/subscription with access to image generation.
 
 Basic flow:
 
@@ -163,7 +163,7 @@ For sample package details and checksums, see [`sample-data/README.md`](sample-d
 ## Documentation
 
 - [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — install, update, rollback, service mode, uninstall, platform notes.
-- [`docs/GENERATION.md`](docs/GENERATION.md) — provider setup, generation workflow, result review, privacy, pricing, and current limitations.
+- [`docs/GENERATION.md`](docs/GENERATION.md) — ChatGPT / Codex OAuth generation workflow, result review, current limitations, benchmark link.
 - [`docs/BACKUP_AND_RESTORE.md`](docs/BACKUP_AND_RESTORE.md) — portable backup payload, credential boundary, validation, and safe restore behavior.
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — source setup, dev mode, configuration, data layout, backups.
 - [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — common runtime and setup issues.

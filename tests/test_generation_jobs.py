@@ -2694,10 +2694,7 @@ def test_app_startup_marks_interrupted_running_jobs_failed_and_drains_queued(tmp
     assert "Retry" in recovered_running.error
     assert recovered_queued.status == "queued"
     assert untouched_manual.status == "queued"
-    assert enqueue_calls == [
-        (library, "openai_codex_oauth_native"),
-        (library, "xai_api"),
-    ]
+    assert enqueue_calls == [(library, "openai_codex_oauth_native")]
 
 
 def test_generation_queue_runs_at_most_five_native_jobs(tmp_path, monkeypatch):
@@ -3007,10 +3004,10 @@ def test_synchronous_rate_limit_is_not_recorded_twice_and_schedules_resume(tmp_p
     from backend.services.openai_codex_native import CodexNativeRateLimitError
 
     c = client(tmp_path)
-    job = GenerationJobRepository(tmp_path / "library").create_job(GenerationJobCreate(
-        provider="openai_codex_oauth_native",
-        prompt_text="rate limited",
-    ))
+    job = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "rate limited",
+    }).json()
     enqueued = []
 
     def raise_rate_limit(library_path, _job_id):
@@ -3023,7 +3020,7 @@ def test_synchronous_rate_limit_is_not_recorded_twice_and_schedules_resume(tmp_p
         "_continue_generation_queue",
         lambda library_path, provider: enqueued.append((library_path, provider)),
     )
-    response = c.post(f"/api/generation-jobs/{job.id}/run")
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
     assert response.status_code == 409
     assert enqueued == [(tmp_path / "library", "openai_codex_oauth_native")]
     state = GenerationJobRepository(tmp_path / "library").get_provider_queue_state("openai_codex_oauth_native")
@@ -3041,20 +3038,20 @@ def test_synchronous_success_continues_queued_provider_jobs(tmp_path, monkeypatc
     from backend.routers import generation_jobs as generation_jobs_router
 
     c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "completed synchronously",
+    }).json()
     repo = GenerationJobRepository(tmp_path / "library")
-    job = repo.create_job(GenerationJobCreate(
-        provider="openai_codex_oauth_native",
-        prompt_text="completed synchronously",
-    ))
     enqueued = []
-    monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", lambda *_args: repo.get_job(job.id))
+    monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", lambda *_args: repo.get_job(job["id"]))
     monkeypatch.setattr(
         generation_jobs_router,
         "_continue_generation_queue",
         lambda library_path, provider: enqueued.append((library_path, provider)),
     )
 
-    response = c.post(f"/api/generation-jobs/{job.id}/run")
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
     assert response.status_code == 200
     assert enqueued == [(tmp_path / "library", "openai_codex_oauth_native")]
 
@@ -3066,10 +3063,10 @@ def test_synchronous_rate_limit_preserves_409_when_queue_database_is_locked(tmp_
     from backend.services.openai_codex_native import CodexNativeRateLimitError
 
     c = client(tmp_path)
-    job = GenerationJobRepository(tmp_path / "library").create_job(GenerationJobCreate(
-        provider="openai_codex_oauth_native",
-        prompt_text="rate limited with locked queue",
-    ))
+    job = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "rate limited with locked queue",
+    }).json()
 
     def raise_rate_limit(_library_path, _job_id):
         raise CodexNativeRateLimitError("Generation is temporarily rate limited", retry_after_seconds=0)
@@ -3087,7 +3084,7 @@ def test_synchronous_rate_limit_preserves_409_when_queue_database_is_locked(tmp_
         lambda library_path, provider, delay: scheduled.append((library_path, provider, delay)),
     )
 
-    response = c.post(f"/api/generation-jobs/{job.id}/run")
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
     assert response.status_code == 409
     assert response.json()["detail"] == "Generation is temporarily rate limited"
     assert scheduled == [(
@@ -3103,13 +3100,13 @@ def test_synchronous_success_preserves_result_when_queue_database_is_locked(tmp_
     from backend.services import generation_queue
 
     c = client(tmp_path)
+    job = c.post("/api/generation-jobs", json={
+        "provider": "manual_upload",
+        "prompt_text": "completed with locked queue",
+    }).json()
     repo = GenerationJobRepository(tmp_path / "library")
-    job = repo.create_job(GenerationJobCreate(
-        provider="openai_codex_oauth_native",
-        prompt_text="completed with locked queue",
-    ))
     scheduled = []
-    monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", lambda *_args: repo.get_job(job.id))
+    monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", lambda *_args: repo.get_job(job["id"]))
     monkeypatch.setattr(
         generation_queue,
         "enqueue_generation_jobs",
@@ -3121,9 +3118,9 @@ def test_synchronous_success_preserves_result_when_queue_database_is_locked(tmp_
         lambda library_path, provider, delay: scheduled.append((library_path, provider, delay)),
     )
 
-    response = c.post(f"/api/generation-jobs/{job.id}/run")
+    response = c.post(f"/api/generation-jobs/{job['id']}/run")
     assert response.status_code == 200
-    assert response.json()["id"] == job.id
+    assert response.json()["id"] == job["id"]
     assert scheduled == [(
         tmp_path / "library",
         "openai_codex_oauth_native",

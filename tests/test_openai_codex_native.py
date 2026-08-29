@@ -135,10 +135,6 @@ def test_codex_native_status_uses_local_config_client_id_and_lists_optional_prov
     codex = next(provider for provider in providers if provider["provider"] == "openai_codex_oauth_native")
     assert codex["optional"] is True
     assert codex["state"] == "not_connected"
-    xai = next(provider for provider in providers if provider["provider"] == "xai_api")
-    assert xai["optional"] is True
-    assert xai["state"] == "not_configured"
-    assert xai["default_image_model"] == "grok-imagine-image-2.0"
 
 
 def test_codex_native_disconnect_removes_only_app_auth_store(tmp_path, monkeypatch):

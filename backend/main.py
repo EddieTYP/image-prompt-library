@@ -9,7 +9,7 @@ from .config import APP_VERSION, resolve_hidden_features, resolve_library_path, 
 from .db import get_db_path, init_db
 from .routers import app_updates, cleanup, clusters, generation_jobs, generation_providers, images, import_drafts, items, tags
 from .services.library_archives import LibraryOperationLock
-from .services.generation_queue import AUTOMATED_PROVIDER_IDS, enqueue_generation_jobs, recover_interrupted_generation_jobs
+from .services.generation_queue import PROVIDER_ID as NATIVE_GENERATION_PROVIDER_ID, enqueue_generation_jobs, recover_interrupted_generation_jobs
 
 DEFAULT_FRONTEND_DIST_PATH = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 
@@ -79,9 +79,8 @@ def create_app(library_path: Path | str | None = None, frontend_dist_path: Path 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         with LibraryOperationLock(library):
-            for provider in AUTOMATED_PROVIDER_IDS:
-                recover_interrupted_generation_jobs(library, provider=provider)
-                enqueue_generation_jobs(library, provider=provider)
+            recover_interrupted_generation_jobs(library)
+            enqueue_generation_jobs(library, provider=NATIVE_GENERATION_PROVIDER_ID)
             yield
 
     app = FastAPI(title="Image Prompt Library", version=APP_VERSION, lifespan=lifespan)

@@ -80,7 +80,7 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 - **保存来源脉络：** 原始 prompt、来源资料、翻译或转换后的 variant 可以放在同一张卡片。
 - **管理私人 library：** 新增 / 编辑自己的 prompt card、结果图、reference image、tag、note、source URL 和 collection。
 - **一键复制 prompt：** 打开 item，选择语言或来源 variant，直接复制。
-- **本地生成：** 本地安装版可选择 ChatGPT / Codex OAuth 或 xAI Grok Imagine API key，一次生成 1、3、5 或 10 张图片，再连续检查每个结果并选择保存、丢弃或重试；如果结果来自未修改的已保存参考，也可以附加回原参考。
+- **本地生成：** 本地安装版可选择连接 ChatGPT / Codex OAuth，一次生成 1、3、5 或 10 张图片，再连续检查每个结果并选择保存、丢弃或重试；如果结果来自未修改的已保存参考，也可以附加回原参考。
 - **保持 local-first：** database 和图片文件都留在本地 library directory。
 
 <p align="center">
@@ -111,7 +111,7 @@ awesome-gpt-image-2
 
 ## 本地生成
 
-本地安装版可使用 ChatGPT / Codex OAuth，不需要在 app 里放 OpenAI API key；也可使用单独计费的 xAI Grok Imagine API key。供应商设置、privacy、价格、quality 与参考图片上限请看生成指南。
+本地安装版可以选择连接 ChatGPT / Codex OAuth，不需要在 app 里放 OpenAI API key。你需要一个有图片生成权限的 ChatGPT account/subscription。
 
 基本流程：
 
@@ -152,7 +152,7 @@ Sample package details 和 checksums 请看 [`sample-data/README.md`](sample-dat
 ## 文件
 
 - [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — install、update、rollback、service mode、uninstall、platform notes。
-- [`docs/GENERATION.md`](docs/GENERATION.md) — provider setup、generation workflow、result review、privacy、价格及当前限制。
+- [`docs/GENERATION.md`](docs/GENERATION.md) — ChatGPT / Codex OAuth generation workflow、result review、当前限制、benchmark link。
 - [`docs/BACKUP_AND_RESTORE.md`](docs/BACKUP_AND_RESTORE.md) — portable backup payload、credential boundary、验证及 safe restore 行为。
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — source setup、dev mode、configuration、data layout、backup。
 - [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — 常见 runtime 和 setup 问题。
