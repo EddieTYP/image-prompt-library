@@ -7,9 +7,10 @@ from threading import BoundedSemaphore, RLock, Timer
 
 from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository
 from backend.services.openai_codex_native import (
-    PROVIDER_ID,
+    PROVIDER_ID as CODEX_NATIVE_PROVIDER_ID,
     OpenAICodexNativeProvider,
 )
+from backend.services.xai_api import PROVIDER_ID as XAI_PROVIDER_ID, XAIAPIProvider
 
 MAX_CONCURRENT_GENERATION_JOBS = 5
 QUEUE_RESUME_RETRY_SECONDS = 5
@@ -22,9 +23,22 @@ _lock = RLock()
 _active: set[str] = set()
 _pause_timers: dict[tuple[str, str], Timer] = {}
 _provider_slots = BoundedSemaphore(MAX_CONCURRENT_GENERATION_JOBS)
+AUTOMATED_PROVIDER_IDS = (CODEX_NATIVE_PROVIDER_ID, XAI_PROVIDER_ID)
 
 
-def recover_interrupted_generation_jobs(library_path: Path | str, *, provider: str = PROVIDER_ID):
+def is_automated_provider(provider: str) -> bool:
+    return provider in AUTOMATED_PROVIDER_IDS
+
+
+def _provider_runner(provider: str):
+    if provider == CODEX_NATIVE_PROVIDER_ID:
+        return OpenAICodexNativeProvider()
+    if provider == XAI_PROVIDER_ID:
+        return XAIAPIProvider()
+    raise GenerationJobConflict(f"Unsupported automated generation provider: {provider}")
+
+
+def recover_interrupted_generation_jobs(library_path: Path | str, *, provider: str = CODEX_NATIVE_PROVIDER_ID):
     """Fail persisted running jobs left behind by a prior backend process.
 
     The queue runner is process-local, so running jobs from a previous backend
@@ -37,7 +51,7 @@ def recover_interrupted_generation_jobs(library_path: Path | str, *, provider: s
     return repo.mark_running_provider_jobs_failed(provider, INTERRUPTED_BY_BACKEND_RESTART_ERROR)
 
 
-def enqueue_generation_jobs(library_path: Path | str, *, provider: str = PROVIDER_ID) -> None:
+def enqueue_generation_jobs(library_path: Path | str, *, provider: str = CODEX_NATIVE_PROVIDER_ID) -> None:
     """Start queued provider jobs up to the local concurrency cap.
 
     This is intentionally in-process/local-first. Queued jobs persist in SQLite; the
@@ -68,7 +82,7 @@ def _run_job_and_continue(library_path: Path, job_id: str, provider: str) -> Non
     try:
         _provider_slots.acquire()
         try:
-            OpenAICodexNativeProvider().run_job(library_path, job_id)
+            _provider_runner(provider).run_job(library_path, job_id)
         finally:
             _provider_slots.release()
     except Exception:
@@ -86,7 +100,8 @@ def run_generation_job_now(library_path: Path | str, job_id: str):
     if not _provider_slots.acquire(blocking=False):
         raise GenerationJobConflict("The generation provider is at its concurrency limit; wait for a running job to finish")
     try:
-        return OpenAICodexNativeProvider().run_job(Path(library_path), job_id)
+        provider = GenerationJobRepository(library_path).get_job(job_id).provider
+        return _provider_runner(provider).run_job(Path(library_path), job_id)
     finally:
         _provider_slots.release()
 

@@ -10,6 +10,7 @@ from backend.services.openai_codex_native import (
     CodexNativeTemporaryError,
     OpenAICodexNativeProvider,
 )
+from backend.services.xai_api import xai_status
 
 router = APIRouter(prefix="/generation-providers", tags=["generation-providers"])
 
@@ -51,6 +52,7 @@ def list_generation_providers(request: Request):
             },
         },
         CodexNativeAuthStore().status(),
+        xai_status(),
     ]
 
 

@@ -33,7 +33,7 @@ function Read-AppEnvironment {
         foreach ($line in Get-Content -LiteralPath $Context.EnvFile -Encoding UTF8) {
             if (-not $line -or $line.TrimStart().StartsWith("#") -or -not $line.Contains("=")) { continue }
             $parts = $line.Split(@("="), 2, [StringSplitOptions]::None)
-            if ($parts[0] -in @("IMAGE_PROMPT_LIBRARY_PATH", "IMAGE_PROMPT_LIBRARY_AUTH_PATH", "IMAGE_PROMPT_LIBRARY_CONFIG_PATH", "BACKEND_HOST", "BACKEND_PORT", "BACKUP_DIR")) {
+            if ($parts[0] -in @("IMAGE_PROMPT_LIBRARY_PATH", "IMAGE_PROMPT_LIBRARY_AUTH_PATH", "IMAGE_PROMPT_LIBRARY_CONFIG_PATH", "XAI_API_KEY", "BACKEND_HOST", "BACKEND_PORT", "BACKUP_DIR")) {
                 $values[$parts[0]] = $parts[1]
             }
         }
@@ -44,7 +44,8 @@ function Read-AppEnvironment {
     $hostName = if ($env:BACKEND_HOST) { $env:BACKEND_HOST } elseif ($values["BACKEND_HOST"]) { $values["BACKEND_HOST"] } else { "127.0.0.1" }
     $portText = if ($env:BACKEND_PORT) { $env:BACKEND_PORT } elseif ($values["BACKEND_PORT"]) { $values["BACKEND_PORT"] } else { "8000" }
     $backupDir = if ($env:BACKUP_DIR) { $env:BACKUP_DIR } elseif ($values["BACKUP_DIR"]) { $values["BACKUP_DIR"] } else { Join-Path $Context.Prefix "backups" }
-    [pscustomobject]@{ LibraryPath = $libraryPath; AuthPath = $authPath; ConfigPath = $configPath; Host = $hostName; Port = [int]$portText; BackupDir = $backupDir }
+    $xaiApiKey = if ($env:XAI_API_KEY) { $env:XAI_API_KEY } elseif ($values["XAI_API_KEY"]) { $values["XAI_API_KEY"] } else { $null }
+    [pscustomobject]@{ LibraryPath = $libraryPath; AuthPath = $authPath; ConfigPath = $configPath; XaiApiKey = $xaiApiKey; Host = $hostName; Port = [int]$portText; BackupDir = $backupDir }
 }
 
 function Get-CurrentVersion {
@@ -737,6 +738,7 @@ function Start-AppInternal {
         $env:IMAGE_PROMPT_LIBRARY_PATH = [IO.Path]::GetFullPath($settings.LibraryPath)
         if ($settings.AuthPath) { $env:IMAGE_PROMPT_LIBRARY_AUTH_PATH = $settings.AuthPath }
         if ($settings.ConfigPath) { $env:IMAGE_PROMPT_LIBRARY_CONFIG_PATH = $settings.ConfigPath }
+        if ($settings.XaiApiKey) { $env:XAI_API_KEY = $settings.XaiApiKey }
         $env:BACKEND_HOST = $hostName
         $env:BACKEND_PORT = [string]$port
         New-Item -ItemType Directory -Force -Path $Context.RunDir | Out-Null

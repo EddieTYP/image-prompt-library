@@ -52,6 +52,25 @@ const providerFallback: GenerationProviderStatus[] = [
     token_present: false,
     account_id: null,
   },
+  {
+    provider: 'xai_api',
+    display_name: 'xAI Grok Imagine',
+    auth_mode: 'api_key_env',
+    optional: true,
+    configured: false,
+    authenticated: false,
+    available: false,
+    state: 'not_configured',
+    reason: 'provider_status_unavailable',
+    features: { text_to_image: false, text_reference_to_image: false, image_edit: false },
+    image_models: ['grok-imagine-image-2.0'],
+    default_image_model: 'grok-imagine-image-2.0',
+    quality_options: ['low', 'medium'],
+    default_quality: 'medium',
+    max_input_images: 3,
+    retention_days: 30,
+    supports_zero_data_retention: true,
+  },
 ];
 
 export default function ConfigPanel({
@@ -539,6 +558,13 @@ export default function ConfigPanel({
                     <button className="secondary" onClick={startCodexAuth} disabled={isDemoMode || provider.state === 'not_configured' || providerBusy}>{t('connect')}</button>
                   )}
                   {provider.authenticated && <button className="secondary" onClick={disconnectCodexAuth} disabled={providerBusy}>{t('disconnect')}</button>}
+                </div>
+              )}
+              {provider.provider === 'xai_api' && (
+                <div className="provider-xai-details">
+                  <p className="provider-help">{t('xaiProviderHelp')}</p>
+                  <p className="provider-help">{t('xaiProviderPrivacy')}</p>
+                  <p className="provider-help">{t('xaiProviderPricing')}</p>
                 </div>
               )}
             </article>
