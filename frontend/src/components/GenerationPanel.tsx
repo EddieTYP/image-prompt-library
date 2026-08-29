@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, Clipboard, Clock3, Download, FilePlus2, Images, Maximize2, Paperclip, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Clipboard, Clock3, Download, FilePlus2, Images, Maximize2, Paperclip, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react';
 import aspectRatioIcon from '../assets/generation-controls/aspect-ratio.png';
 import brainAiIcon from '../assets/generation-controls/model.png';
 import qualityIcon from '../assets/generation-controls/quality.png';
@@ -14,6 +14,7 @@ import { resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage } fro
 import { extractPromptTemplateVariableRecords, resolvePromptTemplate } from '../utils/promptTemplateVariables';
 import { createGenerationReviewSession, generationResultPosition, generationReviewNext, generationReviewOpenContext, generationReviewSlotNavigation, generationReviewSummary, generationSiblingNavigation, isActionableGenerationResult, mapGenerationRetryJobs, mapGenerationRetryToReviewSlot, reconcileGenerationReviewSession, resolveGenerationReviewSlot, retainPendingRetryJobIds, type GenerationReviewSession } from '../utils/generationSiblings';
 import { useModalFocus } from '../hooks/useModalFocus';
+import SuggestedTitleField from './SuggestedTitleField';
 
 function providerReady(provider: GenerationProviderStatus) {
   return Boolean(provider.available && provider.authenticated && provider.configured);
@@ -1984,9 +1985,15 @@ export default function GenerationPanel({
                     </button>
                     {openControl === 'aspect' && (
                       <div className="generation-control-popover" role="menu">
-                        {ASPECT_RATIO_OPTIONS.map(option => (
-                           <button key={option.value} type="button" className={aspectRatio === option.value ? 'is-selected' : ''} onClick={() => { setAspectRatio(option.value); closeGenerationControl('aspect'); }}>{optionLabel(ASPECT_RATIO_OPTIONS, option.value, t)}</button>
-                        ))}
+                        {ASPECT_RATIO_OPTIONS.map(option => {
+                          const selected = aspectRatio === option.value;
+                          return (
+                            <button key={option.value} type="button" role="menuitemradio" aria-checked={selected} className={selected ? 'is-selected' : ''} onClick={() => { setAspectRatio(option.value); closeGenerationControl('aspect'); }}>
+                              <span className="generation-control-option-label">{optionLabel(ASPECT_RATIO_OPTIONS, option.value, t)}</span>
+                              {selected && <Check className="generation-control-option-check" size={15} aria-hidden="true" />}
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1997,9 +2004,15 @@ export default function GenerationPanel({
                     </button>
                     {openControl === 'quality' && (
                       <div className="generation-control-popover" role="menu">
-                        {QUALITY_OPTIONS.map(option => (
-                           <button key={option.value} type="button" className={quality === option.value ? 'is-selected' : ''} onClick={() => { setQuality(option.value); closeGenerationControl('quality'); }}>{optionLabel(QUALITY_OPTIONS, option.value, t)}</button>
-                        ))}
+                        {QUALITY_OPTIONS.map(option => {
+                          const selected = quality === option.value;
+                          return (
+                            <button key={option.value} type="button" role="menuitemradio" aria-checked={selected} className={selected ? 'is-selected' : ''} onClick={() => { setQuality(option.value); closeGenerationControl('quality'); }}>
+                              <span className="generation-control-option-label">{optionLabel(QUALITY_OPTIONS, option.value, t)}</span>
+                              {selected && <Check className="generation-control-option-check" size={15} aria-hidden="true" />}
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -2010,9 +2023,18 @@ export default function GenerationPanel({
                     </button>
                     {openControl === 'model' && (
                       <div className="generation-control-popover" role="menu">
-                        {orchestratorModels.map(model => (
-                          <button key={model} type="button" className={orchestratorModel === model ? 'is-selected' : ''} onClick={() => { setOrchestratorModel(model); closeGenerationControl('model'); }}>{orchestratorModelLabel(model)}</button>
-                        ))}
+                        {orchestratorModels.map(model => {
+                          const selected = orchestratorModel === model;
+                          return (
+                            <button key={model} type="button" role="menuitemradio" aria-checked={selected} className={selected ? 'is-selected' : ''} onClick={() => { setOrchestratorModel(model); closeGenerationControl('model'); }}>
+                              <span className="generation-model-option-copy">
+                                <strong>{model}</strong>
+                                {model === recommendedOrchestratorModel && <small>{t('generationRecommended')}</small>}
+                              </span>
+                              {selected && <Check className="generation-control-option-check" size={15} aria-hidden="true" />}
+                            </button>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -2249,7 +2271,7 @@ export default function GenerationPanel({
               {jobResultUrl(reviewJob) && <img src={jobResultUrl(reviewJob)} alt={t('saveGeneratedResultPreview')} />}
               <div className="save-new-fields">
                 {renderReferenceTray(jobAttachments(reviewJob), true)}
-                 <label><span>{t('title')}</span><input data-modal-initial-focus value={metadataDraft.title || ''} onChange={event => updateMetadataDraft({ title: event.currentTarget.value })} /></label>
+                <SuggestedTitleField value={metadataDraft.title || ''} promptText={metadataDraft.prompts?.[0]?.text || ''} t={t} onChange={title => updateMetadataDraft({ title })} autoFocus />
                 <label><span>{t('collection')}</span><input list="save-new-collection-suggestions" value={metadataDraft.cluster_name || ''} onChange={event => updateMetadataDraft({ cluster_name: event.currentTarget.value })} /></label>
                 <datalist id="save-new-collection-suggestions">
                   {filteredMetadataClusters.map(collection => <option key={collection.id} value={collection.name} />)}

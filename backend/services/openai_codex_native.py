@@ -145,6 +145,19 @@ def _codex_response_error_message(response: httpx.Response) -> str:
     return f"{prefix}: {detail[:500]}" if detail else prefix
 
 
+def normalize_title_suggestion(value: str) -> str:
+    title = " ".join(str(value or "").strip().splitlines()).strip()
+    for prefix in ("Title:", "Suggested title:", "標題：", "标题："):
+        if title.lower().startswith(prefix.lower()):
+            title = title[len(prefix):].strip()
+            break
+    title = title.removeprefix("- ").removeprefix("* ").strip().strip("`\"'“”‘’")
+    title = " ".join(title.split())
+    if not title:
+        raise CodexNativeTemporaryError("Codex response contained no title suggestion")
+    return title[:160].rstrip()
+
+
 def parse_retry_after_seconds(value: str | None, *, now: datetime | None = None) -> int | None:
     """Parse a safe Retry-After value and clamp it to the provider pause limit."""
     raw = str(value or "").strip()
@@ -212,6 +225,10 @@ class CodexNativeAuthError(RuntimeError):
 
 
 class CodexNativeTemporaryError(CodexNativeAuthError):
+    pass
+
+
+class CodexNativeRequestError(RuntimeError):
     pass
 
 
@@ -872,6 +889,80 @@ class OpenAICodexNativeProvider:
                     raise CodexNativeAuthError(str(exc)) from exc
                 input_images.append({"type": "input_image", "image_url": _data_url_from_bytes(image_path.read_bytes(), mime_type=mime_type), "name": name, "source": source, "result_path": result_path})
         return input_images
+
+    def suggest_title(self, library_path: Path | str, prompt_text: str) -> str:
+        try:
+            validate_app_owned_paths(library_path)
+        except ValueError as exc:
+            raise CodexNativeAuthError(
+                "Provider credentials or library storage paths are unsafe. Move app-owned credentials outside the active library and restart."
+            ) from exc
+        prompt = str(prompt_text or "").strip()
+        if not prompt:
+            raise CodexNativeAuthError("Prompt text is required")
+        return normalize_title_suggestion(self._collect_title_text(prompt))
+
+    def _collect_title_text(self, prompt_text: str) -> str:
+        tokens = self.auth_store.read_tokens()
+        access_token = tokens["access_token"]
+        payload = {
+            "model": CODEX_CHAT_MODEL,
+            "store": False,
+            "instructions": (
+                "Suggest one concise library title for the image prompt. "
+                "Use the same language as the prompt. Return only the title, without quotes, labels, markdown, or commentary."
+            ),
+            "input": [{
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": prompt_text}],
+            }],
+            "stream": True,
+        }
+        deltas: list[str] = []
+        completed_text = ""
+        url = f"{CODEX_BASE_URL}/responses"
+        try:
+            with httpx.Client(timeout=httpx.Timeout(min(self.timeout, 30.0))) as client:
+                with client.stream("POST", url, headers=codex_cloudflare_headers(access_token), json=payload) as response:
+                    if response.status_code != 200:
+                        response.read()
+                        message = _codex_response_error_message(response)
+                        if response.status_code == 429:
+                            raise CodexNativeRateLimitError(
+                                message,
+                                retry_after_seconds=parse_retry_after_seconds(response.headers.get("Retry-After")),
+                            )
+                        if response.status_code == 408 or response.status_code >= 500:
+                            raise CodexNativeTemporaryError(message)
+                        if response.status_code in {401, 403}:
+                            raise CodexNativeAuthError(message)
+                        raise CodexNativeRequestError(message)
+                    for line in response.iter_lines():
+                        if not line or not line.startswith("data:"):
+                            continue
+                        raw = line.removeprefix("data:").strip()
+                        if raw == "[DONE]":
+                            break
+                        try:
+                            event = json.loads(raw)
+                        except json.JSONDecodeError:
+                            continue
+                        if event.get("type") == "response.output_text.delta":
+                            delta = event.get("delta")
+                            if isinstance(delta, str):
+                                deltas.append(delta)
+                        elif event.get("type") == "response.output_item.done":
+                            item = event.get("item")
+                            if isinstance(item, dict) and item.get("type") == "message":
+                                for content in item.get("content") or []:
+                                    if isinstance(content, dict) and content.get("type") == "output_text" and isinstance(content.get("text"), str):
+                                        completed_text += content["text"]
+        except CodexNativeAuthError:
+            raise
+        except httpx.HTTPError as exc:
+            raise CodexNativeTemporaryError("Title suggestion is temporarily unavailable") from exc
+        return "".join(deltas) or completed_text
 
     def _collect_image_b64(self, prompt: str, *, size: str | None, quality: str, image_model: str, orchestrator_model: str, input_images: list[dict[str, Any]] | None = None) -> str:
         tokens = self.auth_store.read_tokens()

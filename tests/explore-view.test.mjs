@@ -709,14 +709,32 @@ test('batch review leaves a resolved stage and exposes session-only item targets
 });
 
 test('generation composer exposes the refreshed recommended model list', async () => {
-  const [generation, translations] = await Promise.all([
+  const [generation, translations, styles] = await Promise.all([
     readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/utils/i18n.ts`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/styles.css`, 'utf8'),
   ]);
 
   assert.match(generation, /\['gpt-5\.6-terra', 'gpt-5\.6-sol', 'gpt-5\.6-luna'\]/);
   assert.match(generation, /recommendedOrchestratorModel[\s\S]*?generationRecommended/);
+  assert.equal((generation.match(/generation-control-option-check/g) || []).length, 3);
+  assert.match(generation, /role="menuitemradio" aria-checked=\{selected\}[\s\S]*?generation-control-option-label/);
+  assert.match(generation, /generation-model-option-copy[\s\S]*?generation-control-option-check/);
+  assert.match(styles, /\.generation-model-option-copy\{display:grid;gap:2px/);
+  assert.match(styles, /\.generation-control-popover\{[^}]*gap:2px;padding:6px/);
+  assert.match(styles, /\.generation-control-popover button\{[^}]*min-height:40px;[^}]*font-size:13px;[^}]*font-weight:700/);
+  assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.generation-control-popover button\{min-height:44px\}/);
+  assert.doesNotMatch(styles, /\.generation-model-control \.generation-control-popover button\{/);
+  assert.match(styles, /\.generation-control-popover button\.is-selected\{background:rgb\(var\(--studio-accent-rgb\) \/ \.1\);color:var\(--studio-ink\);font-weight:750;box-shadow:none/);
+  assert.doesNotMatch(styles, /box-shadow:inset 3px 0 0 var\(--studio-accent\)/);
   assert.equal((translations.match(/generationRecommended:/g) || []).length, 3);
+});
+
+test('generation cancel action keeps its text inside a readable pill', async () => {
+  const styles = await readFile(`${ROOT}/frontend/src/styles.css`, 'utf8');
+
+  assert.match(styles, /\.generation-stage-actions\.generation-cancel-actions\{[^}]*flex-wrap:nowrap/);
+  assert.match(styles, /\.generation-cancel-actions \.stage-action\.danger\{width:auto;min-width:78px;[^}]*padding:0 15px/);
 });
 
 test('Library card keeps desktop actions and exposes a compact mobile More trigger', () => {
@@ -762,7 +780,7 @@ test('Config provider actions clear busy on close without accepting stale result
 });
 
 test('Explore wiring preserves Library management, semantic appearance, and restrained motion', async () => {
-  const [app, cards, explore, config, styles, translations, toggle, topBar, generationPanel, queueDrawer, editorModal, modalFocus, appearance, itemCard] = await Promise.all([
+  const [app, cards, explore, config, styles, translations, toggle, topBar, generationPanel, queueDrawer, editorModal, suggestedTitleField, modalFocus, appearance, itemCard] = await Promise.all([
     readFile(`${ROOT}/frontend/src/App.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/CardsView.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/ExploreView.tsx`, 'utf8'),
@@ -774,6 +792,7 @@ test('Explore wiring preserves Library management, semantic appearance, and rest
     readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/GenerationQueueDrawer.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/ItemEditorModal.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/SuggestedTitleField.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/hooks/useModalFocus.ts`, 'utf8'),
     readFile(`${ROOT}/frontend/src/utils/appearance.ts`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/ItemCard.tsx`, 'utf8'),
@@ -867,7 +886,7 @@ test('Explore wiring preserves Library management, semantic appearance, and rest
   assert.doesNotMatch(queueDrawer, /document\.addEventListener\('pointerdown'/);
   assert.doesNotMatch(queueDrawer, /role=\{canOpenJob\(job\) \? 'button'/);
   assert.match(editorModal, /aria-labelledby="reference-editor-title"/);
-  assert.match(editorModal, /data-modal-initial-focus/);
+  assert.match(suggestedTitleField, /data-modal-initial-focus/);
   assert.match(generationPanel, /data-modal-initial-focus/);
   assert.match(generationPanel, /handleModalKeyDown/);
   assert.match(generationPanel, /fullscreenCloseRef\.current/);
@@ -1202,4 +1221,22 @@ test('Explore/detail CSS keeps responsive grids, token controls, CJK hierarchy, 
   assert.match(styles, /html:lang\(zh-Hant\) \.app-command-dock \.fab,[\s\S]*?font-weight:700/);
   assert.match(styles, /@media\(prefers-reduced-motion:reduce\)\{[\s\S]*?\.generation-sibling-navigation button\{transition:none!important\}[\s\S]*?transform:translateY\(-50%\)/);
   assert.doesNotMatch(styles, /html:lang\(zh-Hant\) \.metadata-inline-edit/);
+});
+
+test('title suggestions are explicit, prompt-only, and shared by both save flows', async () => {
+  const [field, client, editor, generation] = await Promise.all([
+    readFile(`${ROOT}/frontend/src/components/SuggestedTitleField.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/api/client.ts`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/ItemEditorModal.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
+  ]);
+
+  assert.match(field, /api\.suggestTitle\(\{ prompt_text: requestedPrompt \}\)/);
+  assert.match(field, /setSuggestion\(result\.title\)/);
+  assert.match(field, /onClick=\{\(\) => \{ onChange\(suggestion\); setSuggestion\(''\); \}\}/);
+  assert.doesNotMatch(field, /onChange\(result\.title\)/);
+  assert.match(client, /suggestTitle: \(_payload: TitleSuggestionRequest\) => demoReadOnly\(\)/);
+  assert.match(client, /openai-codex-native\/suggest-title/);
+  assert.match(editor, /<SuggestedTitleField[^>]*promptText=\{titleSuggestionPrompt\}/);
+  assert.match(generation, /<SuggestedTitleField[^>]*promptText=\{metadataDraft\.prompts\?\.\[0\]\?\.text \|\| ''\}/);
 });

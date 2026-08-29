@@ -21,6 +21,8 @@ export interface CodexNativeAuthStart { device_auth_id: string; user_code: strin
 export interface CodexNativeAuthPending { provider: string; auth_mode?: string; status: 'pending' }
 export type CodexNativeAuthPollResponse = GenerationProviderStatus | CodexNativeAuthPending
 export interface CodexNativeAuthPollRequest { device_auth_id: string; user_code: string }
+export interface TitleSuggestionRequest { prompt_text: string }
+export interface TitleSuggestionResponse { title: string }
 export interface GenerationJobCreate { source_item_id?: string; mode?: string; provider: string; model?: string | null; prompt_language?: string | null; prompt_text: string; edited_prompt_text?: string | null; reference_image_ids?: string[]; parameters?: Record<string, unknown> }
 export type GenerationSetCount = 1 | 3 | 5 | 10
 export interface GenerationJobSetCreate { job: GenerationJobCreate; count: GenerationSetCount }
