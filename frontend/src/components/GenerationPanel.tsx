@@ -45,11 +45,6 @@ function compactProviderLabel(provider: GenerationProviderStatus | undefined) {
   return provider?.display_name || 'Provider';
 }
 
-function providerTriggerLabel(provider: GenerationProviderStatus | undefined) {
-  if (provider?.provider === 'openai_codex_oauth_native') return 'GPT';
-  return compactProviderLabel(provider);
-}
-
 function compactProviderStateLabel(provider: GenerationProviderStatus | undefined, t: Translator) {
   if (providerCanGenerate(provider)) return t('providerStateAvailable');
   if (provider?.authenticated) return t('providerStateUnavailable');
@@ -2100,7 +2095,7 @@ export default function GenerationPanel({
                       aria-expanded={openControl === 'provider'}
                       title={selectedProvider?.display_name}
                     >
-                      <span>{providerTriggerLabel(selectedProvider)}</span>
+                      <span>{compactProviderLabel(selectedProvider)}</span>
                     </button>
                     {openControl === 'provider' && (
                       <div className="generation-control-popover generation-provider-popover" role="menu">

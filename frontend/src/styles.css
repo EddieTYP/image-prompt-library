@@ -402,9 +402,9 @@ button{color:inherit}
 .generation-reference-picker-card.is-selected{outline:2px solid var(--studio-accent)}.generation-reference-picker-card:disabled{opacity:.55;cursor:not-allowed}
 .generation-reference-back{display:inline-flex;align-items:center;gap:6px;margin:6px 0 10px;border:0;background:transparent;color:var(--studio-accent-strong);font-weight:850;cursor:pointer}
 .generation-reference-picker h4{margin:0 0 10px}.generation-reference-picker-footer{position:sticky;bottom:-18px;display:flex;justify-content:flex-end;margin:16px -18px -18px;padding:12px 18px;background:rgba(255,255,255,.94);border-top:1px solid rgba(122,108,145,.12)}
-.generation-compact-controls{grid-template-columns:64px 44px 44px 44px minmax(124px,1fr) 44px}
-.generation-provider-control{width:64px}
-.generation-provider-trigger{width:64px;min-width:64px;display:flex;align-items:center;justify-content:flex-start;padding:0 20px 0 10px;font-size:12px;font-weight:750;white-space:nowrap}
+.generation-compact-controls{grid-template-columns:92px 44px 44px 44px minmax(114px,1fr) 44px;gap:6px}
+.generation-provider-control{width:92px}
+.generation-provider-trigger{width:92px;min-width:92px;display:flex;align-items:center;justify-content:flex-start;padding:0 20px 0 10px;font-size:12px;font-weight:800;letter-spacing:-.01em;white-space:nowrap}
 .generation-provider-trigger span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 .generation-provider-popover{min-width:min(208px,calc(100vw - 48px));max-width:calc(100vw - 48px)}
 .generation-provider-popover .generation-model-option-copy small{font-size:10px;font-weight:650;letter-spacing:0;text-transform:none}
@@ -508,8 +508,9 @@ button{color:inherit}
 .generation-provider-pause.queue{margin-top:10px}.generation-set-section{display:grid;gap:8px}.generation-set-section h3{margin-bottom:0}
 
 @media(max-width:760px){
-  .generation-compact-controls{grid-template-columns:64px 40px 40px 40px minmax(0,1fr) 44px;gap:5px}
-  .generation-provider-control,.generation-provider-trigger{width:64px;min-width:64px;height:40px;min-height:40px}
+  .generation-compact-controls{grid-template-columns:72px 40px 40px 40px minmax(0,1fr) 44px;gap:5px}
+  .generation-provider-control,.generation-provider-trigger{width:72px;min-width:72px;height:40px;min-height:40px}
+  .generation-provider-trigger{padding:0 16px 0 7px;font-size:10px}
   .generation-provider-readiness{grid-column:1/-1;grid-row:2;max-width:none}
   .generation-generate-split{grid-column:5;grid-row:1;min-width:0}
   .generation-generate-split .generation-primary-action{width:100%;height:44px;min-height:44px;margin:0;padding:0 8px}
@@ -1829,8 +1830,9 @@ body:has(.modal-backdrop),body:has(.drawer.open),body:has(.generation-queue-draw
 @media(min-width:761px) and (max-width:920px){
   .generation-layout{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr)}
   .generation-compose-card,.generation-stage-card{min-width:0}
-  .generation-compact-controls{grid-template-columns:62px 44px 44px 44px minmax(114px,1fr) 44px;gap:6px}
-  .generation-provider-control,.generation-provider-trigger{width:62px;min-width:62px}
+  .generation-compact-controls{grid-template-columns:72px 44px 44px 44px minmax(114px,1fr) 44px;gap:6px}
+  .generation-provider-control,.generation-provider-trigger{width:72px;min-width:72px}
+  .generation-provider-trigger{padding:0 16px 0 7px;font-size:10px}
   .generation-primary-action{padding-inline:10px}
   .generation-history-drawer{right:12px;top:70px;bottom:12px;width:min(420px,calc(100% - 24px));max-height:none;min-width:0}
 }
@@ -1937,8 +1939,8 @@ body:has(.modal-backdrop),body:has(.drawer.open),body:has(.generation-queue-draw
 }
 
 @media(max-width:340px){
-  .generation-compact-controls{grid-template-columns:62px 40px 40px 40px minmax(0,1fr) 44px}
-  .generation-provider-control,.generation-provider-trigger{width:62px;min-width:62px}
+  .generation-compact-controls{grid-template-columns:72px 40px 40px 40px minmax(0,1fr) 44px}
+  .generation-provider-control,.generation-provider-trigger{width:72px;min-width:72px}
   .generation-compact-controls .generation-generate-split{grid-column:1/-1;grid-row:2}
   .generation-compact-controls .generation-provider-status,
   .generation-compact-controls.has-provider-attention .generation-provider-status{grid-column:1/-1;grid-row:3}

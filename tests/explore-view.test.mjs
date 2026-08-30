@@ -1208,8 +1208,11 @@ test('redesign interaction guards keep overlays mutually exclusive and focus-saf
   assert.match(generation, /className="generation-control-wrap generation-provider-control"/);
   assert.match(generation, /className="generation-control-popover generation-provider-popover" role="menu"/);
   assert.match(generation, /className="generation-provider-popover-help"/);
+  assert.match(generation, /<span>\{compactProviderLabel\(selectedProvider\)\}<\/span>/);
+  assert.doesNotMatch(generation, /return 'GPT'/);
   assert.doesNotMatch(generation, /className="generation-provider-select"/);
-  assert.match(styles, /\.generation-provider-trigger\{[^}]*width:64px;[^}]*justify-content:flex-start/);
+  assert.match(styles, /\.generation-provider-trigger\{[^}]*width:92px;[^}]*justify-content:flex-start;[^}]*font-weight:800/);
+  assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.generation-provider-control,\.generation-provider-trigger\{width:72px;min-width:72px/);
   assert.doesNotMatch(styles, /\.scope-sort-control>span/);
   assert.doesNotMatch(styles, /\.card-template-badge\{font-size:11px\}/);
 });
