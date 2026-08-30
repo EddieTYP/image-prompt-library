@@ -1,6 +1,6 @@
 # Local Generation Guide
 
-Local installs can optionally connect **ChatGPT / Codex OAuth** for image generation. The GitHub Pages Online Read Only Demo stays read-only and does not expose generation or mutation controls.
+Local installs can generate images through **ChatGPT / Codex OAuth** or the experimental **Grok OAuth** provider. The GitHub Pages demo remains read-only.
 
 ## What the local generation flow does
 
@@ -15,27 +15,31 @@ Once connected, you can:
 - Keep useful generation details such as provider, model, original item, and batch position.
 - Use prompt variables such as `{{subject}}`, `{{style}}`, or `{{主體}}` in reusable template prompts and fill them before each generation.
 
-No OpenAI API key is required by the app for the ChatGPT / Codex OAuth path. Advanced provider configuration is available for users who need it, but the normal flow is handled from the Config drawer.
+Neither OAuth connection requires entering an API key in the app. Access, quotas, and billing depend on the connected account; a successful connection or test does not establish future pricing.
 
 ## Privacy boundary
 
 Generation is local-install only. The public GitHub Pages demo does not perform live imports or generation and does not expose Add/Edit/private-library controls.
 
-The app-owned OAuth store and local provider config must resolve outside the active library. If `IMAGE_PROMPT_LIBRARY_AUTH_PATH` or `IMAGE_PROMPT_LIBRARY_CONFIG_PATH` resolves to the library itself or any child path, startup stops before the database or credential files are read. Library-managed media roots (`originals`, `thumbs`, `previews`, `generation-results`, and `generation-references`) must also resolve inside the library; external symlink or junction targets are rejected so they cannot alias app-owned state. The app does not move or delete an unsafe file automatically.
+The OAuth stores and provider config must be outside the active library. If `IMAGE_PROMPT_LIBRARY_AUTH_PATH`, `IMAGE_PROMPT_LIBRARY_GROK_AUTH_PATH`, or `IMAGE_PROMPT_LIBRARY_CONFIG_PATH` resolves to the library or one of its child paths, startup stops before reading the database or credentials.
 
-For an existing unsafe override, move the file manually to `~/.image-prompt-library/auth.json` or `~/.image-prompt-library/config.json`, update or unset the override, then restart. Treat any older backup that may contain the file as sensitive; reconnect the provider if the credential may have been exposed. Tokens must never be committed to git, sample bundles, backups, or GitHub Pages exports.
+Library-managed media roots (`originals`, `thumbs`, `previews`, `generation-results`, and `generation-references`) must stay inside the library. External symlink or junction targets are rejected. The app does not move or delete an unsafe file automatically.
+
+If an override resolves inside the library, move the file to `~/.image-prompt-library/auth.json`, `~/.image-prompt-library/grok-auth.json`, or `~/.image-prompt-library/config.json`, then update or unset the override and restart. Treat older backups containing the file as sensitive, and reconnect the provider if a credential may have been exposed. Keep tokens out of git, sample bundles, backups, and GitHub Pages exports.
 
 ## Connect the provider
 
-Open **Config → Providers**, then choose **Connect** under **ChatGPT / Codex OAuth**. Follow the authorization link, enter the one-time code, approve the request, then return to Image Prompt Library and choose **Check authorization**.
+Open **Config → Providers**, then choose **Connect** under the provider you want to use. Follow the authorization link, enter the one-time code, approve the request, then return to Image Prompt Library and choose **Check authorization**.
 
-The browser may label the request **Codex CLI**. Only approve a flow you started from your local Image Prompt Library app. When setup is complete, the provider shows **Connected**.
+The ChatGPT browser flow may label the request **Codex CLI**. Grok uses a separate xAI device-authorization flow and credential store. Only approve a flow you started from your local Image Prompt Library app. When setup is complete, the provider shows **Connected**. Grok remains experimental, and availability depends on the connected xAI account.
 
 ## Generate and review results
 
 Open **Create image**, enter a prompt, and choose settings. **Generate** creates one result; the adjacent menu creates 3, 5, or 10. Each result uses a separate generation request. Template prompts can include `{{variables}}`; the composer previews the resolved prompt before sending.
 
-The model menu offers three GPT-5.6 choices. **Recommended · gpt-5.6-terra** is the balanced default, `gpt-5.6-sol` is the highest-capability option, and `gpt-5.6-luna` is the lighter option for simpler or higher-volume work. Existing custom model overrides remain available after these built-in choices.
+When ChatGPT / Codex OAuth is selected, the built-in choices are `gpt-5.6-terra`, `gpt-5.6-sol`, and `gpt-5.6-luna`. The default is **Recommended · gpt-5.6-terra**. Existing custom model overrides remain available.
+
+For Grok, the composer uses `grok-imagine-image-2.0` and exposes Low or Medium quality, 1K or 2K resolution, and up to three ordered reference images.
 
 Review completed results from the **Work queue**. For each result, choose **Save as new item**, **Use result as edit input**, **Retry**, or **Discard**. **Attach to current item** is also available when the result came from an unchanged saved reference. **Use as draft** copies the result's prompt and reusable settings back into the composer. Batch review keeps each result's position and advances to the next unfinished result. Using a result as a draft or edit input pauses review; **Continue review** returns to the remaining results.
 
@@ -70,6 +74,28 @@ The composer can show the sanitized provider error under **Provider details** as
 The local queue has no artificial submission cap and runs up to five generation jobs at once. Additional jobs wait in the Work queue.
 
 If the provider reports a rate limit, the app pauses that provider's queue before continuing untouched queued jobs. The failed result stays failed until you retry it. Normal OAuth renewal happens in the background; reconnect only when the app says authorization is required.
+
+### Observed Grok output sizes (2026-08-30)
+
+This compatibility check covered all 24 combinations exposed by the composer: two quality settings, two resolution settings, and six aspect ratios. Each request used `grok-imagine-image-2.0` through the local xAI device-OAuth path, with the prompt `A flat red circle centered on a plain white background.`, no reference images, and no automatic retries.
+
+All 24 requests succeeded. In this run, Low and Medium returned the same size for each aspect-ratio and resolution pair.
+
+| Requested aspect ratio | Observed 1K dimensions | Observed 2K dimensions |
+| --- | ---: | ---: |
+| Auto | 1024 × 1024 | 2048 × 2048 |
+| 1:1 | 1024 × 1024 | 2048 × 2048 |
+| 3:4 | 864 × 1152 | 1776 × 2368 |
+| 9:16 | 720 × 1280 | 1584 × 2816 |
+| 4:3 | 1152 × 864 | 2368 × 1776 |
+| 16:9 | 1280 × 720 | 2816 × 1584 |
+
+Interpretation:
+
+- This was a compatibility check with one request per combination, not an image-quality benchmark or provider contract.
+- Auto produced a square image for this prompt. This run does not establish how Auto behaves with other prompts.
+- Non-square 2K results preserved the requested aspect ratio and had a long edge above 2048 pixels. Treat 2K as a provider tier, not a fixed edge length.
+- The measurements reflect the 2026-08-30 run and do not establish billing or quota terms.
 
 ## Benchmark note
 
