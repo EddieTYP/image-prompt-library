@@ -2694,7 +2694,10 @@ def test_app_startup_marks_interrupted_running_jobs_failed_and_drains_queued(tmp
     assert "Retry" in recovered_running.error
     assert recovered_queued.status == "queued"
     assert untouched_manual.status == "queued"
-    assert enqueue_calls == [(library, "openai_codex_oauth_native")]
+    assert set(enqueue_calls) == {
+        (library, "openai_codex_oauth_native"),
+        (library, "xai_grok_oauth"),
+    }
 
 
 def test_generation_queue_runs_at_most_five_native_jobs(tmp_path, monkeypatch):
@@ -2714,6 +2717,7 @@ def test_generation_queue_runs_at_most_five_native_jobs(tmp_path, monkeypatch):
     submitted = []
     isolated_active: set[str] = set()
     monkeypatch.setattr(generation_queue, "_active", isolated_active)
+    monkeypatch.setattr(generation_queue, "_active_providers", {})
     monkeypatch.setattr(
         generation_queue._executor,
         "submit",
@@ -2728,6 +2732,36 @@ def test_generation_queue_runs_at_most_five_native_jobs(tmp_path, monkeypatch):
     assert submitted_ids < set(job_ids)
     assert isolated_active == submitted_ids
     assert [repo.get_job(job_id).status for job_id in job_ids] == ["queued"] * 6
+
+
+def test_generation_queue_clears_drained_backoff_per_provider(tmp_path, monkeypatch):
+    from backend.services import generation_queue
+
+    library = tmp_path / "library"
+    repo = GenerationJobRepository(library)
+    codex_provider = "openai_codex_oauth_native"
+    grok_provider = "xai_grok_oauth"
+    repo.record_provider_rate_limit(grok_provider, 1)
+    with connect(library) as conn:
+        conn.execute(
+            "UPDATE provider_queue_states SET paused_until=?, wave_active=1 WHERE provider=?",
+            ("2000-01-01T00:00:00+00:00", grok_provider),
+        )
+        conn.commit()
+
+    monkeypatch.setattr(generation_queue, "_active", {"codex-active"})
+    monkeypatch.setattr(generation_queue, "_active_providers", {"codex-active": codex_provider})
+
+    generation_queue.enqueue_generation_jobs(library, provider=grok_provider)
+
+    state = repo.get_provider_queue_state(grok_provider)
+    assert state.backoff_seconds == 0
+    with connect(library) as conn:
+        row = conn.execute(
+            "SELECT wave_active, incident_count FROM provider_queue_states WHERE provider=?",
+            (grok_provider,),
+        ).fetchone()
+    assert tuple(row) == (0, 0)
 
 
 @pytest.mark.parametrize("count", (1, 3, 5, 10))
@@ -3004,10 +3038,11 @@ def test_synchronous_rate_limit_is_not_recorded_twice_and_schedules_resume(tmp_p
     from backend.services.openai_codex_native import CodexNativeRateLimitError
 
     c = client(tmp_path)
-    job = c.post("/api/generation-jobs", json={
-        "provider": "manual_upload",
-        "prompt_text": "rate limited",
-    }).json()
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(
+        provider="openai_codex_oauth_native",
+        prompt_text="rate limited",
+    )).model_dump()
     enqueued = []
 
     def raise_rate_limit(library_path, _job_id):
@@ -3038,11 +3073,11 @@ def test_synchronous_success_continues_queued_provider_jobs(tmp_path, monkeypatc
     from backend.routers import generation_jobs as generation_jobs_router
 
     c = client(tmp_path)
-    job = c.post("/api/generation-jobs", json={
-        "provider": "manual_upload",
-        "prompt_text": "completed synchronously",
-    }).json()
     repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(
+        provider="openai_codex_oauth_native",
+        prompt_text="completed synchronously",
+    )).model_dump()
     enqueued = []
     monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", lambda *_args: repo.get_job(job["id"]))
     monkeypatch.setattr(
@@ -3063,10 +3098,10 @@ def test_synchronous_rate_limit_preserves_409_when_queue_database_is_locked(tmp_
     from backend.services.openai_codex_native import CodexNativeRateLimitError
 
     c = client(tmp_path)
-    job = c.post("/api/generation-jobs", json={
-        "provider": "manual_upload",
-        "prompt_text": "rate limited with locked queue",
-    }).json()
+    job = GenerationJobRepository(tmp_path / "library").create_job(GenerationJobCreate(
+        provider="openai_codex_oauth_native",
+        prompt_text="rate limited with locked queue",
+    )).model_dump()
 
     def raise_rate_limit(_library_path, _job_id):
         raise CodexNativeRateLimitError("Generation is temporarily rate limited", retry_after_seconds=0)
@@ -3100,11 +3135,11 @@ def test_synchronous_success_preserves_result_when_queue_database_is_locked(tmp_
     from backend.services import generation_queue
 
     c = client(tmp_path)
-    job = c.post("/api/generation-jobs", json={
-        "provider": "manual_upload",
-        "prompt_text": "completed with locked queue",
-    }).json()
     repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(
+        provider="openai_codex_oauth_native",
+        prompt_text="completed with locked queue",
+    )).model_dump()
     scheduled = []
     monkeypatch.setattr(generation_jobs_router, "run_generation_job_now", lambda *_args: repo.get_job(job["id"]))
     monkeypatch.setattr(

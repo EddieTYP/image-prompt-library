@@ -44,7 +44,7 @@ If this lane resumes, adapters must still feed candidate prompts, media, provena
 
 ## Prioritized outstanding work
 
-1. **xAI / Grok Imagine provider feasibility** — scope `grok-imagine-image-2.0` as a separate API-key and usage-billed provider. Verify credential storage, backup/demo exclusion, generation and edit parity, reference limits, returned-media handling, errors, rate limits, privacy, and cost display before deciding whether to implement it. Do not reuse or weaken the ChatGPT / Codex OAuth boundary.
+1. **xAI / Grok Imagine OAuth (experimental)** — add an optional local-only Grok OAuth provider using xAI device login, app-owned token storage outside the library, and `grok-imagine-image-2.0` for text-to-image. Keep the client ID overridable, preserve provider/model provenance, report account access and rate-limit failures clearly, and isolate Grok credentials from ChatGPT / Codex OAuth, backups, samples, logs, and public demo exports. Provider availability remains dependent on the connected xAI account until a dedicated application client is confirmed.
 
 `v0.10.0` implemented Explore clarity: a normal-scroll directory of non-empty Collections, natural-ratio previews that open item detail directly, Collection heading/count routing into filtered `Library`, and the visible `Cards` rename to `Library`. Explore item detail keeps Copy, Download, Generate, and Edit while selection and batch management remain in Library. It also includes three browser-local light Appearance presets displayed as `Red`, `Green`, and `Purple` (`朱紅`、`松綠`、`茄紫`); their existing internal identifiers remain unchanged. Dark mode, system-theme following, and an arbitrary colour picker remain out of scope.
 
@@ -55,7 +55,7 @@ The former responsive vertical-constellation follow-up is superseded by Explore 
 These are product and release groups, not promised version numbers. Small independent fixes may ship between them when they do not broaden the main milestone.
 
 1. **`v0.11.0` Library workflow group** — combine the completed batch-action polish, opt-in title suggestion, reliable generated-image provider/model display, and multi-image Library workflow. Never spend provider quota without an explicit user action.
-2. **Provider decision** — complete the xAI / Grok feasibility and privacy review separately. A new provider should not block `v1.0.0` unless explicitly promoted.
+2. **Provider decision** — complete live Grok OAuth and paid-account capability QA before promoting the provider beyond experimental. It should not block `v1.0.0` unless explicitly promoted.
 3. **`v1.0.0` readiness** — run final Windows and POSIX install/update/rollback/restore checks, desktop/mobile and static-demo QA, migration and privacy checks, and documentation alignment. Do not use the `v1.0.0` release gate to introduce import architecture, an account system, or other unrelated work.
 
 ## Later or optional work

@@ -717,9 +717,12 @@ test('generation composer exposes the refreshed recommended model list', async (
 
   assert.match(generation, /\['gpt-5\.6-terra', 'gpt-5\.6-sol', 'gpt-5\.6-luna'\]/);
   assert.match(generation, /recommendedOrchestratorModel[\s\S]*?generationRecommended/);
-  assert.equal((generation.match(/generation-control-option-check/g) || []).length, 3);
+  assert.equal((generation.match(/generation-control-option-check/g) || []).length, 6);
   assert.match(generation, /role="menuitemradio" aria-checked=\{selected\}[\s\S]*?generation-control-option-label/);
   assert.match(generation, /generation-model-option-copy[\s\S]*?generation-control-option-check/);
+  assert.match(generation, /GROK_QUALITY_OPTIONS[\s\S]*?generationResolution[\s\S]*?GROK_RESOLUTION_OPTIONS/);
+  assert.match(generation, /job\.provider === 'xai_grok_oauth' && <span className="generation-history-cell"><b>\{t\('generationResolution'\)\}<\/b><em>\{optionLabel\(GROK_RESOLUTION_OPTIONS, jobResolution\(job\), t\)\}<\/em><\/span>/);
+  assert.match(generation, /max_input_images \|\| MAX_EDIT_ATTACHMENTS/);
   assert.match(styles, /\.generation-model-option-copy\{display:grid;gap:2px/);
   assert.match(styles, /\.generation-control-popover\{[^}]*gap:2px;padding:6px/);
   assert.match(styles, /\.generation-control-popover button\{[^}]*min-height:40px;[^}]*font-size:13px;[^}]*font-weight:700/);
@@ -773,10 +776,10 @@ test('Library card keeps desktop actions and exposes a compact mobile More trigg
 test('Config provider actions clear busy on close without accepting stale results', async () => {
   const config = await readFile(`${ROOT}/frontend/src/components/ConfigPanel.tsx`, 'utf8');
 
-  assert.match(config, /if \(!open\) \{\s*providersRequestRef\.current \+= 1;\s*providerActionRequestRef\.current \+= 1;\s*setProviderBusy\(false\);\s*return;/);
+  assert.match(config, /if \(!open\) \{\s*providersRequestRef\.current \+= 1;\s*providerActionRequestRef\.current \+= 1;\s*setProviderBusy\(undefined\);\s*return;/);
   assert.match(config, /useEffect\(\(\) => \(\) => \{\s*providersRequestRef\.current \+= 1;\s*providerActionRequestRef\.current \+= 1;\s*closeMotionCleanupRef\.current\?\.\(\);\s*\}, \[\]\);/);
-  assert.match(config, /const closePanel = \(\) => \{\s*providersRequestRef\.current \+= 1;\s*providerActionRequestRef\.current \+= 1;\s*setProviderBusy\(false\);[\s\S]*?onClose\(\);/);
-  assert.equal((config.match(/if \(providerActionRequestRef\.current === requestId\) setProviderBusy\(false\);/g) || []).length, 3);
+  assert.match(config, /const closePanel = \(\) => \{\s*providersRequestRef\.current \+= 1;\s*providerActionRequestRef\.current \+= 1;\s*setProviderBusy\(undefined\);[\s\S]*?onClose\(\);/);
+  assert.equal((config.match(/if \(providerActionRequestRef\.current === requestId\) setProviderBusy\(undefined\);/g) || []).length, 3);
 });
 
 test('Explore wiring preserves Library management, semantic appearance, and restrained motion', async () => {
@@ -915,7 +918,7 @@ test('Explore wiring preserves Library management, semantic appearance, and rest
   assert.match(config, /const providerActionRequestRef = useRef\(0\)/);
   assert.match(config, /if \(providersRequestRef\.current !== requestId\) return;/);
   assert.match(config, /const closePanel = \(\) => \{[\s\S]*?providersRequestRef\.current \+= 1;[\s\S]*?providerActionRequestRef\.current \+= 1/);
-  assert.match(config, /const pollCodexAuth = async \(\) => \{[\s\S]*?if \(providerActionRequestRef\.current !== requestId\) return;[\s\S]*?if \(providerActionRequestRef\.current === requestId\) setProviderBusy\(false\)/);
+  assert.match(config, /const pollProviderAuth = async \(providerId: string\) => \{[\s\S]*?if \(providerActionRequestRef\.current !== requestId\) return;[\s\S]*?if \(providerActionRequestRef\.current === requestId\) setProviderBusy\(undefined\)/);
   assert.doesNotMatch(styles, /search-query-chip/);
   assert.match(styles, /\.item-card \.hover-action\{width:34px;height:34px;min-width:34px;min-height:34px/);
   assert.match(generationPanel, /\.generate-variant-button, \.mobile-generate-variant-button/);
@@ -1129,6 +1132,7 @@ test('redesign interaction guards keep overlays mutually exclusive and focus-saf
   assert.match(generation, /pendingAcceptedRef/);
   assert.match(generation, /generationFailure\(selectedStageJob, t\)/);
   assert.match(generation, /generation-history-drawer open/);
+  assert.match(generation, /provider === 'xai_grok_oauth'[\s\S]*?generation-provider-popover-help[\s\S]*?grokCapabilityGap/);
   assert.match(generation, /historyTriggerRef\.current\?\.focus/);
   assert.doesNotMatch(generation, /setGenerationCountMenuOpen\(open => !open\)/);
   assert.match(generation, /if \(generationCountMenuOpen\) \{[\s\S]*?\[role="menuitem"\][\s\S]*?return;[\s\S]*?setGenerationCountMenuOpen\(true\);/);
@@ -1201,6 +1205,11 @@ test('redesign interaction guards keep overlays mutually exclusive and focus-saf
   assert.match(styles, /\.generation-sibling-count\{[^}]*border:1px solid var\(--studio-glass-border\);[^}]*background:var\(--studio-glass-fill\);[^}]*box-shadow:var\(--studio-glass-shadow-compact\)/);
   assert.match(styles, /\.generation-sibling-previous\{left:12px\}/);
   assert.match(styles, /\.generation-sibling-next\{right:12px\}/);
+  assert.match(generation, /className="generation-control-wrap generation-provider-control"/);
+  assert.match(generation, /className="generation-control-popover generation-provider-popover" role="menu"/);
+  assert.match(generation, /className="generation-provider-popover-help"/);
+  assert.doesNotMatch(generation, /className="generation-provider-select"/);
+  assert.match(styles, /\.generation-provider-trigger\{[^}]*width:64px;[^}]*justify-content:flex-start/);
   assert.doesNotMatch(styles, /\.scope-sort-control>span/);
   assert.doesNotMatch(styles, /\.card-template-badge\{font-size:11px\}/);
 });

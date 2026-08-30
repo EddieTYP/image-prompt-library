@@ -40,6 +40,7 @@ def test_resolve_app_version_uses_git_describe_for_source_checkout(tmp_path, mon
     ("env_name", "relative_path"),
     (
         ("IMAGE_PROMPT_LIBRARY_AUTH_PATH", "auth.json"),
+        ("IMAGE_PROMPT_LIBRARY_GROK_AUTH_PATH", "grok-auth.json"),
         ("IMAGE_PROMPT_LIBRARY_CONFIG_PATH", "settings/config.json"),
     ),
 )

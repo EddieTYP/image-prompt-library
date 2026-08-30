@@ -614,6 +614,7 @@ class CodexNativeAuthStore:
                 "text_reference_to_image": available,
                 "image_edit": available,
             },
+            "max_input_images": MAX_INPUT_IMAGES,
             "orchestrator_models": codex_orchestrator_models(),
             "default_orchestrator_model": codex_orchestrator_models()[0],
             "image_models": codex_image_models(),

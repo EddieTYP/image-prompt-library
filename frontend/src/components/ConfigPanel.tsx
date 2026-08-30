@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 're
 import { X } from 'lucide-react';
 import { api, isDemoMode } from '../api/client';
 import { restoreFocusAfterMotion } from '../hooks/useModalFocus';
-import type { AppearancePreset, AppConfig, AppUpdateStatus, CleanupPreview, CodexNativeAuthStart, GenerationProviderStatus } from '../types';
+import type { AppearancePreset, AppConfig, AppUpdateStatus, CleanupPreview, GenerationProviderStatus, ProviderDeviceAuthStart } from '../types';
 import { UI_LANGUAGE_LABELS, type Translator, type UiLanguage } from '../utils/i18n';
 import { getPromptCopyLanguageLabel, type PromptCopyLanguage } from '../utils/prompts';
 
@@ -49,8 +49,23 @@ const providerFallback: GenerationProviderStatus[] = [
     state: 'not_configured',
     reason: 'provider_status_unavailable',
     features: { text_to_image: false, text_reference_to_image: false, image_edit: false },
+    max_input_images: 4,
     token_present: false,
     account_id: null,
+  },
+  {
+    provider: 'xai_grok_oauth',
+    display_name: 'Grok OAuth · Experimental',
+    auth_mode: 'grok_oauth_device',
+    optional: true,
+    configured: true,
+    authenticated: false,
+    available: false,
+    state: 'not_connected',
+    reason: 'provider_status_unavailable',
+    features: { text_to_image: false, text_reference_to_image: false, image_edit: false },
+    max_input_images: 3,
+    token_present: false,
   },
 ];
 
@@ -90,9 +105,10 @@ export default function ConfigPanel({
   const [cleanupPreview, setCleanupPreview] = useState<CleanupPreview>();
   const [cleanupBusy, setCleanupBusy] = useState(false);
   const [cleanupMessage, setCleanupMessage] = useState<string>();
-  const [authStart, setAuthStart] = useState<CodexNativeAuthStart>();
+  const [authStarts, setAuthStarts] = useState<Record<string, ProviderDeviceAuthStart | undefined>>({});
   const [providerMessage, setProviderMessage] = useState<string>();
-  const [providerBusy, setProviderBusy] = useState(false);
+  const [providerActionMessages, setProviderActionMessages] = useState<Record<string, string | undefined>>({});
+  const [providerBusy, setProviderBusy] = useState<string>();
   const [updateBusy, setUpdateBusy] = useState(false);
   const [updateCheckBusy, setUpdateCheckBusy] = useState(false);
   const [updateMessage, setUpdateMessage] = useState<string>();
@@ -147,7 +163,7 @@ export default function ConfigPanel({
     if (!open) {
       providersRequestRef.current += 1;
       providerActionRequestRef.current += 1;
-      setProviderBusy(false);
+      setProviderBusy(undefined);
       return;
     }
     api.config().then(setCfg).catch(() => undefined);
@@ -181,7 +197,7 @@ export default function ConfigPanel({
   const closePanel = () => {
     providersRequestRef.current += 1;
     providerActionRequestRef.current += 1;
-    setProviderBusy(false);
+    setProviderBusy(undefined);
     closeMotionCleanupRef.current?.();
     const fallbacks = Array.from(document.querySelectorAll<HTMLElement>('.config-button, .toolbar-search input'));
     // Static compatibility marker: focusFirstAvailable([opener, ...fallbacks]) runs after drawer exit.
@@ -210,61 +226,65 @@ export default function ConfigPanel({
     }
   };
 
-  const startCodexAuth = async () => {
+  const startProviderAuth = async (providerId: string) => {
     const requestId = providerActionRequestRef.current + 1;
     providerActionRequestRef.current = requestId;
-    setProviderBusy(true);
-    setProviderMessage(undefined);
+    setProviderBusy(providerId);
+    setProviderActionMessages(current => ({ ...current, [providerId]: undefined }));
     try {
-      const started = await api.codexNativeAuthStart();
+      const started = providerId === 'xai_grok_oauth' ? await api.grokOAuthAuthStart() : await api.codexNativeAuthStart();
       if (providerActionRequestRef.current !== requestId) return;
-      setAuthStart(started);
+      setAuthStarts(current => ({ ...current, [providerId]: started }));
     } catch (err) {
       if (providerActionRequestRef.current !== requestId) return;
-      setProviderMessage(err instanceof Error ? err.message : t('oauthStartFailed'));
+      setProviderActionMessages(current => ({ ...current, [providerId]: err instanceof Error ? err.message : t('oauthStartFailed') }));
     } finally {
-      if (providerActionRequestRef.current === requestId) setProviderBusy(false);
+      if (providerActionRequestRef.current === requestId) setProviderBusy(undefined);
     }
   };
 
-  const pollCodexAuth = async () => {
+  const pollProviderAuth = async (providerId: string) => {
+    const authStart = authStarts[providerId];
     if (!authStart) return;
     const requestId = providerActionRequestRef.current + 1;
     providerActionRequestRef.current = requestId;
-    setProviderBusy(true);
-    setProviderMessage(undefined);
+    setProviderBusy(providerId);
+    setProviderActionMessages(current => ({ ...current, [providerId]: undefined }));
     try {
-      const pollResult = await api.codexNativeAuthPoll({ device_auth_id: authStart.device_auth_id, user_code: authStart.user_code });
+      const pollResult = providerId === 'xai_grok_oauth'
+        ? await api.grokOAuthAuthPoll({ device_code: authStart.device_code || '' })
+        : await api.codexNativeAuthPoll({ device_auth_id: authStart.device_auth_id || '', user_code: authStart.user_code });
       if (providerActionRequestRef.current !== requestId) return;
       if ('status' in pollResult && pollResult.status === 'pending') {
-        setProviderMessage(t('oauthPending'));
+        setProviderActionMessages(current => ({ ...current, [providerId]: t('oauthPending') }));
         return;
       }
-      setAuthStart(undefined);
+      setAuthStarts(current => ({ ...current, [providerId]: undefined }));
       await loadProviders();
     } catch (err) {
       if (providerActionRequestRef.current !== requestId) return;
-      setProviderMessage(err instanceof Error ? err.message : t('oauthIncomplete'));
+      setProviderActionMessages(current => ({ ...current, [providerId]: err instanceof Error ? err.message : t('oauthIncomplete') }));
     } finally {
-      if (providerActionRequestRef.current === requestId) setProviderBusy(false);
+      if (providerActionRequestRef.current === requestId) setProviderBusy(undefined);
     }
   };
 
-  const disconnectCodexAuth = async () => {
+  const disconnectProviderAuth = async (providerId: string) => {
     const requestId = providerActionRequestRef.current + 1;
     providerActionRequestRef.current = requestId;
-    setProviderBusy(true);
-    setProviderMessage(undefined);
+    setProviderBusy(providerId);
+    setProviderActionMessages(current => ({ ...current, [providerId]: undefined }));
     try {
-      await api.codexNativeAuthDisconnect();
+      if (providerId === 'xai_grok_oauth') await api.grokOAuthAuthDisconnect();
+      else await api.codexNativeAuthDisconnect();
       if (providerActionRequestRef.current !== requestId) return;
-      setAuthStart(undefined);
+      setAuthStarts(current => ({ ...current, [providerId]: undefined }));
       await loadProviders();
     } catch (err) {
       if (providerActionRequestRef.current !== requestId) return;
-      setProviderMessage(err instanceof Error ? err.message : t('oauthDisconnectFailed'));
+      setProviderActionMessages(current => ({ ...current, [providerId]: err instanceof Error ? err.message : t('oauthDisconnectFailed') }));
     } finally {
-      if (providerActionRequestRef.current === requestId) setProviderBusy(false);
+      if (providerActionRequestRef.current === requestId) setProviderBusy(undefined);
     }
   };
 
@@ -513,7 +533,10 @@ export default function ConfigPanel({
         <h3 id="config-providers-title">{t('providers')}</h3>
         <p className="muted">{t('providerSetupHelp')}</p>
         <div className="provider-list">
-          {providers.map(provider => (
+          {providers.map(provider => {
+            const authStart = authStarts[provider.provider];
+            const isBusy = providerBusy === provider.provider;
+            return (
             <article className={`provider-card state-${provider.state}`} key={provider.provider}>
               <div className="provider-card-head">
                 <div>
@@ -523,7 +546,7 @@ export default function ConfigPanel({
                 <b>{providerStateLabel(provider, t)}</b>
               </div>
               <p className="muted">{featureSummary(provider, t)}</p>
-              {provider.provider === 'openai_codex_oauth_native' && (
+              {['openai_codex_oauth_native', 'xai_grok_oauth'].includes(provider.provider) && (
                 <div className="provider-actions">
                   {provider.state === 'not_configured' && (
                     <p className="provider-help">{t('providerClientHelp')}</p>
@@ -532,17 +555,18 @@ export default function ConfigPanel({
                   {authStart && (
                     <div className="provider-auth-box">
                       <p><a href={authStart.verification_url || authStart.verification_uri_complete || authStart.verification_uri} target="_blank" rel="noreferrer">{t('providerVerification')}</a> <code>{authStart.user_code}</code></p>
-                      <button className="secondary" onClick={pollCodexAuth} disabled={providerBusy}>{t('checkAuthorization')}</button>
+                      <button className="secondary" onClick={() => pollProviderAuth(provider.provider)} disabled={isBusy}>{t('checkAuthorization')}</button>
                     </div>
                   )}
                   {!provider.authenticated && !authStart && (
-                    <button className="secondary" onClick={startCodexAuth} disabled={isDemoMode || provider.state === 'not_configured' || providerBusy}>{t('connect')}</button>
+                    <button className="secondary" onClick={() => startProviderAuth(provider.provider)} disabled={isDemoMode || provider.state === 'not_configured' || isBusy}>{t('connect')}</button>
                   )}
-                  {provider.authenticated && <button className="secondary" onClick={disconnectCodexAuth} disabled={providerBusy}>{t('disconnect')}</button>}
+                  {provider.authenticated && <button className="secondary" onClick={() => disconnectProviderAuth(provider.provider)} disabled={isBusy}>{t('disconnect')}</button>}
+                  {providerActionMessages[provider.provider] && <p className="provider-message" role="status">{providerActionMessages[provider.provider]}</p>}
                 </div>
               )}
             </article>
-          ))}
+          );})}
         </div>
         {providerMessage && <p className="provider-message">{providerMessage}</p>}
       </section>

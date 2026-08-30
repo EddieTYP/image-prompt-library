@@ -39,6 +39,7 @@ class GenerationJobConflict(ValueError):
 
 
 MAX_GENERATION_INPUT_IMAGES = 4
+GENERATION_INPUT_LIMITS = {"xai_grok_oauth": 3}
 PreparedReferenceImage = tuple[bytes, str, str | None, str | None, str | None]
 STALE_RUNNING_JOB_AFTER = timedelta(minutes=10)
 STALE_RUNNING_JOB_ERROR = "Generation took too long and may have stalled. Retry to run it again."
@@ -312,8 +313,9 @@ class GenerationJobRepository:
             self.items.get_item(payload.source_item_id)
         parameters = sanitize_generation_parameters(payload.parameters)
         input_images = parameters.get("input_images")
-        if isinstance(input_images, list) and len(input_images) > MAX_GENERATION_INPUT_IMAGES:
-            raise GenerationJobConflict(f"Generation edit supports up to {MAX_GENERATION_INPUT_IMAGES} input images")
+        input_limit = GENERATION_INPUT_LIMITS.get(payload.provider, MAX_GENERATION_INPUT_IMAGES)
+        if isinstance(input_images, list) and len(input_images) > input_limit:
+            raise GenerationJobConflict(f"Generation edit supports up to {input_limit} input images")
         job_id = new_id("gen")
         prepared_parameters, library_reference_ids = self._prepare_library_reference_inputs(job_id, parameters)
         prepared_parameters, reference_image_copies = self._prepare_reference_input_clones(job_id, prepared_parameters)
@@ -2164,8 +2166,9 @@ class GenerationJobRepository:
             self.items.get_item(payload.source_item_id)
         parameters = sanitize_generation_parameters(payload.parameters)
         input_images = parameters.get("input_images")
-        if isinstance(input_images, list) and len(input_images) > MAX_GENERATION_INPUT_IMAGES:
-            raise GenerationJobConflict(f"Generation edit supports up to {MAX_GENERATION_INPUT_IMAGES} input images")
+        input_limit = GENERATION_INPUT_LIMITS.get(payload.provider, MAX_GENERATION_INPUT_IMAGES)
+        if isinstance(input_images, list) and len(input_images) > input_limit:
+            raise GenerationJobConflict(f"Generation edit supports up to {input_limit} input images")
         generation_group_id = new_id("gen-group")
         prepared_rows = []
         job_ids: list[str] = []

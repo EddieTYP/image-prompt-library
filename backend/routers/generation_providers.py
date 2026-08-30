@@ -10,6 +10,12 @@ from backend.services.openai_codex_native import (
     CodexNativeTemporaryError,
     OpenAICodexNativeProvider,
 )
+from backend.services.xai_grok_oauth import (
+    GrokDeviceCodeFlow,
+    GrokOAuthAuthStore,
+    GrokOAuthError,
+    GrokOAuthTemporaryError,
+)
 
 router = APIRouter(prefix="/generation-providers", tags=["generation-providers"])
 
@@ -17,6 +23,10 @@ router = APIRouter(prefix="/generation-providers", tags=["generation-providers"]
 class CodexNativePollRequest(BaseModel):
     device_auth_id: str
     user_code: str
+
+
+class GrokOAuthPollRequest(BaseModel):
+    device_code: str
 
 
 class CodexNativeTitleSuggestionRequest(BaseModel):
@@ -51,6 +61,7 @@ def list_generation_providers(request: Request):
             },
         },
         CodexNativeAuthStore().status(),
+        GrokOAuthAuthStore().status(),
     ]
 
 
@@ -82,6 +93,42 @@ def openai_codex_native_auth_poll(payload: CodexNativePollRequest, request: Requ
 def openai_codex_native_auth_disconnect(request: Request):
     del request
     store = CodexNativeAuthStore()
+    store.delete_tokens()
+    return store.status()
+
+
+@router.get("/xai-grok-oauth/status")
+def xai_grok_oauth_status(request: Request):
+    del request
+    return GrokOAuthAuthStore().status()
+
+
+@router.post("/xai-grok-oauth/auth/start")
+def xai_grok_oauth_auth_start(request: Request):
+    del request
+    try:
+        return GrokDeviceCodeFlow().start()
+    except GrokOAuthTemporaryError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except GrokOAuthError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/xai-grok-oauth/auth/poll")
+def xai_grok_oauth_auth_poll(payload: GrokOAuthPollRequest, request: Request):
+    del request
+    try:
+        return GrokDeviceCodeFlow().poll_device_authorization(payload.device_code)
+    except GrokOAuthTemporaryError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except GrokOAuthError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/xai-grok-oauth/auth/disconnect")
+def xai_grok_oauth_auth_disconnect(request: Request):
+    del request
+    store = GrokOAuthAuthStore()
     store.delete_tokens()
     return store.status()
 

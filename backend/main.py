@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -9,7 +10,7 @@ from .config import APP_VERSION, resolve_hidden_features, resolve_library_path, 
 from .db import get_db_path, init_db
 from .routers import app_updates, cleanup, clusters, generation_jobs, generation_providers, images, import_drafts, items, tags
 from .services.library_archives import LibraryOperationLock
-from .services.generation_queue import PROVIDER_ID as NATIVE_GENERATION_PROVIDER_ID, enqueue_generation_jobs, recover_interrupted_generation_jobs
+from .services.generation_queue import AUTOMATED_PROVIDER_IDS, enqueue_generation_jobs, recover_interrupted_generation_jobs
 
 DEFAULT_FRONTEND_DIST_PATH = Path(__file__).resolve().parents[1] / "frontend" / "dist"
 
@@ -20,7 +21,7 @@ FRONTEND_INDEX_CACHE_HEADERS = {
 }
 FRONTEND_ASSET_CACHE_HEADERS = {"Cache-Control": "public, max-age=31536000, immutable"}
 SAFE_HTTP_METHODS = {"GET", "HEAD", "OPTIONS"}
-DEVELOPMENT_ORIGINS = {"http://127.0.0.1:5177", "http://localhost:5177"}
+DEFAULT_DEVELOPMENT_ORIGINS = {"http://127.0.0.1:5177", "http://localhost:5177"}
 
 
 def _normalized_origin(value: str) -> tuple[str, str, int] | None:
@@ -42,18 +43,26 @@ def _normalized_origin(value: str) -> tuple[str, str, int] | None:
     return parsed.scheme, parsed.hostname.rstrip(".").lower(), port or (443 if parsed.scheme == "https" else 80)
 
 
-DEVELOPMENT_ORIGIN_AUTHORITIES = {
-    authority for origin in DEVELOPMENT_ORIGINS if (authority := _normalized_origin(origin)) is not None
-}
+def _development_origins() -> set[str]:
+    origins = set(DEFAULT_DEVELOPMENT_ORIGINS)
+    configured = os.environ.get("IMAGE_PROMPT_LIBRARY_DEVELOPMENT_ORIGINS", "")
+    for raw_origin in configured.split(","):
+        origin = raw_origin.strip().rstrip("/")
+        if not origin:
+            continue
+        if _normalized_origin(origin) is None:
+            raise ValueError(f"Invalid development origin: {raw_origin.strip()}")
+        origins.add(origin)
+    return origins
 
 
-def _browser_write_origin_allowed(request: Request) -> bool:
+def _browser_write_origin_allowed(request: Request, development_origin_authorities: set[tuple[str, str, int]]) -> bool:
     origin = request.headers.get("origin")
     if origin:
         authority = _normalized_origin(origin)
         if authority is None:
             return False
-        if authority in DEVELOPMENT_ORIGIN_AUTHORITIES:
+        if authority in development_origin_authorities:
             return True
         host = request.headers.get("host")
         request_authority = _normalized_origin(f"{request.url.scheme}://{host}") if host else None
@@ -79,21 +88,26 @@ def create_app(library_path: Path | str | None = None, frontend_dist_path: Path 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         with LibraryOperationLock(library):
-            recover_interrupted_generation_jobs(library)
-            enqueue_generation_jobs(library, provider=NATIVE_GENERATION_PROVIDER_ID)
+            for provider in AUTOMATED_PROVIDER_IDS:
+                recover_interrupted_generation_jobs(library, provider=provider)
+                enqueue_generation_jobs(library, provider=provider)
             yield
 
     app = FastAPI(title="Image Prompt Library", version=APP_VERSION, lifespan=lifespan)
     app.state.library_path = library
     app.state.frontend_dist_path = frontend_dist
-    app.add_middleware(CORSMiddleware, allow_origins=["http://127.0.0.1:5177", "http://localhost:5177"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+    development_origins = _development_origins()
+    development_origin_authorities = {
+        authority for origin in development_origins if (authority := _normalized_origin(origin)) is not None
+    }
+    app.add_middleware(CORSMiddleware, allow_origins=sorted(development_origins), allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
     @app.middleware("http")
     async def reject_cross_origin_api_writes(request: Request, call_next):
         if (
             request.url.path.startswith("/api/")
             and request.method.upper() not in SAFE_HTTP_METHODS
-            and not _browser_write_origin_allowed(request)
+            and not _browser_write_origin_allowed(request, development_origin_authorities)
         ):
             return JSONResponse(status_code=403, content={"detail": "Cross-origin write requests are not allowed"})
         return await call_next(request)
