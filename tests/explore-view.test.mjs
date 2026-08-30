@@ -1267,19 +1267,25 @@ test('Explore/detail CSS keeps responsive grids, token controls, CJK hierarchy, 
 });
 
 test('title suggestions are explicit, prompt-only, and shared by both save flows', async () => {
-  const [field, client, editor, generation] = await Promise.all([
+  const [field, client, editor, generation, styles] = await Promise.all([
     readFile(`${ROOT}/frontend/src/components/SuggestedTitleField.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/api/client.ts`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/ItemEditorModal.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/styles.css`, 'utf8'),
   ]);
 
+  assert.match(field, /api\.generationProviders\(\)/);
+  assert.match(field, /chatgpt\?\.configured && chatgpt\.authenticated && chatgpt\.available/);
+  assert.match(field, /disabled=\{busy \|\| !promptText\.trim\(\) \|\| chatgptAvailable !== true\}/);
   assert.match(field, /api\.suggestTitle\(\{ prompt_text: requestedPrompt \}\)/);
   assert.match(field, /setSuggestion\(result\.title\)/);
+  assert.match(field, /t\('titleSuggestionProvider'\)/);
   assert.match(field, /onClick=\{\(\) => \{ onChange\(suggestion\); setSuggestion\(''\); \}\}/);
   assert.doesNotMatch(field, /onChange\(result\.title\)/);
   assert.match(client, /suggestTitle: \(_payload: TitleSuggestionRequest\) => demoReadOnly\(\)/);
   assert.match(client, /openai-codex-native\/suggest-title/);
   assert.match(editor, /<SuggestedTitleField[^>]*promptText=\{titleSuggestionPrompt\}/);
   assert.match(generation, /<SuggestedTitleField[^>]*promptText=\{metadataDraft\.prompts\?\.\[0\]\?\.text \|\| ''\}/);
+  assert.match(styles, /\.title-suggestion-meta\{[^}]*display:flex;[^}]*gap:6px/);
 });
