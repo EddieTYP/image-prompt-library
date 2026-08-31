@@ -289,6 +289,7 @@ export default function ConfigPanel({
   };
 
   const activeUpdateJobs = (updateStatus?.active_generation_jobs.running || 0) + (updateStatus?.active_generation_jobs.queued || 0);
+  const providerActionPending = providerBusy !== undefined;
   const readyProviderCount = providers.filter(provider => provider.can_generate ?? Boolean(provider.available && provider.authenticated && provider.configured)).length;
   const generationSetupLabel = readyProviderCount > 0 ? t('readyProviderCount').replace('${count}', String(readyProviderCount)) : t('optionalNotConnected');
   const updateSetupLabel = updateStatus
@@ -535,7 +536,6 @@ export default function ConfigPanel({
         <div className="provider-list">
           {providers.map(provider => {
             const authStart = authStarts[provider.provider];
-            const isBusy = providerBusy === provider.provider;
             return (
             <article className={`provider-card state-${provider.state}`} key={provider.provider}>
               <div className="provider-card-head">
@@ -555,13 +555,13 @@ export default function ConfigPanel({
                   {authStart && (
                     <div className="provider-auth-box">
                       <p><a href={authStart.verification_url || authStart.verification_uri_complete || authStart.verification_uri} target="_blank" rel="noreferrer">{t('providerVerification')}</a> <code>{authStart.user_code}</code></p>
-                      <button className="secondary" onClick={() => pollProviderAuth(provider.provider)} disabled={isBusy}>{t('checkAuthorization')}</button>
+                      <button className="secondary" onClick={() => pollProviderAuth(provider.provider)} disabled={providerActionPending}>{t('checkAuthorization')}</button>
                     </div>
                   )}
                   {!provider.authenticated && !authStart && (
-                    <button className="secondary" onClick={() => startProviderAuth(provider.provider)} disabled={isDemoMode || provider.state === 'not_configured' || isBusy}>{t('connect')}</button>
+                    <button className="secondary" onClick={() => startProviderAuth(provider.provider)} disabled={isDemoMode || provider.state === 'not_configured' || providerActionPending}>{t('connect')}</button>
                   )}
-                  {provider.authenticated && <button className="secondary" onClick={() => disconnectProviderAuth(provider.provider)} disabled={isBusy}>{t('disconnect')}</button>}
+                  {provider.authenticated && <button className="secondary" onClick={() => disconnectProviderAuth(provider.provider)} disabled={providerActionPending}>{t('disconnect')}</button>}
                   {providerActionMessages[provider.provider] && <p className="provider-message" role="status">{providerActionMessages[provider.provider]}</p>}
                 </div>
               )}

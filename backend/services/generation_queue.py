@@ -85,7 +85,7 @@ def _run_job_and_continue(library_path: Path, job_id: str, provider: str) -> Non
         with _lock:
             _active.discard(job_id)
             _active_providers.pop(job_id, None)
-        _continue_generation_queue(library_path, provider)
+            _continue_automated_generation_queues(library_path, completed_provider=provider)
 
 
 def run_generation_job_now(library_path: Path | str, job_id: str):
@@ -132,3 +132,11 @@ def _continue_generation_queue(library_path: Path, provider: str) -> None:
         enqueue_generation_jobs(library_path, provider=provider)
     except (OSError, sqlite3.Error):
         _schedule_pause_wake(library_path, provider, QUEUE_RESUME_RETRY_SECONDS)
+
+
+def _continue_automated_generation_queues(library_path: Path, *, completed_provider: str) -> None:
+    providers = sorted(AUTOMATED_PROVIDER_IDS - {completed_provider})
+    if completed_provider in AUTOMATED_PROVIDER_IDS:
+        providers.append(completed_provider)
+    for provider in providers:
+        _continue_generation_queue(library_path, provider)

@@ -3030,7 +3030,73 @@ def test_queue_worker_does_not_record_same_rate_limit_twice(tmp_path, monkeypatc
             "SELECT incident_count FROM provider_queue_states WHERE provider=?",
             (provider,),
         ).fetchone()[0] == 1
-    assert continued == [(library, provider)]
+    assert continued == [
+        (library, "xai_grok_oauth"),
+        (library, provider),
+    ]
+
+
+def test_queue_worker_gives_other_provider_first_chance_at_released_slot(tmp_path, monkeypatch):
+    from backend.services import generation_queue
+
+    class SuccessfulProvider:
+        def run_job(self, _library_path, _job_id):
+            return None
+
+    library = tmp_path / "library"
+    provider = "openai_codex_oauth_native"
+    other_provider = "xai_grok_oauth"
+    GenerationJobRepository(library).create_job(GenerationJobCreate(
+        provider=provider,
+        prompt_text="new work competing for the released slot",
+    ))
+    other_job = GenerationJobRepository(library).create_job(GenerationJobCreate(
+        provider=other_provider,
+        prompt_text="waiting for a shared slot",
+    ))
+    active_jobs = {"finishing-job", "active-2", "active-3", "active-4", "active-5"}
+    active_providers = {job_id: provider for job_id in active_jobs}
+    submitted = []
+    helper_started = Event()
+    competing_enqueue_acquired_lock = Event()
+    monkeypatch.setattr(generation_queue, "_active", active_jobs)
+    monkeypatch.setattr(generation_queue, "_active_providers", active_providers)
+    monkeypatch.setattr(generation_queue, "_provider_for", lambda _provider: SuccessfulProvider())
+    monkeypatch.setattr(
+        generation_queue._executor,
+        "submit",
+        lambda fn, *args: submitted.append((fn, args)),
+    )
+
+    continue_automated_queues = generation_queue._continue_automated_generation_queues
+
+    def continue_after_competing_enqueue_attempt(library_path, *, completed_provider):
+        helper_started.set()
+        competing_enqueue_acquired_lock.wait(0.25)
+        continue_automated_queues(library_path, completed_provider=completed_provider)
+
+    def enqueue_competing_job():
+        assert helper_started.wait(1)
+        with generation_queue._lock:
+            competing_enqueue_acquired_lock.set()
+            generation_queue.enqueue_generation_jobs(library, provider=provider)
+
+    monkeypatch.setattr(
+        generation_queue,
+        "_continue_automated_generation_queues",
+        continue_after_competing_enqueue_attempt,
+    )
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        competing_enqueue = executor.submit(enqueue_competing_job)
+        generation_queue._run_job_and_continue(library, "finishing-job", provider)
+        competing_enqueue.result(timeout=2)
+
+    assert submitted == [(
+        generation_queue._run_job_and_continue,
+        (library, other_job.id, other_provider),
+    )]
+    assert "finishing-job" not in active_jobs
+    assert other_job.id in active_jobs
 
 
 def test_synchronous_rate_limit_is_not_recorded_twice_and_schedules_resume(tmp_path, monkeypatch):

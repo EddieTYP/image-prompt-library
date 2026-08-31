@@ -782,6 +782,16 @@ test('Config provider actions clear busy on close without accepting stale result
   assert.equal((config.match(/if \(providerActionRequestRef\.current === requestId\) setProviderBusy\(undefined\);/g) || []).length, 3);
 });
 
+test('Config serializes OAuth actions across provider cards', async () => {
+  const config = await readFile(`${ROOT}/frontend/src/components/ConfigPanel.tsx`, 'utf8');
+
+  assert.match(config, /const providerActionPending = providerBusy !== undefined;/);
+  assert.match(config, /onClick=\{\(\) => pollProviderAuth\(provider\.provider\)\} disabled=\{providerActionPending\}/);
+  assert.match(config, /onClick=\{\(\) => startProviderAuth\(provider\.provider\)\} disabled=\{isDemoMode \|\| provider\.state === 'not_configured' \|\| providerActionPending\}/);
+  assert.match(config, /onClick=\{\(\) => disconnectProviderAuth\(provider\.provider\)\} disabled=\{providerActionPending\}/);
+  assert.doesNotMatch(config, /providerBusy === provider\.provider/);
+});
+
 test('Explore wiring preserves Library management, semantic appearance, and restrained motion', async () => {
   const [app, cards, explore, config, styles, translations, toggle, topBar, generationPanel, queueDrawer, editorModal, suggestedTitleField, modalFocus, appearance, itemCard] = await Promise.all([
     readFile(`${ROOT}/frontend/src/App.tsx`, 'utf8'),
