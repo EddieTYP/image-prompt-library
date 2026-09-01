@@ -20,6 +20,7 @@ export default function SuggestedTitleField({
   const [suggestion, setSuggestion] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [chatgptAvailable, setChatgptAvailable] = useState<boolean | null>(null);
   const promptRef = useRef(promptText);
   const inputId = useId();
 
@@ -29,9 +30,23 @@ export default function SuggestedTitleField({
     setError('');
   }, [promptText]);
 
+  useEffect(() => {
+    let cancelled = false;
+    api.generationProviders()
+      .then(providers => {
+        if (cancelled) return;
+        const chatgpt = providers.find(provider => provider.provider === 'openai_codex_oauth_native');
+        setChatgptAvailable(Boolean(chatgpt?.configured && chatgpt.authenticated && chatgpt.available));
+      })
+      .catch(() => {
+        if (!cancelled) setChatgptAvailable(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   const requestSuggestion = async () => {
     const requestedPrompt = promptText.trim();
-    if (!requestedPrompt || busy) return;
+    if (!requestedPrompt || busy || chatgptAvailable !== true) return;
     setBusy(true);
     setError('');
     try {
@@ -40,7 +55,10 @@ export default function SuggestedTitleField({
     } catch (requestError) {
       if (promptRef.current.trim() !== requestedPrompt) return;
       if (requestError instanceof TitleSuggestionRequestError) {
-        if (requestError.status === 409) setError(t('titleSuggestionLoginRequired'));
+        if (requestError.status === 409) {
+          setChatgptAvailable(false);
+          setError(t('titleSuggestionLoginRequired'));
+        }
         else if (requestError.status === 429) setError(t('titleSuggestionRateLimited'));
         else if (requestError.status === 503) setError(t('titleSuggestionUnavailable'));
         else setError(t('titleSuggestionFailed'));
@@ -56,14 +74,17 @@ export default function SuggestedTitleField({
     <div className={`suggested-title-field ${className}`.trim()}>
       <div className="suggested-title-label-row">
         <label htmlFor={inputId}>{t('title')}</label>
-        <button type="button" className="suggest-title-button" onClick={requestSuggestion} disabled={busy || !promptText.trim()}>
+        <button type="button" className="suggest-title-button" onClick={requestSuggestion} disabled={busy || !promptText.trim() || chatgptAvailable !== true} title={chatgptAvailable === false ? t('titleSuggestionLoginRequired') : undefined}>
           {busy ? t('suggestingTitle') : t('suggestTitle')}
         </button>
       </div>
       <input id={inputId} data-modal-initial-focus={autoFocus || undefined} placeholder={t('titlePlaceholder')} value={value} onChange={event => onChange(event.currentTarget.value)} />
       {suggestion && (
         <div className="title-suggestion" role="status">
-          <span><b>{t('suggestedTitle')}</b>{suggestion}</span>
+          <div className="title-suggestion-copy">
+            <div className="title-suggestion-meta"><b>{t('suggestedTitle')}</b><small>{t('titleSuggestionProvider')}</small></div>
+            <span>{suggestion}</span>
+          </div>
           <button type="button" onClick={() => { onChange(suggestion); setSuggestion(''); }}>{t('useSuggestedTitle')}</button>
         </div>
       )}

@@ -8,6 +8,7 @@ SOURCE_APP_VERSION = "0.1.0"
 DEFAULT_LIBRARY_PATH = Path(__file__).resolve().parents[1] / "library"
 DEFAULT_APP_STATE_PATH = Path.home() / ".image-prompt-library"
 DEFAULT_AUTH_PATH = DEFAULT_APP_STATE_PATH / "auth.json"
+DEFAULT_GROK_AUTH_PATH = DEFAULT_APP_STATE_PATH / "grok-auth.json"
 DEFAULT_CONFIG_PATH = DEFAULT_APP_STATE_PATH / "config.json"
 LIBRARY_STORAGE_ROOTS = frozenset({"originals", "thumbs", "previews", "generation-results", "generation-references"})
 
@@ -51,6 +52,11 @@ APP_VERSION = resolve_app_version()
 def resolve_auth_path() -> Path:
     configured = os.environ.get("IMAGE_PROMPT_LIBRARY_AUTH_PATH")
     return Path(configured).expanduser() if configured else DEFAULT_AUTH_PATH
+
+
+def resolve_grok_auth_path() -> Path:
+    configured = os.environ.get("IMAGE_PROMPT_LIBRARY_GROK_AUTH_PATH")
+    return Path(configured).expanduser() if configured else DEFAULT_GROK_AUTH_PATH
 
 
 def resolve_config_path() -> Path:
@@ -103,6 +109,7 @@ def validate_app_owned_paths(library_path: Path | str) -> None:
     unsafe: list[tuple[str, Path, Path]] = []
     for env_name, configured_path in (
         ("IMAGE_PROMPT_LIBRARY_AUTH_PATH", resolve_auth_path()),
+        ("IMAGE_PROMPT_LIBRARY_GROK_AUTH_PATH", resolve_grok_auth_path()),
         ("IMAGE_PROMPT_LIBRARY_CONFIG_PATH", resolve_config_path()),
     ):
         path_absolute, path_resolved = _path_identities(configured_path)

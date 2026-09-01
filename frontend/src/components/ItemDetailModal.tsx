@@ -37,7 +37,7 @@ function isReferenceImage(image?: ImageRecord) {
 function generationProviderLabel(provider?: string | null) {
   if (!provider || provider === 'manual_upload') return '';
   if (provider === 'openai_codex_oauth_native') return 'ChatGPT / Codex';
-  if (provider === 'xai') return 'xAI';
+  if (provider === 'xai' || provider === 'xai_grok_oauth') return 'Grok';
   return provider.replace(/[_-]+/g, ' ').replace(/\b\w/g, character => character.toUpperCase());
 }
 

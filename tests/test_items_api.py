@@ -396,6 +396,26 @@ def test_supported_same_origin_dev_and_cli_writes_remain_available(tmp_path, bas
     assert c.get("/api/items").json()["total"] == 1
 
 
+def test_configured_development_origin_can_write_without_weakening_other_origins(tmp_path, monkeypatch):
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_DEVELOPMENT_ORIGINS", "http://127.0.0.1:5178")
+    c = TestClient(create_app(library_path=tmp_path / "library"), base_url="http://testserver")
+
+    allowed = c.post(
+        "/api/items",
+        json=create_payload(title="Allowed preview write"),
+        headers={"Origin": "http://127.0.0.1:5178", "Sec-Fetch-Site": "cross-site"},
+    )
+    blocked = c.post(
+        "/api/items",
+        json=create_payload(title="Blocked unrelated write"),
+        headers={"Origin": "http://127.0.0.1:5179", "Sec-Fetch-Site": "cross-site"},
+    )
+
+    assert allowed.status_code == 200
+    assert blocked.status_code == 403
+    assert c.get("/api/items").json()["total"] == 1
+
+
 def test_deleting_item_keeps_media_files_still_used_by_another_item(tmp_path):
     c = client(tmp_path)
     library = tmp_path / "library"

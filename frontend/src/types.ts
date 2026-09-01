@@ -17,11 +17,13 @@ export interface CleanupPreview { broken_image_records: CleanupImageRecord[]; un
 export interface CleanupApplyRequest { preview_token: string; remove_broken_image_records: boolean; remove_unreferenced_files: boolean }
 export interface CleanupApplyResult extends CleanupPreview { removed_broken_image_records: number; removed_unreferenced_files: number }
 export interface GenerationProviderFeatures { text_to_image?: boolean; text_reference_to_image?: boolean; image_edit?: boolean; manual_result_upload?: boolean }
-export interface GenerationProviderStatus { provider: string; display_name: string; auth_mode?: string; optional: boolean; configured: boolean; authenticated: boolean; available: boolean; state: string; status?: 'ready' | 'unavailable' | 'login_required' | 'auth_error'; message?: string | null; can_generate?: boolean; reason?: string | null; features: GenerationProviderFeatures; token_present?: boolean; account_id?: string | null; auth_store_path?: string; orchestrator_models?: string[]; default_orchestrator_model?: string; image_models?: string[]; default_image_model?: string }
-export interface CodexNativeAuthStart { device_auth_id: string; user_code: string; verification_url: string; verification_uri?: string; verification_uri_complete?: string; expires_in?: number; interval?: number }
+export interface GenerationProviderStatus { provider: string; display_name: string; auth_mode?: string; optional: boolean; configured: boolean; authenticated: boolean; available: boolean; state: string; status?: 'ready' | 'unavailable' | 'login_required' | 'auth_error'; message?: string | null; can_generate?: boolean; reason?: string | null; features: GenerationProviderFeatures; max_input_images?: number; token_present?: boolean; account_id?: string | null; auth_store_path?: string; orchestrator_models?: string[]; default_orchestrator_model?: string; image_models?: string[]; default_image_model?: string }
+export interface ProviderDeviceAuthStart { device_auth_id?: string; device_code?: string; user_code: string; verification_url: string; verification_uri?: string; verification_uri_complete?: string; expires_in?: number; interval?: number }
+export type CodexNativeAuthStart = ProviderDeviceAuthStart
 export interface CodexNativeAuthPending { provider: string; auth_mode?: string; status: 'pending' }
 export type CodexNativeAuthPollResponse = GenerationProviderStatus | CodexNativeAuthPending
 export interface CodexNativeAuthPollRequest { device_auth_id: string; user_code: string }
+export interface GrokOAuthPollRequest { device_code: string }
 export interface TitleSuggestionRequest { prompt_text: string }
 export interface TitleSuggestionResponse { title: string }
 export interface GenerationJobCreate { source_item_id?: string; mode?: string; provider: string; model?: string | null; prompt_language?: string | null; prompt_text: string; edited_prompt_text?: string | null; reference_image_ids?: string[]; parameters?: Record<string, unknown> }

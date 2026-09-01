@@ -1,9 +1,20 @@
-import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationJobSetCreate, GenerationJobSetRecord, GenerationProviderStatus, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemImageUpdate, ItemList, ItemSortMode, ItemSummary, TagRecord, TitleSuggestionRequest, TitleSuggestionResponse, UploadImageRole } from '../types';
+import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationJobSetCreate, GenerationJobSetRecord, GenerationProviderStatus, GrokOAuthPollRequest, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemImageUpdate, ItemList, ItemSortMode, ItemSummary, ProviderDeviceAuthStart, TagRecord, TitleSuggestionRequest, TitleSuggestionResponse, UploadImageRole } from '../types';
 import { DEFAULT_ITEM_SORT } from '../utils/searchSort';
 
 const API = '';
 const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
 const DEMO_DATA_BASE = `${import.meta.env.BASE_URL || '/'}demo-data`.replace(/\/+/g, '/');
+
+async function responseError(response: Response) {
+  const body = await response.text();
+  try {
+    const payload = JSON.parse(body) as { detail?: unknown };
+    if (typeof payload.detail === 'string' && payload.detail.trim()) return payload.detail;
+  } catch {
+    // Keep plain-text provider and server errors unchanged.
+  }
+  return body || `${response.status} ${response.statusText}`;
+}
 
 function demoUrl(path: string) {
   const base = import.meta.env.BASE_URL || '/';
@@ -12,13 +23,13 @@ function demoUrl(path: string) {
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(API + url, { headers: init?.body instanceof FormData ? undefined : { 'Content-Type': 'application/json' }, ...init });
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) throw new Error(await responseError(r));
   return r.json();
 }
 
 async function demoJson<T>(path: string): Promise<T> {
   const r = await fetch(demoUrl(path));
-  if (!r.ok) throw new Error(await r.text());
+  if (!r.ok) throw new Error(await responseError(r));
   return r.json();
 }
 
@@ -181,13 +192,34 @@ export const api = isDemoMode ? {
       can_generate: false,
       reason: 'local_only',
       features: { text_to_image: false, text_reference_to_image: false, image_edit: false },
+      max_input_images: 4,
       token_present: false,
       account_id: null,
+    },
+    {
+      provider: 'xai_grok_oauth',
+      display_name: 'Grok OAuth · Experimental',
+      auth_mode: 'grok_oauth_device',
+      optional: true,
+      configured: true,
+      authenticated: false,
+      available: false,
+      state: 'demo_unavailable',
+      status: 'unavailable',
+      message: 'Generation requires a local install.',
+      can_generate: false,
+      reason: 'local_only',
+      features: { text_to_image: false, text_reference_to_image: false, image_edit: false },
+      max_input_images: 3,
+      token_present: false,
     },
   ]),
   codexNativeAuthStart: () => demoReadOnly(),
   codexNativeAuthPoll: (_payload: CodexNativeAuthPollRequest) => demoReadOnly(),
   codexNativeAuthDisconnect: () => demoReadOnly(),
+  grokOAuthAuthStart: () => demoReadOnly(),
+  grokOAuthAuthPoll: (_payload: GrokOAuthPollRequest) => demoReadOnly(),
+  grokOAuthAuthDisconnect: () => demoReadOnly(),
   suggestTitle: (_payload: TitleSuggestionRequest) => demoReadOnly(),
   generationJobs: () => Promise.resolve<GenerationJobList>({
     jobs: [],
@@ -235,6 +267,9 @@ export const api = isDemoMode ? {
   codexNativeAuthStart: () => json<CodexNativeAuthStart>('/api/generation-providers/openai-codex-native/auth/start', { method: 'POST' }),
   codexNativeAuthPoll: (payload: CodexNativeAuthPollRequest) => json<CodexNativeAuthPollResponse>('/api/generation-providers/openai-codex-native/auth/poll', { method: 'POST', body: JSON.stringify(payload) }),
   codexNativeAuthDisconnect: () => json<GenerationProviderStatus>('/api/generation-providers/openai-codex-native/auth/disconnect', { method: 'POST' }),
+  grokOAuthAuthStart: () => json<ProviderDeviceAuthStart>('/api/generation-providers/xai-grok-oauth/auth/start', { method: 'POST' }),
+  grokOAuthAuthPoll: (payload: GrokOAuthPollRequest) => json<CodexNativeAuthPollResponse>('/api/generation-providers/xai-grok-oauth/auth/poll', { method: 'POST', body: JSON.stringify(payload) }),
+  grokOAuthAuthDisconnect: () => json<GenerationProviderStatus>('/api/generation-providers/xai-grok-oauth/auth/disconnect', { method: 'POST' }),
   suggestTitle: suggestTitleRequest,
   generationJobs: (params: Record<string, string | number | boolean | undefined> = {}) => { const qs = new URLSearchParams(); Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)); }); return json<GenerationJobList>(`/api/generation-jobs?${qs}`); },
   generationJob: (id: string) => json<GenerationJobRecord>(`/api/generation-jobs/${id}`),
