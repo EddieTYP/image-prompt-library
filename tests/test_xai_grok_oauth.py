@@ -42,11 +42,152 @@ def test_grok_status_is_optional_separate_and_redacted(tmp_path):
         "text_to_image": True,
         "text_reference_to_image": True,
         "image_edit": True,
+        "title_suggestion": True,
     }
     assert status["max_input_images"] == 3
     assert "access-secret" not in serialized
     assert "refresh-secret" not in serialized
     assert store.path.name == "grok-auth.json"
+
+
+def test_grok_title_suggestion_uses_responses_api_and_normalizes(tmp_path):
+    from backend.services.xai_grok_oauth import GrokOAuthAuthStore, XaiGrokOAuthProvider
+
+    library = tmp_path / "library"
+    store = GrokOAuthAuthStore()
+    store.save_tokens({"access_token": "access-secret", "refresh_token": "refresh-secret", "expires_in": 3600})
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url == "https://api.x.ai/v1/responses"
+        assert request.headers["authorization"] == "Bearer access-secret"
+        assert json.loads(request.content) == {
+            "model": "grok-4.6",
+            "store": False,
+            "reasoning": {"effort": "low"},
+            "max_output_tokens": 128,
+            "input": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Suggest one concise library title for the image prompt. "
+                        "Use the same language as the prompt. Return only the title, without quotes, labels, markdown, or commentary."
+                    ),
+                },
+                {"role": "user", "content": "雨夜中的霓虹圖書館"},
+            ],
+        }
+        return httpx.Response(200, json={
+            "output": [{"content": [{"type": "output_text", "text": "標題：霓虹雨夜圖書館"}]}],
+        })
+
+    with httpx.Client(transport=httpx.MockTransport(handler)) as http_client:
+        title = XaiGrokOAuthProvider(auth_store=store, http_client=http_client).suggest_title(
+            library,
+            "雨夜中的霓虹圖書館",
+        )
+
+    assert title == "霓虹雨夜圖書館"
+
+
+def test_grok_title_suggestion_rejects_unsafe_credential_boundary_before_auth_read(tmp_path, monkeypatch):
+    from backend.services.xai_grok_oauth import GrokOAuthError, XaiGrokOAuthProvider
+
+    library = tmp_path / "library"
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_GROK_AUTH_PATH", str(library / "grok-auth.json"))
+
+    with pytest.raises(GrokOAuthError, match="paths are unsafe"):
+        XaiGrokOAuthProvider().suggest_title(library, "A quiet observatory")
+
+
+def test_grok_title_suggestion_treats_upstream_entitlement_failure_as_sanitized_request_error(tmp_path):
+    from backend.services.xai_grok_oauth import GrokOAuthAuthStore, GrokOAuthRequestError, XaiGrokOAuthProvider
+
+    store = GrokOAuthAuthStore()
+    store.save_tokens({"access_token": "access-secret", "refresh_token": "refresh-secret", "expires_in": 3600})
+    with httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(403, text="private upstream detail"))) as http_client:
+        with pytest.raises(GrokOAuthRequestError, match="access is unavailable"):
+            XaiGrokOAuthProvider(auth_store=store, http_client=http_client).suggest_title(
+                tmp_path / "library",
+                "A quiet observatory",
+            )
+
+
+def test_grok_title_suggestion_rejects_malformed_success_response(tmp_path):
+    from backend.services.xai_grok_oauth import GrokOAuthAuthStore, GrokOAuthRequestError, XaiGrokOAuthProvider
+
+    store = GrokOAuthAuthStore()
+    store.save_tokens({"access_token": "access-secret", "refresh_token": "refresh-secret", "expires_in": 3600})
+    with httpx.Client(transport=httpx.MockTransport(lambda _request: httpx.Response(200, json={"output": None}))) as http_client:
+        with pytest.raises(GrokOAuthRequestError, match="invalid response"):
+            XaiGrokOAuthProvider(auth_store=store, http_client=http_client).suggest_title(
+                tmp_path / "library",
+                "A quiet observatory",
+            )
+
+
+def test_grok_title_suggestion_api_routes_provider_and_returns_provenance(tmp_path, monkeypatch):
+    from backend.services.xai_grok_oauth import XaiGrokOAuthProvider
+
+    captured = {}
+
+    def suggest_title(self, library_path, prompt_text):
+        captured.update(library_path=library_path, prompt_text=prompt_text)
+        return "Quiet Observatory"
+
+    monkeypatch.setattr(XaiGrokOAuthProvider, "suggest_title", suggest_title)
+    response = TestClient(create_app(library_path=tmp_path / "library")).post(
+        "/api/generation-providers/xai_grok_oauth/suggest-title",
+        json={"prompt_text": "A quiet observatory"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"title": "Quiet Observatory", "provider": "xai_grok_oauth"}
+    assert captured == {"library_path": tmp_path / "library", "prompt_text": "A quiet observatory"}
+
+
+@pytest.mark.parametrize(("error_type", "status_code", "retry_after"), [
+    ("auth", 409, None),
+    ("request", 502, None),
+    ("temporary", 503, None),
+    ("rate_limit", 429, "45"),
+])
+def test_grok_title_suggestion_api_returns_sanitized_errors(tmp_path, monkeypatch, error_type, status_code, retry_after):
+    from backend.services.xai_grok_oauth import (
+        GrokOAuthError,
+        GrokOAuthRateLimitError,
+        GrokOAuthRequestError,
+        GrokOAuthTemporaryError,
+        XaiGrokOAuthProvider,
+    )
+
+    errors = {
+        "auth": GrokOAuthError("access-secret"),
+        "request": GrokOAuthRequestError("provider raw response access-secret"),
+        "temporary": GrokOAuthTemporaryError("provider raw response access-secret"),
+        "rate_limit": GrokOAuthRateLimitError("provider raw response access-secret", retry_after_seconds=45),
+    }
+
+    def suggest_title(self, library_path, prompt_text):
+        raise errors[error_type]
+
+    monkeypatch.setattr(XaiGrokOAuthProvider, "suggest_title", suggest_title)
+    response = TestClient(create_app(library_path=tmp_path / "library")).post(
+        "/api/generation-providers/xai_grok_oauth/suggest-title",
+        json={"prompt_text": "A quiet observatory"},
+    )
+
+    assert response.status_code == status_code
+    assert "access-secret" not in response.text
+    assert response.headers.get("Retry-After") == retry_after
+
+
+def test_title_suggestion_unknown_provider_returns_not_found(tmp_path):
+    response = TestClient(create_app(library_path=tmp_path / "library")).post(
+        "/api/generation-providers/unknown_provider/suggest-title",
+        json={"prompt_text": "A quiet observatory"},
+    )
+
+    assert response.status_code == 404
 
 
 def test_grok_client_id_can_be_overridden_by_local_config(tmp_path):

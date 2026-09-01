@@ -33,9 +33,19 @@ Open **Config → Providers**, then choose **Connect** under the provider you wa
 
 The ChatGPT browser flow may label the request **Codex CLI**. Grok uses a separate xAI device-authorization flow and credential store. Only approve a flow you started from your local Image Prompt Library app. When setup is complete, the provider shows **Connected**. Grok remains experimental, and availability depends on the connected xAI account.
 
+Under **Config → Providers**, choose a **Default AI provider** for new generation sessions and title suggestions. Only a connected provider that supports title suggestions can be selected. If that provider is disconnected later, the app keeps your choice and asks you to reconnect instead of silently sending the prompt to another provider.
+
+## Suggest a title
+
+**Suggest title** is an explicit action in Add, Edit, and generated-result save screens. It sends only the current prompt text to the selected provider; it does not send the image, existing title, tags, Collection, source details, or other Library metadata. The suggestion is shown for review and is not applied until you choose **Use title**.
+
+Normal Add and Edit screens use the **Default AI provider**. When saving a generated result, the app uses the provider that created that result when it supports title suggestions; manual or unsupported results use the default. The suggestion identifies its source as **via ChatGPT** or **via Grok**.
+
+ChatGPT title suggestions use the existing ChatGPT / Codex OAuth connection. Grok title suggestions use `grok-4.6` through the xAI Responses API with response storage disabled. The public demo never sends title-suggestion requests.
+
 ## Generate and review results
 
-Open **Create image**, enter a prompt, and choose settings. **Generate** creates one result; the adjacent menu creates 3, 5, or 10. Each result uses a separate generation request. Template prompts can include `{{variables}}`; the composer previews the resolved prompt before sending.
+Open **Create image**, enter a prompt, and choose settings. The composer starts with your **Default AI provider**, and its provider control can override that choice for the current session. **Generate** creates one result; the adjacent menu creates 3, 5, or 10. Each result uses a separate generation request. Template prompts can include `{{variables}}`; the composer previews the resolved prompt before sending.
 
 When ChatGPT / Codex OAuth is selected, the built-in choices are `gpt-5.6-terra`, `gpt-5.6-sol`, and `gpt-5.6-luna`. The default is **Recommended · gpt-5.6-terra**. Existing custom model overrides remain available.
 

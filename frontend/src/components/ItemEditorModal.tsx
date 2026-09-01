@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, ImagePlus, Star, Trash2, X } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import { useModalFocus } from '../hooks/useModalFocus';
-import type { ClusterRecord, ImageRecord, ItemDetail, TagRecord, UploadImageRole } from '../types';
+import type { ClusterRecord, ImageRecord, ItemDetail, TagRecord, TitleSuggestionProvider, UploadImageRole } from '../types';
 import { imageThumbnailPath } from '../utils/images';
 import type { Translator } from '../utils/i18n';
 import SuggestedTitleField from './SuggestedTitleField';
@@ -31,6 +31,7 @@ export default function ItemEditorModal({
   t,
   clusters,
   tags: existingTags,
+  defaultAiProvider,
   onClose,
   onSaved,
   onDeleted,
@@ -40,6 +41,7 @@ export default function ItemEditorModal({
   t: Translator;
   clusters: ClusterRecord[];
   tags: TagRecord[];
+  defaultAiProvider: TitleSuggestionProvider;
   onClose: () => void;
   onSaved: () => void;
   onDeleted: () => void;
@@ -277,7 +279,7 @@ export default function ItemEditorModal({
         </div>
 
         <div className="editor-grid">
-          <SuggestedTitleField className="field field-title" value={title} promptText={titleSuggestionPrompt} t={t} onChange={setTitle} autoFocus />
+          <SuggestedTitleField className="field field-title" value={title} promptText={titleSuggestionPrompt} provider={defaultAiProvider} t={t} onChange={setTitle} autoFocus />
           <label className="field">
             <span>{t('collection')}</span>
             <input list="collection-suggestions" placeholder={t('collectionPlaceholder')} value={cluster} onChange={e => setCluster(e.target.value)} />

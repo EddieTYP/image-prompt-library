@@ -1,10 +1,16 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { api, TitleSuggestionRequestError } from '../api/client';
+import type { TitleSuggestionProvider } from '../types';
 import type { Translator } from '../utils/i18n';
+
+function providerLabel(provider: TitleSuggestionProvider) {
+  return provider === 'xai_grok_oauth' ? 'Grok' : 'ChatGPT';
+}
 
 export default function SuggestedTitleField({
   value,
   promptText,
+  provider,
   t,
   onChange,
   autoFocus = false,
@@ -12,52 +18,65 @@ export default function SuggestedTitleField({
 }: {
   value: string;
   promptText: string;
+  provider: TitleSuggestionProvider;
   t: Translator;
   onChange: (value: string) => void;
   autoFocus?: boolean;
   className?: string;
 }) {
   const [suggestion, setSuggestion] = useState('');
+  const [suggestionProvider, setSuggestionProvider] = useState<TitleSuggestionProvider>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [chatgptAvailable, setChatgptAvailable] = useState<boolean | null>(null);
+  const [providerAvailable, setProviderAvailable] = useState<boolean | null>(null);
   const promptRef = useRef(promptText);
+  const providerRef = useRef(provider);
   const inputId = useId();
 
   useEffect(() => {
     promptRef.current = promptText;
     setSuggestion('');
+    setSuggestionProvider(undefined);
     setError('');
   }, [promptText]);
 
   useEffect(() => {
+    providerRef.current = provider;
+    setSuggestion('');
+    setSuggestionProvider(undefined);
+    setError('');
+    setProviderAvailable(null);
     let cancelled = false;
     api.generationProviders()
       .then(providers => {
         if (cancelled) return;
-        const chatgpt = providers.find(provider => provider.provider === 'openai_codex_oauth_native');
-        setChatgptAvailable(Boolean(chatgpt?.configured && chatgpt.authenticated && chatgpt.available));
+        const selected = providers.find(candidate => candidate.provider === provider);
+        setProviderAvailable(Boolean(selected?.configured && selected.authenticated && selected.available && selected.features.title_suggestion));
       })
       .catch(() => {
-        if (!cancelled) setChatgptAvailable(false);
+        if (!cancelled) setProviderAvailable(false);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [provider]);
 
   const requestSuggestion = async () => {
     const requestedPrompt = promptText.trim();
-    if (!requestedPrompt || busy || chatgptAvailable !== true) return;
+    if (!requestedPrompt || busy || providerAvailable !== true) return;
+    const requestedProvider = provider;
     setBusy(true);
     setError('');
     try {
-      const result = await api.suggestTitle({ prompt_text: requestedPrompt });
-      if (promptRef.current.trim() === requestedPrompt) setSuggestion(result.title);
+      const result = await api.suggestTitle(requestedProvider, { prompt_text: requestedPrompt });
+      if (promptRef.current.trim() === requestedPrompt && providerRef.current === requestedProvider) {
+        setSuggestion(result.title);
+        setSuggestionProvider(result.provider);
+      }
     } catch (requestError) {
-      if (promptRef.current.trim() !== requestedPrompt) return;
+      if (promptRef.current.trim() !== requestedPrompt || providerRef.current !== requestedProvider) return;
       if (requestError instanceof TitleSuggestionRequestError) {
         if (requestError.status === 409) {
-          setChatgptAvailable(false);
-          setError(t('titleSuggestionLoginRequired'));
+          setProviderAvailable(false);
+          setError(t('titleSuggestionProviderLoginRequired').replace('${provider}', providerLabel(requestedProvider)));
         }
         else if (requestError.status === 429) setError(t('titleSuggestionRateLimited'));
         else if (requestError.status === 503) setError(t('titleSuggestionUnavailable'));
@@ -74,7 +93,7 @@ export default function SuggestedTitleField({
     <div className={`suggested-title-field ${className}`.trim()}>
       <div className="suggested-title-label-row">
         <label htmlFor={inputId}>{t('title')}</label>
-        <button type="button" className="suggest-title-button" onClick={requestSuggestion} disabled={busy || !promptText.trim() || chatgptAvailable !== true} title={chatgptAvailable === false ? t('titleSuggestionLoginRequired') : undefined}>
+        <button type="button" className="suggest-title-button" onClick={requestSuggestion} disabled={busy || !promptText.trim() || providerAvailable !== true} title={providerAvailable === false ? t('titleSuggestionProviderLoginRequired').replace('${provider}', providerLabel(provider)) : undefined}>
           {busy ? t('suggestingTitle') : t('suggestTitle')}
         </button>
       </div>
@@ -82,13 +101,13 @@ export default function SuggestedTitleField({
       {suggestion && (
         <div className="title-suggestion" role="status">
           <div className="title-suggestion-copy">
-            <div className="title-suggestion-meta"><b>{t('suggestedTitle')}</b><small>{t('titleSuggestionProvider')}</small></div>
+            <div className="title-suggestion-meta"><b>{t('suggestedTitle')}</b><small>{t('titleSuggestionVia').replace('${provider}', providerLabel(suggestionProvider || provider))}</small></div>
             <span>{suggestion}</span>
           </div>
           <button type="button" onClick={() => { onChange(suggestion); setSuggestion(''); }}>{t('useSuggestedTitle')}</button>
         </div>
       )}
-      {error && <p className="title-suggestion-error" role="alert">{error}</p>}
+      {(error || providerAvailable === false) && <p className="title-suggestion-error" role="alert">{error || t('titleSuggestionProviderLoginRequired').replace('${provider}', providerLabel(provider))}</p>}
     </div>
   );
 }

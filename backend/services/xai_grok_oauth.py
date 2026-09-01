@@ -17,7 +17,7 @@ from PIL import Image, UnidentifiedImageError
 from backend.config import APP_VERSION, resolve_config_path, resolve_grok_auth_path, validate_app_owned_paths
 from backend.services.generation_jobs import GenerationJobConflict, GenerationJobRepository, resolve_generation_input_image_path
 from backend.services.image_store import MAX_IMAGE_PIXELS
-from backend.services.openai_codex_native import parse_retry_after_seconds
+from backend.services.openai_codex_native import CodexNativeTemporaryError, normalize_title_suggestion, parse_retry_after_seconds
 
 PROVIDER_ID = "xai_grok_oauth"
 AUTH_MODE = "grok_oauth_device"
@@ -28,7 +28,9 @@ DEVICE_CODE_URL = f"{AUTH_ISSUER}/oauth2/device/code"
 TOKEN_URL = f"{AUTH_ISSUER}/oauth2/token"
 IMAGE_GENERATION_URL = "https://api.x.ai/v1/images/generations"
 IMAGE_EDIT_URL = "https://api.x.ai/v1/images/edits"
+RESPONSES_URL = "https://api.x.ai/v1/responses"
 IMAGE_MODEL = "grok-imagine-image-2.0"
+TITLE_MODEL = "grok-4.6"
 SCOPES = (
     "openid",
     "profile",
@@ -319,6 +321,7 @@ class GrokOAuthAuthStore:
                 "text_to_image": available,
                 "text_reference_to_image": available,
                 "image_edit": available,
+                "title_suggestion": available,
             },
             "max_input_images": MAX_INPUT_IMAGES,
             "image_models": [IMAGE_MODEL],
@@ -433,6 +436,88 @@ class XaiGrokOAuthProvider:
         self.auth_store = auth_store or GrokOAuthAuthStore()
         self.timeout = timeout
         self.http_client = http_client
+
+    def suggest_title(self, library_path: Path | str, prompt_text: str) -> str:
+        try:
+            validate_app_owned_paths(library_path)
+        except ValueError as exc:
+            raise GrokOAuthError(
+                "Provider credentials or library storage paths are unsafe. Move app-owned credentials outside the active library and restart."
+            ) from exc
+        prompt = str(prompt_text or "").strip()
+        if not prompt:
+            raise GrokOAuthError("Prompt text is required")
+        tokens = self.auth_store.read_tokens(http_client=self.http_client)
+        payload = {
+            "model": TITLE_MODEL,
+            "store": False,
+            "reasoning": {"effort": "low"},
+            "max_output_tokens": 128,
+            "input": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Suggest one concise library title for the image prompt. "
+                        "Use the same language as the prompt. Return only the title, without quotes, labels, markdown, or commentary."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+        }
+        close_client = self.http_client is None
+        client = self.http_client or httpx.Client(timeout=httpx.Timeout(min(self.timeout, 30.0)))
+        try:
+            try:
+                response = client.post(
+                    RESPONSES_URL,
+                    headers={
+                        "Authorization": f"Bearer {tokens['access_token']}",
+                        "Accept": "application/json",
+                        "Content-Type": "application/json",
+                        "User-Agent": f"ImagePromptLibrary/{APP_VERSION}",
+                    },
+                    json=payload,
+                )
+            except httpx.HTTPError as exc:
+                raise GrokOAuthTemporaryError("Grok title suggestion is temporarily unavailable") from exc
+        finally:
+            if close_client:
+                client.close()
+        if response.status_code == 429:
+            raise GrokOAuthRateLimitError(
+                "Grok title suggestion is temporarily rate limited.",
+                retry_after_seconds=parse_retry_after_seconds(response.headers.get("Retry-After")),
+            )
+        if response.status_code in {401, 403}:
+            raise GrokOAuthRequestError("Grok title access is unavailable for this account")
+        if response.status_code == 408 or response.status_code >= 500:
+            raise GrokOAuthTemporaryError("Grok title suggestion is temporarily unavailable")
+        if response.status_code != 200:
+            raise GrokOAuthRequestError(f"Grok title suggestion returned status {response.status_code}")
+        try:
+            response_payload = _response_json(response, "Grok title suggestion")
+        except GrokOAuthError as exc:
+            raise GrokOAuthRequestError("Grok title suggestion returned an invalid response") from exc
+        output = response_payload.get("output")
+        if not isinstance(output, list):
+            raise GrokOAuthRequestError("Grok title suggestion returned an invalid response")
+        output_text_parts: list[str] = []
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            content_items = item.get("content")
+            if not isinstance(content_items, list):
+                continue
+            output_text_parts.extend(
+                str(content.get("text", ""))
+                for content in content_items
+                if isinstance(content, dict) and content.get("type") == "output_text"
+            )
+        output_text = "".join(output_text_parts)
+        try:
+            return normalize_title_suggestion(output_text)
+        except CodexNativeTemporaryError as exc:
+            raise GrokOAuthTemporaryError("Grok response contained no title suggestion") from exc
 
     def run_job(self, library_path: Path | str, job_id: str):
         try:

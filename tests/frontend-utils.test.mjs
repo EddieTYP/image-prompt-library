@@ -21,6 +21,7 @@ const { downloadFileName, imageDisplayPath, imageThumbnailPath, selectPrimaryIma
 const { generationFailure } = await importTypescript('../frontend/src/utils/generationFailures.ts');
 const { generationSetProgressText, providerPauseSeconds } = await importTypescript('../frontend/src/utils/generationSets.ts');
 const { APPEARANCE_STORAGE_KEY, DEFAULT_APPEARANCE, normalizeAppearance } = await importTypescript('../frontend/src/utils/appearance.ts');
+const { DEFAULT_AI_PROVIDER_STORAGE_KEY, resolveDefaultAiProvider } = await importTypescript('../frontend/src/utils/defaultAiProvider.ts');
 const {
   createGenerationReviewSession,
   generationReviewNext,
@@ -205,6 +206,30 @@ test('appearance presets stay browser-local and reject unknown values', () => {
   assert.equal(normalizeAppearance('aubergine_ink'), 'aubergine_ink');
   assert.equal(normalizeAppearance('dark'), 'gallery_vermilion');
   assert.equal(normalizeAppearance(null), 'gallery_vermilion');
+});
+
+test('default AI provider uses the sole available provider and preserves an explicit preference', () => {
+  const ready = provider => ({
+    provider,
+    configured: true,
+    authenticated: true,
+    available: true,
+    features: { title_suggestion: true },
+  });
+  const disconnected = provider => ({
+    provider,
+    configured: true,
+    authenticated: false,
+    available: false,
+    features: { title_suggestion: false },
+  });
+
+  assert.equal(DEFAULT_AI_PROVIDER_STORAGE_KEY, 'image-prompt-library.default_ai_provider');
+  assert.equal(resolveDefaultAiProvider(null, [ready('xai_grok_oauth')]), 'xai_grok_oauth');
+  assert.equal(resolveDefaultAiProvider(null, [ready('openai_codex_oauth_native')]), 'openai_codex_oauth_native');
+  assert.equal(resolveDefaultAiProvider(null, [ready('openai_codex_oauth_native'), ready('xai_grok_oauth')]), 'openai_codex_oauth_native');
+  assert.equal(resolveDefaultAiProvider(null, [disconnected('openai_codex_oauth_native'), disconnected('xai_grok_oauth')]), 'openai_codex_oauth_native');
+  assert.equal(resolveDefaultAiProvider('xai_grok_oauth', [ready('openai_codex_oauth_native'), disconnected('xai_grok_oauth')]), 'xai_grok_oauth');
 });
 
 test('appearance names are localized without changing preset identifiers', () => {

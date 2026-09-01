@@ -14,7 +14,10 @@ from backend.services.xai_grok_oauth import (
     GrokDeviceCodeFlow,
     GrokOAuthAuthStore,
     GrokOAuthError,
+    GrokOAuthRateLimitError,
+    GrokOAuthRequestError,
     GrokOAuthTemporaryError,
+    XaiGrokOAuthProvider,
 )
 
 router = APIRouter(prefix="/generation-providers", tags=["generation-providers"])
@@ -29,12 +32,16 @@ class GrokOAuthPollRequest(BaseModel):
     device_code: str
 
 
-class CodexNativeTitleSuggestionRequest(BaseModel):
+class TitleSuggestionRequest(BaseModel):
     prompt_text: str = Field(min_length=1, max_length=20_000)
 
 
-class CodexNativeTitleSuggestionResponse(BaseModel):
+class LegacyTitleSuggestionResponse(BaseModel):
     title: str
+
+
+class TitleSuggestionResponse(LegacyTitleSuggestionResponse):
+    provider: str
 
 
 @router.get("")
@@ -58,6 +65,7 @@ def list_generation_providers(request: Request):
                 "text_reference_to_image": False,
                 "image_edit": False,
                 "manual_result_upload": True,
+                "title_suggestion": False,
             },
         },
         CodexNativeAuthStore().status(),
@@ -133,20 +141,37 @@ def xai_grok_oauth_auth_disconnect(request: Request):
     return store.status()
 
 
-@router.post("/openai-codex-native/suggest-title", response_model=CodexNativeTitleSuggestionResponse)
-def openai_codex_native_suggest_title(payload: CodexNativeTitleSuggestionRequest, request: Request):
+def _suggest_title(provider_id: str, payload: TitleSuggestionRequest, request: Request) -> dict[str, str]:
+    if provider_id == "openai_codex_oauth_native":
+        provider = OpenAICodexNativeProvider(timeout=30.0)
+        login_message = "Connect ChatGPT / Codex OAuth before suggesting a title."
+    elif provider_id == "xai_grok_oauth":
+        provider = XaiGrokOAuthProvider(timeout=30.0)
+        login_message = "Connect Grok OAuth before suggesting a title."
+    else:
+        raise HTTPException(status_code=404, detail="Title suggestion provider was not found.")
     try:
-        title = OpenAICodexNativeProvider(timeout=30.0).suggest_title(
+        title = provider.suggest_title(
             request.app.state.library_path,
             payload.prompt_text,
         )
-        return {"title": title}
-    except CodexNativeRateLimitError as exc:
+        return {"title": title, "provider": provider_id}
+    except (CodexNativeRateLimitError, GrokOAuthRateLimitError) as exc:
         headers = {"Retry-After": str(exc.retry_after_seconds)} if exc.retry_after_seconds is not None else None
         raise HTTPException(status_code=429, detail="Title suggestion is temporarily rate limited.", headers=headers) from exc
-    except CodexNativeTemporaryError as exc:
+    except (CodexNativeTemporaryError, GrokOAuthTemporaryError) as exc:
         raise HTTPException(status_code=503, detail="Title suggestion is temporarily unavailable.") from exc
-    except CodexNativeRequestError as exc:
+    except (CodexNativeRequestError, GrokOAuthRequestError) as exc:
         raise HTTPException(status_code=502, detail="Could not suggest a title.") from exc
-    except CodexNativeAuthError as exc:
-        raise HTTPException(status_code=409, detail="Connect ChatGPT / Codex OAuth before suggesting a title.") from exc
+    except (CodexNativeAuthError, GrokOAuthError) as exc:
+        raise HTTPException(status_code=409, detail=login_message) from exc
+
+
+@router.post("/openai-codex-native/suggest-title", response_model=LegacyTitleSuggestionResponse)
+def openai_codex_native_suggest_title(payload: TitleSuggestionRequest, request: Request):
+    return _suggest_title("openai_codex_oauth_native", payload, request)
+
+
+@router.post("/{provider_id}/suggest-title", response_model=TitleSuggestionResponse)
+def provider_suggest_title(provider_id: str, payload: TitleSuggestionRequest, request: Request):
+    return _suggest_title(provider_id, payload, request)
