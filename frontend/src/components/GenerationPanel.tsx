@@ -5,7 +5,7 @@ import aspectRatioIcon from '../assets/generation-controls/aspect-ratio.png';
 import brainAiIcon from '../assets/generation-controls/model.png';
 import qualityIcon from '../assets/generation-controls/quality.png';
 import { api, mediaUrl } from '../api/client';
-import type { ClusterRecord, GenerationJobAcceptAsNewItemPayload, GenerationJobCreate, GenerationJobRecord, GenerationJobSetRecord, GenerationProviderQueueState, GenerationProviderStatus, GenerationSetCount, ImageRecord, ItemDetail, ItemSummary, TagRecord } from '../types';
+import type { ClusterRecord, GenerationJobAcceptAsNewItemPayload, GenerationJobCreate, GenerationJobRecord, GenerationJobSetRecord, GenerationProviderQueueState, GenerationProviderStatus, GenerationSetCount, ImageRecord, ItemDetail, ItemSummary, TagRecord, TitleSuggestionProvider } from '../types';
 import type { Translator } from '../utils/i18n';
 import { providerPauseSeconds } from '../utils/generationSets';
 import { downloadFileName } from '../utils/images';
@@ -279,6 +279,10 @@ function mergeGenerationJobs(current: GenerationJobRecord[], incoming: Generatio
 
 const GENERATION_SET_OPTIONS: Exclude<GenerationSetCount, 1>[] = [3, 5, 10];
 
+function isTitleSuggestionProvider(value: string | undefined): value is TitleSuggestionProvider {
+  return value === 'openai_codex_oauth_native' || value === 'xai_grok_oauth';
+}
+
 export default function GenerationPanel({
   item,
   preferredLanguage,
@@ -291,6 +295,7 @@ export default function GenerationPanel({
   clusters = [],
   tags = [],
   promptVariablesEnabled = false,
+  defaultAiProvider,
 }: {
   item?: ItemDetail;
   preferredLanguage: PromptCopyLanguage;
@@ -303,6 +308,7 @@ export default function GenerationPanel({
   clusters?: ClusterRecord[];
   tags?: TagRecord[];
   promptVariablesEnabled?: boolean;
+  defaultAiProvider: TitleSuggestionProvider;
 }) {
   const originalPrompt = resolveOriginalPrompt(item?.prompts);
   const defaultPromptLanguage = preferredLanguage === 'origin' ? (originalPrompt?.language || 'en') : preferredLanguage;
@@ -311,7 +317,7 @@ export default function GenerationPanel({
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
   const [activeGenerationSet, setActiveGenerationSet] = useState<GenerationJobSetRecord>();
   const [providerQueueStates, setProviderQueueStates] = useState<GenerationProviderQueueState[]>([]);
-  const [provider, setProvider] = useState('openai_codex_oauth_native');
+  const [provider, setProvider] = useState<string>(defaultAiProvider);
   const [orchestratorModel, setOrchestratorModel] = useState('gpt-5.6-terra');
   const [aspectRatio, setAspectRatio] = useState('auto');
   const [quality, setQuality] = useState('high');
@@ -653,10 +659,11 @@ export default function GenerationPanel({
         if (cancelled) return;
         const automatedProviders = nextProviders.filter(nextProvider => nextProvider.provider !== 'manual_upload');
         setProviders(automatedProviders);
-        const firstReady = automatedProviders.find(providerCanGenerate) || automatedProviders[0];
-        if (firstReady) {
-          setProvider(firstReady.provider);
-          setOrchestratorModel(firstReady.default_orchestrator_model || firstReady.orchestrator_models?.[0] || 'gpt-5.6-terra');
+        const preferredProvider = automatedProviders.find(candidate => candidate.provider === defaultAiProvider);
+        const initialProvider = preferredProvider || automatedProviders.find(providerCanGenerate) || automatedProviders[0];
+        if (initialProvider) {
+          setProvider(initialProvider.provider);
+          setOrchestratorModel(initialProvider.default_orchestrator_model || initialProvider.orchestrator_models?.[0] || 'gpt-5.6-terra');
         }
       })
       .catch(() => {
@@ -670,13 +677,13 @@ export default function GenerationPanel({
           available: false,
           state: 'not_configured',
           reason: 'provider_status_unavailable',
-          features: { text_to_image: false, text_reference_to_image: false, image_edit: false },
+          features: { text_to_image: false, text_reference_to_image: false, image_edit: false, title_suggestion: false },
           max_input_images: 4,
         }]);
       });
     refreshJobs().catch(() => undefined);
     return () => { cancelled = true; jobsRequestRef.current += 1; };
-  }, [item?.id, initialJobId]);
+  }, [item?.id, initialJobId, defaultAiProvider]);
 
   useEffect(() => {
     setTemplateValues(current => {
@@ -2452,7 +2459,7 @@ export default function GenerationPanel({
               {jobResultUrl(reviewJob) && <img src={jobResultUrl(reviewJob)} alt={t('saveGeneratedResultPreview')} />}
               <div className="save-new-fields">
                 {renderReferenceTray(jobAttachments(reviewJob), true, jobInputLimit(reviewJob))}
-                <SuggestedTitleField value={metadataDraft.title || ''} promptText={metadataDraft.prompts?.[0]?.text || ''} t={t} onChange={title => updateMetadataDraft({ title })} autoFocus />
+                <SuggestedTitleField value={metadataDraft.title || ''} promptText={metadataDraft.prompts?.[0]?.text || ''} provider={isTitleSuggestionProvider(reviewJob.provider) ? reviewJob.provider : defaultAiProvider} t={t} onChange={title => updateMetadataDraft({ title })} autoFocus />
                 <label><span>{t('collection')}</span><input list="save-new-collection-suggestions" value={metadataDraft.cluster_name || ''} onChange={event => updateMetadataDraft({ cluster_name: event.currentTarget.value })} /></label>
                 <datalist id="save-new-collection-suggestions">
                   {filteredMetadataClusters.map(collection => <option key={collection.id} value={collection.name} />)}

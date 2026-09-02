@@ -102,6 +102,7 @@ def test_codex_native_status_api_is_optional_frontend_ready_and_redacted(tmp_pat
         "text_to_image": False,
         "text_reference_to_image": False,
         "image_edit": False,
+        "title_suggestion": False,
     }
     assert payload["auth_store_path"] == str(auth_path)
     assert str(tmp_path / "library") not in payload["auth_store_path"]
@@ -1718,6 +1719,19 @@ def test_title_suggestion_api_passes_only_library_and_prompt(tmp_path, monkeypat
         "library_path": tmp_path / "library",
         "prompt_text": "A neon library in the rain",
     }
+
+
+def test_provider_aware_openai_title_suggestion_returns_provider(tmp_path, monkeypatch):
+    from backend.services.openai_codex_native import OpenAICodexNativeProvider
+
+    monkeypatch.setattr(OpenAICodexNativeProvider, "suggest_title", lambda self, library_path, prompt_text: "Neon Library")
+    response = client(tmp_path).post(
+        "/api/generation-providers/openai_codex_oauth_native/suggest-title",
+        json={"prompt_text": "A neon library in the rain"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"title": "Neon Library", "provider": "openai_codex_oauth_native"}
 
 
 @pytest.mark.parametrize(("error_type", "status_code", "retry_after"), [

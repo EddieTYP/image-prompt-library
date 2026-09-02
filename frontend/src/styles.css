@@ -475,6 +475,9 @@ button{color:inherit}
 .generation-queue-failure-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}
 .generation-queue-failure-actions button{min-height:44px;padding:0 14px;border-radius:999px;font-weight:850;cursor:pointer}
 .provider-section{scroll-margin-top:18px}
+.default-ai-provider-control{border:0;padding:0;margin:16px 0}
+.default-ai-provider-control legend{margin-bottom:8px;font-size:12px;font-weight:850;text-transform:uppercase;letter-spacing:.06em}
+.default-ai-provider-control .muted{margin:8px 0 0}
 .provider-section:focus{outline:0}
 .provider-section:focus-visible{outline:3px solid rgba(109,93,252,.32);outline-offset:5px}
 @media(max-width:760px){

@@ -613,6 +613,7 @@ class CodexNativeAuthStore:
                 "text_to_image": available,
                 "text_reference_to_image": available,
                 "image_edit": available,
+                "title_suggestion": available,
             },
             "max_input_images": MAX_INPUT_IMAGES,
             "orchestrator_models": codex_orchestrator_models(),

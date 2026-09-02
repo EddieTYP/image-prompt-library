@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 're
 import { X } from 'lucide-react';
 import { api, isDemoMode } from '../api/client';
 import { restoreFocusAfterMotion } from '../hooks/useModalFocus';
-import type { AppearancePreset, AppConfig, AppUpdateStatus, CleanupPreview, GenerationProviderStatus, ProviderDeviceAuthStart } from '../types';
+import type { AppearancePreset, AppConfig, AppUpdateStatus, CleanupPreview, GenerationProviderStatus, ProviderDeviceAuthStart, TitleSuggestionProvider } from '../types';
 import { UI_LANGUAGE_LABELS, type Translator, type UiLanguage } from '../utils/i18n';
 import { getPromptCopyLanguageLabel, type PromptCopyLanguage } from '../utils/prompts';
 
@@ -25,6 +25,7 @@ function featureSummary(provider: GenerationProviderStatus, t: Translator) {
     provider.features.text_reference_to_image ? t('providerFeatureTextReferenceToImage') : undefined,
     provider.features.image_edit ? t('providerFeatureImageEdit') : undefined,
     provider.features.manual_result_upload ? t('providerFeatureManualUpload') : undefined,
+    provider.features.title_suggestion ? t('providerFeatureTitleSuggestion') : undefined,
   ].filter(Boolean);
   return features.length ? features.join(' · ') : t('providerFeaturesNone');
 }
@@ -48,7 +49,7 @@ const providerFallback: GenerationProviderStatus[] = [
     available: false,
     state: 'not_configured',
     reason: 'provider_status_unavailable',
-    features: { text_to_image: false, text_reference_to_image: false, image_edit: false },
+    features: { text_to_image: false, text_reference_to_image: false, image_edit: false, title_suggestion: false },
     max_input_images: 4,
     token_present: false,
     account_id: null,
@@ -63,7 +64,7 @@ const providerFallback: GenerationProviderStatus[] = [
     available: false,
     state: 'not_connected',
     reason: 'provider_status_unavailable',
-    features: { text_to_image: false, text_reference_to_image: false, image_edit: false },
+    features: { text_to_image: false, text_reference_to_image: false, image_edit: false, title_suggestion: false },
     max_input_images: 3,
     token_present: false,
   },
@@ -80,6 +81,8 @@ export default function ConfigPanel({
   onPreferredLanguage,
   appearance,
   onAppearance,
+  defaultAiProvider,
+  onDefaultAiProvider,
   updateStatus,
   onRefreshUpdateStatus,
   onUpdateInstalled,
@@ -95,6 +98,8 @@ export default function ConfigPanel({
   onPreferredLanguage: (language: PromptCopyLanguage) => void;
   appearance: AppearancePreset;
   onAppearance: (appearance: AppearancePreset) => void;
+  defaultAiProvider: TitleSuggestionProvider;
+  onDefaultAiProvider: (provider: TitleSuggestionProvider) => void;
   updateStatus?: AppUpdateStatus;
   onRefreshUpdateStatus: (refresh?: boolean) => Promise<AppUpdateStatus | undefined>;
   onUpdateInstalled: (targetVersion: string, requiresManualRestart: boolean) => void;
@@ -533,6 +538,22 @@ export default function ConfigPanel({
       <section ref={providersSectionRef} className="setting-group provider-section" tabIndex={-1} aria-labelledby="config-providers-title">
         <h3 id="config-providers-title">{t('providers')}</h3>
         <p className="muted">{t('providerSetupHelp')}</p>
+        <fieldset className="default-ai-provider-control">
+          <legend>{t('defaultAiProvider')}</legend>
+          <div className="segmented-control" role="radiogroup" aria-label={t('defaultAiProvider')}>
+            {([
+              ['openai_codex_oauth_native', 'ChatGPT'],
+              ['xai_grok_oauth', 'Grok'],
+            ] as const).map(([providerId, label]) => {
+              const status = providers.find(candidate => candidate.provider === providerId);
+              const enabled = Boolean(status?.configured && status.authenticated && status.available && status.features.title_suggestion);
+              return (
+                <button type="button" key={providerId} role="radio" aria-checked={defaultAiProvider === providerId} className={defaultAiProvider === providerId ? 'active' : ''} disabled={!enabled} onClick={() => onDefaultAiProvider(providerId)}>{label}</button>
+              );
+            })}
+          </div>
+          <p className="muted">{t('defaultAiProviderHelp')}</p>
+        </fieldset>
         <div className="provider-list">
           {providers.map(provider => {
             const authStart = authStarts[provider.provider];

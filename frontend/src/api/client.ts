@@ -1,4 +1,4 @@
-import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationJobSetCreate, GenerationJobSetRecord, GenerationProviderStatus, GrokOAuthPollRequest, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemImageUpdate, ItemList, ItemSortMode, ItemSummary, ProviderDeviceAuthStart, TagRecord, TitleSuggestionRequest, TitleSuggestionResponse, UploadImageRole } from '../types';
+import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationJobSetCreate, GenerationJobSetRecord, GenerationProviderStatus, GrokOAuthPollRequest, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemImageUpdate, ItemList, ItemSortMode, ItemSummary, ProviderDeviceAuthStart, TagRecord, TitleSuggestionProvider, TitleSuggestionRequest, TitleSuggestionResponse, UploadImageRole } from '../types';
 import { DEFAULT_ITEM_SORT } from '../utils/searchSort';
 
 const API = '';
@@ -122,8 +122,8 @@ export class TitleSuggestionRequestError extends Error {
   }
 }
 
-async function suggestTitleRequest(payload: TitleSuggestionRequest): Promise<TitleSuggestionResponse> {
-  const response = await fetch(`${API}/api/generation-providers/openai-codex-native/suggest-title`, {
+async function suggestTitleRequest(provider: TitleSuggestionProvider, payload: TitleSuggestionRequest): Promise<TitleSuggestionResponse> {
+  const response = await fetch(`${API}/api/generation-providers/${encodeURIComponent(provider)}/suggest-title`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -176,7 +176,7 @@ export const api = isDemoMode ? {
       message: null,
       can_generate: true,
       reason: null,
-      features: { manual_result_upload: true },
+      features: { manual_result_upload: true, title_suggestion: false },
     },
     {
       provider: 'openai_codex_oauth_native',
@@ -191,7 +191,7 @@ export const api = isDemoMode ? {
       message: 'Generation requires a local install.',
       can_generate: false,
       reason: 'local_only',
-      features: { text_to_image: false, text_reference_to_image: false, image_edit: false },
+      features: { text_to_image: false, text_reference_to_image: false, image_edit: false, title_suggestion: false },
       max_input_images: 4,
       token_present: false,
       account_id: null,
@@ -209,7 +209,7 @@ export const api = isDemoMode ? {
       message: 'Generation requires a local install.',
       can_generate: false,
       reason: 'local_only',
-      features: { text_to_image: false, text_reference_to_image: false, image_edit: false },
+      features: { text_to_image: false, text_reference_to_image: false, image_edit: false, title_suggestion: false },
       max_input_images: 3,
       token_present: false,
     },
@@ -220,7 +220,7 @@ export const api = isDemoMode ? {
   grokOAuthAuthStart: () => demoReadOnly(),
   grokOAuthAuthPoll: (_payload: GrokOAuthPollRequest) => demoReadOnly(),
   grokOAuthAuthDisconnect: () => demoReadOnly(),
-  suggestTitle: (_payload: TitleSuggestionRequest) => demoReadOnly(),
+  suggestTitle: (_provider: TitleSuggestionProvider, _payload: TitleSuggestionRequest) => demoReadOnly(),
   generationJobs: () => Promise.resolve<GenerationJobList>({
     jobs: [],
     total: 0,

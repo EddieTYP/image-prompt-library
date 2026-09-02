@@ -1279,26 +1279,36 @@ test('Explore/detail CSS keeps responsive grids, token controls, CJK hierarchy, 
   assert.doesNotMatch(styles, /html:lang\(zh-Hant\) \.metadata-inline-edit/);
 });
 
-test('title suggestions are explicit, prompt-only, and shared by both save flows', async () => {
-  const [field, client, editor, generation, styles] = await Promise.all([
+test('title suggestions are explicit, provider-aware, prompt-only, and shared by both save flows', async () => {
+  const [field, client, editor, generation, app, config, defaultProvider, styles] = await Promise.all([
     readFile(`${ROOT}/frontend/src/components/SuggestedTitleField.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/api/client.ts`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/ItemEditorModal.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/App.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/ConfigPanel.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/utils/defaultAiProvider.ts`, 'utf8'),
     readFile(`${ROOT}/frontend/src/styles.css`, 'utf8'),
   ]);
 
   assert.match(field, /api\.generationProviders\(\)/);
-  assert.match(field, /chatgpt\?\.configured && chatgpt\.authenticated && chatgpt\.available/);
-  assert.match(field, /disabled=\{busy \|\| !promptText\.trim\(\) \|\| chatgptAvailable !== true\}/);
-  assert.match(field, /api\.suggestTitle\(\{ prompt_text: requestedPrompt \}\)/);
+  assert.match(field, /selected\?\.configured && selected\.authenticated && selected\.available && selected\.features\.title_suggestion/);
+  assert.match(field, /disabled=\{busy \|\| !promptText\.trim\(\) \|\| providerAvailable !== true\}/);
+  assert.match(field, /api\.suggestTitle\(requestedProvider, \{ prompt_text: requestedPrompt \}\)/);
   assert.match(field, /setSuggestion\(result\.title\)/);
-  assert.match(field, /t\('titleSuggestionProvider'\)/);
+  assert.match(field, /setSuggestionProvider\(result\.provider\)/);
+  assert.match(field, /t\('titleSuggestionVia'\)/);
   assert.match(field, /onClick=\{\(\) => \{ onChange\(suggestion\); setSuggestion\(''\); \}\}/);
   assert.doesNotMatch(field, /onChange\(result\.title\)/);
-  assert.match(client, /suggestTitle: \(_payload: TitleSuggestionRequest\) => demoReadOnly\(\)/);
-  assert.match(client, /openai-codex-native\/suggest-title/);
-  assert.match(editor, /<SuggestedTitleField[^>]*promptText=\{titleSuggestionPrompt\}/);
-  assert.match(generation, /<SuggestedTitleField[^>]*promptText=\{metadataDraft\.prompts\?\.\[0\]\?\.text \|\| ''\}/);
+  assert.match(client, /suggestTitle: \(_provider: TitleSuggestionProvider, _payload: TitleSuggestionRequest\) => demoReadOnly\(\)/);
+  assert.match(client, /generation-providers\/\$\{encodeURIComponent\(provider\)\}\/suggest-title/);
+  assert.match(editor, /<SuggestedTitleField[^>]*promptText=\{titleSuggestionPrompt\}[^>]*provider=\{defaultAiProvider\}/);
+  assert.match(generation, /<SuggestedTitleField[^>]*promptText=\{metadataDraft\.prompts\?\.\[0\]\?\.text \|\| ''\}[^>]*provider=\{isTitleSuggestionProvider\(reviewJob\.provider\) \? reviewJob\.provider : defaultAiProvider\}/);
+  assert.match(defaultProvider, /image-prompt-library\.default_ai_provider/);
+  assert.match(app, /readyProviders\.length !== 1/);
+  assert.match(app, /window\.localStorage\.setItem\(DEFAULT_AI_PROVIDER_STORAGE_KEY, provider\)/);
+  assert.match(config, /role="radiogroup"/);
+  assert.match(config, /disabled=\{!enabled\}/);
+  assert.match(config, /defaultAiProvider === providerId/);
   assert.match(styles, /\.title-suggestion-meta\{[^}]*display:flex;[^}]*gap:6px/);
 });

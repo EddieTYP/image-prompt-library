@@ -15,8 +15,9 @@ import BatchActionDialog from './components/BatchActionDialog';
 import { useDebouncedValue } from './hooks/useDebouncedValue';
 import { useItemsQuery } from './hooks/useItemsQuery';
 import { useModalFocus } from './hooks/useModalFocus';
-import type { AppearancePreset, AppConfig, AppUpdateStatus, ClusterRecord, GenerationJobRecord, ItemBatchAction, ItemDetail, ItemSortMode, ItemSummary, TagRecord, ViewMode } from './types';
+import type { AppearancePreset, AppConfig, AppUpdateStatus, ClusterRecord, GenerationJobRecord, ItemBatchAction, ItemDetail, ItemSortMode, ItemSummary, TagRecord, TitleSuggestionProvider, ViewMode } from './types';
 import { copyTextToClipboard } from './utils/clipboard';
+import { DEFAULT_AI_PROVIDER_STORAGE_KEY, availableTitleSuggestionProviders, isTitleSuggestionProvider, resolveDefaultAiProvider } from './utils/defaultAiProvider';
 import { localizedDemoTitle } from './utils/demoTitles';
 import { APPEARANCE_STORAGE_KEY, applyAppearance, loadAppearance } from './utils/appearance';
 import { DEFAULT_UI_LANGUAGE, UI_LANGUAGE_LABELS, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
@@ -57,6 +58,11 @@ function loadPreferredView(): ViewMode {
   const savedView = window.localStorage.getItem(VIEW_STORAGE_KEY);
   if (savedView === 'explore' || savedView === 'cards') return savedView;
   return 'cards';
+}
+
+function loadDefaultAiProvider(): TitleSuggestionProvider {
+  if (typeof window === 'undefined') return 'openai_codex_oauth_native';
+  return resolveDefaultAiProvider(window.localStorage.getItem(DEFAULT_AI_PROVIDER_STORAGE_KEY), []);
 }
 
 function localizedClusterName(cluster: ClusterRecord | undefined, language: UiLanguage) {
@@ -103,6 +109,7 @@ export default function App() {
   const [hasChosenUiLanguage, setHasChosenUiLanguage] = useState(loadHasChosenUiLanguage);
   const [preferredLanguage, setPreferredLanguage] = useState<PromptCopyLanguage>(loadPreferredLanguage);
   const [appearance, setAppearance] = useState<AppearancePreset>(loadAppearance);
+  const [defaultAiProvider, setDefaultAiProvider] = useState<TitleSuggestionProvider>(loadDefaultAiProvider);
   const [toast, setToast] = useState<{ title: string; tone: 'success' | 'error'; duration?: number }>();
   const [toastClosing, setToastClosing] = useState(false);
   const toastTimerRef = useRef<number | undefined>(undefined);
@@ -144,6 +151,21 @@ export default function App() {
   useEffect(() => {
     applyAppearance(appearance);
   }, [appearance]);
+  useEffect(() => {
+    if (typeof window === 'undefined' || isTitleSuggestionProvider(window.localStorage.getItem(DEFAULT_AI_PROVIDER_STORAGE_KEY))) return undefined;
+    let cancelled = false;
+    api.generationProviders()
+      .then(providers => {
+        if (cancelled) return;
+        const readyProviders = availableTitleSuggestionProviders(providers);
+        if (readyProviders.length !== 1) return;
+        const selected = readyProviders[0];
+        setDefaultAiProvider(selected);
+        window.localStorage.setItem(DEFAULT_AI_PROVIDER_STORAGE_KEY, selected);
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     if (!selectionActionsOpen) return undefined;
     const closeOutside = (event: PointerEvent) => {
@@ -273,6 +295,10 @@ export default function App() {
   const updateAppearance = (nextAppearance: AppearancePreset) => {
     setAppearance(nextAppearance);
     window.localStorage.setItem(APPEARANCE_STORAGE_KEY, nextAppearance);
+  };
+  const updateDefaultAiProvider = (provider: TitleSuggestionProvider) => {
+    setDefaultAiProvider(provider);
+    window.localStorage.setItem(DEFAULT_AI_PROVIDER_STORAGE_KEY, provider);
   };
   const cancelPendingEdit = () => {
     editItemRequestRef.current += 1;
@@ -500,7 +526,7 @@ export default function App() {
     : (updateStatus?.update_available && updateStatus.update_capability !== 'source' ? t('updateAvailable') : undefined);
   return <div className={`app ${view === 'explore' ? 'explore-mode' : 'cards-mode'}`}>
     <FiltersPanel t={t} open={filtersOpen} clusters={localizedClusters} total={libraryTotal} selected={clusterId} onSelect={handleFilterSelect} onClear={clearCluster} onClose={() => setFiltersOpen(false)} />
-    <ConfigPanel t={t} open={configOpen} focusProviders={focusConfigProviders} onClose={closeConfig} uiLanguage={uiLanguage} onUiLanguage={updateUiLanguage} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} appearance={appearance} onAppearance={updateAppearance} updateStatus={updateStatus} onRefreshUpdateStatus={refreshUpdateStatus} onUpdateInstalled={handleUpdateInstalled} onLibraryCleanup={saved} />
+    <ConfigPanel t={t} open={configOpen} focusProviders={focusConfigProviders} onClose={closeConfig} uiLanguage={uiLanguage} onUiLanguage={updateUiLanguage} preferredLanguage={preferredLanguage} onPreferredLanguage={updatePreferredLanguage} appearance={appearance} onAppearance={updateAppearance} defaultAiProvider={defaultAiProvider} onDefaultAiProvider={updateDefaultAiProvider} updateStatus={updateStatus} onRefreshUpdateStatus={refreshUpdateStatus} onUpdateInstalled={handleUpdateInstalled} onLibraryCleanup={saved} />
     <div className="app-content" inert={drawerModalOpen}>
     {!hasChosenUiLanguage && (
       <div ref={firstRunLanguageRef} className="first-run-language-overlay" role="dialog" aria-modal="true" aria-labelledby="first-run-language-title" tabIndex={-1} onKeyDown={handleFirstRunLanguageKeyDown}>
@@ -609,8 +635,8 @@ export default function App() {
     )}
     {!standaloneGenerationOpen && detailId && <ItemDetailModal key={detailId} t={t} id={detailId} uiLanguage={uiLanguage} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={closeItemDetail} onCopyPrompt={showCopyToast} onChanged={saved} onDelete={isDemoMode ? undefined : deleteDetail} onOpenItem={setDetailId} onGenerate={openGenerationFromDetail} onEdit={(item) => { closeItemDetail(); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} showManagementActions={showManagementActions} canGenerate={!isDemoMode} />}
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}${toastClosing ? ' is-closing' : ''}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
-    {editorOpen && <ItemEditorModal t={t} item={editing} clusters={localizedClusters} tags={tags} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} allowDelete={showManagementActions} />}
-    {standaloneGenerationOpen && <GenerationPanel item={generationSourceItem} t={t} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} promptVariablesEnabled={Boolean(appConfig?.features?.camelot?.percival)} initialJobId={focusedGenerationJobId} onClose={closeStandaloneGeneration} onOpenProviders={openProviders} onQueueChanged={() => setGenerationQueueRefreshKey(key => key + 1)} onAccepted={(item, message) => { saved(); setToast({ title: message || t('saveReference'), tone: 'success' }); if (item?.id) setDetailId(item.id); }} />}
+    {editorOpen && <ItemEditorModal t={t} item={editing} clusters={localizedClusters} tags={tags} defaultAiProvider={defaultAiProvider} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} allowDelete={showManagementActions} />}
+    {standaloneGenerationOpen && <GenerationPanel item={generationSourceItem} t={t} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} defaultAiProvider={defaultAiProvider} promptVariablesEnabled={Boolean(appConfig?.features?.camelot?.percival)} initialJobId={focusedGenerationJobId} onClose={closeStandaloneGeneration} onOpenProviders={openProviders} onQueueChanged={() => setGenerationQueueRefreshKey(key => key + 1)} onAccepted={(item, message) => { saved(); setToast({ title: message || t('saveReference'), tone: 'success' }); if (item?.id) setDetailId(item.id); }} />}
     </div>
   </div>
 }
