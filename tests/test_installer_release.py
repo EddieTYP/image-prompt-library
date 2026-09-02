@@ -545,7 +545,9 @@ def test_readme_prefers_installer_for_users_and_keeps_source_setup_for_developer
     assert "image-prompt-library rollback" in installation
     assert "image-prompt-library sample-data en" in readme
     assert "image-prompt-library uninstall" in installation
-    assert "Normal release installs require" in readme
+    assert "Python 3.10+" in readme
+    assert "`curl`" in readme
+    assert "do not require Node.js" in readme
     assert "GitHub Release assets" in installation
     assert "source/development installs" in installation
     assert "git clone https://github.com/EddieTYP/image-prompt-library.git" in (

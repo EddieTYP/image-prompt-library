@@ -263,11 +263,53 @@ def test_v010_release_docs_define_stable_update_behavior():
     assert "`v0.9.0` 仍是目前 stable release" not in readmes[1]
     assert "`v0.9.0` 仍是当前 stable release" not in readmes[2]
     for readme in readmes:
-        assert "`v0.10.0`" in readme
         assert "candidate" not in readme.lower()
         assert "release gate" not in readme.lower()
     assert 'release.get("prerelease")' in posix_installer
     assert "$candidate.prerelease" in windows_installer
+
+
+def test_v011_docs_explain_grok_and_distinguish_upcoming_from_stable():
+    notes = (ROOT / "docs" / "releases" / "v0.11.0.md").read_text(encoding="utf-8")
+    assert "# Image Prompt Library v0.11.0" in notes
+    assert "upcoming release" in notes
+    assert "current stable download" in notes
+    assert "v0.10.2" in notes
+    assert "## Generate with Grok" in notes
+    assert notes.index("## Generate with Grok") < notes.index("## Choose a default provider")
+    for label in (
+        "Config → Providers", "Grok OAuth", "Default AI provider",
+        "Suggest title", "Use title", "via ChatGPT", "via Grok",
+        "grok-imagine-image-2.0", "Low or Medium", "1K or 2K",
+    ):
+        assert label in notes
+    assert "browser authorization" in notes
+    assert "do not need to enter an API key" in notes
+    assert "three reference images" in notes
+    assert "experimental" in notes
+    assert "quotas" in notes
+    assert "charges" in notes
+    assert "Only prompt text" in notes
+    assert "does not silently switch" in notes
+    assert "provider and model details" in notes
+    assert "same card" in notes
+    assert "Batch **Tag**" in notes
+    assert "Batch **Move**" in notes
+    assert "Back up your library" in notes
+    assert "demo remains read-only" in notes
+    for document in ("INSTALLATION.md", "BACKUP_AND_RESTORE.md", "GENERATION.md"):
+        assert f"https://github.com/EddieTYP/image-prompt-library/blob/main/docs/{document}" in notes
+    for internal_term in ("exact-head", "smoke matrix", "release gate", ".qa-", "PR #"):
+        assert internal_term not in notes
+
+    for filename in ("README.md", "README_zh-TW.md", "README_zh-CN.md"):
+        readme = (ROOT / filename).read_text(encoding="utf-8")
+        for label in ("Grok OAuth", "Default AI provider", "Suggest title", "via Grok"):
+            assert label in readme
+        assert "v0.10.2" in readme
+        assert "v0.11.0" in readme
+        assert "docs/releases/v0.11.0.md" in readme
+        assert "docs/assets/screenshots/generation-grok-provider.png" in readme
 
 
 def test_v0101_release_notes_explain_the_update_fix_to_users():

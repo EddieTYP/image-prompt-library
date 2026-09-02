@@ -5,172 +5,140 @@
 [![Release](https://img.shields.io/github/v/release/EddieTYP/image-prompt-library?label=release)](https://github.com/EddieTYP/image-prompt-library/releases/latest)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
-<p align="center">
-  <strong>語言：</strong>
-  <a href="README.md">English</a> |
-  <strong>繁體中文</strong> |
-  <a href="README_zh-CN.md">簡體中文</a>
-</p>
+[English](README.md) · **繁體中文** · [简体中文](README_zh-CN.md)
 
-**Image Prompt Library** 是一個本地優先的圖片與提示詞收藏庫。它幫你把好用的生成圖片、背後的 prompt、來源和備註一起保存起來，再用 collection、tag 和搜尋慢慢整理成自己的視覺資料庫。
+**Image Prompt Library** 是一個本地優先的圖片與提示詞收藏庫。把圖片、prompt、來源和備註一起保存，透過 collection、tag 和搜尋整理，方便之後找回及重用。
 
-你的私人 library 會留在自己的電腦：本地 SQLite、本地圖片檔案，沒有 hosted database，沒有內建雲端同步，也不需要註冊帳號。
+資料保存在本機 SQLite 和圖片檔案中。保存、搜尋和整理不需要帳號。你也可以選擇連接 ChatGPT 或 Grok 來生成圖片及建議標題；這些請求會由服務供應商的伺服器處理，並非在你的電腦上運行 AI 模型。
 
-<p align="center">
-  <img src="docs/assets/screenshots/local-app-library-overview.jpg" alt="Library 顯示已保存的圖片和 prompt 卡片" width="100%" />
-</p>
-<p align="center"><sub>本地 Library 集中保存圖片、prompt、collection 和 tag。</sub></p>
+![本機 Library 的圖片與 prompt 卡片](docs/assets/screenshots/local-app-library-overview.jpg)
 
-## 為甚麼做這個
+*本機 app 已載入可選範例資料。新安裝的收藏庫預設是空的。*
 
-生成圖片多了之後，最麻煩的往往不是再生一張，而是找回之前哪個 prompt 好用、哪張圖適合參考、當時用了甚麼來源和變體。
+## 版本狀態
 
-Image Prompt Library 就是為這件事而做：把分散在聊天紀錄、資料夾和截圖裡的 prompt/image references，整理成一個可瀏覽、可搜尋、可追溯來源的本地 library。你可以把它當成自己的 prompt catalogue。
-
-目前 stable release：[GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest)。版本包括 structured search 與 sorting、batch reference management、cleanup tools、versioned install/update/rollback、原生 Windows 安裝、較清晰的首次使用流程，以及 optional local generation 的 OAuth session recovery hardening。
+`v0.10.2` 已是目前 stable release，可從 [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest) 下載。**下文的 Grok、按 provider 建議標題及多圖管理功能將於 v0.11.0 提供**，尚未包含在目前的 stable 下載中。完整變更見 [v0.11.0 更新說明](docs/releases/v0.11.0.md)。
 
 ## 快速開始
 
-### Windows（v0.8.0+）
+### Windows
 
-原生 Windows 支援由 [`v0.8.0`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.8.0) 開始提供。需要 Windows 10/11、PowerShell 5.1+ 與 **Python 3.10+**；安裝程式不會自動安裝 Python。
+需要 Windows 10/11、PowerShell 5.1+ 及 **Python 3.10+**。請先安裝 Python；安裝程式不會代為安裝。
 
 ```powershell
 irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.ps1 | iex
 ```
 
-成功安裝後會在背景啟動 app 並開啟瀏覽器。使用 `image-prompt-library stop` 停止；更新、rollback、診斷、私人資料位置和先檢視再執行的步驟請見[安裝說明](docs/INSTALLATION.md)。
+安裝後會在背景啟動 app 並開啟瀏覽器。使用 `image-prompt-library stop` 停止。
 
 ### macOS、Linux 與 WSL 2
 
-Windows 使用者也可透過 WSL 2 使用下列 Unix 安裝方式。
-
-一般 Unix/WSL release 安裝只需要 **Python 3.10+** 和 `curl`，不需要 Node.js。
+需要 **Python 3.10+** 和 `curl`。使用 release 安裝不需要 Node.js。
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash
 image-prompt-library start
 ```
 
-`image-prompt-library start` 會在目前 terminal 啟動本地 server。保持 terminal 開住，然後用瀏覽器打開 <http://127.0.0.1:8000/>。要關閉 server，就在同一個 terminal 按 `Ctrl-C`。
+保持終端機開啟，並瀏覽 [http://127.0.0.1:8000](http://127.0.0.1:8000)。在該終端機按 `Ctrl-C` 可停止 server。
 
-可選：如果想在新的本地 library 先放一批 demo references，可以匯入 starter sample pack。
+如希望先檢視安裝程式再執行，或需要更新、回復舊版、解除安裝，請看[安裝說明](docs/INSTALLATION.md)。啟動有問題時，可先執行 `image-prompt-library status` 和 `image-prompt-library doctor`，再參考[疑難排解](docs/TROUBLESHOOTING.md)。
+
+### 保存第一個 prompt
+
+新收藏庫預設是空的。選擇 **+ Add**，加入圖片、prompt 和標題後儲存。Collection、tag、備註和來源連結均可選填。
+
+想先瀏覽範例，可選擇匯入一個 sample pack：
 
 ```bash
-image-prompt-library sample-data en       # English collection names
-image-prompt-library sample-data zh_hans  # Simplified Chinese collection names
-image-prompt-library sample-data zh_hant  # Traditional Chinese collection names
+image-prompt-library sample-data en       # 英文 collection 名稱
+image-prompt-library sample-data zh_hans  # 簡體中文 collection 名稱
+image-prompt-library sample-data zh_hant  # 繁體中文 collection 名稱
 ```
 
-Starter sample pack 可以用英文、簡體中文或繁體中文的 collection name 匯入。這不是把所有原始 prompt/title 全部翻譯一次；sample 仍會保留來源 title、prompt 和已有的 prompt variants，語言選項主要影響匯入後的 collection label 和 sample-pack metadata。
-
-如果想匯入較大的繁中 `awesome-gpt-image-2` sample pack：
+只需執行偏好語言的指令。原始標題、prompt 及已有語言版本會保留，不會全部重新翻譯。另有較大的繁中範例包：
 
 ```bash
 image-prompt-library sample-data zh_hant awesome-gpt-image-2
 ```
 
-更新、rollback、service mode、uninstall、WSL 和 source-development setup，請看 [文件](#文件)。
+## 瀏覽與整理
 
-## 功能概覽
+- **Explore** 按 collection 展示圖片；**Library** 提供完整卡片列表及編輯工具。
+- 原始 prompt 和翻譯可放在同一卡片，切換語言版本後即可閱讀或複製。
+- 搜尋標題、prompt、tag、collection、來源及備註，亦可組合 `tag:portrait`、`collection:architecture`、`sort:title` 等結構化篩選。
+- 選取多張卡片後，可批量加 tag、移動、收藏、封存或刪除。v0.11.0 的 **Tag** 會建議現有標籤；**Move** 可搜尋 collection，不用輸入完全相同的名稱。
+- v0.11.0 可在同一卡片保存多張圖片。在 **Edit** 選擇封面、調整順序、更改結果圖／參考圖角色，或只刪除其中一張圖片。
 
-- **圖片優先瀏覽：** 在 Explore 按 Collections 探索自然比例圖片，或在 Library 完整管理 prompt references。
-- **選擇淺色配色：** 可在瀏覽器本機切換朱紅、松綠及茄紫三款配色，不會改動 library data。
-- **搜尋和篩選：** 搜尋 title、prompt、tag、collection、source 和 note，也可以配合 collection filter 使用。
-- **保存來源脈絡：** 原始 prompt、來源資料、翻譯或轉換後的 variant 可以放在同一張卡片。
-- **管理私人 library：** 新增 / 編輯自己的 prompt card、結果圖、reference image、tag、note、source URL 和 collection。
-- **一鍵複製 prompt：** 打開 item，選擇語言或來源 variant，直接複製。
-- **本地生成：** 本地安裝版可選擇連接 ChatGPT / Codex OAuth，一次生成 1、3、5 或 10 張圖片，再連續檢視每個結果並選擇儲存、捨棄或重試；如結果來自未修改的已保存參考，亦可附加回原參考。
-- **保持 local-first：** database 和圖片檔案都留在本地 library directory。
+![按 collection 瀏覽的 Explore 畫面](docs/assets/screenshots/local-app-explore.jpg)
 
-<p align="center">
-  <img src="docs/assets/screenshots/local-app-explore.jpg" alt="Explore 按 collection 顯示圖片參考" width="100%" />
-</p>
-<p align="center"><sub>在 Explore 按 collection 瀏覽已保存的 references。</sub></p>
+*Explore 用於瀏覽 collection；Library 用於管理個別卡片。*
 
-## 搜尋 library
+![卡片詳情：圖片、prompt 語言版本、標籤和來源](docs/assets/screenshots/local-app-detail.jpg)
 
-App 頂部的 search box 可以收窄目前看到的 references。現時版本是普通 keyword search，會搜尋 title、prompt、tag、collection name、source metadata 和 note。
+*同一卡片集中保存圖片、prompt 和來源。新生成的圖片亦會保留 provider 及 model 資料。*
 
-例子：
+## 使用 ChatGPT 或 Grok 生成圖片
 
-```text
-apple
-poster design
-product photo
-awesome-gpt-image-2
-電商
-```
+圖片生成是可選功能，需要本機安裝及具相應權限的 provider 帳號。**v0.11.0 的 Grok OAuth 屬實驗功能。** 使用權限、配額和費用由 provider 決定；成功連接不代表免費或無限使用。這兩種 OAuth 連接不需要輸入 API key。
 
-搜尋可以配合 collection filter：先在 **Filters** 選 collection，再輸入 keyword，就可以只在該 collection 裡面找。
+1. 開啟 **Config → Providers**，選擇 **ChatGPT / Codex OAuth** 或 **Grok OAuth**，在瀏覽器完成授權。如有提示，回到 app 按 **Check authorization**。
+2. 選擇 **Default AI provider**。偏好會儲存在目前的瀏覽器；生成時仍可暫時轉用另一個 provider，不影響預設。
+3. 開啟 **Generate**，輸入 prompt，可選擇加入參考圖。Prompt 可使用 `{{主體}}` 等變數，生成前先填入內容。
+4. 選擇可用的比例、品質及其他選項。一次生成 1 張或一組 3、5、10 張，再從 **Work queue** 檢視結果。
+5. 選擇 **Save as new item**，或附加至未經修改的來源卡片。檢視同一組結果時，之後的圖片可加入第一張結果建立的卡片，集中在同一詳情視窗瀏覽。
 
-<p align="center">
-  <img src="docs/assets/screenshots/local-app-detail.jpg" alt="Reference detail 顯示圖片、prompt、tag 和來源" width="100%" />
-</p>
-<p align="center"><sub>打開 reference，查看圖片、prompt、tag 和來源。</sub></p>
+Grok 使用 `grok-imagine-image-2.0`，提供 Low／Medium 品質、1K／2K 解像度，最多三張參考圖。ChatGPT 最多支援四張參考圖，另有自己的 model 及品質選項。切換 provider 後會顯示相應控制。
 
-## 本地生成
+![生成視窗的 provider 選單已選擇 Grok](docs/assets/screenshots/generation-grok-provider.png)
 
-本地安裝版可以選擇連接 ChatGPT / Codex OAuth，不需要在 app 裡放 OpenAI API key。你需要一個有圖片生成權限的 ChatGPT account/subscription。
+*在生成視窗選擇當次使用的 provider，不會改動 Config 中的預設。*
 
-基本流程：
+### 建議標題
 
-1. 啟動本地 app，打開 **Config**。
-2. 連接 **ChatGPT / Codex OAuth**，在瀏覽器完成 device-login approval。
-3. 回到 Image Prompt Library，由新 prompt 或已保存 reference 開始生成。Prompt 可以用 `{{主體}}` 或 `{{風格}}` 之類的變數；composer 會先要求填值。
-4. 在 **工作佇列** 檢視已完成的結果。
-5. 選擇 **另存為新參考**；如果結果來自未經修改的已保存參考，亦可用 **附加至目前參考**。另存前可先編輯 metadata。
+在 **Add**、**Edit** 或生成結果的儲存表單按 **Suggest title**，即可根據 prompt 文字取得短標題。先檢視建議，再按 **Use title** 套用；原標題不會自動被覆蓋。
 
-公開 GitHub Pages demo 不會做 live generation，也不會開放新增 / 編輯等 mutation controls。
+一般新增／編輯使用預設 provider；生成結果會使用生成該圖的 provider，並顯示 **via ChatGPT** 或 **via Grok**。如該 provider 已斷線，app 會要求重新連接，不會靜默把 prompt 送到另一間服務。
 
-目前生成行為、限制和 benchmark notes，請看 [`docs/GENERATION.md`](docs/GENERATION.md)。
+詳細連接方法、參考圖限制及結果處理，請看[生成指南](docs/GENERATION.md)。
 
 ## 線上唯讀 demo
 
-公開 demo：<https://eddietyp.github.io/image-prompt-library/>。當中收錄 **533 個有來源及授權資料的 prompt/image references**，來自 [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill)（**CC BY 4.0**）和 [`freestylefly/awesome-gpt-image-2`](https://github.com/freestylefly/awesome-gpt-image-2)（**MIT**）。如上游有提供，亦會顯示不同語言的 prompt variants。
+[開啟 demo](https://eddietyp.github.io/image-prompt-library/)，不用安裝即可瀏覽 collections、搜尋範例及複製公開 prompt。
 
-<p align="center">
-  <img src="docs/assets/screenshots/public-demo-explore.png" alt="線上唯讀 demo 顯示 Explore collections" width="100%" />
-</p>
-<p align="center"><sub>線上 demo 只供瀏覽；編輯和生成需要本地安裝。</sub></p>
+![線上唯讀 demo 的 Explore 畫面](docs/assets/screenshots/public-demo-explore.png)
 
-你可以用 demo 瀏覽 collections、搜尋案例、查看 prompt 結構和複製公開 sample prompts。它不會開放編輯、私人 library 管理或圖片生成。
+*線上 demo 使用公開範例資料。編輯、私人收藏庫管理及圖片生成需要本機安裝。*
 
 ## Sample data 與 attribution
 
-第一次 setup 時，可以匯入可選 sample bundles，先有一批真實 prompt/image references 可以瀏覽和試用。這些 samples 來自開放的上游 project，匯入時會保留來源連結、致謝和 license notes。它們不是 Image Prompt Library 原創 artwork 或 prompt；原本的 creator 和 license 仍然會清楚保留。
+Demo 及可選範例包保留來源連結和授權資料。當中的 prompt 和圖片並非 Image Prompt Library 原創內容。
 
-| Sample source | License | Notes |
+| 來源 | 授權 | 範例包 |
 | --- | --- | --- |
-| [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill) | CC BY 4.0 | 第一個公開 sample package，也是預設 starter sample library。 |
-| [`freestylefly/awesome-gpt-image-2`](https://github.com/freestylefly/awesome-gpt-image-2) | MIT | 較大的中文 prompt/image gallery，用於目前公開 demo 和可選 sample pack。 |
+| [wuyoscar/gpt_image_2_skill](https://github.com/wuyoscar/gpt_image_2_skill) | CC BY 4.0 | Starter pack |
+| [freestylefly/awesome-gpt-image-2](https://github.com/freestylefly/awesome-gpt-image-2) | MIT | 較大的 prompt／圖片範例庫 |
 
-感謝兩個上游 project 開放這些 gallery。Image Prompt Library 做的是本地 app、匯入流程、瀏覽和管理介面；sample prompt 和圖片仍然保留各自的 source link、attribution 和 license terms。App code 則另外以 AGPL-3.0-or-later 授權。
+範例包詳情及校驗碼見 [sample-data/README.md](sample-data/README.md)。
 
-Sample package details 和 checksums 請看 [`sample-data/README.md`](sample-data/README.md)。
+## 私隱
+
+- 私人 prompt／圖片收藏庫留在你的電腦，沒有託管用戶資料庫或內建雲端同步。
+- 生成圖片時，輸入的 prompt 和所選參考圖會傳送至你選擇的 provider。建議標題只傳送 prompt 文字，不會傳送圖片、現有標題、tag 或備註。
+- Provider 憑證與收藏庫分開儲存，不會包含在可攜式備份或範例匯出中。
+- App 預設只監聽 `127.0.0.1`。除非了解存取風險，否則不要開放至網絡。
 
 ## 文件
 
-- [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — install、update、rollback、service mode、uninstall、platform notes。
-- [`docs/GENERATION.md`](docs/GENERATION.md) — ChatGPT / Codex OAuth generation workflow、result review、目前限制、benchmark link。
-- [`docs/BACKUP_AND_RESTORE.md`](docs/BACKUP_AND_RESTORE.md) — portable backup payload、credential boundary、驗證及 safe restore 行為。
-- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — source setup、dev mode、configuration、data layout、backup。
-- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — 常見 runtime 和 setup 問題。
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contributor setup、tests 和 project structure。
-- [`ROADMAP.md`](ROADMAP.md) — planned work 和 project direction。
+- [安裝與更新](docs/INSTALLATION.md)
+- [圖片生成及建議標題](docs/GENERATION.md)
+- [備份與還原](docs/BACKUP_AND_RESTORE.md)
+- [疑難排解](docs/TROUBLESHOOTING.md)
+- [開發環境](docs/DEVELOPMENT.md)及[參與開發](CONTRIBUTING.md)
+- [Roadmap](ROADMAP.md)
 
-## License、privacy 與 allowed use
+## 授權
 
-Image Prompt Library 的核心 application code 以 **AGPL-3.0-or-later** 開源。Copyright (C) 2026 Edward Tsoi。詳情請看 [`NOTICE`](NOTICE) 和 [`LICENSE`](LICENSE)。
+App 程式碼採用 **AGPL-3.0-or-later**，詳見 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。範例資料和第三方資產使用上表所列的獨立授權。
 
-如果組織想在 AGPL 以外的條款下使用、修改或 host Image Prompt Library，可以聯絡 maintainer 洽談 commercial license。
-
-Privacy model：
-
-- App 是 local-first，資料儲存在你的 device 上。
-- 沒有 hosted user account，也沒有內建 cloud sync。
-- 預設綁定 `127.0.0.1`，只在本機使用；除非你清楚理解 LAN exposure，否則不建議改 host。
-
-## Project status
-
-`v0.10.2` 已是目前 stable release。除咗保留 `v0.10.0` 同 `v0.10.1` 嘅 Explore、生成結果檢視、本機資料保護同更新檢查改善，亦更新咗 GPT-5.6 generation model 選項。`gpt-5.6-terra` 係建議預設，亦可明確選擇 `gpt-5.6-sol` 或 `gpt-5.6-luna`。需要上一個版本時，仍可喺 GitHub Releases 下載 `v0.10.1`。
+如需在 AGPL 以外的條款下使用，可聯絡維護者洽談商業授權。
