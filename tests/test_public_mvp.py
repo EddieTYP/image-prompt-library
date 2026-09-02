@@ -95,49 +95,35 @@ def test_public_docs_explain_first_run_status_and_doctor():
     assert "sample-data en" in troubleshooting
 
 
-def test_public_readme_includes_product_story_and_screenshots():
+def test_public_readme_explains_current_workflows_and_screenshots():
     readme = (ROOT / "README.md").read_text()
 
-    assert "Image Prompt Library is built for the moment when image-generation prompts become reusable knowledge" in readme
-    assert "local SQLite, local image files" in readme
-    assert "discover Collections and natural-ratio image feeds in Explore" in readme
-    assert "Library" in readme
+    assert "local-first" in readme
+    assert "SQLite" in readme
+    assert "local image files" in readme
+    assert "provider's servers" in readme
+    for label in (
+        "Explore", "Library", "Config → Providers", "ChatGPT / Codex OAuth",
+        "Grok OAuth", "Default AI provider", "Suggest title", "Use title",
+        "via ChatGPT", "via Grok", "Work queue", "Save as new item",
+    ):
+        assert label in readme
     assert "copy public sample prompts" in readme
-    assert "Generate locally" in readme
-    assert "v0.8.0" in readme
-    assert "`{{variables}}`" in readme
-    assert "structured search filters" in readme
-    assert "batch reference management" in readme
-    assert "cleanup tools" in readme
-    assert "attach it to its unchanged source item when available" in readme
-    assert "mobile browsing preview" not in readme
-    assert "next-release mobile browsing and management plan" not in readme
-    assert "a calmer first-run experience" in readme
-    assert "Work queue" in readme
-    assert "local media files" not in readme
-    assert "review completed results from the **work queue**" in readme.lower()
-    assert "Local Generation Studio" not in readme
-    assert "archived 0.3 preview" not in readme
-    assert "archived 0.2 preview" not in readme
-    assert "archived 0.1 alpha demo" not in readme
-    assert "online read-only demo" in readme.lower()
-    assert "ChatGPT / Codex OAuth" in readme
-    assert "generate images" in readme.lower()
-    assert "Current stable release:" in readme
-    assert "v0.8.0" in readme
-    assert "Online sandbox" not in readme
-    assert "只读 sample library" not in readme
-    assert "唯讀 sample library" not in readme
-    assert "Privacy model" in readme
-    assert "install the app locally" in readme
-    assert "Editing, private-library management, and generation are available only in a local install" in readme
-    assert "Local installs can optionally connect ChatGPT / Codex OAuth" in readme
-    assert "generate from a new prompt or from an existing saved reference" in readme
     assert "`{{variables}}`" in readme
     assert "`{{subject}}`" in readme
-    assert "Manage a private library" in readme
-    assert "## Add your own prompts\n" not in readme
-    assert "save as new item" in readme.lower()
+    assert "structured search filters" in readme
+    assert "**Tag**" in readme
+    assert "**Move**" in readme
+    assert "multiple images in one card" in readme
+    assert "unchanged source card" in readme
+    assert "review completed results from the **work queue**" in readme.lower()
+    assert "online read-only demo" in readme.lower()
+    assert "## Privacy" in readme
+    assert "only prompt text" in readme
+    assert "excluded from portable backups" in readme
+    assert "does not silently send" in readme
+    assert "127.0.0.1" in readme
+    assert "Editing, private-library management, and generation are available only in a local install" in readme
     assert "openai_codex_oauth_native" not in readme
     assert "GenerationJob" not in readme
     assert "IMAGE_PROMPT_LIBRARY_CODEX_CLIENT_ID" not in readme
@@ -153,6 +139,7 @@ def test_public_readme_includes_product_story_and_screenshots():
         "local-app-library-overview.jpg",
         "local-app-explore.jpg",
         "local-app-detail.jpg",
+        "generation-grok-provider.png",
         "public-demo-explore.png",
     ]
     for filename in screenshots:
@@ -187,7 +174,11 @@ def test_readmes_lead_with_the_local_product_and_label_the_online_demo():
 def test_generation_guide_uses_current_product_screenshots():
     guide = (ROOT / "docs" / "GENERATION.md").read_text()
 
-    for filename in ["generation-review-result.jpg", "generation-save-as-new-item.jpg"]:
+    for filename in [
+        "generation-review-result.jpg", "generation-save-as-new-item.jpg",
+        "generation-grok-provider.png", "default-ai-provider.png",
+        "library-image-management.png",
+    ]:
         relative_path = f"assets/screenshots/{filename}"
         assert relative_path in guide
         assert (ROOT / "docs" / relative_path).exists()
@@ -205,6 +196,9 @@ def test_documentation_screenshot_extensions_match_file_content():
         "docs/assets/screenshots/local-app-detail.jpg",
         "docs/assets/screenshots/generation-review-result.jpg",
         "docs/assets/screenshots/generation-save-as-new-item.jpg",
+        "docs/assets/screenshots/generation-grok-provider.png",
+        "docs/assets/screenshots/default-ai-provider.png",
+        "docs/assets/screenshots/library-image-management.png",
         "docs/assets/screenshots/public-demo-explore.png",
     ]
 

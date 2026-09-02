@@ -5,56 +5,50 @@
 [![Release](https://img.shields.io/github/v/release/EddieTYP/image-prompt-library?label=release)](https://github.com/EddieTYP/image-prompt-library/releases/latest)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/license-AGPL--3.0--or--later-blue)](LICENSE)
 
-<p align="center">
-  <strong>Language:</strong>
-  <strong>English</strong> |
-  <a href="README_zh-TW.md">繁體中文</a> |
-  <a href="README_zh-CN.md">简体中文</a>
-</p>
+**English** · [繁體中文](README_zh-TW.md) · [简体中文](README_zh-CN.md)
 
-**Image Prompt Library** is a local-first visual library for generated images and the prompts behind them. Save useful image results, preserve the prompt and source metadata, organize references into collections and tags, and find them again as an image-first catalogue.
+**Image Prompt Library** is a local-first app for saving images with their prompts, sources, and notes. Browse visually, organize cards into collections and tags, and find a prompt when you want to use it again.
 
-Your private library stays on your machine: local SQLite, local image files, no hosted database, no built-in cloud sync, and no account required.
+Your library uses local SQLite and local image files. You do not need an account to save, search, or organize it. Optional ChatGPT and Grok connections let you generate images and suggest titles; those requests run on the provider's servers, not on your computer.
 
-<p align="center">
-  <img src="docs/assets/screenshots/local-app-library-overview.jpg" alt="Library view with saved image and prompt cards" width="100%" />
-</p>
-<p align="center"><sub>Your local Library keeps images, prompts, collections, and tags together.</sub></p>
+![Library view with saved image and prompt cards](docs/assets/screenshots/local-app-library-overview.jpg)
 
-## Introduction
+*The local app with optional sample references loaded. A new library starts empty.*
 
-Image Prompt Library is built for the moment when image-generation prompts become reusable knowledge rather than one-off chat messages.
+## Release status
 
-If you want to manage your own private prompt/image library, install the app locally. Local installs let you add and edit your own images and prompts, organize them into collections and tags, search them later, and optionally generate new images through ChatGPT / Codex OAuth while keeping your SQLite database and image files on your own computer.
-
-Current stable release: [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest). It includes native Windows installation, structured search and sorting, batch reference management, cleanup tools, versioned install/update/rollback, a calmer first-run experience, and hardened OAuth session recovery for optional local generation.
+`v0.10.2` is the current stable release, available from [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest). **Grok, provider-aware title suggestions, and the multi-image workflows below are coming in v0.11.0**; they are not in the current stable download. See the [v0.11.0 release notes](docs/releases/v0.11.0.md) for the full changes.
 
 ## Quick start
 
-### Windows (v0.8.0+)
+### Windows
 
-Native Windows support begins with [`v0.8.0`](https://github.com/EddieTYP/image-prompt-library/releases/tag/v0.8.0). Windows 10/11, PowerShell 5.1+, and **Python 3.10+** are required; the installer does not install Python.
+Requires Windows 10/11, PowerShell 5.1+, and **Python 3.10+**. Install Python first; the installer does not install it for you.
 
 ```powershell
 irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.ps1 | iex
 ```
 
-A successful install starts the app in the background and opens your browser. Stop it with `image-prompt-library stop`; see the [installation guide](docs/INSTALLATION.md) for updates, rollback, diagnostics, private-data locations, and the inspect-first install path.
+The installer starts the app in the background and opens your browser. Use `image-prompt-library stop` to stop it.
 
-The installed bare command is a `.cmd` shim and remains usable from Windows PowerShell under the `Restricted` execution policy; its internal PowerShell delegate is launched with an explicit per-command bypass.
+### macOS, Linux, and WSL 2
 
-### macOS, Linux, and WSL
-
-Normal release installs require **Python 3.10+** and `curl`. They do **not** require Node.js. Windows users can also use this Unix path through WSL 2.
+Requires **Python 3.10+** and `curl`. Release installs do not require Node.js.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts/install.sh | bash
 image-prompt-library start
 ```
 
-`image-prompt-library start` runs the Unix/WSL local server in the current terminal. Keep it open, then visit <http://127.0.0.1:8000/> in your browser. Press `Ctrl-C` in that terminal to stop the server.
+Keep the terminal open and visit [http://127.0.0.1:8000](http://127.0.0.1:8000). Press `Ctrl-C` in that terminal to stop the server.
 
-A fresh local library starts empty. Use `+ Add` in the app to create your first private prompt card, or import an optional starter sample pack if you want demo references first:
+For an inspect-before-running installation, updates, rollback, or uninstall, see the [installation guide](docs/INSTALLATION.md). If the app does not start, run `image-prompt-library status` and `image-prompt-library doctor`, then check [Troubleshooting](docs/TROUBLESHOOTING.md).
+
+### Save your first prompt
+
+A fresh local library starts empty. Choose **+ Add**, add an image and prompt, give the card a title, and save it. Collections, tags, notes, and source links are optional.
+
+To browse examples first, import one of the optional sample bundles:
 
 ```bash
 image-prompt-library sample-data en       # English collection names
@@ -62,126 +56,89 @@ image-prompt-library sample-data zh_hans  # Simplified Chinese collection names
 image-prompt-library sample-data zh_hant  # Traditional Chinese collection names
 ```
 
-The starter sample pack can be installed with localized collection names in English, Simplified Chinese, or Traditional Chinese. The underlying sample references keep their source titles/prompts and available prompt variants; this choice mainly affects the imported collection labels and default sample-pack language metadata.
-
-For the larger Traditional Chinese `awesome-gpt-image-2` sample pack:
+Run only the command for your preferred collection language. Source titles, prompts, and available language variants are preserved. A larger Traditional Chinese pack is also available:
 
 ```bash
 image-prompt-library sample-data zh_hant awesome-gpt-image-2
 ```
 
-For a quick local check:
+## Browse and organize
 
-```bash
-image-prompt-library status
-image-prompt-library doctor
-```
+- **Explore** groups image references by collection; **Library** provides the full card view and editing controls.
+- Keep original and translated prompts together. Select a language variant to read or copy it.
+- Use keyword search across titles, prompts, tags, collections, sources, and notes, or combine it with structured search filters such as `tag:portrait`, `collection:architecture`, and `sort:title`.
+- Select several cards to tag, move, favorite, archive, or delete them. In v0.11.0, **Tag** suggests existing tags and **Move** lets you search for a collection instead of typing its exact name.
+- In v0.11.0, keep multiple images in one card. In **Edit**, choose the cover image, reorder images, change result/reference roles, or remove one image without deleting the whole card.
 
-For update, rollback, service mode, uninstall, WSL, and source-development setup, see [Documentation](#documentation).
+![Explore view organized by collection](docs/assets/screenshots/local-app-explore.jpg)
 
-## What you can do
+*Explore is for browsing collections; Library is for managing individual cards.*
 
-- **Browse visually:** discover Collections and natural-ratio image feeds in Explore, or manage prompt references in Library.
-- **Choose a light appearance:** switch between Red, Green, and Purple browser-local colour presets without changing library data.
-- **Search and filter:** search titles, prompts, tags, collections, sources, and notes; combine search with collection filters.
-- **Preserve prompt provenance:** keep original/source prompt variants and translated or converted variants side by side.
-- **Manage a private library:** add/edit your own prompt cards, result images, optional reference images, tags, notes, source URLs, and collections.
-- **Copy reusable prompts:** open an item, choose the prompt language/source variant, and copy it with one click.
-- **Generate locally:** connect optional ChatGPT / Codex OAuth in a local install with a ChatGPT subscription that has image-generation access, fill `{{variables}}` in reusable prompts, generate 1, 3, 5, or 10 results, then review each result to save, discard, retry, or attach it to its unchanged source item when available.
-- **Stay local-first:** your database and image files remain in your local library directory.
+![Reference detail with an image, prompt variants, tags, and source](docs/assets/screenshots/local-app-detail.jpg)
 
-<p align="center">
-  <img src="docs/assets/screenshots/local-app-explore.jpg" alt="Explore view with image-led collections" width="100%" />
-</p>
-<p align="center"><sub>Browse saved references by collection in Explore.</sub></p>
+*A card keeps its images, prompt variants, and source together. New generated images also retain their provider and model details.*
 
-## Searching the library
+## Generate images with ChatGPT or Grok
 
-Use the search box at the top of the app to narrow visible references. Search combines plain keywords across item titles, prompt text, tags, collection names, source metadata, and notes with lightweight structured filters.
+Generation is optional and requires a local install and an eligible provider account. **Grok OAuth is experimental in v0.11.0.** Account access, usage limits, and charges are controlled by the provider; connecting does not guarantee free or unlimited generation. No API key is required by these OAuth connections.
 
-Examples:
+1. Open **Config → Providers**, choose **ChatGPT / Codex OAuth** or **Grok OAuth**, and complete the browser authorization. Return to the app and choose **Check authorization** if prompted.
+2. Choose a **Default AI provider**. This is saved in the current browser. You can override it for a generation session without changing the default.
+3. Open **Generate**, enter a prompt, and optionally add reference images. Reusable prompts can include `{{variables}}`, such as `{{subject}}`; fill them before generating.
+4. Choose the available ratio, quality, and other controls. Generate one image or a set of 3, 5, or 10, then review completed results from the **Work queue**.
+5. Use **Save as new item**, or attach a result to its unchanged source card. When reviewing a set, later results can join the card created from the first saved result, so the images stay together.
 
-```text
-apple
-poster design tag:poster
-product photo collection:Ideas
-source:awesome model:gpt-image-2
-favorite:true has:image created:30d updated:7d
-```
+Grok uses `grok-imagine-image-2.0`, with Low/Medium quality, 1K/2K resolution, and up to three reference images. ChatGPT supports up to four references and has its own model and quality choices. Switching provider updates the available controls.
 
-Use structured search filters such as `tag:poster`, `collection:Ideas`, `source:awesome`, `model:gpt-image-2`, `favorite:true`, `has:image`, `created:30d`, and `updated:7d` alongside plain keywords. Use the visible sort control to order references by updated date, created date, title, source, or model.
+![Grok selected in the generation provider menu](docs/assets/screenshots/generation-grok-provider.png)
 
-Search also works with collection filters: choose a collection from **Filters**, then type a keyword or structured filter to search inside that collection.
+*Choose a provider in the generation window. This is separate from the default saved in Config.*
 
-Select multiple cards to favorite, move, archive, restore, or delete references together; use `archived:true` to review archived references before restoring them. In local **Config**, preview cleanup before removing broken image records or unreferenced media stored in the local library folder.
+### Suggest a title
 
-<p align="center">
-  <img src="docs/assets/screenshots/local-app-detail.jpg" alt="Reference detail view with image, prompt, tags, and source" width="100%" />
-</p>
-<p align="center"><sub>Open a reference to view its image, prompt, tags, and source.</sub></p>
+In **Add**, **Edit**, or a generated-result save form, choose **Suggest title** to request a short title from the prompt text. Review the suggestion and choose **Use title** to apply it; your current title is not overwritten automatically.
 
-## Local generation
+Add/Edit uses your default AI provider. A generated result uses the provider that made it, shown as **via ChatGPT** or **via Grok**. If the chosen provider is disconnected, the app asks you to reconnect; it does not silently send the prompt to another provider.
 
-Local installs can optionally connect ChatGPT / Codex OAuth and generate images without adding an OpenAI API key to the app. You will need a ChatGPT account/subscription with access to image generation.
-
-Basic flow:
-
-1. Start the local app and open **Config**.
-2. Connect **ChatGPT / Codex OAuth** and approve the device-login flow in your browser.
-3. Return to Image Prompt Library and generate from a new prompt or from an existing saved reference. Prompts can include variables such as `{{subject}}` or `{{style}}`; the composer asks for values before sending the final prompt.
-4. Review completed results from the **Work queue**.
-5. Choose **Save as new item**, or use **Attach to current item** when the result came from an unchanged saved reference. You can edit the new item's metadata before saving.
-
-The public GitHub Pages demo never performs live generation and does not expose mutation controls.
-
-For current generation behavior, limitations, and benchmark notes, see [`docs/GENERATION.md`](docs/GENERATION.md).
+See the [generation guide](docs/GENERATION.md) for connection steps, reference-image limits, result handling, and troubleshooting.
 
 ## Online read-only demo
 
-Browse the public demo at <https://eddietyp.github.io/image-prompt-library/>. It contains **533 attributed prompt/image references** from [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill) (**CC BY 4.0**) and [`freestylefly/awesome-gpt-image-2`](https://github.com/freestylefly/awesome-gpt-image-2) (**MIT**). Each reference keeps its source and license; prompt variants are shown when available.
+[Open the demo](https://eddietyp.github.io/image-prompt-library/) to browse collections, search examples, and copy public sample prompts without installing anything.
 
-<p align="center">
-  <img src="docs/assets/screenshots/public-demo-explore.png" alt="Online read-only demo showing Explore collections" width="100%" />
-</p>
-<p align="center"><sub>The online demo is read-only; editing and generation require a local install.</sub></p>
+![Online read-only demo showing Explore collections](docs/assets/screenshots/public-demo-explore.png)
 
-Use the demo to browse collections, search examples, inspect prompts, and copy public sample prompts. Editing, private-library management, and generation are available only in a local install.
+*The hosted demo uses public sample data. Editing, private-library management, and generation are available only in a local install.*
 
 ## Sample data and attribution
 
-For first-time setup, Image Prompt Library can import optional sample bundles so you have real prompt/image references to explore right away. These samples come from upstream open projects and are included with clear links, thanks, and license notes. They are not presented as original Image Prompt Library artwork or prompts; they remain connected to their original creators and licenses.
+The demo references and optional sample bundles retain their source links and license information. The sample prompts and artwork are not original Image Prompt Library content.
 
-| Sample source | License | Notes |
+| Source | License | Pack |
 | --- | --- | --- |
-| [`wuyoscar/gpt_image_2_skill`](https://github.com/wuyoscar/gpt_image_2_skill) | CC BY 4.0 | First public sample package and default starter sample library. |
-| [`freestylefly/awesome-gpt-image-2`](https://github.com/freestylefly/awesome-gpt-image-2) | MIT | Larger Chinese prompt/image gallery used by the current public demo and optional sample pack. |
+| [wuyoscar/gpt_image_2_skill](https://github.com/wuyoscar/gpt_image_2_skill) | CC BY 4.0 | Starter pack |
+| [freestylefly/awesome-gpt-image-2](https://github.com/freestylefly/awesome-gpt-image-2) | MIT | Larger prompt/image gallery |
 
-Thank you to both upstream projects for making these galleries available. Their prompts and images keep their own source links, attribution, and license terms. Image Prompt Library only provides the local app, import workflow, and browsing/management interface around them; the app code remains licensed separately under AGPL-3.0-or-later.
+See [sample-data/README.md](sample-data/README.md) for pack details and checksums.
 
-For sample package details and checksums, see [`sample-data/README.md`](sample-data/README.md).
+## Privacy
+
+- Keep your own private prompt/image library on your computer. There is no hosted user database or built-in cloud sync.
+- Image generation sends the entered prompt and selected reference images to the provider you choose. Title suggestions send only prompt text—not your images, existing title, tags, or notes.
+- Provider credentials are stored separately from the library and excluded from portable backups and sample exports.
+- The app listens on `127.0.0.1` by default. Do not expose it to a network unless you understand the access risks.
 
 ## Documentation
 
-- [`docs/INSTALLATION.md`](docs/INSTALLATION.md) — install, update, rollback, service mode, uninstall, platform notes.
-- [`docs/GENERATION.md`](docs/GENERATION.md) — ChatGPT / Codex OAuth generation workflow, result review, current limitations, benchmark link.
-- [`docs/BACKUP_AND_RESTORE.md`](docs/BACKUP_AND_RESTORE.md) — portable backup payload, credential boundary, validation, and safe restore behavior.
-- [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — source setup, dev mode, configuration, data layout, backups.
-- [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) — common runtime and setup issues.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contributor setup, tests, and project structure.
-- [`ROADMAP.md`](ROADMAP.md) — planned work and project direction.
+- [Installation and updates](docs/INSTALLATION.md)
+- [Image generation and title suggestions](docs/GENERATION.md)
+- [Backup and restore](docs/BACKUP_AND_RESTORE.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Development setup](docs/DEVELOPMENT.md) and [Contributing](CONTRIBUTING.md)
+- [Roadmap](ROADMAP.md)
 
-## License, privacy, and allowed use
+## License
 
-Image Prompt Library's core application code is open source under **AGPL-3.0-or-later**. Copyright (C) 2026 Edward Tsoi. See [`NOTICE`](NOTICE) and [`LICENSE`](LICENSE).
+Application code is **AGPL-3.0-or-later**. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Sample data and third-party assets have separate licenses, listed above.
 
-Commercial licenses are available for organizations that want to use, modify, or host Image Prompt Library under terms outside the AGPL. Contact the maintainer if you need proprietary hosted-product terms or other non-AGPL licensing.
-
-Privacy model:
-
-- The app is local-first and stores data on your device.
-- There are no hosted user accounts or built-in cloud sync.
-- Binding to `127.0.0.1` keeps the app local to your machine. Only change the host if you understand LAN exposure.
-
-## Project status
-
-`v0.10.2` is the current stable release. It keeps the Explore, generation-review, local-data, and update-check improvements from `v0.10.0` and `v0.10.1`, and refreshes the generation model choices for the GPT-5.6 family. `gpt-5.6-terra` is the recommended default, with `gpt-5.6-sol` and `gpt-5.6-luna` available as explicit alternatives. `v0.10.1` remains available from GitHub Releases if you need the previous version.
+Commercial licenses are available by arrangement with the maintainer for use under terms other than the AGPL.

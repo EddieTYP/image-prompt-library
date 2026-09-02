@@ -35,6 +35,10 @@ The ChatGPT browser flow may label the request **Codex CLI**. Grok uses a separa
 
 Under **Config → Providers**, choose a **Default AI provider** for new generation sessions and title suggestions. Only a connected provider that supports title suggestions can be selected. If that provider is disconnected later, the app keeps your choice and asks you to reconnect instead of silently sending the prompt to another provider.
 
+![Default AI provider in Config, with Grok selected](assets/screenshots/default-ai-provider.png)
+
+*This preference is saved in the current browser. It does not change your library or sign you out of the other provider.*
+
 ## Suggest a title
 
 **Suggest title** is an explicit action in Add, Edit, and generated-result save screens. It sends only the current prompt text to the selected provider; it does not send the image, existing title, tags, Collection, source details, or other Library metadata. The suggestion is shown for review and is not applied until you choose **Use title**.
@@ -51,21 +55,37 @@ When ChatGPT / Codex OAuth is selected, the built-in choices are `gpt-5.6-terra`
 
 For Grok, the composer uses `grok-imagine-image-2.0` and exposes Low or Medium quality, 1K or 2K resolution, and up to three ordered reference images.
 
+![Grok selected in the generation provider menu](assets/screenshots/generation-grok-provider.png)
+
+*The provider menu changes the provider for this generation session. Each provider has its own available controls.*
+
 Review completed results from the **Work queue**. For each result, choose **Save as new item**, **Use result as edit input**, **Retry**, or **Discard**. **Attach to current item** is also available when the result came from an unchanged saved reference. **Use as draft** copies the result's prompt and reusable settings back into the composer. Batch review keeps each result's position and advances to the next unfinished result. Using a result as a draft or edit input pauses review; **Continue review** returns to the remaining results.
 
 Queued and running jobs remain in the Work queue if you close or refresh the page. Deleting a source reference does not cancel them; completed detached results can still be saved as new items.
 
 <p align="center">
-  <img src="assets/screenshots/generation-review-result.jpg" alt="Generation review showing the first result in a three-result batch" width="100%" />
+  <img src="assets/screenshots/generation-review-result.jpg" alt="Generation review showing result 3 of 3 with save and attach controls" width="100%" />
 </p>
 <p align="center"><sub>Review each result before you save, reuse, retry, or discard it.</sub></p>
 
-Before saving a result as a new reference, edit its details. The read-only generation record shows the provider, model, batch position, and original item when available. Internal identifiers are not displayed.
+Before saving a result as a new reference, edit its details. You can use **Suggest title**, or enter a title yourself. The read-only generation record shows the provider, model, batch position, and original item when available.
 
 <p align="center">
-  <img src="assets/screenshots/generation-save-as-new-item.jpg" alt="Save as new reference with editable details for result 1 of 3" width="100%" />
+  <img src="assets/screenshots/generation-save-as-new-item.jpg" alt="Save as new reference with Suggest title and editable details for result 3 of 3" width="100%" />
 </p>
 <p align="center"><sub>Edit the details before saving the result to your library.</sub></p>
+
+## Keep several results in one Library card
+
+Save the first result from a generation set as a new item. During review, later results can be attached to that saved item instead of creating another card. **Attach to current item** remains available for an unchanged source item when applicable.
+
+Open the card to browse its images together. Choose **Edit** and scroll to **Item images** to change their order, select the primary image used as the card cover, change result/reference roles, or remove an individual image. These changes take effect only when you save the card.
+
+![Item images controls for two images, including primary image, role, ordering, and removal](assets/screenshots/library-image-management.png)
+
+*The star selects the cover image; arrows change the order. Removing an image here does not delete the entire card.*
+
+Each new generated image retains its own provider and model information. Existing images without recorded generation details are not assigned guessed values. The architecture example shown above uses a prompt from [wuyoscar/gpt_image_2_skill](https://github.com/wuyoscar/gpt_image_2_skill/blob/main/skills/gpt-image/references/gallery-architecture-and-interior.md), licensed under CC BY 4.0.
 
 ## When generation fails
 

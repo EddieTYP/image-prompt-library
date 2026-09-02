@@ -4342,7 +4342,7 @@ try {{ Invoke-Install }} catch {{ $failure = $_.Exception.Message }}
     assert "internal-start --host 127.0.0.6 --port 4789 --no-browser" in commands
 
 
-def test_public_docs_explain_native_windows_without_installing_python():
+def test_public_docs_explain_windows_python_prerequisite_and_installation():
     readmes = [read("README.md"), read("README_zh-TW.md"), read("README_zh-CN.md")]
     installation = read("docs/INSTALLATION.md")
     troubleshooting = read("docs/TROUBLESHOOTING.md")
@@ -4351,8 +4351,8 @@ def test_public_docs_explain_native_windows_without_installing_python():
     for document in readmes:
         assert "scripts/install.ps1" in document
         assert "Python 3.10+" in document
-        assert "v0.8.0" in document
-        assert "releases/tag/v0.8.0" in document
+        assert "https://github.com/EddieTYP/image-prompt-library/releases/latest" in document
+        assert "docs/INSTALLATION.md" in document
         assert "releases/tag/v0.7.10" not in document
     assert "The installer does not install Python" in installation
     assert "image-prompt-library stop" in installation
@@ -4362,7 +4362,6 @@ def test_public_docs_explain_native_windows_without_installing_python():
     assert "Add stronger token refresh locking" not in roadmap
     assert "Generic URL plus X/Threads import" in roadmap
     assert "Native Windows Quick Start" in release
-    assert "v0.8.0" in read("README.md")
 
 
 def test_public_docs_do_not_claim_legacy_release_is_windows_native():
