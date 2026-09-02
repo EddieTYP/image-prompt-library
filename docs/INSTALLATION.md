@@ -24,7 +24,7 @@ irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts
 
 The installer downloads a release only when its manifest advertises the `windows-powershell-v1` capability, verifies the release checksum before extraction, creates a version-local Python runtime, starts the app in the background, and opens the browser.
 
-Without `-Version`, the installer selects the newest compatible stable release, currently `v0.10.2`, and skips drafts and prereleases. Use `-Version` only when you want to pin a specific release.
+Without `-Version`, the installer selects the newest compatible stable release, currently `v0.11.0`, and skips drafts and prereleases. Use `-Version` only when you want to pin a specific release.
 
 The public bare command resolves to `%LOCALAPPDATA%\ImagePromptLibrary\bin\image-prompt-library.cmd`. The CMD shim launches its differently named internal PowerShell delegate with `-NoProfile -ExecutionPolicy Bypass -File`, so normal commands continue to work when the caller's Windows PowerShell execution policy is `Restricted`.
 
@@ -40,7 +40,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer
 To choose a released version, use the downloaded script:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -Version v0.8.0
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File $installer -Version v0.11.0
 ```
 
 Development and CI release overrides accept literal local directories, `file:` URLs, and loopback HTTP servers. Non-loopback remote release sources must use HTTPS.
@@ -78,7 +78,7 @@ The current logs are `%LOCALAPPDATA%\ImagePromptLibrary\logs\app.out.log` and `a
 
 ```powershell
 image-prompt-library update
-image-prompt-library update --version v0.10.2  # pin a specific release
+image-prompt-library update --version v0.11.0  # pin a specific release
 image-prompt-library rollback
 image-prompt-library backup
 image-prompt-library verify-backup C:\path\to\backup.tar.gz
@@ -127,7 +127,7 @@ image-prompt-library start
 
 `image-prompt-library start` runs the local server in the current terminal. Keep it open, then visit <http://127.0.0.1:8000/> in your browser. Press `Ctrl-C` in that terminal to stop the server.
 
-The command above selects the newest compatible stable release, currently `v0.10.2`, and skips drafts and prereleases. Use `--version` only when you want to pin a specific release.
+The command above selects the newest compatible stable release, currently `v0.11.0`, and skips drafts and prereleases. Use `--version` only when you want to pin a specific release.
 
 ## First run
 
@@ -229,7 +229,7 @@ Update to the latest release:
 image-prompt-library update
 ```
 
-This selects the newest compatible stable release, currently `v0.10.2`. Use `--version` only when you want to pin a specific release.
+This selects the newest compatible stable release, currently `v0.11.0`. Use `--version` only when you want to pin a specific release.
 
 Install or switch to a specific version:
 

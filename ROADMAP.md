@@ -2,9 +2,9 @@
 
 ## Current stable direction
 
-Image Prompt Library is a local-first prompt and image manager. The current stable release is `v0.10.2`; its public GitHub Pages demo is a static, read-only catalogue of attributed prompt/image references. Private-library management, local data, and optional OAuth generation remain local-install features. The application code is AGPL-3.0-or-later, with commercial licensing available for organizations that need different terms.
+Image Prompt Library is a local-first prompt and image manager. The current stable release is `v0.11.0`; its public GitHub Pages demo is a static, read-only catalogue of attributed prompt/image references. Private-library management, local data, and optional OAuth generation remain local-install features. The application code is AGPL-3.0-or-later, with commercial licensing available for organizations that need different terms.
 
-The project does not provide hosted accounts, checkout, payments, SaaS sync, or a hosted private library. SQLite data, images, prompts, and provider state stay on the user's machine.
+The project does not provide hosted accounts, checkout, payments, SaaS sync, or a hosted private library. Library storage, credentials, and other local provider state remain on the user's machine. Optional image generation sends the prompt and selected reference images to the chosen provider; title suggestions send only prompt text.
 
 ## Roadmap lanes
 
@@ -24,7 +24,7 @@ One Library item can now hold a complete image set. Edit lets users choose the p
 
 Any future library work should be driven by observed usability problems rather than reopening this milestone broadly.
 
-### C. Generation workflow hardening — current milestone complete on `main`
+### C. Generation workflow hardening — current milestone complete
 
 The generation foundation, OAuth connection flow, queued jobs, result review, attach/save-as-new actions, retry controls, and session-reliability hardening are shipped.
 
@@ -35,6 +35,8 @@ Manual retry, stalled-job recovery, provider-failure classification and guidance
 `v0.9.0` added atomic Generation sets of 1, 3, 5, or 10 jobs, exact queue progress, a production concurrency cap of five, provider pause/backoff handling, individual review/retry semantics, and portable credential-free backup and safe restore. `v0.10.0` completed the Explore/Library redesign, Appearance presets, and continuous Generation-set review. `v0.10.1` hardened update checks against GitHub's shared anonymous request limit. `v0.10.2` refreshed the built-in GPT-5.6 orchestrator choices, made `gpt-5.6-terra` the recommended default, and retained explicit `gpt-5.6-sol`, `gpt-5.6-luna`, and custom configured choices.
 
 The capability check through the app's ChatGPT / Codex OAuth path found that `gpt-image-2` rejects transparent backgrounds there. `v0.10.2` therefore keeps PNG output opaque and does not expose a transparent-output control. Revisit this only if the provider capability changes.
+
+`v0.11.0` added experimental Grok image generation and title suggestions, a default AI provider setting, multi-image Library cards with per-image provider/model details, and searchable batch Tag and Move controls. See the [release notes](docs/releases/v0.11.0.md) for connection steps and usage changes.
 
 ### D. External inspiration import — deferred
 
@@ -54,9 +56,8 @@ The former responsive vertical-constellation follow-up is superseded by Explore 
 
 These are product and release groups, not promised version numbers. Small independent fixes may ship between them when they do not broaden the main milestone.
 
-1. **`v0.11.0` Library workflow group** — combine the completed batch-action polish, provider-aware opt-in title suggestion, reliable generated-image provider/model display, multi-image Library workflow, and experimental Grok generation. Never spend provider quota without an explicit user action.
-2. **Provider decision** — complete live Grok OAuth and paid-account capability QA before promoting the provider beyond experimental. It should not block `v1.0.0` unless explicitly promoted.
-3. **`v1.0.0` readiness** — run final Windows and POSIX install/update/rollback/restore checks, desktop/mobile and static-demo QA, migration and privacy checks, and documentation alignment. Do not use the `v1.0.0` release gate to introduce import architecture, an account system, or other unrelated work.
+1. **Provider decision** — complete live Grok OAuth and paid-account capability QA before promoting the provider beyond experimental. It should not block `v1.0.0` unless explicitly promoted.
+2. **`v1.0.0` readiness** — run final Windows and POSIX install/update/rollback/restore checks, desktop/mobile and static-demo QA, migration and privacy checks, and documentation alignment. Do not use the `v1.0.0` release gate to introduce import architecture, an account system, or other unrelated work.
 
 ## Later or optional work
 
@@ -71,6 +72,7 @@ Account work must preserve the local-first model: backend permissions protect ap
 
 - Public GitHub Pages remains a multilingual, provenance-aware, read-only demo.
 - Add, edit, generation, private-library management, and provider authentication remain local-install features.
+- Image generation and title suggestions require an explicit user action.
 - OAuth credentials and local session configuration stay outside libraries, backups, samples, and demo exports. Non-secret provider/model provenance and generation-job history may remain with library data.
 - Sample sources retain their own attribution and licenses; the app code license does not relicense sample content.
 - New imports and generated results require explicit review before becoming library items.
