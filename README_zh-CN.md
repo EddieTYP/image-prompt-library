@@ -17,7 +17,7 @@
 
 ## 版本状态
 
-`v0.10.2` 已是当前 stable release，可从 [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest) 下载。**下文的 Grok、按 provider 建议标题及多图管理功能将于 v0.11.0 提供**，尚未包含在目前的 stable 下载中。完整变更见 [v0.11.0 更新说明](docs/releases/v0.11.0.md)。
+`v0.11.0` 是当前稳定版本，可从 [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest) 下载。新增 **Grok 图片生成与标题建议**、多图卡片，以及可搜索的批量 Tag 和 Move 菜单。完整变更见 [v0.11.0 更新说明](docs/releases/v0.11.0.md)。
 
 ## 快速开始
 
@@ -67,8 +67,8 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 - **Explore** 按 collection 展示图片；**Library** 提供完整卡片列表及编辑工具。
 - 原始 prompt 和翻译可放在同一卡片，切换语言版本后即可阅读或复制。
 - 搜索标题、prompt、tag、collection、来源及备注，亦可组合 `tag:portrait`、`collection:architecture`、`sort:title` 等结构化筛选。
-- 选择多张卡片后，可批量加 tag、移动、收藏、封存或删除。v0.11.0 的 **Tag** 会建议现有标签；**Move** 可搜索 collection，不用输入完全相同的名称。
-- v0.11.0 可在同一卡片保存多张图片。在 **Edit** 选择封面、调整顺序、更改结果图／参考图角色，或只删除其中一张图片。
+- 选择多张卡片后，可批量加 tag、移动、收藏、封存或删除。**Tag** 会建议现有标签；**Move** 可搜索 collection，不用输入完全相同的名称。
+- 可在同一卡片保存多张图片。在 **Edit** 选择封面、调整顺序、更改结果图／参考图角色，或只删除其中一张图片。
 
 ![按 collection 浏览的 Explore 画面](docs/assets/screenshots/local-app-explore.jpg)
 
@@ -80,7 +80,7 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 
 ## 使用 ChatGPT 或 Grok 生成图片
 
-图片生成是可选功能，需要本地安装及具相应权限的 provider 账号。**v0.11.0 的 Grok OAuth 属实验功能。** 使用权限、配额和费用由 provider 决定；成功连接不代表免费或无限使用。这两种 OAuth 连接不需要输入 API key。
+图片生成是可选功能，需要本地安装及具相应权限的 provider 账号。**Grok OAuth 属实验功能。** 使用权限、配额和费用由 provider 决定；成功连接不代表免费或无限使用。这两种 OAuth 连接不需要输入 API key。
 
 1. 打开 **Config → Providers**，选择 **ChatGPT / Codex OAuth** 或 **Grok OAuth**，在浏览器完成授权。如有提示，回到 app 按 **Check authorization**。
 2. 选择 **Default AI provider**。偏好会保存在目前的浏览器；生成时仍可暂时转用另一个 provider，不影响默认。

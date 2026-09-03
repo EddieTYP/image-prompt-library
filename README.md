@@ -17,7 +17,7 @@ Your library uses local SQLite and local image files. You do not need an account
 
 ## Release status
 
-`v0.10.2` is the current stable release, available from [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest). **Grok, provider-aware title suggestions, and the multi-image workflows below are coming in v0.11.0**; they are not in the current stable download. See the [v0.11.0 release notes](docs/releases/v0.11.0.md) for the full changes.
+`v0.11.0` is the current stable release, available from [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest). It adds **Grok image generation and title suggestions**, multi-image cards, and searchable batch Tag and Move controls. See the [v0.11.0 release notes](docs/releases/v0.11.0.md) for the full changes.
 
 ## Quick start
 
@@ -67,8 +67,8 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 - **Explore** groups image references by collection; **Library** provides the full card view and editing controls.
 - Keep original and translated prompts together. Select a language variant to read or copy it.
 - Use keyword search across titles, prompts, tags, collections, sources, and notes, or combine it with structured search filters such as `tag:portrait`, `collection:architecture`, and `sort:title`.
-- Select several cards to tag, move, favorite, archive, or delete them. In v0.11.0, **Tag** suggests existing tags and **Move** lets you search for a collection instead of typing its exact name.
-- In v0.11.0, keep multiple images in one card. In **Edit**, choose the cover image, reorder images, change result/reference roles, or remove one image without deleting the whole card.
+- Select several cards to tag, move, favorite, archive, or delete them. **Tag** suggests existing tags and **Move** lets you search for a collection instead of typing its exact name.
+- Keep multiple images in one card. In **Edit**, choose the cover image, reorder images, change result/reference roles, or remove one image without deleting the whole card.
 
 ![Explore view organized by collection](docs/assets/screenshots/local-app-explore.jpg)
 
@@ -80,7 +80,7 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 
 ## Generate images with ChatGPT or Grok
 
-Generation is optional and requires a local install and an eligible provider account. **Grok OAuth is experimental in v0.11.0.** Account access, usage limits, and charges are controlled by the provider; connecting does not guarantee free or unlimited generation. No API key is required by these OAuth connections.
+Generation is optional and requires a local install and an eligible provider account. **Grok OAuth is experimental.** Account access, usage limits, and charges are controlled by the provider; connecting does not guarantee free or unlimited generation. No API key is required by these OAuth connections.
 
 1. Open **Config → Providers**, choose **ChatGPT / Codex OAuth** or **Grok OAuth**, and complete the browser authorization. Return to the app and choose **Check authorization** if prompted.
 2. Choose a **Default AI provider**. This is saved in the current browser. You can override it for a generation session without changing the default.
