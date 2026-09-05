@@ -1,8 +1,11 @@
 import json
+import hashlib
 import runpy
+import zipfile
 from pathlib import Path
 
 from PIL import Image
+import pytest
 
 from backend.db import connect
 from backend.repositories import ItemRepository, StoredImageInput
@@ -172,7 +175,7 @@ def test_demo_export_only_includes_tags_from_public_items(tmp_path):
     (library / "auth.json").write_text("demo-auth-canary", encoding="utf-8")
     (library / "config.json").write_text("demo-config-canary", encoding="utf-8")
     output = tmp_path / "demo-output"
-    export_demo = runpy.run_path(str(ROOT / "scripts" / "export-demo-data.py"))["export_demo"]
+    export_demo = runpy.run_path(str(ROOT / "scripts" / "export-demo-data.py"))["_write_demo"]
 
     export_demo(library, output)
 
@@ -201,3 +204,71 @@ def test_committed_demo_json_excludes_private_runtime_fields():
     for path in demo_root.glob("*.json"):
         payload = json.loads(path.read_text(encoding="utf-8"))
         assert PRIVATE_RUNTIME_KEYS.isdisjoint(nested_keys(payload)), path
+
+
+def demo_packages(tmp_path, monkeypatch):
+    module = runpy.run_path(str(ROOT / "scripts" / "export-demo-data.py"))
+    export = module["export_demo"]
+    image = tmp_path / "public.png"
+    Image.new("RGB", (18, 12), "blue").save(image)
+    archives, packages = [], []
+    for index in range(2):
+        manifest = tmp_path / f"manifest-{index}.json"
+        manifest.write_text(json.dumps({
+            "schema_version": 2, "id": f"public-{index}", "language": "en",
+            "source": {"name": "wuyoscar/gpt_image_2_skill"},
+            "collections": [],
+            "items": [{"id": f"public-{index}", "title": f"Public {index}",
+                       "image": "public.png", "tags": ["public-tag"],
+                       "prompts": [{"language": "en", "text": "Public prompt"}]}],
+        }), encoding="utf-8")
+        archive = tmp_path / f"images-{index}.zip"
+        with zipfile.ZipFile(archive, "w") as bundle:
+            bundle.write(image, "public.png")
+        archives.append(archive)
+        packages.append((manifest, hashlib.sha256(archive.read_bytes()).hexdigest()))
+    monkeypatch.setitem(export.__globals__, "SAMPLE_PACKAGES", tuple(packages))
+    return export, archives
+
+
+def test_demo_export_rebuilds_samples_without_reading_edited_library(tmp_path, monkeypatch):
+    export, archives = demo_packages(tmp_path, monkeypatch)
+    private_library = tmp_path / "private-library"
+    repo = ItemRepository(private_library)
+    item = repo.create_item(ItemCreate(
+        title="PRIVATE TITLE", slug="public-0", source_name="wuyoscar/gpt_image_2_skill",
+        notes="PRIVATE NOTES", tags=["PRIVATE TAG"],
+        prompts=[PromptIn(language="en", text="PRIVATE PROMPT", is_original=True)],
+    ))
+    original = private_library / "originals" / "private.png"
+    original.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (30, 30), "red").save(original)
+    repo.add_image(item.id, StoredImageInput(original_path="originals/private.png"))
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_PATH", str(private_library))
+    output = tmp_path / "output"
+
+    export(*archives, output)
+
+    items = json.loads((output / "items.json").read_text(encoding="utf-8"))
+    assert len(items) == 2
+    assert {item["title"] for item in items} == {"Public 0", "Public 1"}
+    assert all(len(item["images"]) == 1 for item in items)
+    assert b"PRIVATE" not in b"".join(path.read_bytes() for path in output.glob("*.json"))
+    assert repo.get_item(item.id).notes == "PRIVATE NOTES"
+    for image in (output / "media").glob("*.webp"):
+        with Image.open(image) as decoded:
+            assert decoded.size == (18, 12)
+
+
+@pytest.mark.parametrize("changed_index", [0, 1])
+def test_demo_export_rejects_modified_archives_before_replacing_output(tmp_path, monkeypatch, changed_index):
+    export, archives = demo_packages(tmp_path, monkeypatch)
+    with zipfile.ZipFile(archives[changed_index], "a") as bundle:
+        bundle.writestr("private-note.txt", "PRIVATE NOTES")
+    output = tmp_path / "output"
+    output.mkdir()
+    sentinel = output / "items.json"
+    sentinel.write_text("existing demo", encoding="utf-8")
+    with pytest.raises(ValueError, match="checksum mismatch"):
+        export(*archives, output)
+    assert sentinel.read_text(encoding="utf-8") == "existing demo"

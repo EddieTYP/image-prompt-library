@@ -416,6 +416,54 @@ def test_configured_development_origin_can_write_without_weakening_other_origins
     assert c.get("/api/items").json()["total"] == 1
 
 
+@pytest.mark.parametrize("host", ["evil.example:8000", "localhost.evil.example", "127.0.0.1.evil.example", "localhost@evil.example", "localhost/path", "localhost\\evil.example"])
+@pytest.mark.parametrize("path", ["/api/items", "/api/health", "/media/originals/test.png", "/"])
+def test_unknown_hosts_cannot_read_or_write_even_with_matching_origin(tmp_path, host, path):
+    c = client(tmp_path)
+    headers = {"Host": host, "Origin": f"http://{host}"}
+    assert c.get(path, headers=headers).status_code == 400
+    assert c.post("/api/items", json=create_payload(), headers=headers).status_code == 400
+    headers["Origin"] = "http://127.0.0.1:5177"
+    assert c.post("/api/items", json=create_payload(), headers=headers).status_code == 400
+    assert c.get("/api/items").json()["total"] == 0
+
+
+@pytest.mark.parametrize("host", ["localhost:8000", "LOCALHOST.:8000", "127.0.0.1:8000", "192.168.1.25:8000", "[::1]:8000", "[fd12::1]:8000"])
+def test_local_and_literal_ip_hosts_remain_available(tmp_path, host):
+    c = client(tmp_path)
+    assert c.get("/api/health", headers={"Host": host}).status_code == 200
+    assert c.post("/api/items", json=create_payload(), headers={"Host": host, "Origin": f"http://{host}"}).status_code == 200
+
+
+def test_custom_hostname_is_explicit_and_exact(tmp_path, monkeypatch):
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS", "library.home")
+    c = client(tmp_path)
+    assert c.get("/api/health", headers={"Host": "library.home:8000"}).status_code == 200
+    assert c.get("/api/health", headers={"Host": "other.library.home:8000"}).status_code == 400
+    assert c.get("/api/health", headers={"Host": "testserver"}).status_code == 400
+
+
+def test_production_host_defaults_without_test_configuration(tmp_path, monkeypatch):
+    monkeypatch.delenv("IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS", raising=False)
+    c = client(tmp_path)
+    for host in ("localhost:8000", "127.0.0.1:8000", "192.168.1.25:8000", "[::1]:8000"):
+        assert c.get("/api/health", headers={"Host": host}).status_code == 200
+    for host in ("testserver", "evil.example", ""):
+        assert c.get("/api/health", headers={"Host": host}).status_code == 400
+
+
+@pytest.mark.parametrize("configured", ["*", "*.home", "http://library.home", "library.home:8000"])
+def test_invalid_allowed_hostname_configuration_fails_closed(tmp_path, monkeypatch, configured):
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS", configured)
+    with pytest.raises(ValueError, match="exact hostnames"):
+        create_app(library_path=tmp_path / "library")
+
+
+def test_duplicate_host_headers_are_rejected(tmp_path):
+    c = client(tmp_path)
+    assert c.get("/api/health", headers=[("Host", "localhost"), ("Host", "evil.example")]).status_code == 400
+
+
 def test_deleting_item_keeps_media_files_still_used_by_another_item(tmp_path):
     c = client(tmp_path)
     library = tmp_path / "library"

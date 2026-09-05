@@ -103,6 +103,8 @@ image-prompt-library start --host 0.0.0.0
 
 Then open <http://localhost:8000/>. Binding to `0.0.0.0` can expose the app outside WSL, so use it only on a trusted machine/network.
 
+Localhost and literal LAN IP addresses work without additional configuration. If you use a custom hostname, set `IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS` before starting the server, for example `IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS=library.home`. Multiple names are comma-separated; use exact names without a scheme, port, or wildcard. Only add names you control. This setting does not enable authentication or make public internet access safe.
+
 ## Requirements
 
 For normal Unix/WSL release installs:
