@@ -2067,7 +2067,7 @@ def test_installed_service_commands_manage_macos_launchagent_with_fake_launchctl
     assert install.returncode == 0, install.stdout + install.stderr
 
     appctl = prefix / "app" / "current" / "scripts" / "appctl.sh"
-    service_env = {**env, "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix)}
+    service_env = {**env, "IMAGE_PROMPT_LIBRARY_PREFIX": str(prefix), "IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS": "library.home,photos.home"}
     install_service = subprocess.run(
         [
             "bash",
@@ -2096,6 +2096,8 @@ def test_installed_service_commands_manage_macos_launchagent_with_fake_launchctl
     assert "7500" in plist_text
     assert git_bash_arg(prefix) in plist_text
     assert "IMAGE_PROMPT_LIBRARY_SERVICE_LABEL" in plist_text
+    assert "IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS" in plist_text
+    assert "library.home,photos.home" in plist_text
     assert "com.example.ipl-test" in plist_text
     assert "bootstrap gui/" in calls.read_text(encoding="utf-8")
     assert "kickstart -k gui/" in calls.read_text(encoding="utf-8")
@@ -2439,13 +2441,14 @@ def test_posix_env_consumers_share_literal_allowlisted_parser(tmp_path):
         "IMAGE_PROMPT_LIBRARY_PATH=C:/Library With Spaces\n"
         "BACKEND_HOST=$(touch should-not-run)\n"
         "BACKEND_PORT=8123\n"
+        "IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS=library.home,photos.home\n"
         "UNSUPPORTED=$(touch should-not-run)\n",
         encoding="utf-8",
     )
     command = (
         f"source {shlex.quote(git_bash_path(ROOT / 'scripts' / 'load-env.sh'))}; "
         f"image_prompt_library_load_env_file {shlex.quote(git_bash_path(env_file))}; "
-        "printf '%s\\n' \"$IMAGE_PROMPT_LIBRARY_PATH\" \"$BACKEND_HOST\" \"$BACKEND_PORT\""
+        "printf '%s\\n' \"$IMAGE_PROMPT_LIBRARY_PATH\" \"$BACKEND_HOST\" \"$BACKEND_PORT\" \"$IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS\""
     )
 
     result = subprocess.run(
@@ -2461,6 +2464,7 @@ def test_posix_env_consumers_share_literal_allowlisted_parser(tmp_path):
         "C:/Library With Spaces",
         "$(touch should-not-run)",
         "8123",
+        "library.home,photos.home",
     ]
     assert not marker.exists()
 

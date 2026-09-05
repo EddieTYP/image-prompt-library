@@ -52,6 +52,8 @@ python scripts/export-demo-data.py --sample-images image-prompt-library-sample-i
 
 The exporter verifies both archives against their pinned checksums and rebuilds the sample data in a temporary library using the checked-in Traditional Chinese manifests. It never reads your existing Library or `IMAGE_PROMPT_LIBRARY_PATH`, so private edits and images added to sample items cannot enter the demo. Modified archives are rejected; there is no checksum override. Output goes to `frontend/public/demo-data` unless `--output` is supplied. Review the resulting public assets before publishing; the exporter does not deploy them.
 
+Repeated demo builds from the same inputs use stable record IDs, image filenames, ordering, and fixed fixture timestamps. Byte-identical image output assumes the same image-encoder version. These export-only values do not change IDs or timestamps in your Library.
+
 For local QA without downloading from GitHub, point the installer at a local image ZIP:
 
 ```bash

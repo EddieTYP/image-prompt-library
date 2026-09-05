@@ -32,6 +32,7 @@ load_env() {
   local INCOMING_IMAGE_PROMPT_LIBRARY_PATH="${IMAGE_PROMPT_LIBRARY_PATH-}"
   local INCOMING_IMAGE_PROMPT_LIBRARY_AUTH_PATH="${IMAGE_PROMPT_LIBRARY_AUTH_PATH-}"
   local INCOMING_IMAGE_PROMPT_LIBRARY_CONFIG_PATH="${IMAGE_PROMPT_LIBRARY_CONFIG_PATH-}"
+  local INCOMING_ALLOWED_HOSTS="${IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS-}"
   local INCOMING_BACKEND_HOST="${BACKEND_HOST-}"
   local INCOMING_BACKEND_PORT="${BACKEND_PORT-}"
   local INCOMING_BACKUP_DIR="${BACKUP_DIR-}"
@@ -39,6 +40,7 @@ load_env() {
   export IMAGE_PROMPT_LIBRARY_PATH="${INCOMING_IMAGE_PROMPT_LIBRARY_PATH:-${IMAGE_PROMPT_LIBRARY_PATH:-$HOME/ImagePromptLibrary}}"
   if [ -n "$INCOMING_IMAGE_PROMPT_LIBRARY_AUTH_PATH" ]; then export IMAGE_PROMPT_LIBRARY_AUTH_PATH="$INCOMING_IMAGE_PROMPT_LIBRARY_AUTH_PATH"; fi
   if [ -n "$INCOMING_IMAGE_PROMPT_LIBRARY_CONFIG_PATH" ]; then export IMAGE_PROMPT_LIBRARY_CONFIG_PATH="$INCOMING_IMAGE_PROMPT_LIBRARY_CONFIG_PATH"; fi
+  if [ -n "$INCOMING_ALLOWED_HOSTS" ]; then export IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS="$INCOMING_ALLOWED_HOSTS"; fi
   export BACKEND_HOST="${INCOMING_BACKEND_HOST:-${BACKEND_HOST:-127.0.0.1}}"
   export BACKEND_PORT="${INCOMING_BACKEND_PORT:-${BACKEND_PORT:-8000}}"
   export BACKUP_DIR="${INCOMING_BACKUP_DIR:-${BACKUP_DIR:-$APP_PREFIX/backups}}"
@@ -1238,6 +1240,7 @@ service_install() {
   fi
   mkdir -p "$(dirname "$SERVICE_PLIST")" "$HOME/Library/Logs"
   /usr/bin/env python3 - "$SERVICE_PLIST" "$SERVICE_LABEL" "$APP_PREFIX/app/current/scripts/appctl.sh" "$APP_PREFIX" "$SERVICE_HOST" "$SERVICE_PORT" "$HOME" <<'PY'
+import os
 import plistlib
 import sys
 from pathlib import Path
@@ -1263,6 +1266,8 @@ payload = {
     "StandardOutPath": str(Path(home) / "Library" / "Logs" / "image-prompt-library.out.log"),
     "StandardErrorPath": str(Path(home) / "Library" / "Logs" / "image-prompt-library.err.log"),
 }
+if os.environ.get("IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS"):
+    payload["EnvironmentVariables"]["IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS"] = os.environ["IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS"]
 plist_path.write_bytes(plistlib.dumps(payload))
 PY
   if command -v plutil >/dev/null 2>&1; then

@@ -642,6 +642,21 @@ def test_windows_release_sources_are_ascii():
         (ROOT / relative_path).read_bytes().decode("ascii")
 
 
+@pytest.mark.parametrize("incoming,expected", [("", "library.home,photos.home"), ("override.home", "override.home")])
+def test_windows_allowed_hosts_environment_precedence(tmp_path, incoming, expected):
+    environment = tmp_path / ".env"
+    environment.write_text("IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS=library.home,photos.home\n", encoding="ascii")
+    result = run_appctl_function(f"""
+$env:IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS = {powershell_literal(incoming)}
+$context = [pscustomobject]@{{ EnvFile = {powershell_literal(environment)}; Prefix = {powershell_literal(tmp_path)} }}
+(Read-AppEnvironment -Context $context).AllowedHosts
+""")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip().splitlines()[-1] == expected
+    script = (ROOT / "scripts/appctl.ps1").read_text(encoding="ascii")
+    assert "$env:IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS = $settings.AllowedHosts" in script
+
+
 def test_windows_appctl_loads_known_config_and_exposes_diagnostics():
     path = ROOT / "scripts" / "appctl.ps1"
     assert path.is_file()

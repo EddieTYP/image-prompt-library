@@ -105,6 +105,8 @@ Then open <http://localhost:8000/>. Binding to `0.0.0.0` can expose the app outs
 
 Localhost and literal LAN IP addresses work without additional configuration. If you use a custom hostname, set `IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS` before starting the server, for example `IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS=library.home`. Multiple names are comma-separated; use exact names without a scheme, port, or wildcard. Only add names you control. This setting does not enable authentication or make public internet access safe.
 
+Installed apps also read this setting from the install prefix's `.env` file. A nonempty process environment value takes precedence. On macOS, `service install` captures the current value for launchd; after changing a captured value, run `image-prompt-library service install --replace` with your usual host and port options.
+
 ## Requirements
 
 For normal Unix/WSL release installs:

@@ -126,7 +126,38 @@ def build_demo_titles(detail: dict) -> dict[str, str]:
     return {key: value for key, value in titles.items() if value}
 
 
+def _demo_id(kind: str, *parts: str) -> str:
+    key = json.dumps(parts, ensure_ascii=False, separators=(",", ":"))
+    return f"{kind}_{hashlib.sha256(key.encode('utf-8')).hexdigest()[:24]}"
+
+
+def _stable_cluster(cluster: dict) -> dict:
+    return {**cluster, "id": _demo_id("clu", cluster["name"])}
+
+
+def _stable_item(detail: dict) -> dict:
+    detail = dict(detail)
+    item_id = _demo_id("itm", detail.get("source_name") or "", detail["slug"])
+    # Demo build times are not user edit times. Keep fixture dates stable.
+    timestamp = "1970-01-01T00:00:00+00:00"
+    detail.update(id=item_id, created_at=timestamp, updated_at=timestamp)
+    if detail.get("cluster"):
+        detail["cluster"] = _stable_cluster(detail["cluster"])
+    detail["tags"] = [{**tag, "id": _demo_id("tag", tag["kind"], tag["name"])} for tag in detail.get("tags", [])]
+    detail["prompts"] = [
+        {**prompt, "id": _demo_id("prm", item_id, prompt["language"], str(index)),
+         "item_id": item_id, "created_at": timestamp, "updated_at": timestamp}
+        for index, prompt in enumerate(detail.get("prompts", []))
+    ]
+    detail["images"] = [
+        {**image, "id": _demo_id("img", item_id, str(index)), "item_id": item_id, "created_at": timestamp}
+        for index, image in enumerate(detail.get("images", []))
+    ]
+    return detail
+
+
 def _rewrite_item(library_path: Path, media_dir: Path, detail: dict) -> dict:
+    detail = _stable_item(detail)
     images = [_rewrite_image_record(library_path, media_dir, image) for image in detail.get("images", [])]
     detail = dict(detail)
     detail["images"] = images
@@ -210,7 +241,10 @@ def _write_demo(library_path: Path, output: Path) -> None:
     media_dir.mkdir(parents=True, exist_ok=True)
 
     item_list = repo.list_items(limit=1000, offset=0)
-    public_items = [item for item in item_list.items if item.source_name in PUBLIC_DEMO_SOURCES]
+    public_items = sorted(
+        (item for item in item_list.items if item.source_name in PUBLIC_DEMO_SOURCES),
+        key=lambda item: (item.source_name or "", item.slug),
+    )
     items = [
         _rewrite_item(
             library_path,
@@ -219,7 +253,8 @@ def _write_demo(library_path: Path, output: Path) -> None:
         )
         for item in public_items
     ]
-    clusters = _rewrite_cluster_previews([cluster.model_dump(mode="json") for cluster in repo.list_clusters()], items)
+    clusters = _rewrite_cluster_previews([_stable_cluster(cluster.model_dump(mode="json")) for cluster in repo.list_clusters()], items)
+    clusters.sort(key=lambda cluster: (cluster["sort_order"], cluster["name"], cluster["id"]))
     tags = _public_tags(items)
     sources = sorted({item.source_name for item in public_items if item.source_name})
     source_label = "; ".join(sources) if sources else "sample data"

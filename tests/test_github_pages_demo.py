@@ -184,7 +184,7 @@ def test_demo_export_only_includes_tags_from_public_items(tmp_path):
     assert {tag["name"] for tag in tags} == {"public-only", "shared"}
     assert next(tag for tag in tags if tag["name"] == "shared")["count"] == 1
     assert [cluster["name"] for cluster in clusters] == ["Public collection"]
-    assert clusters[0]["preview_item_ids"] == [public_item.id]
+    assert clusters[0]["preview_item_ids"] == [json.loads((output / "items.json").read_text(encoding="utf-8"))[0]["id"]]
     output_bytes = b"".join(path.read_bytes() for path in output.rglob("*") if path.is_file())
     assert b"demo-auth-canary" not in output_bytes
     assert b"demo-config-canary" not in output_bytes
@@ -217,9 +217,9 @@ def demo_packages(tmp_path, monkeypatch):
         manifest.write_text(json.dumps({
             "schema_version": 2, "id": f"public-{index}", "language": "en",
             "source": {"name": "wuyoscar/gpt_image_2_skill"},
-            "collections": [],
+            "collections": [{"id": "public", "name": "Public collection"}],
             "items": [{"id": f"public-{index}", "title": f"Public {index}",
-                       "image": "public.png", "tags": ["public-tag"],
+                       "image": "public.png", "collection_id": "public", "tags": ["public-tag"],
                        "prompts": [{"language": "en", "text": "Public prompt"}]}],
         }), encoding="utf-8")
         archive = tmp_path / f"images-{index}.zip"
@@ -272,3 +272,22 @@ def test_demo_export_rejects_modified_archives_before_replacing_output(tmp_path,
     with pytest.raises(ValueError, match="checksum mismatch"):
         export(*archives, output)
     assert sentinel.read_text(encoding="utf-8") == "existing demo"
+
+
+def test_demo_exports_are_byte_identical_across_fresh_imports(tmp_path, monkeypatch):
+    import backend.repositories as repositories
+    import backend.services.import_sample_bundle as importer
+
+    export, archives = demo_packages(tmp_path, monkeypatch)
+    outputs = [tmp_path / "first", tmp_path / "second"]
+    for index, output in enumerate(outputs):
+        timestamp = f"202{index}-01-01T00:00:00+00:00"
+        monkeypatch.setattr(repositories, "now", lambda: timestamp)
+        monkeypatch.setattr(importer, "now", lambda: timestamp)
+        export(*archives, output)
+    snapshots = [{p.relative_to(output).as_posix(): p.read_bytes() for p in output.rglob("*") if p.is_file()} for output in outputs]
+    assert snapshots[0] == snapshots[1]
+    items = json.loads(snapshots[0]["items.json"])
+    for item in items:
+        assert all(record["item_id"] == item["id"] for record in item["images"] + item["prompts"])
+        assert item["first_image"] == item["images"][0]
