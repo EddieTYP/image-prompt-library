@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
 import os
+import ipaddress
+import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -70,6 +72,41 @@ def _browser_write_origin_allowed(request: Request, development_origin_authoriti
     return request.headers.get("sec-fetch-site", "").lower() != "cross-site"
 
 
+def _allowed_hostnames() -> set[str]:
+    names = {"localhost"}
+    for value in os.environ.get("IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS", "").split(","):
+        name = value.strip().lower().rstrip(".")
+        if not name:
+            continue
+        if len(name) > 253 or any(
+            not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+            for label in name.split(".")
+        ):
+            raise ValueError("IMAGE_PROMPT_LIBRARY_ALLOWED_HOSTS requires exact hostnames, without ports or wildcards")
+        names.add(name)
+    return names
+
+
+def _request_host_allowed(request: Request, names: set[str]) -> bool:
+    hosts = request.headers.getlist("host")
+    if len(hosts) != 1 or any(char.isspace() or char in "/\\?#@" for char in hosts[0]):
+        return False
+    authority = _normalized_origin(f"http://{hosts[0]}")
+    if authority is None:
+        return False
+    hostname = authority[1]
+    if hostname in names:
+        return True
+    try:
+        # Literal IPs preserve LAN/IPv6 access without trusting DNS resolution.
+        if "%" in hostname:
+            return False
+        ipaddress.ip_address(hostname)
+        return True
+    except ValueError:
+        return False
+
+
 def frontend_file_response(path: Path, *, is_index: bool) -> FileResponse:
     headers = FRONTEND_INDEX_CACHE_HEADERS if is_index else FRONTEND_ASSET_CACHE_HEADERS
     return FileResponse(path, headers=headers)
@@ -96,6 +133,7 @@ def create_app(library_path: Path | str | None = None, frontend_dist_path: Path 
     app = FastAPI(title="Image Prompt Library", version=APP_VERSION, lifespan=lifespan)
     app.state.library_path = library
     app.state.frontend_dist_path = frontend_dist
+    allowed_hostnames = _allowed_hostnames()
     development_origins = _development_origins()
     development_origin_authorities = {
         authority for origin in development_origins if (authority := _normalized_origin(origin)) is not None
@@ -104,6 +142,8 @@ def create_app(library_path: Path | str | None = None, frontend_dist_path: Path 
 
     @app.middleware("http")
     async def reject_cross_origin_api_writes(request: Request, call_next):
+        if not _request_host_allowed(request, allowed_hostnames):
+            return JSONResponse(status_code=400, content={"detail": "Unrecognized request host"})
         if (
             request.url.path.startswith("/api/")
             and request.method.upper() not in SAFE_HTTP_METHODS

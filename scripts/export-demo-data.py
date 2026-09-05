@@ -6,9 +6,14 @@ The bundle intentionally uses compressed WebP images instead of local originals.
 from __future__ import annotations
 
 import json
+import argparse
+import hashlib
+import gc
 import os
 import shutil
 import sys
+import tempfile
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +23,7 @@ from PIL import Image, ImageOps
 
 from backend.repositories import ItemRepository
 from backend.services.credential_safety import normalize_structured_key, sanitize_structured_credentials
+from backend.services.import_sample_bundle import import_sample_bundle
 
 
 def _to_simplified(value: str) -> str:
@@ -30,6 +36,10 @@ def _to_simplified(value: str) -> str:
 
 DEFAULT_OUTPUT = ROOT / "frontend" / "public" / "demo-data"  # frontend/public/demo-data
 PUBLIC_DEMO_SOURCES = {"wuyoscar/gpt_image_2_skill", "freestylefly/awesome-gpt-image-2"}
+SAMPLE_PACKAGES = (
+    (ROOT / "sample-data/manifests/zh_hant.json", "8a458f6c8c96079f40fbc46c689e7de0bd2eb464ee7f800f94f3ca60131d5035"),
+    (ROOT / "sample-data/manifests/awesome-gpt-image-2/zh_hant.json", "153714b7611524d7b98b4b0452baa86c8d05053477bb670b731953e8d26a8c9c"),
+)
 PRIVATE_RUNTIME_KEYS = {
     "access_token",
     "account_id",
@@ -49,19 +59,6 @@ PRIVATE_RUNTIME_KEYS = {
 }
 DEMO_IMAGE_MAX_WIDTH = int(os.environ.get("DEMO_IMAGE_MAX_WIDTH", "900"))
 DEMO_IMAGE_QUALITY = int(os.environ.get("DEMO_IMAGE_QUALITY", "62"))
-
-
-def _resolve_library_path() -> Path:
-    configured = os.environ.get("IMAGE_PROMPT_LIBRARY_PATH")
-    if configured:
-        return Path(configured).expanduser().resolve()
-    default = ROOT / "library"
-    if (default / "db.sqlite").exists():
-        return default
-    raise SystemExit(
-        "No sample library found. Set IMAGE_PROMPT_LIBRARY_PATH to a library containing db.sqlite, "
-        "or run ./scripts/install-sample-data.sh first."
-    )
 
 
 def _compress_image(source: Path, destination: Path) -> tuple[int | None, int | None]:
@@ -129,7 +126,38 @@ def build_demo_titles(detail: dict) -> dict[str, str]:
     return {key: value for key, value in titles.items() if value}
 
 
+def _demo_id(kind: str, *parts: str) -> str:
+    key = json.dumps(parts, ensure_ascii=False, separators=(",", ":"))
+    return f"{kind}_{hashlib.sha256(key.encode('utf-8')).hexdigest()[:24]}"
+
+
+def _stable_cluster(cluster: dict) -> dict:
+    return {**cluster, "id": _demo_id("clu", cluster["name"])}
+
+
+def _stable_item(detail: dict) -> dict:
+    detail = dict(detail)
+    item_id = _demo_id("itm", detail.get("source_name") or "", detail["slug"])
+    # Demo build times are not user edit times. Keep fixture dates stable.
+    timestamp = "1970-01-01T00:00:00+00:00"
+    detail.update(id=item_id, created_at=timestamp, updated_at=timestamp)
+    if detail.get("cluster"):
+        detail["cluster"] = _stable_cluster(detail["cluster"])
+    detail["tags"] = [{**tag, "id": _demo_id("tag", tag["kind"], tag["name"])} for tag in detail.get("tags", [])]
+    detail["prompts"] = [
+        {**prompt, "id": _demo_id("prm", item_id, prompt["language"], str(index)),
+         "item_id": item_id, "created_at": timestamp, "updated_at": timestamp}
+        for index, prompt in enumerate(detail.get("prompts", []))
+    ]
+    detail["images"] = [
+        {**image, "id": _demo_id("img", item_id, str(index)), "item_id": item_id, "created_at": timestamp}
+        for index, image in enumerate(detail.get("images", []))
+    ]
+    return detail
+
+
 def _rewrite_item(library_path: Path, media_dir: Path, detail: dict) -> dict:
+    detail = _stable_item(detail)
     images = [_rewrite_image_record(library_path, media_dir, image) for image in detail.get("images", [])]
     detail = dict(detail)
     detail["images"] = images
@@ -205,7 +233,7 @@ def _public_item(detail: dict) -> dict:
     return public_detail
 
 
-def export_demo(library_path: Path, output: Path = DEFAULT_OUTPUT) -> None:
+def _write_demo(library_path: Path, output: Path) -> None:
     repo = ItemRepository(library_path)
     media_dir = output / "media"
     if output.exists():
@@ -213,7 +241,10 @@ def export_demo(library_path: Path, output: Path = DEFAULT_OUTPUT) -> None:
     media_dir.mkdir(parents=True, exist_ok=True)
 
     item_list = repo.list_items(limit=1000, offset=0)
-    public_items = [item for item in item_list.items if item.source_name in PUBLIC_DEMO_SOURCES]
+    public_items = sorted(
+        (item for item in item_list.items if item.source_name in PUBLIC_DEMO_SOURCES),
+        key=lambda item: (item.source_name or "", item.slug),
+    )
     items = [
         _rewrite_item(
             library_path,
@@ -222,7 +253,8 @@ def export_demo(library_path: Path, output: Path = DEFAULT_OUTPUT) -> None:
         )
         for item in public_items
     ]
-    clusters = _rewrite_cluster_previews([cluster.model_dump(mode="json") for cluster in repo.list_clusters()], items)
+    clusters = _rewrite_cluster_previews([_stable_cluster(cluster.model_dump(mode="json")) for cluster in repo.list_clusters()], items)
+    clusters.sort(key=lambda cluster: (cluster["sort_order"], cluster["name"], cluster["id"]))
     tags = _public_tags(items)
     sources = sorted({item.source_name for item in public_items if item.source_name})
     source_label = "; ".join(sources) if sources else "sample data"
@@ -244,5 +276,37 @@ def export_demo(library_path: Path, output: Path = DEFAULT_OUTPUT) -> None:
     print(f"Compressed media files: {len(list(media_dir.glob('*.webp')))}")
 
 
+def export_demo(sample_images: Path, awesome_images: Path, output: Path = DEFAULT_OUTPUT) -> None:
+    """Build only from pinned public sample assets, never an existing Library."""
+    with tempfile.TemporaryDirectory(prefix="image-prompt-library-demo-") as directory:
+        workspace = Path(directory)
+        library = workspace / "library"
+        try:
+            for index, (archive, (manifest, expected_hash)) in enumerate(
+                zip((sample_images, awesome_images), SAMPLE_PACKAGES, strict=True)
+            ):
+                with Path(archive).open("rb") as source:
+                    digest = hashlib.sha256()
+                    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                    if digest.hexdigest() != expected_hash:
+                        raise ValueError("Sample image archive checksum mismatch; use the published sample image packages")
+                    source.seek(0)
+                    assets = workspace / f"assets-{index}"
+                    with zipfile.ZipFile(source) as bundle:
+                        bundle.extractall(assets)
+                import_sample_bundle(manifest, assets, library)
+            _write_demo(library, output)
+        finally:
+            # Existing repository helpers leave SQLite connections to GC; release
+            # their handles before TemporaryDirectory removes the DB on Windows.
+            gc.collect()
+
+
 if __name__ == "__main__":
-    export_demo(_resolve_library_path())
+    parser = argparse.ArgumentParser(description="Build the public demo from verified sample image packages; existing libraries are never read.")
+    parser.add_argument("--sample-images", type=Path, required=True)
+    parser.add_argument("--awesome-images", type=Path, required=True)
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    args = parser.parse_args()
+    export_demo(args.sample_images, args.awesome_images, args.output)
