@@ -51,7 +51,7 @@ ChatGPT title suggestions use the existing ChatGPT / Codex OAuth connection. Gro
 
 Open **Create image**, enter a prompt, and choose settings. The composer starts with your **Default AI provider**, and its provider control can override that choice for the current session. **Generate** creates one result; the adjacent menu creates 3, 5, or 10. Each result uses a separate generation request. Template prompts can include `{{variables}}`; the composer previews the resolved prompt before sending.
 
-### ChatGPT image generation change (next release)
+### ChatGPT image generation change (v0.11.2)
 
 ChatGPT / Codex image generation now calls the Codex backend's Images generation/edit endpoints directly instead of asking a chat model to call an image tool. The image composer therefore no longer has the **terra / sol / luna chat-model selector**. Enter your prompt, optionally select reference images, choose the available output settings, and generate as before. ChatGPT title suggestions still use a chat model; Grok is unchanged.
 

@@ -2,7 +2,7 @@
 
 ## Current stable direction
 
-Image Prompt Library is a local-first prompt and image manager. The current stable release is `v0.11.0`; its public GitHub Pages demo is a static, read-only catalogue of attributed prompt/image references. Private-library management, local data, and optional OAuth generation remain local-install features. The application code is AGPL-3.0-or-later, with commercial licensing available for organizations that need different terms.
+Image Prompt Library is a local-first prompt and image manager. The current stable release is `v0.11.2`; its public GitHub Pages demo is a static, read-only catalogue of attributed prompt/image references. Private-library management, local data, and optional OAuth generation remain local-install features. The application code is AGPL-3.0-or-later, with commercial licensing available for organizations that need different terms.
 
 The project does not provide hosted accounts, checkout, payments, SaaS sync, or a hosted private library. Library storage, credentials, and other local provider state remain on the user's machine. Optional image generation sends the prompt and selected reference images to the chosen provider; title suggestions send only prompt text.
 
@@ -38,7 +38,7 @@ The capability check through the app's ChatGPT / Codex OAuth path found that `gp
 
 `v0.11.0` added experimental Grok image generation and title suggestions, a default AI provider setting, multi-image Library cards with per-image provider/model details, and searchable batch Tag and Move controls. See the [release notes](docs/releases/v0.11.0.md) for connection steps and usage changes.
 
-### Unreleased: direct ChatGPT image generation
+### v0.11.2: direct ChatGPT image generation
 
 ChatGPT / Codex image requests use direct Images generation/edit endpoints instead of chat-model orchestration. The generation-only chat-model selector is removed; title suggestions and Grok are unchanged. Historical job settings remain readable, while retries use the new route. Requested settings and allowlisted returned diagnostics remain distinct; this is not a claim of selectable GPT Image 2.5, enforced quality, or a public third-party OAuth API contract.
 

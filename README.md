@@ -17,7 +17,7 @@ Your library uses local SQLite and local image files. You do not need an account
 
 ## Release status
 
-`v0.11.0` is the current stable release, available from [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest). It adds **Grok image generation and title suggestions**, multi-image cards, and searchable batch Tag and Move controls. See the [v0.11.0 release notes](docs/releases/v0.11.0.md) for the full changes.
+`v0.11.2` is the current stable release, available from [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest). It simplifies **ChatGPT image generation and editing** with direct Images endpoints and removes the generation-only chat-model selector. See the [v0.11.2 release notes](docs/releases/v0.11.2.md). Grok, multi-image cards, and batch organization introduced in [v0.11.0](docs/releases/v0.11.0.md) remain available.
 
 ## Quick start
 
@@ -94,7 +94,7 @@ Grok uses `grok-imagine-image-2.0`, with Low/Medium quality, 1K/2K resolution, a
 
 *Choose a provider in the generation window. This is separate from the default saved in Config.*
 
-> **Next-release change:** ChatGPT image generation uses direct Images endpoints, so the terra / sol / luna chat-model selector is no longer needed. Prompt/reference inputs, review and saving remain available. Title suggestions and Grok are unchanged. Requested quality/size may differ from the output; this does not unlock or verify Image 2.5. See the [generation guide](docs/GENERATION.md).
+> **v0.11.2 change:** ChatGPT image generation uses direct Images endpoints, so the terra / sol / luna chat-model selector is no longer needed. Prompt/reference inputs, review and saving remain available. Title suggestions and Grok are unchanged. Requested quality/size may differ from the output; this does not unlock or verify Image 2.5. See the [generation guide](docs/GENERATION.md).
 
 ### Suggest a title
 

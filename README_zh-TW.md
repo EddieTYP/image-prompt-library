@@ -17,7 +17,7 @@
 
 ## 版本狀態
 
-`v0.11.0` 是目前穩定版本，可從 [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest) 下載。新增 **Grok 圖片生成與標題建議**、多圖卡片，以及可搜尋的批量 Tag 和 Move 選單。完整變更見 [v0.11.0 更新說明](docs/releases/v0.11.0.md)。
+`v0.11.2` 是目前穩定版本，可從 [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest) 下載。**ChatGPT 圖片生成與編輯**改用直接 Images 端點，並移除僅供圖片生成使用的聊天模型選單。詳見 [v0.11.2 更新說明](docs/releases/v0.11.2.md)。[v0.11.0](docs/releases/v0.11.0.md) 加入的 Grok、多圖卡片與批量整理功能維持可用。
 
 ## 快速開始
 

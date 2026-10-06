@@ -228,7 +228,7 @@ def test_v010_release_docs_define_stable_update_behavior():
     notes_path = ROOT / "docs" / "releases" / "v0.10.0.md"
     assert notes_path.exists()
     notes = notes_path.read_text(encoding="utf-8")
-    current_notes = (ROOT / "docs" / "releases" / "v0.11.0.md").read_text(encoding="utf-8")
+    current_notes = (ROOT / "docs" / "releases" / "v0.11.2.md").read_text(encoding="utf-8")
     installation = (ROOT / "docs" / "INSTALLATION.md").read_text(encoding="utf-8")
     readmes = (
         (ROOT / "README.md").read_text(encoding="utf-8"),
@@ -240,22 +240,22 @@ def test_v010_release_docs_define_stable_update_behavior():
 
     assert "# Image Prompt Library v0.10.0" in notes
     assert "`v0.10.0` introduced the features below" in notes
-    assert "`v0.11.0` is the current stable release" in current_notes
+    assert "`v0.11.2` is the current stable release" in current_notes
     assert "Explore" in notes
     assert "appearance choices" in notes
     assert "Generation review" in notes
     assert "Normal install and update commands select it by default" in current_notes
     assert "newest compatible stable release" in installation
-    assert "currently `v0.11.0`" in installation
+    assert "currently `v0.11.2`" in installation
     assert "To test `v0.10.0` while it is a prerelease" not in installation
     assert "only when intentionally testing that prerelease" not in installation
     assert "prerelease candidate" not in notes.lower()
     assert "stable promotion" not in notes.lower()
     assert "## Release gate" not in notes
     assert "No paid generation request" not in notes
-    assert "`v0.11.0` is the current stable release" in readmes[0]
-    assert "`v0.11.0` 是目前穩定版本" in readmes[1]
-    assert "`v0.11.0` 是当前稳定版本" in readmes[2]
+    assert "`v0.11.2` is the current stable release" in readmes[0]
+    assert "`v0.11.2` 是目前穩定版本" in readmes[1]
+    assert "`v0.11.2` 是当前稳定版本" in readmes[2]
     assert "`v0.10.0` is the current stable release" not in readmes[0]
     assert "`v0.10.0` 已是目前 stable release" not in readmes[1]
     assert "`v0.10.0` 已是当前 stable release" not in readmes[2]
@@ -269,11 +269,11 @@ def test_v010_release_docs_define_stable_update_behavior():
     assert "$candidate.prerelease" in windows_installer
 
 
-def test_v011_docs_explain_grok_as_current_stable_release():
+def test_v011_docs_preserve_grok_release_history():
     notes = (ROOT / "docs" / "releases" / "v0.11.0.md").read_text(encoding="utf-8")
     assert "# Image Prompt Library v0.11.0" in notes
-    assert "`v0.11.0` is the current stable release" in notes
-    assert "Normal install and update commands select it by default" in notes
+    assert "`v0.11.0` introduced the features below" in notes
+    assert "`v0.11.0` is the current stable release" not in notes
     assert "This release adds" in notes
     assert "## Generate with Grok" in notes
     assert notes.index("## Generate with Grok") < notes.index("## Choose a default provider")
@@ -309,6 +309,26 @@ def test_v011_docs_explain_grok_as_current_stable_release():
         assert "v0.11.0" in readme
         assert "docs/releases/v0.11.0.md" in readme
         assert "docs/assets/screenshots/generation-grok-provider.png" in readme
+
+
+def test_v0112_release_notes_explain_direct_images_and_limitations():
+    notes = (ROOT / "docs" / "releases" / "v0.11.2.md").read_text(encoding="utf-8")
+    for text in (
+        "direct Images generation and editing endpoints",
+        "terra / sol / luna chat-model selector",
+        "Grok generation and title suggestions are unchanged",
+        "historical job settings remain available",
+        "no automatic fallback",
+        "requests, not guarantees",
+        "decoded image dimensions",
+        "not** add verified GPT Image 2.5 support",
+        "image-prompt-library update",
+    ):
+        assert text in notes
+    for filename in ("README.md", "README_zh-TW.md", "README_zh-CN.md"):
+        assert "docs/releases/v0.11.2.md" in (ROOT / filename).read_text(encoding="utf-8")
+    assert "next release" not in (ROOT / "docs" / "GENERATION.md").read_text(encoding="utf-8").lower()
+    assert "No unreleased changes" in (ROOT / "docs" / "releases" / "unreleased.md").read_text(encoding="utf-8")
 
 
 def test_v0101_release_notes_explain_the_update_fix_to_users():
