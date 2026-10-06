@@ -51,7 +51,13 @@ ChatGPT title suggestions use the existing ChatGPT / Codex OAuth connection. Gro
 
 Open **Create image**, enter a prompt, and choose settings. The composer starts with your **Default AI provider**, and its provider control can override that choice for the current session. **Generate** creates one result; the adjacent menu creates 3, 5, or 10. Each result uses a separate generation request. Template prompts can include `{{variables}}`; the composer previews the resolved prompt before sending.
 
-When ChatGPT / Codex OAuth is selected, the built-in choices are `gpt-5.6-terra`, `gpt-5.6-sol`, and `gpt-5.6-luna`. The default is **Recommended · gpt-5.6-terra**. Existing custom model overrides remain available.
+### ChatGPT image generation change (v0.11.2)
+
+ChatGPT / Codex image generation now calls the Codex backend's Images generation/edit endpoints directly instead of asking a chat model to call an image tool. The image composer therefore no longer has the **terra / sol / luna chat-model selector**. Enter your prompt, optionally select reference images, choose the available output settings, and generate as before. ChatGPT title suggestions still use a chat model; Grok is unchanged.
+
+Existing results and their historical model settings remain readable. Queued jobs and manual retries use the direct Images route; an old `orchestrator_model` is retained as history but is not sent to that endpoint. `IMAGE_PROMPT_LIBRARY_CODEX_ORCHESTRATOR_MODELS` no longer controls image generation. There is no automatic fallback to the old route or automatic second image request after a failure.
+
+This OAuth integration follows the official Codex client's implementation; it is not a publicly guaranteed third-party API contract. It does not establish GPT Image 2.5 access or guaranteed high quality/exact dimensions. Quality and size are requests: the backend can return different values. New job records keep reported quality/size/model when supplied and the decoded pixel dimensions separately for diagnostics; missing fields in old records are not guessed. No new details panel is added.
 
 For Grok, the composer uses `grok-imagine-image-2.0` and exposes Low or Medium quality, 1K or 2K resolution, and up to three ordered reference images.
 
@@ -131,6 +137,6 @@ Interpretation:
 
 While building Image Prompt Library's Image 2.0 generation workflow, the project benchmarked GPT-5.5, GPT-5.4, and GPT-5.3-Codex across Low, Medium, and High quality. These are historical results, not the current model catalogue.
 
-The current app receives its selectable orchestrator models and default from provider status. The built-in choices are `gpt-5.6-terra`, `gpt-5.6-sol`, and `gpt-5.6-luna`; `gpt-5.6-terra` is the recommended default. Users can still change the model and quality manually.
+Those orchestration benchmarks describe the former Responses route, not the direct Images route used for new image requests. They do not justify a current chat-model selector or establish effective image quality.
 
 See the benchmark notes and images in [`generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md`](generation-matrix-chatgpt-codex-impasto-florals-2026-05-01.md).

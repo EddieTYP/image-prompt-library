@@ -17,7 +17,7 @@
 
 ## 版本狀態
 
-`v0.11.0` 是目前穩定版本，可從 [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest) 下載。新增 **Grok 圖片生成與標題建議**、多圖卡片，以及可搜尋的批量 Tag 和 Move 選單。完整變更見 [v0.11.0 更新說明](docs/releases/v0.11.0.md)。
+`v0.11.2` 是目前穩定版本，可從 [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest) 下載。**ChatGPT 圖片生成與編輯**改用直接 Images 端點，並移除僅供圖片生成使用的聊天模型選單。詳見 [v0.11.2 更新說明](docs/releases/v0.11.2.md)。[v0.11.0](docs/releases/v0.11.0.md) 加入的 Grok、多圖卡片與批量整理功能維持可用。
 
 ## 快速開始
 
@@ -88,11 +88,13 @@ image-prompt-library sample-data zh_hant awesome-gpt-image-2
 4. 選擇可用的比例、品質及其他選項。一次生成 1 張或一組 3、5、10 張，再從 **Work queue** 檢視結果。
 5. 選擇 **Save as new item**，或附加至未經修改的來源卡片。檢視同一組結果時，之後的圖片可加入第一張結果建立的卡片，集中在同一詳情視窗瀏覽。
 
-Grok 使用 `grok-imagine-image-2.0`，提供 Low／Medium 品質、1K／2K 解像度，最多三張參考圖。ChatGPT 最多支援四張參考圖，另有自己的 model 及品質選項。切換 provider 後會顯示相應控制。
+Grok 使用 `grok-imagine-image-2.0`，提供 Low／Medium 品質、1K／2K 解像度，最多三張參考圖。ChatGPT 最多支援四張參考圖，另有自己的品質選項。切換 provider 後會顯示相應控制。
 
 ![生成視窗的 provider 選單已選擇 Grok](docs/assets/screenshots/generation-grok-provider.png)
 
 *在生成視窗選擇當次使用的 provider，不會改動 Config 中的預設。*
+
+> **v0.11.2 改動：** ChatGPT 圖片生成改用直接 Images 路徑，因此不再需要選擇 terra／sol／luna 聊天模型。Prompt、參考圖、結果審閱及儲存流程保留；標題建議與 Grok 不變。要求的 quality／尺寸未必等於實際輸出，亦不代表解鎖或確認使用 Image 2.5。詳見[生成指南](docs/GENERATION.md)。
 
 ### 建議標題
 

@@ -96,11 +96,13 @@ def main() -> int:
     args = parser.parse_args()
 
     with httpx.Client(base_url=args.base_url.rstrip("/"), timeout=httpx.Timeout(args.timeout)) as client:
+        providers = client.get("/api/generation-providers").json()
+        codex = next((provider for provider in providers if provider.get("provider") == "openai_codex_oauth_native"), {})
+        if not codex.get("orchestrator_models"):
+            raise SystemExit("This app uses direct Images requests; chat-model benchmarks are no longer applicable. No images were requested.")
         if args.models.strip():
             models = [part.strip() for part in args.models.split(",") if part.strip()]
         else:
-            providers = client.get("/api/generation-providers").json()
-            codex = next((provider for provider in providers if provider.get("provider") == "openai_codex_oauth_native"), {})
             models = [str(model) for model in codex.get("orchestrator_models", []) if str(model).strip()]
         if not models:
             raise SystemExit("No orchestrator models available from provider API or --models")

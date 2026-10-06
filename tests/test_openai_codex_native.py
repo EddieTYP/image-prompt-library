@@ -809,23 +809,7 @@ def test_codex_native_device_flow_rejects_invalid_upstream_json(tmp_path, monkey
         raise AssertionError("expected invalid interval to be converted to CodexNativeAuthError")
 
 
-def test_codex_native_uses_verified_default_image_orchestration_models():
-    from backend.services.openai_codex_native import CODEX_CHAT_MODEL, DEFAULT_CODEX_ORCHESTRATOR_MODELS, codex_orchestrator_models
-
-    assert CODEX_CHAT_MODEL == "gpt-5.6-terra"
-    assert DEFAULT_CODEX_ORCHESTRATOR_MODELS == ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"]
-    assert codex_orchestrator_models() == ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna"]
-
-
-def test_codex_native_filters_known_text_only_orchestrator_models_from_env(monkeypatch):
-    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_ORCHESTRATOR_MODELS", "gpt-5.5,gpt-5.3-codex-spark,gpt-5.3,gpt-5.4")
-
-    from backend.services.openai_codex_native import codex_orchestrator_models
-
-    assert codex_orchestrator_models() == ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4"]
-
-
-def test_codex_native_status_exposes_orchestrator_and_image_models(tmp_path, monkeypatch):
+def test_codex_native_status_exposes_image_models_without_chat_model_choices(tmp_path, monkeypatch):
     auth_path = tmp_path / "auth" / "auth.json"
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(auth_path))
     monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_CODEX_ORCHESTRATOR_MODELS", "gpt-5.5,gpt-5.3-codex-spark")
@@ -837,8 +821,8 @@ def test_codex_native_status_exposes_orchestrator_and_image_models(tmp_path, mon
 
     codex = next(provider for provider in c.get("/api/generation-providers").json() if provider["provider"] == "openai_codex_oauth_native")
 
-    assert codex["orchestrator_models"] == ["gpt-5.6-terra", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.5"]
-    assert codex["default_orchestrator_model"] == "gpt-5.6-terra"
+    assert "orchestrator_models" not in codex
+    assert "default_orchestrator_model" not in codex
     assert codex["image_models"] == ["gpt-image-2"]
     assert codex["default_image_model"] == "gpt-image-2"
 
@@ -993,8 +977,8 @@ def test_codex_native_run_executes_job_and_stages_result_without_leaking_tokens(
     CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh-secret"})
     monkeypatch.setattr(
         openai_codex_native.OpenAICodexNativeProvider,
-        "_collect_image_b64",
-            lambda self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None: base64.b64encode(png_bytes()).decode(),
+        "_collect_image",
+            lambda self, prompt, *, size, quality, image_model, input_images=None: (base64.b64encode(png_bytes()).decode(), {}),
     )
 
     c = client(tmp_path)
@@ -1037,15 +1021,14 @@ def test_codex_native_injects_requested_aspect_ratio_and_records_effective_promp
     CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
     captured = {}
 
-    def collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
+    def collect(self, prompt, *, size, quality, image_model, input_images=None):
         captured["prompt"] = prompt
         captured["size"] = size
         captured["quality"] = quality
         captured["image_model"] = image_model
-        captured["orchestrator_model"] = orchestrator_model
-        return base64.b64encode(png_bytes()).decode()
+        return base64.b64encode(png_bytes()).decode(), {}
 
-    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image", collect)
 
     c = client(tmp_path)
     source_item = create_source_item(c)
@@ -1067,7 +1050,6 @@ def test_codex_native_injects_requested_aspect_ratio_and_records_effective_promp
         "size": None,
         "quality": "high",
         "image_model": "gpt-image-2",
-        "orchestrator_model": "gpt-5.6-terra",
     }
     assert payload["metadata"]["requested_aspect_ratio"] == "4:3"
     assert payload["metadata"]["aspect_ratio_prompt_injection"] == "Make the aspect ratio 4:3."
@@ -1087,12 +1069,12 @@ def test_codex_native_auto_aspect_ratio_does_not_inject_instruction_or_size(tmp_
     CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
     captured = {}
 
-    def collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
+    def collect(self, prompt, *, size, quality, image_model, input_images=None):
         captured["prompt"] = prompt
         captured["size"] = size
-        return base64.b64encode(png_bytes()).decode()
+        return base64.b64encode(png_bytes()).decode(), {}
 
-    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image", collect)
 
     c = client(tmp_path)
     source_item = create_source_item(c)
@@ -1128,11 +1110,11 @@ def test_codex_native_maps_standard_ui_quality_to_sdk_medium(tmp_path, monkeypat
     CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
     captured = {}
 
-    def collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
+    def collect(self, prompt, *, size, quality, image_model, input_images=None):
         captured["quality"] = quality
-        return base64.b64encode(png_bytes()).decode()
+        return base64.b64encode(png_bytes()).decode(), {}
 
-    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image", collect)
 
     c = client(tmp_path)
     source_item = create_source_item(c)
@@ -1164,11 +1146,11 @@ def test_codex_native_forwards_up_to_four_edit_input_images(tmp_path, monkeypatc
     captured = {}
     image_data_url = "data:image/png;base64," + base64.b64encode(png_bytes()).decode()
 
-    def collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
+    def collect(self, prompt, *, size, quality, image_model, input_images=None):
         captured["input_images"] = input_images
-        return base64.b64encode(png_bytes()).decode()
+        return base64.b64encode(png_bytes()).decode(), {}
 
-    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image", collect)
 
     c = client(tmp_path)
     source_item = create_source_item(c)
@@ -1200,11 +1182,11 @@ def test_codex_native_preserves_mixed_library_and_upload_input_order(tmp_path, m
     CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
     captured = {}
 
-    def collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
+    def collect(self, prompt, *, size, quality, image_model, input_images=None):
         captured["input_images"] = input_images
-        return base64.b64encode(png_bytes()).decode()
+        return base64.b64encode(png_bytes()).decode(), {}
 
-    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image", collect)
     c = client(tmp_path)
     source_item = create_source_item(c)
     library_image = c.post(
@@ -1247,12 +1229,12 @@ def test_codex_native_rejects_invalid_data_url_before_provider_call(tmp_path, mo
     CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
     called = False
 
-    def collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
+    def collect(self, prompt, *, size, quality, image_model, input_images=None):
         nonlocal called
         called = True
-        return base64.b64encode(png_bytes()).decode()
+        return base64.b64encode(png_bytes()).decode(), {}
 
-    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image", collect)
 
     c = client(tmp_path)
     source_item = create_source_item(c)
@@ -1284,10 +1266,10 @@ def test_codex_native_marks_failed_when_stage_result_rejects_unsafe_result_root(
 
     CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
 
-    def collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
-        return base64.b64encode(png_bytes()).decode()
+    def collect(self, prompt, *, size, quality, image_model, input_images=None):
+        return base64.b64encode(png_bytes()).decode(), {}
 
-    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image", collect)
 
     c = client(tmp_path)
     source_item = create_source_item(c)
@@ -1329,12 +1311,12 @@ def test_codex_native_rejects_legacy_unsafe_result_path_before_provider_call(tmp
     CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
     called = False
 
-    def collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
+    def collect(self, prompt, *, size, quality, image_model, input_images=None):
         nonlocal called
         called = True
-        return base64.b64encode(png_bytes()).decode()
+        return base64.b64encode(png_bytes()).decode(), {}
 
-    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", collect)
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image", collect)
 
     c = client(tmp_path)
     source_item = create_source_item(c)
@@ -1404,10 +1386,10 @@ def test_codex_native_run_marks_job_failed_on_provider_errors(tmp_path, monkeypa
 
     CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "***"})
 
-    def fail_collect(self, prompt, *, size, quality, image_model, orchestrator_model, input_images=None):
+    def fail_collect(self, prompt, *, size, quality, image_model, input_images=None):
         raise openai_codex_native.CodexNativeAuthError("upstream failed with access_token=[REDACTED]")
 
-    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image_b64", fail_collect)
+    monkeypatch.setattr(openai_codex_native.OpenAICodexNativeProvider, "_collect_image", fail_collect)
 
     c = client(tmp_path)
     source_item = create_source_item(c)
@@ -1527,101 +1509,129 @@ def test_codex_native_http_429_retry_after_zero_is_recorded_once(tmp_path, monke
         ).fetchone()[0] == 1
 
 
-def test_codex_image_tool_requests_only_final_image(tmp_path, monkeypatch):
-    from backend.services import openai_codex_native
-    from backend.services.openai_codex_native import CodexNativeAuthStore, OpenAICodexNativeProvider
+@pytest.mark.parametrize("with_images", [False, True])
+@pytest.mark.parametrize("timeout", [None, 45.0])
+def test_codex_images_request_and_reported_metadata(tmp_path, monkeypatch, with_images, timeout):
+    import httpx
+    from backend.services import openai_codex_native as native
 
-    auth_store = CodexNativeAuthStore(tmp_path / "auth.json")
-    auth_store.save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh"})
-    captured = {}
-
-    class FakeResponse:
-        status_code = 200
-        headers = {}
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            return False
-
-        def iter_lines(self):
-            yield "data: " + json.dumps({
-                "type": "response.output_item.done",
-                "item": {"type": "image_generation_call", "result": base64.b64encode(b"image").decode()},
-            })
-            yield "data: [DONE]"
-
-    class FakeClient:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_):
-            return False
-
-        def stream(self, method, url, **kwargs):
-            captured.update(kwargs)
-            return FakeResponse()
-
-    monkeypatch.setattr(openai_codex_native.httpx, "Client", lambda *args, **kwargs: FakeClient())
-    result = OpenAICodexNativeProvider(auth_store=auth_store)._collect_image_b64(
-        "A test image",
-        size=None,
-        quality="high",
-        image_model="gpt-image-2",
-        orchestrator_model="gpt-5.6-luna",
-    )
-    assert result == base64.b64encode(b"image").decode()
-    assert captured["json"]["tools"][0]["partial_images"] == 0
+    auth = native.CodexNativeAuthStore(tmp_path / "auth.json")
+    auth.save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh-secret"})
+    requests = []
+    encoded = base64.b64encode(png_bytes()).decode()
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, json={
+            "data": [{"b64_json": encoded, "generation_id": "gen-test"}],
+            "quality": "low", "size": "16x16", "model": "server-label",
+            "access_token": "must-not-persist", "raw_extra": {"secret": "hidden"},
+        })
+    real_client = httpx.Client
+    monkeypatch.setattr(native.httpx, "Client", lambda **kw: real_client(**kw, transport=httpx.MockTransport(handler)))
+    inputs = [{"image_url": "data:image/png;base64," + encoded}, {"image_url": "data:image/png;base64," + encoded}] if with_images else None
+    provider = native.OpenAICodexNativeProvider(auth_store=auth, **({"timeout": timeout} if timeout is not None else {}))
+    result, metadata = provider._collect_image(
+        "Test prompt", size=None, quality="high", image_model="gpt-image-2", input_images=inputs)
+    assert result == encoded
+    assert metadata == {"reported_quality": "low", "reported_size": "16x16", "reported_model": "server-label"}
+    assert len(requests) == 1
+    request = requests[0]
+    assert request.extensions["timeout"] == {
+        "connect": timeout or 120.0, "read": timeout or 300.0,
+        "write": timeout or 120.0, "pool": timeout or 120.0,
+    }
+    assert request.url.path.endswith("/images/edits" if with_images else "/images/generations")
+    payload = json.loads(request.content)
+    assert payload == {
+        "prompt": "Test prompt", "model": "gpt-image-2", "quality": "high",
+        "size": "auto", "background": "opaque", "n": 1,
+        **({"images": inputs} if with_images else {}),
+    }
+    assert request.headers["x-codex-image-turn-id"]
 
 
-def test_codex_image_tool_never_promotes_partial_event_to_final_result(tmp_path, monkeypatch):
-    from backend.services import openai_codex_native
-    from backend.services.openai_codex_native import (
-        CodexNativeAuthError,
-        CodexNativeAuthStore,
-        OpenAICodexNativeProvider,
-    )
+@pytest.mark.parametrize("with_images", [False, True])
+def test_codex_images_read_timeout_never_retries_or_falls_back(tmp_path, monkeypatch, with_images):
+    import httpx
+    from backend.services import openai_codex_native as native
 
-    auth_store = CodexNativeAuthStore(tmp_path / "auth.json")
-    auth_store.save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh"})
+    auth = native.CodexNativeAuthStore(tmp_path / "auth.json")
+    auth.save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh"})
+    requests = []
 
-    class FakeResponse:
-        status_code = 200
-        headers = {}
+    def handler(request):
+        requests.append(request)
+        raise httpx.ReadTimeout("Image response timed out", request=request)
 
-        def __enter__(self):
-            return self
+    real_client = httpx.Client
+    monkeypatch.setattr(native.httpx, "Client", lambda **kw: real_client(**kw, transport=httpx.MockTransport(handler)))
+    inputs = [{"image_url": "data:image/png;base64," + base64.b64encode(png_bytes()).decode()}] if with_images else None
+    with pytest.raises(httpx.ReadTimeout):
+        native.OpenAICodexNativeProvider(auth_store=auth)._collect_image(
+            "Test", size=None, quality="high", image_model="gpt-image-2", input_images=inputs)
+    assert len(requests) == 1
+    assert requests[0].url.path.endswith("/images/edits" if with_images else "/images/generations")
 
-        def __exit__(self, *_):
-            return False
 
-        def iter_lines(self):
-            yield "data: " + json.dumps({
-                "type": "response.image_generation_call.partial_image",
-                "partial_image_b64": base64.b64encode(b"preview-only").decode(),
-            })
-            yield "data: [DONE]"
+@pytest.mark.parametrize("body", [[], {}, {"data": []}, {"data": [None]},
+    {"data": [{"url": "https://example.com/image.png"}]},
+    {"partial_image_b64": "preview"}, {"data": [{"b64_json": 123}]}])
+def test_codex_images_rejects_nonfinal_or_malformed_response(tmp_path, monkeypatch, body):
+    import httpx
+    from backend.services import openai_codex_native as native
 
-    class FakeClient:
-        def __enter__(self):
-            return self
+    auth = native.CodexNativeAuthStore(tmp_path / "auth.json")
+    auth.save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh"})
+    calls = []
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(200, json=body)
+    real_client = httpx.Client
+    monkeypatch.setattr(native.httpx, "Client", lambda **kw: real_client(**kw, transport=httpx.MockTransport(handler)))
+    with pytest.raises(native.CodexNativeAuthError, match="no .*image"):
+        native.OpenAICodexNativeProvider(auth_store=auth)._collect_image(
+            "Test", size="1024x1536", quality="high", image_model="gpt-image-2")
+    assert len(calls) == 1
 
-        def __exit__(self, *_):
-            return False
 
-        def stream(self, *_args, **_kwargs):
-            return FakeResponse()
+def test_legacy_retry_uses_images_and_keeps_reported_metadata_after_save(tmp_path, monkeypatch):
+    import httpx
+    from backend.services import openai_codex_native as native
+    from backend.services.generation_jobs import GenerationJobRepository
 
-    monkeypatch.setattr(openai_codex_native.httpx, "Client", lambda *args, **kwargs: FakeClient())
-    with pytest.raises(CodexNativeAuthError, match="no image_generation result"):
-        OpenAICodexNativeProvider(auth_store=auth_store)._collect_image_b64(
-            "A test image",
-            size=None,
-            quality="high",
-            image_model="gpt-image-2",
-            orchestrator_model="gpt-5.6-luna",
-        )
+    monkeypatch.setenv("IMAGE_PROMPT_LIBRARY_AUTH_PATH", str(tmp_path / "auth.json"))
+    monkeypatch.setattr("backend.routers.generation_jobs.enqueue_generation_jobs", lambda *a, **kw: None)
+    native.CodexNativeAuthStore().save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh-secret"})
+    seen = []
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(200, json={"data": [{"b64_json": base64.b64encode(png_bytes()).decode()}],
+                                       "quality": "low", "size": "16x10"})
+    real_client = httpx.Client
+    monkeypatch.setattr(native.httpx, "Client", lambda **kw: real_client(**kw, transport=httpx.MockTransport(handler)))
+    c = client(tmp_path)
+    old = c.post("/api/generation-jobs", json={
+        "provider": "openai_codex_oauth_native", "model": "gpt-image-2", "prompt_text": "Test",
+        "parameters": {"orchestrator_model": "retired-chat-model", "quality": "high"},
+    }).json()
+    repo = GenerationJobRepository(tmp_path / "library")
+    repo.mark_failed(old["id"], "Temporary provider failure")
+    retried = c.post(f"/api/generation-jobs/{old['id']}/retry").json()
+    result = c.post(f"/api/generation-jobs/{retried['id']}/run")
+    assert result.status_code == 200
+    job = result.json()
+    assert len(seen) == 1 and seen[0].url.path.endswith("/images/generations")
+    assert "retired-chat-model" not in seen[0].content.decode()
+    assert job["metadata"]["quality"] == "high"
+    assert job["metadata"]["reported_quality"] == "low"
+    assert job["metadata"]["pixel_size"] == "16x10"
+    assert job["metadata"]["generation_route"] == "images"
+    assert "reported_model" not in job["metadata"]
+    saved = c.post(f"/api/generation-jobs/{job['id']}/accept-as-new-item", json={"title": "Saved test"})
+    assert saved.status_code == 200
+    persisted = c.get(f"/api/generation-jobs/{job['id']}").json()
+    assert persisted["metadata"]["reported_quality"] == "low"
+    assert c.get(f"/api/generation-jobs/{old['id']}").json()["parameters"]["orchestrator_model"] == "retired-chat-model"
 
 
 def test_title_suggestion_normalizes_provider_output():
@@ -1664,7 +1674,11 @@ def test_title_suggestion_request_contains_prompt_text_only(tmp_path, monkeypatc
             captured.update(kwargs)
             return FakeResponse()
 
-    monkeypatch.setattr(openai_codex_native.httpx, "Client", lambda *args, **kwargs: FakeClient())
+    def fake_client(*args, **kwargs):
+        assert kwargs["timeout"].read == 30.0
+        return FakeClient()
+
+    monkeypatch.setattr(openai_codex_native.httpx, "Client", fake_client)
     title = OpenAICodexNativeProvider(auth_store=auth_store)._collect_title_text("A neon library in the rain")
 
     assert title == "Neon Library"

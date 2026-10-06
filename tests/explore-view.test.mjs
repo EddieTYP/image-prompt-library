@@ -708,18 +708,18 @@ test('batch review leaves a resolved stage and exposes session-only item targets
   assert.match(generation, /openReviewTarget\(reviewTargetId, reviewTargetTitle\)/);
 });
 
-test('generation composer exposes the refreshed recommended model list', async () => {
+test('generation composer keeps output controls without a ChatGPT orchestrator selector', async () => {
   const [generation, translations, styles] = await Promise.all([
     readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
     readFile(`${ROOT}/frontend/src/utils/i18n.ts`, 'utf8'),
     readFile(`${ROOT}/frontend/src/styles.css`, 'utf8'),
   ]);
 
-  assert.match(generation, /\['gpt-5\.6-terra', 'gpt-5\.6-sol', 'gpt-5\.6-luna'\]/);
-  assert.match(generation, /recommendedOrchestratorModel[\s\S]*?generationRecommended/);
-  assert.equal((generation.match(/generation-control-option-check/g) || []).length, 6);
+  assert.doesNotMatch(generation, /setOrchestratorModel|orchestratorModels/);
+  assert.match(generation, /provider === 'xai_grok_oauth' && \([\s\S]*?generation-model-control/);
+  assert.equal((generation.match(/generation-control-option-check/g) || []).length, 5);
   assert.match(generation, /role="menuitemradio" aria-checked=\{selected\}[\s\S]*?generation-control-option-label/);
-  assert.match(generation, /generation-model-option-copy[\s\S]*?generation-control-option-check/);
+
   assert.match(generation, /GROK_QUALITY_OPTIONS[\s\S]*?generationResolution[\s\S]*?GROK_RESOLUTION_OPTIONS/);
   assert.match(generation, /job\.provider === 'xai_grok_oauth' && <span className="generation-history-cell"><b>\{t\('generationResolution'\)\}<\/b><em>\{optionLabel\(GROK_RESOLUTION_OPTIONS, jobResolution\(job\), t\)\}<\/em><\/span>/);
   assert.match(generation, /max_input_images \|\| MAX_EDIT_ATTACHMENTS/);
