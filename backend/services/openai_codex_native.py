@@ -9,6 +9,7 @@ import math
 import os
 import time
 import tempfile
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -39,8 +40,6 @@ CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 CODEX_AUTH_ISSUER = "https://auth.openai.com"
 CODEX_TOKEN_URL = f"{CODEX_AUTH_ISSUER}/oauth/token"
 CODEX_CHAT_MODEL = "gpt-5.6-terra"
-DEFAULT_CODEX_ORCHESTRATOR_MODELS = [CODEX_CHAT_MODEL, "gpt-5.6-sol", "gpt-5.6-luna"]
-UNSUPPORTED_IMAGE_ORCHESTRATOR_MODELS = {"gpt-5.3", "gpt-5.3-codex-spark"}
 IMAGE_MODEL = "gpt-image-2"
 DEFAULT_QUALITY = "high"
 QUALITY_ALIASES = {"standard": "medium", "medium": "medium", "high": "high", "low": "low", "auto": "auto"}
@@ -90,26 +89,11 @@ def _comma_list(value: str) -> list[str]:
     return items
 
 
-def codex_orchestrator_models() -> list[str]:
-    configured = _comma_list(os.environ.get("IMAGE_PROMPT_LIBRARY_CODEX_ORCHESTRATOR_MODELS", ""))
-    models = list(DEFAULT_CODEX_ORCHESTRATOR_MODELS)
-    for model in configured:
-        if model not in UNSUPPORTED_IMAGE_ORCHESTRATOR_MODELS and model not in models:
-            models.append(model)
-    return models
-
-
 def codex_image_models() -> list[str]:
     configured = _comma_list(os.environ.get("IMAGE_PROMPT_LIBRARY_CODEX_IMAGE_MODELS", ""))
     if IMAGE_MODEL not in configured:
         configured.insert(0, IMAGE_MODEL)
     return configured
-
-
-def normalize_codex_orchestrator_model(value: Any) -> str:
-    requested = str(value or "").strip()
-    allowed = codex_orchestrator_models()
-    return requested if requested in allowed else allowed[0]
 
 
 def normalize_codex_image_model(value: Any) -> str:
@@ -123,7 +107,7 @@ def normalize_codex_quality(value: Any) -> str:
     return QUALITY_ALIASES.get(requested, DEFAULT_QUALITY)
 
 
-def _codex_response_error_message(response: httpx.Response) -> str:
+def _codex_response_error_message(response: httpx.Response, *, api: str = "Responses") -> str:
     detail = ""
     try:
         data = response.json()
@@ -141,7 +125,7 @@ def _codex_response_error_message(response: httpx.Response) -> str:
         except Exception:
             detail = ""
     detail = sanitize_generation_error(detail) if detail else ""
-    prefix = f"Codex Responses API returned status {response.status_code}"
+    prefix = f"Codex {api} API returned status {response.status_code}"
     return f"{prefix}: {detail[:500]}" if detail else prefix
 
 
@@ -616,8 +600,6 @@ class CodexNativeAuthStore:
                 "title_suggestion": available,
             },
             "max_input_images": MAX_INPUT_IMAGES,
-            "orchestrator_models": codex_orchestrator_models(),
-            "default_orchestrator_model": codex_orchestrator_models()[0],
             "image_models": codex_image_models(),
             "default_image_model": codex_image_models()[0],
             "token_present": token_present,
@@ -801,26 +783,28 @@ class OpenAICodexNativeProvider:
             )
             quality = normalize_codex_quality(parameters.get("quality"))
             image_model = normalize_codex_image_model(job.model or parameters.get("image_model"))
-            orchestrator_model = normalize_codex_orchestrator_model(parameters.get("orchestrator_model"))
             input_images = self._input_image_data_urls(job, Path(library_path))
-            image_b64 = self._collect_image_b64(
+            image_b64, reported = self._collect_image(
                 effective_prompt,
                 size=size,
                 quality=quality,
                 image_model=image_model,
-                orchestrator_model=orchestrator_model,
                 input_images=input_images,
             )
             try:
                 image_bytes = base64.b64decode(image_b64, validate=True)
             except (binascii.Error, ValueError) as exc:
                 raise CodexNativeAuthError("Codex response contained invalid image data") from exc
+            with Image.open(BytesIO(image_bytes)) as image:
+                pixel_size = f"{image.width}x{image.height}"
             metadata = {
+                **reported,
+                "generation_route": "images",
+                "pixel_size": pixel_size,
                 "provider": PROVIDER_ID,
                 "auth_mode": AUTH_MODE,
                 "model": image_model,
                 "image_model": image_model,
-                "orchestrator_model": orchestrator_model,
                 "size": size or "auto",
                 "quality": quality,
                 "requested_aspect_ratio": requested_aspect_ratio,
@@ -966,69 +950,49 @@ class OpenAICodexNativeProvider:
             raise CodexNativeTemporaryError("Title suggestion is temporarily unavailable") from exc
         return "".join(deltas) or completed_text
 
-    def _collect_image_b64(self, prompt: str, *, size: str | None, quality: str, image_model: str, orchestrator_model: str, input_images: list[dict[str, Any]] | None = None) -> str:
-        tokens = self.auth_store.read_tokens()
-        access_token = tokens["access_token"]
-        image_tool = {
-            "type": "image_generation",
+    def _collect_image(self, prompt: str, *, size: str | None, quality: str, image_model: str, input_images: list[dict[str, Any]] | None = None) -> tuple[str, dict[str, Any]]:
+        access_token = self.auth_store.read_tokens()["access_token"]
+        payload: dict[str, Any] = {
+            "prompt": prompt,
             "model": image_model,
             "quality": quality,
-            "output_format": "png",
+            "size": size or "auto",
             "background": "opaque",
-            "partial_images": 0,
+            "n": 1,
         }
-        if size:
-            image_tool["size"] = size
-        content = [{"type": "input_text", "text": prompt}]
-        for image in input_images or []:
-            content.append({"type": "input_image", "image_url": image["image_url"]})
-        payload = {
-            "model": orchestrator_model,
-            "store": False,
-            "instructions": "Create exactly one image using the image_generation tool. If input images are provided, edit or transform them according to the prompt.",
-            "input": [{
-                "type": "message",
-                "role": "user",
-                "content": content,
-            }],
-            "tools": [image_tool],
-            "tool_choice": {
-                "type": "allowed_tools",
-                "mode": "required",
-                "tools": [{"type": "image_generation"}],
-            },
-            "stream": True,
+        endpoint = "images/generations"
+        if input_images:
+            endpoint = "images/edits"
+            payload["images"] = [{"image_url": image["image_url"]} for image in input_images]
+        headers = {
+            **codex_cloudflare_headers(access_token),
+            "x-codex-image-turn-id": str(uuid.uuid4()),
         }
-        final_image_b64: str | None = None
-        url = f"{CODEX_BASE_URL}/responses"
+        # Never fall back to Responses or retry a possibly billed image request here.
         with httpx.Client(timeout=httpx.Timeout(self.timeout)) as client:
-            with client.stream("POST", url, headers=codex_cloudflare_headers(access_token), json=payload) as response:
-                if response.status_code != 200:
-                    response.read()
-                    if response.status_code == 429:
-                        retry_after_seconds = parse_retry_after_seconds(response.headers.get("Retry-After"))
-                        raise CodexNativeRateLimitError(
-                            _codex_response_error_message(response),
-                            retry_after_seconds=retry_after_seconds,
-                        )
-                    raise CodexNativeAuthError(_codex_response_error_message(response))
-                for line in response.iter_lines():
-                    if not line or not line.startswith("data:"):
-                        continue
-                    raw = line.removeprefix("data:").strip()
-                    if raw == "[DONE]":
-                        break
-                    try:
-                        event = json.loads(raw)
-                    except json.JSONDecodeError:
-                        continue
-                    event_type = event.get("type")
-                    if event_type == "response.output_item.done":
-                        item = event.get("item")
-                        if isinstance(item, dict) and item.get("type") == "image_generation_call":
-                            result = item.get("result")
-                            if isinstance(result, str) and result:
-                                final_image_b64 = result
-        if not final_image_b64:
-            raise CodexNativeAuthError("Codex response contained no image_generation result")
-        return final_image_b64
+            response = client.post(f"{CODEX_BASE_URL}/{endpoint}", headers=headers, json=payload)
+        if response.status_code != 200:
+            message = _codex_response_error_message(response, api="Images")
+            if response.status_code == 429:
+                raise CodexNativeRateLimitError(
+                    message,
+                    retry_after_seconds=parse_retry_after_seconds(response.headers.get("Retry-After")),
+                )
+            raise CodexNativeAuthError(message)
+        try:
+            body = response.json()
+        except ValueError as exc:
+            raise CodexNativeAuthError("Codex Images API returned invalid JSON") from exc
+        data = body.get("data") if isinstance(body, dict) else None
+        if not isinstance(data, list) or len(data) != 1 or not isinstance(data[0], dict):
+            raise CodexNativeAuthError("Codex Images API response contained no single image result")
+        result = data[0].get("b64_json")
+        if not isinstance(result, str) or not result:
+            raise CodexNativeAuthError("Codex Images API response contained no image data")
+        # Keep a small diagnostic allowlist, never the raw response or headers.
+        reported: dict[str, Any] = {}
+        for source, target in (("quality", "reported_quality"), ("size", "reported_size"), ("model", "reported_model")):
+            value = body.get(source)
+            if isinstance(value, str) and value:
+                reported[target] = sanitize_generation_error(value)[:200]
+        return result, reported

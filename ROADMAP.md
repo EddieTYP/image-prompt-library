@@ -38,6 +38,10 @@ The capability check through the app's ChatGPT / Codex OAuth path found that `gp
 
 `v0.11.0` added experimental Grok image generation and title suggestions, a default AI provider setting, multi-image Library cards with per-image provider/model details, and searchable batch Tag and Move controls. See the [release notes](docs/releases/v0.11.0.md) for connection steps and usage changes.
 
+### Unreleased: direct ChatGPT image generation
+
+ChatGPT / Codex image requests use direct Images generation/edit endpoints instead of chat-model orchestration. The generation-only chat-model selector is removed; title suggestions and Grok are unchanged. Historical job settings remain readable, while retries use the new route. Requested settings and allowlisted returned diagnostics remain distinct; this is not a claim of selectable GPT Image 2.5, enforced quality, or a public third-party OAuth API contract.
+
 ### D. External inspiration import — deferred
 
 Local markdown repository ingestion and the shared `ImportDraft` review flow remain available. Generic URL plus X/Threads import, along with Instagram adapters, remains deferred because reliable social-post reply extraction requires platform authentication, paid APIs, or brittle scraping that does not yet meet the product's acceptance bar.

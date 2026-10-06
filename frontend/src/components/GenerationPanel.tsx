@@ -209,6 +209,7 @@ function isStaleRunningJob(job?: GenerationJobRecord) {
 }
 
 function jobModel(job?: GenerationJobRecord) {
+  if (job?.metadata?.generation_route === 'images') return job.model || 'gpt-image-2';
   const parameterModel = job?.parameters?.orchestrator_model;
   const metadataModel = job?.metadata?.orchestrator_model;
   if (typeof parameterModel === 'string' && parameterModel) return parameterModel;
@@ -318,12 +319,11 @@ export default function GenerationPanel({
   const [activeGenerationSet, setActiveGenerationSet] = useState<GenerationJobSetRecord>();
   const [providerQueueStates, setProviderQueueStates] = useState<GenerationProviderQueueState[]>([]);
   const [provider, setProvider] = useState<string>(defaultAiProvider);
-  const [orchestratorModel, setOrchestratorModel] = useState('gpt-5.6-terra');
   const [aspectRatio, setAspectRatio] = useState('auto');
   const [quality, setQuality] = useState('high');
   const [grokQuality, setGrokQuality] = useState('medium');
   const [grokResolution, setGrokResolution] = useState('1k');
-  const [openControl, setOpenControl] = useState<'provider' | 'aspect' | 'quality' | 'model' | null>(null);
+  const [openControl, setOpenControl] = useState<'provider' | 'aspect' | 'quality' | null>(null);
   const [generationCountMenuOpen, setGenerationCountMenuOpen] = useState(false);
   const [cancelSetBusy, setCancelSetBusy] = useState(false);
   const [queueClock, setQueueClock] = useState(() => Date.now());
@@ -373,7 +373,7 @@ export default function GenerationPanel({
   const generationCountTriggerRef = useRef<HTMLButtonElement | null>(null);
   const generationCountFocusOnOpenRef = useRef(false);
   const generationCountCloseTimerRef = useRef<number | undefined>(undefined);
-  const controlTriggerRefs = useRef<Record<'provider' | 'aspect' | 'quality' | 'model', HTMLButtonElement | null>>({ provider: null, aspect: null, quality: null, model: null });
+  const controlTriggerRefs = useRef<Record<'provider' | 'aspect' | 'quality', HTMLButtonElement | null>>({ provider: null, aspect: null, quality: null });
   const referenceAddTriggerRef = useRef<HTMLButtonElement | null>(null);
   const referenceAddWrapRef = useRef<HTMLDivElement | null>(null);
   const historyTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -463,12 +463,7 @@ export default function GenerationPanel({
     : t('providerUnavailableForGeneration');
   const selectedProviderQueueState = providerQueueStates.find(state => state.provider === provider);
   const selectedProviderPauseSeconds = selectedProviderQueueState ? providerPauseSeconds(selectedProviderQueueState, queueClock) : 0;
-  const orchestratorModels = selectedProvider?.orchestrator_models || ['gpt-5.6-terra', 'gpt-5.6-sol', 'gpt-5.6-luna'];
-  const recommendedOrchestratorModel = selectedProvider?.default_orchestrator_model || orchestratorModels[0];
-  const orchestratorModelLabel = (model: string) => model === recommendedOrchestratorModel ? `${t('generationRecommended')} · ${model}` : model;
-  const selectedModelLabel = provider === 'xai_grok_oauth'
-    ? (selectedProvider?.default_image_model || 'grok-imagine-image-2.0')
-    : orchestratorModelLabel(orchestratorModel);
+  const selectedModelLabel = selectedProvider?.default_image_model || 'grok-imagine-image-2.0';
   const selectedOutputLabel = provider === 'xai_grok_oauth'
     ? `${optionLabel(GROK_QUALITY_OPTIONS, grokQuality, t)} · ${optionLabel(GROK_RESOLUTION_OPTIONS, grokResolution, t)}`
     : optionLabel(QUALITY_OPTIONS, quality, t);
@@ -663,7 +658,6 @@ export default function GenerationPanel({
         const initialProvider = preferredProvider || automatedProviders.find(providerCanGenerate) || automatedProviders[0];
         if (initialProvider) {
           setProvider(initialProvider.provider);
-          setOrchestratorModel(initialProvider.default_orchestrator_model || initialProvider.orchestrator_models?.[0] || 'gpt-5.6-terra');
         }
       })
       .catch(() => {
@@ -956,7 +950,7 @@ export default function GenerationPanel({
           requested_aspect_ratio: aspectRatio,
           aspect_ratio_prompt_injection: provider === 'openai_codex_oauth_native' && aspectRatio !== 'auto',
           ...(provider === 'openai_codex_oauth_native'
-            ? { quality, orchestrator_model: orchestratorModel }
+            ? { quality }
             : provider === 'xai_grok_oauth'
               ? { quality: grokQuality, resolution: grokResolution }
               : {}),
@@ -1587,7 +1581,6 @@ export default function GenerationPanel({
         setQuality(jobQuality(retryJob));
       }
       setProvider(retryJob.provider || provider);
-      setOrchestratorModel(jobModel(retryJob));
       setEditAttachments(restorableJobAttachments(retryJob));
       setFocusedJobHighlightId(retryJob.id);
       onQueueChangedRef.current?.();
@@ -1672,7 +1665,6 @@ export default function GenerationPanel({
         setQuality(jobQuality(retryJob));
       }
       setProvider(retryJob.provider || provider);
-      setOrchestratorModel(jobModel(retryJob));
       setEditAttachments(restorableJobAttachments(retryJob));
       setFocusedJobHighlightId(retryJob.id);
       onQueueChangedRef.current?.();
@@ -1738,7 +1730,6 @@ export default function GenerationPanel({
       setQuality(jobQuality(job));
     }
     setProvider(job.provider || provider);
-    setOrchestratorModel(jobModel(job));
     setEditAttachments(restorableAttachments);
     setHistoryReviewJobId(undefined);
     if (reviewSession) setBatchReviewPaused(true);
@@ -2117,7 +2108,6 @@ export default function GenerationPanel({
                               className={selected ? 'is-selected' : ''}
                               onClick={() => {
                                 setProvider(option.provider);
-                                setOrchestratorModel(option.default_orchestrator_model || option.orchestrator_models?.[0] || 'gpt-5.6-terra');
                                 closeGenerationControl('provider');
                               }}
                             >
@@ -2203,28 +2193,14 @@ export default function GenerationPanel({
                       </div>
                     )}
                   </div>
-                  <div className="generation-control-wrap generation-model-control">
-                     <button ref={element => { controlTriggerRefs.current.model = element; }} className="generation-control-trigger generation-model-trigger generation-has-long-value" type="button" onClick={() => setOpenControl(openControl === 'model' ? null : 'model')} disabled={provider !== 'openai_codex_oauth_native'} aria-label={`${t('queueModel')}: ${selectedModelLabel}`} title={selectedModelLabel}>
-                      <img className="generation-control-icon" src={brainAiIcon} alt="" aria-hidden="true" />
-                      <span className="generation-control-value">{selectedModelLabel}</span>
-                    </button>
-                    {openControl === 'model' && (
-                      <div className="generation-control-popover" role="menu">
-                        {orchestratorModels.map(model => {
-                          const selected = orchestratorModel === model;
-                          return (
-                            <button key={model} type="button" role="menuitemradio" aria-checked={selected} className={selected ? 'is-selected' : ''} onClick={() => { setOrchestratorModel(model); closeGenerationControl('model'); }}>
-                              <span className="generation-model-option-copy">
-                                <strong>{model}</strong>
-                                {model === recommendedOrchestratorModel && <small>{t('generationRecommended')}</small>}
-                              </span>
-                              {selected && <Check className="generation-control-option-check" size={15} aria-hidden="true" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  {provider === 'xai_grok_oauth' && (
+                    <div className="generation-control-wrap generation-model-control">
+                      <button className="generation-control-trigger generation-model-trigger generation-has-long-value" type="button" disabled aria-label={`${t('queueModel')}: ${selectedModelLabel}`} title={selectedModelLabel}>
+                        <img className="generation-control-icon" src={brainAiIcon} alt="" aria-hidden="true" />
+                        <span className="generation-control-value">{selectedModelLabel}</span>
+                      </button>
+                    </div>
+                  )}
                   <input ref={attachmentInputRef} className="generation-attachment-input" type="file" accept="image/*" multiple onChange={event => addUploadedAttachments(event.currentTarget.files)} />
                   {!selectedProviderCanGenerateDraft && <div className="generation-provider-status">
                     <span className={`generation-provider-readiness ${selectedProviderCanGenerateDraft ? 'is-ready' : 'needs-attention'}`} title={selectedProviderSupportsDraft ? selectedProviderMessage : compactProviderMessage} aria-label={selectedProviderSupportsDraft ? selectedProviderMessage : compactProviderMessage}>
