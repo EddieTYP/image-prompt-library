@@ -94,7 +94,7 @@ Grok 使用 `grok-imagine-image-2.0`，提供 Low／Medium 质量、1K／2K 分�
 
 *在生成窗口选择本次使用的 provider，不会改变 Config 中的默认值。*
 
-> **下一版改动：** ChatGPT 图片生成改用直接 Images 路径，因此不再需要选择 terra／sol／luna 聊天模型。Prompt、参考图、结果审阅及保存流程保留；标题建议与 Grok 不变。要求的 quality／尺寸未必等于实际输出，亦不代表解锁或确认使用 Image 2.5。详见[生成指南](docs/GENERATION.md)。
+> **v0.11.2 改动：** ChatGPT 图片生成改用直接 Images 路径，因此不再需要选择 terra／sol／luna 聊天模型。Prompt、参考图、结果审阅及保存流程保留；标题建议与 Grok 不变。要求的 quality／尺寸未必等于实际输出，亦不代表解锁或确认使用 Image 2.5。详见[生成指南](docs/GENERATION.md)。
 
 ### 建议标题
 

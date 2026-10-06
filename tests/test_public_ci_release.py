@@ -326,7 +326,11 @@ def test_v0112_release_notes_explain_direct_images_and_limitations():
     ):
         assert text in notes
     for filename in ("README.md", "README_zh-TW.md", "README_zh-CN.md"):
-        assert "docs/releases/v0.11.2.md" in (ROOT / filename).read_text(encoding="utf-8")
+        readme = (ROOT / filename).read_text(encoding="utf-8")
+        assert "docs/releases/v0.11.2.md" in readme
+        assert "> **v0.11.2 " in readme
+        for stale_label in ("Next-release change", "下一版改動", "下一版改动"):
+            assert stale_label not in readme
     assert "next release" not in (ROOT / "docs" / "GENERATION.md").read_text(encoding="utf-8").lower()
     assert "No unreleased changes" in (ROOT / "docs" / "releases" / "unreleased.md").read_text(encoding="utf-8")
 
