@@ -1510,7 +1510,8 @@ def test_codex_native_http_429_retry_after_zero_is_recorded_once(tmp_path, monke
 
 
 @pytest.mark.parametrize("with_images", [False, True])
-def test_codex_images_request_and_reported_metadata(tmp_path, monkeypatch, with_images):
+@pytest.mark.parametrize("timeout", [None, 45.0])
+def test_codex_images_request_and_reported_metadata(tmp_path, monkeypatch, with_images, timeout):
     import httpx
     from backend.services import openai_codex_native as native
 
@@ -1528,12 +1529,17 @@ def test_codex_images_request_and_reported_metadata(tmp_path, monkeypatch, with_
     real_client = httpx.Client
     monkeypatch.setattr(native.httpx, "Client", lambda **kw: real_client(**kw, transport=httpx.MockTransport(handler)))
     inputs = [{"image_url": "data:image/png;base64," + encoded}, {"image_url": "data:image/png;base64," + encoded}] if with_images else None
-    result, metadata = native.OpenAICodexNativeProvider(auth_store=auth)._collect_image(
+    provider = native.OpenAICodexNativeProvider(auth_store=auth, **({"timeout": timeout} if timeout is not None else {}))
+    result, metadata = provider._collect_image(
         "Test prompt", size=None, quality="high", image_model="gpt-image-2", input_images=inputs)
     assert result == encoded
     assert metadata == {"reported_quality": "low", "reported_size": "16x16", "reported_model": "server-label"}
     assert len(requests) == 1
     request = requests[0]
+    assert request.extensions["timeout"] == {
+        "connect": timeout or 120.0, "read": timeout or 300.0,
+        "write": timeout or 120.0, "pool": timeout or 120.0,
+    }
     assert request.url.path.endswith("/images/edits" if with_images else "/images/generations")
     payload = json.loads(request.content)
     assert payload == {
@@ -1542,6 +1548,29 @@ def test_codex_images_request_and_reported_metadata(tmp_path, monkeypatch, with_
         **({"images": inputs} if with_images else {}),
     }
     assert request.headers["x-codex-image-turn-id"]
+
+
+@pytest.mark.parametrize("with_images", [False, True])
+def test_codex_images_read_timeout_never_retries_or_falls_back(tmp_path, monkeypatch, with_images):
+    import httpx
+    from backend.services import openai_codex_native as native
+
+    auth = native.CodexNativeAuthStore(tmp_path / "auth.json")
+    auth.save_tokens({"access_token": fake_jwt(), "refresh_token": "refresh"})
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        raise httpx.ReadTimeout("Image response timed out", request=request)
+
+    real_client = httpx.Client
+    monkeypatch.setattr(native.httpx, "Client", lambda **kw: real_client(**kw, transport=httpx.MockTransport(handler)))
+    inputs = [{"image_url": "data:image/png;base64," + base64.b64encode(png_bytes()).decode()}] if with_images else None
+    with pytest.raises(httpx.ReadTimeout):
+        native.OpenAICodexNativeProvider(auth_store=auth)._collect_image(
+            "Test", size=None, quality="high", image_model="gpt-image-2", input_images=inputs)
+    assert len(requests) == 1
+    assert requests[0].url.path.endswith("/images/edits" if with_images else "/images/generations")
 
 
 @pytest.mark.parametrize("body", [[], {}, {"data": []}, {"data": [None]},
@@ -1645,7 +1674,11 @@ def test_title_suggestion_request_contains_prompt_text_only(tmp_path, monkeypatc
             captured.update(kwargs)
             return FakeResponse()
 
-    monkeypatch.setattr(openai_codex_native.httpx, "Client", lambda *args, **kwargs: FakeClient())
+    def fake_client(*args, **kwargs):
+        assert kwargs["timeout"].read == 30.0
+        return FakeClient()
+
+    monkeypatch.setattr(openai_codex_native.httpx, "Client", fake_client)
     title = OpenAICodexNativeProvider(auth_store=auth_store)._collect_title_text("A neon library in the rain")
 
     assert title == "Neon Library"

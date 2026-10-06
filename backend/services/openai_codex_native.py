@@ -716,7 +716,7 @@ class CodexDeviceCodeFlow:
 
 
 class OpenAICodexNativeProvider:
-    def __init__(self, auth_store: CodexNativeAuthStore | None = None, timeout: float = 120.0):
+    def __init__(self, auth_store: CodexNativeAuthStore | None = None, timeout: float = 300.0):
         self.auth_store = auth_store or CodexNativeAuthStore()
         self.timeout = timeout
 
@@ -969,7 +969,9 @@ class OpenAICodexNativeProvider:
             "x-codex-image-turn-id": str(uuid.uuid4()),
         }
         # Never fall back to Responses or retry a possibly billed image request here.
-        with httpx.Client(timeout=httpx.Timeout(self.timeout)) as client:
+        # Direct Images returns the final result without streaming progress.
+        # Give generation more read time without extending connect/write waits.
+        with httpx.Client(timeout=httpx.Timeout(min(self.timeout, 120.0), read=self.timeout)) as client:
             response = client.post(f"{CODEX_BASE_URL}/{endpoint}", headers=headers, json=payload)
         if response.status_code != 200:
             message = _codex_response_error_message(response, api="Images")
