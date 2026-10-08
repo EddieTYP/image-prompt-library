@@ -38,6 +38,53 @@ const {
   retainPendingRetryJobIds,
 } = await importTypescript('../frontend/src/utils/generationSiblings.ts');
 const { makeTranslator } = await importTypescript('../frontend/src/utils/i18n.ts');
+const { submitGenerationRequest } = await importTypescript('../frontend/src/utils/generationSubmission.ts');
+
+test('unacknowledged generation submissions retain IDs without persisting private payloads', async () => {
+  const storage = new Map();
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
+    getItem: key => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value),
+    removeItem: key => storage.delete(key),
+  } });
+  try {
+    for (const endpoint of ['/api/generation-jobs', '/api/generation-jobs/sets']) {
+      const payload = { prompt: 'private prompt', image: 'private image bytes' };
+      let originalId;
+      await assert.rejects(submitGenerationRequest(endpoint, payload, async id => {
+        originalId = id;
+        throw new TypeError('response lost after server commit');
+      }));
+      assert.equal(storage.size, 1);
+      assert.doesNotMatch(JSON.stringify([...storage]), /private/);
+      await assert.rejects(submitGenerationRequest(endpoint, payload, async id => {
+        assert.equal(id, originalId);
+        return null;
+      }), /incomplete/);
+      const originalResult = endpoint.endsWith('/sets')
+        ? { generation_group_id: 'original-set', jobs: [{ id: 'original-job' }] }
+        : { id: 'original-job' };
+      const result = await submitGenerationRequest(endpoint, payload, async id => {
+        assert.equal(id, originalId);
+        return originalResult;
+      });
+      assert.deepEqual(result, originalResult);
+      assert.equal(storage.size, 0);
+      await submitGenerationRequest(endpoint, payload, async id => {
+        assert.notEqual(id, originalId); // An acknowledged new action is a new request.
+        return originalResult;
+      });
+    }
+    sessionStorage.setItem = () => { throw new Error('storage unavailable'); };
+    let sent = false;
+    await assert.rejects(submitGenerationRequest('/api/generation-jobs', {}, async () => { sent = true; }));
+    assert.equal(sent, false);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'sessionStorage', previous);
+    else delete globalThis.sessionStorage;
+  }
+});
 
 test('saving and attaching batch results immediately updates the summary without polling', () => {
   const jobs = [1, 2, 3].map(id => ({ id: String(id), status: 'succeeded' }));

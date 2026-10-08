@@ -360,6 +360,8 @@ def _validate_schema_contract(conn: sqlite3.Connection, ledger: list[str]) -> No
         required_tables.add("generation_jobs")
     if migration_count >= 9:
         required_tables.update({"generation_sets", "provider_queue_states"})
+    if migration_count >= 12:
+        required_tables.add("generation_creation_requests")
     schema_objects = {
         str(row[0]): (str(row[1]), str(row[2] or ""))
         for row in conn.execute("SELECT name, type, sql FROM sqlite_master WHERE type IN ('table', 'view')")
@@ -390,6 +392,8 @@ def _validate_schema_contract(conn: sqlite3.Connection, ledger: list[str]) -> No
         )
     if migration_count >= 11:
         required_columns.setdefault("images", set()).update({"generation_provider", "generation_model"})
+    if migration_count >= 12:
+        required_columns.setdefault("generation_creation_requests", set()).update({"request_id", "payload_hash", "result_id", "created_at"})
     for table, expected in required_columns.items():
         actual = {str(row[1]) for row in conn.execute(f"PRAGMA table_info({table})")}
         missing_columns = sorted(expected - actual)

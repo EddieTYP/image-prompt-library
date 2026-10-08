@@ -1,6 +1,7 @@
 import json
+from uuid import UUID
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, File, Form, Header, HTTPException, Query, Request, UploadFile
 from PIL import UnidentifiedImageError
 
 from backend.schemas import (
@@ -97,9 +98,9 @@ def repo(request: Request) -> GenerationJobRepository:
 
 
 @router.post("", response_model=GenerationJobRecord)
-def create_generation_job(payload: GenerationJobCreate, request: Request):
+def create_generation_job(payload: GenerationJobCreate, request: Request, idempotency_key: UUID | None = Header(default=None)):
     try:
-        created = repo(request).create_job(payload)
+        created = repo(request).create_job(payload, request_id=str(idempotency_key) if idempotency_key else None)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Source item not found") from exc
     except GenerationJobConflict as exc:
@@ -110,9 +111,9 @@ def create_generation_job(payload: GenerationJobCreate, request: Request):
 
 
 @router.post("/sets", response_model=GenerationJobSetRecord)
-def create_generation_job_set(payload: GenerationJobSetCreate, request: Request):
+def create_generation_job_set(payload: GenerationJobSetCreate, request: Request, idempotency_key: UUID | None = Header(default=None)):
     try:
-        created = repo(request).create_job_set(payload.job, payload.count)
+        created = repo(request).create_job_set(payload.job, payload.count, request_id=str(idempotency_key) if idempotency_key else None)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Source item not found") from exc
     except GenerationJobConflict as exc:

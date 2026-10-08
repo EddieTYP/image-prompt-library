@@ -356,6 +356,7 @@ export default function GenerationPanel({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const onAcceptedRef = useRef(onAccepted);
+  const createJobInFlightRef = useRef(false);
   onAcceptedRef.current = onAccepted;
   const onQueueChangedRef = useRef(onQueueChanged);
   onQueueChangedRef.current = onQueueChanged;
@@ -918,8 +919,10 @@ export default function GenerationPanel({
   };
 
   const createJob = async (count: GenerationSetCount = 1) => {
+    if (createJobInFlightRef.current) return;
     const prompt = promptText.trim();
     if (!prompt || hasMissingTemplateValues || !resolvedPrompt || !selectedProviderCanGenerateDraft || (provider === 'manual_upload' && count !== 1)) return;
+    createJobInFlightRef.current = true;
     const preservePausedReview = Boolean(batchReviewSession && batchReviewPaused);
     setBusy(true);
     setMessage('');
@@ -990,8 +993,9 @@ export default function GenerationPanel({
           ? `${t('generationSet')} ${t('queueQueued').toLowerCase()} · ${count}`
           : `${attachments.length > 0 ? t('useResultAsEditInput') : t('generate')} · ${t('queueQueued').toLowerCase()}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('generationCreateFailed'));
+      setMessage(`${error instanceof Error ? error.message : t('generationCreateFailed')} ${t('generationCreateRetrySafe')}`);
     } finally {
+      createJobInFlightRef.current = false;
       setBusy(false);
     }
   };
@@ -1309,7 +1313,7 @@ export default function GenerationPanel({
   };
 
   const imageAttachmentPayload = () => editAttachments.map(attachment => ({
-    id: attachment.id,
+    // UI IDs for uploads change on re-selection; do not make them part of a submission.
     name: attachment.name,
     source: attachment.source,
     data_url: attachment.dataUrl,
