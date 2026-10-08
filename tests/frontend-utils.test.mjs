@@ -19,7 +19,7 @@ const {
 const { resolveOriginalPrompt, resolvePromptText } = await importTypescript('../frontend/src/utils/prompts.ts');
 const { downloadFileName, imageDisplayPath, imageThumbnailPath, selectPrimaryImage } = await importTypescript('../frontend/src/utils/images.ts');
 const { generationFailure } = await importTypescript('../frontend/src/utils/generationFailures.ts');
-const { generationSetProgressText, providerPauseSeconds } = await importTypescript('../frontend/src/utils/generationSets.ts');
+const { acceptGenerationSetJob, generationSetProgressText, providerPauseSeconds } = await importTypescript('../frontend/src/utils/generationSets.ts');
 const { APPEARANCE_STORAGE_KEY, DEFAULT_APPEARANCE, normalizeAppearance } = await importTypescript('../frontend/src/utils/appearance.ts');
 const { DEFAULT_AI_PROVIDER_STORAGE_KEY, resolveDefaultAiProvider } = await importTypescript('../frontend/src/utils/defaultAiProvider.ts');
 const {
@@ -38,6 +38,28 @@ const {
   retainPendingRetryJobIds,
 } = await importTypescript('../frontend/src/utils/generationSiblings.ts');
 const { makeTranslator } = await importTypescript('../frontend/src/utils/i18n.ts');
+
+test('saving and attaching batch results immediately updates the summary without polling', () => {
+  const jobs = [1, 2, 3].map(id => ({ id: String(id), status: 'succeeded' }));
+  const original = { generation_group_id: 'batch', total: 3, completed: 3, remaining: 0,
+    queued: 0, running: 0, succeeded: 3, accepted: 0, failed: 0, discarded: 0, cancelled: 0, jobs };
+  const saved = { ...jobs[0], status: 'accepted', accepted_image_id: 'saved-image' };
+  const afterSave = acceptGenerationSetJob(original, saved);
+  assert.equal(afterSave.succeeded, 2);
+  assert.equal(afterSave.accepted, 1);
+  assert.equal(afterSave.jobs[0], saved);
+  const afterAttach = acceptGenerationSetJob(afterSave, { ...jobs[1], status: 'accepted' });
+  assert.equal(afterAttach.succeeded, 1);
+  assert.equal(afterAttach.accepted, 2);
+  assert.equal(afterAttach.completed, 3);
+  assert.equal(afterAttach.remaining, 0);
+  assert.equal(original.succeeded, 3);
+  assert.equal(original.jobs[0].status, 'succeeded');
+  assert.equal(acceptGenerationSetJob(afterAttach, saved), afterAttach);
+  assert.equal(acceptGenerationSetJob(afterAttach, { id: 'other-batch', status: 'accepted' }), afterAttach);
+  assert.equal(acceptGenerationSetJob(afterAttach, jobs[2]), afterAttach);
+  assert.equal(acceptGenerationSetJob(undefined, saved), undefined);
+});
 
 test('search helpers parse sort operators and supported filter chips', () => {
   assert.deepEqual(parseSearchSortQuery('  cats sort:title  tag:poster '), {

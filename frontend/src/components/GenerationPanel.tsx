@@ -7,7 +7,7 @@ import qualityIcon from '../assets/generation-controls/quality.png';
 import { api, mediaUrl } from '../api/client';
 import type { ClusterRecord, GenerationJobAcceptAsNewItemPayload, GenerationJobCreate, GenerationJobRecord, GenerationJobSetRecord, GenerationProviderQueueState, GenerationProviderStatus, GenerationSetCount, ImageRecord, ItemDetail, ItemSummary, TagRecord, TitleSuggestionProvider } from '../types';
 import type { Translator } from '../utils/i18n';
-import { providerPauseSeconds } from '../utils/generationSets';
+import { acceptGenerationSetJob, providerPauseSeconds } from '../utils/generationSets';
 import { downloadFileName } from '../utils/images';
 import { generationFailure } from '../utils/generationFailures';
 import { resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage } from '../utils/prompts';
@@ -1049,6 +1049,7 @@ export default function GenerationPanel({
       const result = await api.acceptGenerationJob(job.id);
       const acceptedJob = result.job.result_path ? result.job : { ...result.job, result_path: job.result_path };
       invalidateGenerationRefreshRequests();
+      setActiveGenerationSet(current => acceptGenerationSetJob(current, acceptedJob));
       const nextJobs = updateGenerationJobs(current => current.map(candidate => candidate.id === acceptedJob.id ? acceptedJob : candidate));
       onQueueChangedRef.current?.();
       setMessage(t('imageAddedToItem'));
@@ -1080,6 +1081,7 @@ export default function GenerationPanel({
       const result = await api.acceptGenerationJobIntoItem(job.id, groupedBatchTarget.id);
       const acceptedJob = result.job.result_path ? result.job : { ...result.job, result_path: job.result_path };
       invalidateGenerationRefreshRequests();
+      setActiveGenerationSet(current => acceptGenerationSetJob(current, acceptedJob));
       const nextJobs = updateGenerationJobs(current => current.map(candidate => candidate.id === acceptedJob.id ? acceptedJob : candidate));
       onQueueChangedRef.current?.();
       setMessage(t('imageAddedToItem'));
@@ -1473,6 +1475,7 @@ export default function GenerationPanel({
       const result = await api.acceptGenerationJobAsNewItem(reviewJob.id, metadataPayload);
       const acceptedJob = result.job.result_path ? result.job : { ...result.job, result_path: reviewJob.result_path };
       invalidateGenerationRefreshRequests();
+      setActiveGenerationSet(current => acceptGenerationSetJob(current, acceptedJob));
       const nextJobs = updateGenerationJobs(current => current.map(candidate => candidate.id === acceptedJob.id ? acceptedJob : candidate));
       onQueueChangedRef.current?.();
       setReviewJob(undefined);
