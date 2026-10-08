@@ -162,7 +162,9 @@ def _classify_error(message: str) -> str:
     lowered = (message or "").lower()
     if any(term in lowered for term in ("rate limit", "rate_limit", "rate-limit", "too many", "slow down", "retry later", "429")):
         return "rate_limited"
-    if any(term in lowered for term in ("unavailable", "timeout", "temporarily", "gateway", "500", "502", "503", "504")):
+    if any(term in lowered for term in ("timeout", "timed out")):
+        return "provider_timeout"
+    if any(term in lowered for term in ("unavailable", "temporarily", "gateway", "500", "502", "503", "504")):
         return "provider_unavailable"
     if any(term in lowered for term in ("policy", "safety", "not allowed", "violat")):
         return "policy_violation"

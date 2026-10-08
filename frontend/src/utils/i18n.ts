@@ -43,6 +43,7 @@ type TranslationKey =
   | 'generationFailurePolicyTitle' | 'generationFailurePolicyGuidance' | 'generationFailureRateTitle' | 'generationFailureRateGuidance'
   | 'generationFailureProviderTitle' | 'generationFailureProviderGuidance' | 'generationFailureAuthTitle' | 'generationFailureAuthGuidance'
   | 'generationFailureUnknownTitle' | 'generationFailureUnknownGuidance'
+  | 'generationFailureTimeoutTitle' | 'generationFailureTimeoutGuidance' | 'generationStatusStale' | 'generationRefreshStatus'
   | 'generationCreateFailed' | 'generationCreateRetrySafe' | 'generationRunFailed' | 'generationAcceptFailed' | 'attachmentReadFailed' | 'attachmentAdded' | 'attachmentsAdded'
   | 'providerStateNotConfigured' | 'providerStateNotConnected' | 'providerStateConnected' | 'providerStateLocalOnly' | 'providerStateAvailable' | 'providerStateExpired' | 'providerStateUnavailable' | 'providerFeaturesNone' | 'providerFeatureTextToImage' | 'providerFeatureTextReferenceToImage' | 'providerFeatureImageEdit' | 'providerFeatureManualUpload' | 'providerFeatureTitleSuggestion' | 'defaultAiProvider' | 'defaultAiProviderHelp' | 'providerStatusLoadFailed' | 'cleanupPreviewFailed' | 'cleanupApplyFailed' | 'oauthStartFailed' | 'oauthPending' | 'oauthIncomplete' | 'oauthDisconnectFailed' | 'readyProviderCount' | 'optionalNotConnected' | 'updateChecking' | 'checkForUpdates' | 'updateInstalled' | 'updateRestartRequired' | 'updateSourceManaged' | 'updateAvailableVersion' | 'updatePowerShellHint' | 'updateStatusFailed' | 'updateInstallFailed' | 'appUpdate' | 'viewRelease' | 'upToDate' | 'updateCurrentVersion' | 'updateRequiresRestart' | 'updateActiveJobs' | 'updateLater' | 'cancelJobsAndUpdate' | 'installing' | 'updateAndRestart' | 'updateTerminalHelp' | 'updateServiceHelp' | 'cleanupTitle' | 'cleanupHelp' | 'cleanupPrecheck' | 'cleanupNoWork' | 'brokenImageRecords' | 'unreferencedFiles' | 'checking' | 'previewCleanup' | 'applyCleanup' | 'cleanupConfirmation' | 'cleanupDone' | 'providerOptional' | 'providerSetupHelp' | 'providerBuiltIn' | 'providerClientHelp' | 'providerAccount' | 'providerVerification' | 'checkAuthorization' | 'connect' | 'disconnect' | 'template' | 'select' | 'deselect' | 'generateVariant' | 'showImage' | 'removeTag' | 'itemImages' | 'confirmEdit' | 'cancelEdit'
   | 'imageManagerHelp' | 'imageRole' | 'primaryImage' | 'setPrimaryImage' | 'moveImageEarlier' | 'moveImageLater' | 'removeImage' | 'keepOneResultImage' | 'addToGroupedItem';
@@ -62,6 +63,10 @@ export function normalizeUiLanguage(value?: string | null): UiLanguage {
 
 const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
   zh_hant: {
+    generationFailureTimeoutTitle: '生成結果未確定',
+    generationFailureTimeoutGuidance: '供應商回應逾時，圖片可能仍在處理，亦可能已產生費用。重試前請先查看供應商活動紀錄；重試可能再生成一張圖片並再次收費。',
+    generationStatusStale: '未能更新生成狀態；目前顯示的是最後已知資料，可能已過時。工作可能仍在執行，請勿因此重新提交生成。',
+    generationRefreshStatus: '重新整理狀態',
     newVariantCreated: '已建立新變體參考', imageAddedToItem: '圖片已加入參考', viewItem: '檢視參考', dismiss: '關閉提示', restartRequired: '需要重新啟動', updateAvailable: '有可用更新',
     suggestTitle: '建議標題', suggestingTitle: '建議中…', suggestedTitle: '建議', titleSuggestionProvider: 'via ChatGPT', useSuggestedTitle: '採用', titleSuggestionLoginRequired: '請先在設定連接 ChatGPT / Codex。', titleSuggestionRateLimited: '暫時太多請求，請稍後再試。', titleSuggestionUnavailable: '暫時無法建議標題。', titleSuggestionFailed: '無法建議標題。',
     titleSuggestionVia: 'via ${provider}', titleSuggestionProviderLoginRequired: '請先在設定連接 ${provider}。', providerFeatureTitleSuggestion: '建議標題', defaultAiProvider: '預設 AI 供應商', defaultAiProviderHelp: '用於標題建議及新生成工作；生成畫面仍可為當次工作另選供應商。',
@@ -124,6 +129,10 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 
   },
   zh_hans: {
+    generationFailureTimeoutTitle: '生成结果未确定',
+    generationFailureTimeoutGuidance: '供应商响应超时，图片可能仍在处理，也可能已产生费用。重试前请先查看供应商活动记录；重试可能再生成一张图片并再次收费。',
+    generationStatusStale: '无法更新生成状态；当前显示的是最后已知数据，可能已过时。工作可能仍在执行，请勿因此重新提交生成。',
+    generationRefreshStatus: '刷新状态',
     newVariantCreated: '已创建新变体参考', imageAddedToItem: '图片已添加到参考', viewItem: '查看参考', dismiss: '关闭提示', restartRequired: '需要重新启动', updateAvailable: '有可用更新',
     suggestTitle: '建议标题', suggestingTitle: '建议中…', suggestedTitle: '建议', titleSuggestionProvider: 'via ChatGPT', useSuggestedTitle: '采用', titleSuggestionLoginRequired: '请先在设置连接 ChatGPT / Codex。', titleSuggestionRateLimited: '暂时请求过多，请稍后再试。', titleSuggestionUnavailable: '暂时无法建议标题。', titleSuggestionFailed: '无法建议标题。',
     titleSuggestionVia: 'via ${provider}', titleSuggestionProviderLoginRequired: '请先在设置连接 ${provider}。', providerFeatureTitleSuggestion: '建议标题', defaultAiProvider: '默认 AI 供应商', defaultAiProviderHelp: '用于标题建议及新生成任务；生成界面仍可为当次任务另选供应商。',
@@ -187,6 +196,10 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 
   },
   en: {
+    generationFailureTimeoutTitle: 'Generation outcome is uncertain',
+    generationFailureTimeoutGuidance: 'The provider timed out. The image may still be processing and a charge may apply. Check provider activity before retrying; a retry may create another image and charge.',
+    generationStatusStale: 'Could not refresh generation status. Showing the last known information, which may be out of date. Work may still be running; do not submit another generation because of this warning.',
+    generationRefreshStatus: 'Refresh status',
     newVariantCreated: 'New variant item created', imageAddedToItem: 'Image added to item', viewItem: 'View item', dismiss: 'Dismiss', restartRequired: 'Restart required', updateAvailable: 'Update available',
     suggestTitle: 'Suggest title', suggestingTitle: 'Suggesting…', suggestedTitle: 'Suggestion', titleSuggestionProvider: 'via ChatGPT', useSuggestedTitle: 'Use title', titleSuggestionLoginRequired: 'Connect ChatGPT / Codex in Config first.', titleSuggestionRateLimited: 'Too many requests. Try again shortly.', titleSuggestionUnavailable: 'Title suggestion is temporarily unavailable.', titleSuggestionFailed: 'Could not suggest a title.',
     titleSuggestionVia: 'via ${provider}', titleSuggestionProviderLoginRequired: 'Connect ${provider} in Settings first.', providerFeatureTitleSuggestion: 'Title suggestion', defaultAiProvider: 'Default AI provider', defaultAiProviderHelp: 'Used for title suggestions and new generation tasks; you can still override the provider for an individual generation.',

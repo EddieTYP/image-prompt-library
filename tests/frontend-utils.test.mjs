@@ -229,6 +229,7 @@ test('generation failure guidance follows classified metadata exactly', () => {
     ['policy_violation', 'Cannot generate this image', 'The provider refused this request because it may violate policy. Try changing the prompt.'],
     ['rate_limited', 'Generation is temporarily rate limited', 'Please wait a bit before trying again.'],
     ['provider_unavailable', 'Provider is temporarily unavailable', 'The provider is temporarily unavailable. Please try again shortly.'],
+    ['provider_timeout', 'Generation outcome is uncertain', 'The provider timed out. The image may still be processing and a charge may apply. Check provider activity before retrying; a retry may create another image and charge.'],
     ['auth_required', 'Provider connection needs attention', 'Reconnect in Config → Providers before retrying.'],
     ['unknown', 'Generation failed', 'You can retry the job or adjust the prompt.'],
   ];
@@ -245,6 +246,17 @@ test('generation failure guidance never reclassifies diagnostic text', () => {
   }).kind, 'provider_unavailable');
   assert.equal(generationFailure({ metadata: { error_kind: 'not-a-kind' }, error: '429 rate limit' }).kind, 'unknown');
   assert.equal(generationFailure({ error: 'authentication required' }).kind, 'unknown');
+});
+
+test('timeout and stale-status guidance is localized and does not promise a free retry', () => {
+  for (const language of ['en', 'zh_hant', 'zh_hans']) {
+    const t = makeTranslator(language);
+    const failure = generationFailure({ metadata: { error_kind: 'provider_timeout' } }, t);
+    assert.equal(failure.title, t('generationFailureTimeoutTitle'));
+    assert.match(failure.guidance, /charge|費用|费用/);
+    assert.notEqual(t('generationStatusStale'), 'generationStatusStale');
+    assert.notEqual(t('generationRefreshStatus'), 'generationRefreshStatus');
+  }
 });
 
 test('generation set progress reports exact terminal and active counts', () => {

@@ -826,6 +826,9 @@ class OpenAICodexNativeProvider:
                 failed.error or "Generation is temporarily rate limited",
                 retry_after_seconds=exc.retry_after_seconds,
             ) from exc
+        except httpx.TimeoutException as exc:
+            failed = repo.mark_failed(job_id, "Generation provider timed out; the result and billing status are unknown.")
+            raise CodexNativeAuthError(failed.error) from exc
         except Exception as exc:
             failed = repo.mark_failed(job_id, str(exc))
             raise CodexNativeAuthError(failed.error or "Codex native generation failed") from exc

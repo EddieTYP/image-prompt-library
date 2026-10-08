@@ -2,6 +2,7 @@ export type GenerationFailureKind =
   | 'policy_violation'
   | 'rate_limited'
   | 'provider_unavailable'
+  | 'provider_timeout'
   | 'auth_required'
   | 'unknown';
 
@@ -28,6 +29,10 @@ const FAILURE_GUIDANCE: Record<GenerationFailureKind, { title: string; guidance:
     title: 'Provider connection needs attention',
     guidance: 'Reconnect in Config → Providers before retrying.',
   },
+  provider_timeout: {
+    title: 'Generation outcome is uncertain',
+    guidance: 'The provider timed out. The image may still be processing and a charge may apply. Check provider activity before retrying; a retry may create another image and charge.',
+  },
   unknown: {
     title: 'Generation failed',
     guidance: 'You can retry the job or adjust the prompt.',
@@ -39,6 +44,7 @@ const FAILURE_TRANSLATION_KEYS: Record<GenerationFailureKind, { title: Parameter
   rate_limited: { title: 'generationFailureRateTitle', guidance: 'generationFailureRateGuidance' },
   provider_unavailable: { title: 'generationFailureProviderTitle', guidance: 'generationFailureProviderGuidance' },
   auth_required: { title: 'generationFailureAuthTitle', guidance: 'generationFailureAuthGuidance' },
+  provider_timeout: { title: 'generationFailureTimeoutTitle', guidance: 'generationFailureTimeoutGuidance' },
   unknown: { title: 'generationFailureUnknownTitle', guidance: 'generationFailureUnknownGuidance' },
 };
 
