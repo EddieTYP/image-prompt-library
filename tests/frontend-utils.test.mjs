@@ -40,6 +40,74 @@ const {
 const { makeTranslator } = await importTypescript('../frontend/src/utils/i18n.ts');
 const { submitGenerationRequest } = await importTypescript('../frontend/src/utils/generationSubmission.ts');
 
+test('partial generation polling failures preserve active jobs and recover without resubmission', async () => {
+  const source = (await readFile(new URL('../frontend/src/components/GenerationPanel.tsx', import.meta.url), 'utf8')).replaceAll('\r\n', '\n');
+  const refreshFunctions = source.slice(source.indexOf('  const refreshJobs = async'), source.indexOf('\n  useEffect(() => {\n    let cancelled = false;', source.indexOf('  const refreshJobs = async')));
+  const harness = ts.transpileModule(`
+    return async function(api, initialJobId) {
+      const active = { id: 'active', status: 'running' };
+      const jobsRef = { current: [active] };
+      const jobsRequestRef = { current: 0 }, generationSetRequestRef = { current: 0 };
+      const statusRefreshRequestRef = { current: 0 }, statusRefreshBusyRef = { current: false };
+      const initialFocusAppliedRef = { current: false };
+      const item = undefined, activeGenerationSet = undefined, historyReviewJobId = undefined;
+      const reviewJob = undefined, batchReviewSession = undefined, activeJobId = 'active';
+      const MAX_OPEN_CONTEXT_ACTIVE_FETCHES = 10;
+      const generationReviewOpenContext = () => initialJobId ? undefined : { jobs: [active] };
+      const mapGenerationRetryJobs = jobs => jobs;
+      const mergeGenerationJobs = (a, b) => [...new Map([...a, ...b].map(job => [job.id, job])).values()];
+      const replaceGenerationJobs = jobs => { jobsRef.current = jobs; };
+      const updateGenerationJobs = update => { jobsRef.current = update(jobsRef.current); };
+      const setProviderQueueStates = () => {}, setActiveGenerationSet = () => {};
+      const setActiveJobId = () => {}, setFocusedJobHighlightId = () => {}, setHistoryReviewJobId = () => {};
+      let stale = false;
+      const setStatusRefreshFailed = value => { stale = value; };
+      ${refreshFunctions}
+      await refreshStatus();
+      const first = { stale, jobs: jobsRef.current };
+      await refreshStatus();
+      return { first, recovered: { stale, jobs: jobsRef.current }, busy: statusRefreshBusyRef.current };
+    };
+  `, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+  const run = new Function(harness)();
+  for (const initialJobId of [undefined, 'active']) {
+    for (const error of [new TypeError('network unavailable'), Object.assign(new Error('unavailable'), { status: 503 })]) {
+      let attempts = 0;
+      const result = await run({
+        generationJobs: async () => ({ jobs: [] }),
+        generationJob: async () => {
+          if (++attempts === 1) throw error;
+          return { id: 'active', status: 'running' };
+        },
+      }, initialJobId);
+      assert.equal(result.first.stale, true);
+      assert.deepEqual(result.first.jobs, [{ id: 'active', status: 'running' }]);
+      assert.equal(result.recovered.stale, false);
+      assert.equal(result.recovered.jobs[0].id, 'active');
+      assert.equal(result.busy, false);
+      assert.equal(attempts, 2);
+    }
+  }
+  for (const initialJobId of [undefined, 'active']) {
+    const removed = await run({
+      generationJobs: async () => ({ jobs: [] }),
+      generationJob: async () => { throw Object.assign(new Error('not found'), { status: 404 }); },
+    }, initialJobId);
+    assert.deepEqual(removed.first.jobs, []);
+    assert.equal(removed.first.stale, false);
+  }
+});
+
+test('API errors retain HTTP status independently of their display message', async () => {
+  const source = await readFile(new URL('../frontend/src/api/client.ts', import.meta.url), 'utf8');
+  const jsonSource = source.slice(source.indexOf('async function json<T>'), source.indexOf('\nasync function demoJson'));
+  const javascript = ts.transpileModule(`${jsonSource}\nreturn json;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  for (const status of [404, 503]) {
+    const json = new Function('fetch', 'API', 'responseError', javascript)(async () => ({ ok: false, status }), '', async () => 'same message');
+    await assert.rejects(json('/api/generation-jobs/active'), error => error.status === status && error.message === 'same message');
+  }
+});
+
 test('unacknowledged generation submissions retain IDs without persisting private payloads', async () => {
   const storage = new Map();
   const previous = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');

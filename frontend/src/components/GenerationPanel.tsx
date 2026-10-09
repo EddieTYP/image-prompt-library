@@ -572,7 +572,8 @@ export default function GenerationPanel({
         try {
           const fetchedJob = mapGenerationRetryJobs([await api.generationJob(contextJob.id)])[0];
           return fetchedJob ? [fetchedJob] as const : [];
-        } catch {
+        } catch (error) {
+          if (!(error instanceof Error) || !('status' in error) || error.status !== 404) throw error;
           contextHydrationFailedIds.add(contextJob.id);
           return [] as const;
         }
@@ -609,8 +610,10 @@ export default function GenerationPanel({
             nextJobs = mergeGenerationJobs(nextJobs, mapGenerationRetryJobs(focusedSet.jobs));
           }
         }
-      } catch {
+      } catch (error) {
+        if (!(error instanceof Error) || !('status' in error) || error.status !== 404) throw error;
         // The queue can contain a job that was removed after the drawer loaded.
+        contextHydrationFailedIds.add(initialJobId);
       }
     }
     if (options.preserveActive) {

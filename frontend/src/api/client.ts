@@ -24,7 +24,7 @@ function demoUrl(path: string) {
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(API + url, { headers: init?.body instanceof FormData ? undefined : { 'Content-Type': 'application/json' }, ...init });
-  if (!r.ok) throw new Error(await responseError(r));
+  if (!r.ok) throw Object.assign(new Error(await responseError(r)), { status: r.status });
   return r.json();
 }
 
