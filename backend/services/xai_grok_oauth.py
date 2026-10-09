@@ -684,7 +684,9 @@ class XaiGrokOAuthProvider:
             )
         if response.status_code in {401, 403}:
             raise GrokOAuthError("Grok image access is unavailable for this account. Reconnect or check the account plan.")
-        if response.status_code == 408 or response.status_code >= 500:
+        if response.status_code in {408, 504}:
+            raise GrokOAuthError("Generation provider timed out; the result and billing status are unknown.")
+        if response.status_code >= 500:
             raise GrokOAuthTemporaryError("Grok image generation is temporarily unavailable")
         if response.status_code != 200:
             raise GrokOAuthRequestError(f"Grok image generation returned status {response.status_code}")
