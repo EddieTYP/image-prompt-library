@@ -7,7 +7,7 @@ import qualityIcon from '../assets/generation-controls/quality.png';
 import { api, mediaUrl } from '../api/client';
 import type { ClusterRecord, GenerationJobAcceptAsNewItemPayload, GenerationJobCreate, GenerationJobRecord, GenerationJobSetRecord, GenerationProviderQueueState, GenerationProviderStatus, GenerationSetCount, ImageRecord, ItemDetail, ItemSummary, TagRecord, TitleSuggestionProvider } from '../types';
 import type { Translator } from '../utils/i18n';
-import { providerPauseSeconds } from '../utils/generationSets';
+import { acceptGenerationSetJob, providerPauseSeconds } from '../utils/generationSets';
 import { downloadFileName } from '../utils/images';
 import { generationFailure } from '../utils/generationFailures';
 import { resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage } from '../utils/prompts';
@@ -318,6 +318,9 @@ export default function GenerationPanel({
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
   const [activeGenerationSet, setActiveGenerationSet] = useState<GenerationJobSetRecord>();
   const [providerQueueStates, setProviderQueueStates] = useState<GenerationProviderQueueState[]>([]);
+  const [statusRefreshFailed, setStatusRefreshFailed] = useState(false);
+  const statusRefreshRequestRef = useRef(0);
+  const statusRefreshBusyRef = useRef(false);
   const [provider, setProvider] = useState<string>(defaultAiProvider);
   const [aspectRatio, setAspectRatio] = useState('auto');
   const [quality, setQuality] = useState('high');
@@ -356,6 +359,7 @@ export default function GenerationPanel({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const onAcceptedRef = useRef(onAccepted);
+  const createJobInFlightRef = useRef(false);
   onAcceptedRef.current = onAccepted;
   const onQueueChangedRef = useRef(onQueueChanged);
   onQueueChangedRef.current = onQueueChanged;
@@ -568,7 +572,8 @@ export default function GenerationPanel({
         try {
           const fetchedJob = mapGenerationRetryJobs([await api.generationJob(contextJob.id)])[0];
           return fetchedJob ? [fetchedJob] as const : [];
-        } catch {
+        } catch (error) {
+          if (!(error instanceof Error) || !('status' in error) || error.status !== 404) throw error;
           contextHydrationFailedIds.add(contextJob.id);
           return [] as const;
         }
@@ -605,8 +610,10 @@ export default function GenerationPanel({
             nextJobs = mergeGenerationJobs(nextJobs, mapGenerationRetryJobs(focusedSet.jobs));
           }
         }
-      } catch {
+      } catch (error) {
+        if (!(error instanceof Error) || !('status' in error) || error.status !== 404) throw error;
         // The queue can contain a job that was removed after the drawer loaded.
+        contextHydrationFailedIds.add(initialJobId);
       }
     }
     if (options.preserveActive) {
@@ -647,6 +654,25 @@ export default function GenerationPanel({
     return refreshed;
   };
 
+  const refreshStatus = async (preserveActive = true) => {
+    if (statusRefreshBusyRef.current) return;
+    statusRefreshBusyRef.current = true;
+    const requestId = ++statusRefreshRequestRef.current;
+    try {
+      const refreshedJobs = await refreshJobs({ preserveActive });
+      if (!refreshedJobs || requestId !== statusRefreshRequestRef.current) return;
+      if (activeGenerationSet?.generation_group_id) {
+        const refreshedSet = await refreshGenerationSet(activeGenerationSet.generation_group_id);
+        if (!refreshedSet || requestId !== statusRefreshRequestRef.current) return;
+      }
+      setStatusRefreshFailed(false);
+    } catch {
+      if (requestId === statusRefreshRequestRef.current) setStatusRefreshFailed(true);
+    } finally {
+      if (requestId === statusRefreshRequestRef.current) statusRefreshBusyRef.current = false;
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     api.generationProviders()
@@ -675,8 +701,13 @@ export default function GenerationPanel({
           max_input_images: 4,
         }]);
       });
-    refreshJobs().catch(() => undefined);
-    return () => { cancelled = true; jobsRequestRef.current += 1; };
+    void refreshStatus(false);
+    return () => {
+      cancelled = true;
+      jobsRequestRef.current += 1;
+      statusRefreshRequestRef.current += 1;
+      statusRefreshBusyRef.current = false;
+    };
   }, [item?.id, initialJobId, defaultAiProvider]);
 
   useEffect(() => {
@@ -708,13 +739,7 @@ export default function GenerationPanel({
 
   useEffect(() => {
     if (!activeGenerationSet?.remaining && !jobs.some(job => ['queued', 'running'].includes(job.status))) return undefined;
-    const refreshActiveWork = async () => {
-      await refreshJobs({ preserveActive: true });
-      if (activeGenerationSet?.generation_group_id) {
-        await refreshGenerationSet(activeGenerationSet.generation_group_id);
-      }
-    };
-    const timer = window.setInterval(() => refreshActiveWork().catch(() => undefined), 2500);
+    const timer = window.setInterval(() => void refreshStatus(), 2500);
     return () => window.clearInterval(timer);
   }, [jobs, item?.id, initialJobId, activeGenerationSet?.generation_group_id, activeGenerationSet?.remaining]);
 
@@ -907,6 +932,7 @@ export default function GenerationPanel({
 
   useEffect(() => {
     if (!selectedStageJob || !['succeeded', 'failed'].includes(selectedStageJob.status)) return;
+    if (selectedStageJob.status === 'failed') setMessage('');
     window.requestAnimationFrame(() => scrollIntoViewRespectingMotion(stageRef.current, 'start'));
   }, [selectedStageJob?.id, selectedStageJob?.status]);
 
@@ -918,8 +944,10 @@ export default function GenerationPanel({
   };
 
   const createJob = async (count: GenerationSetCount = 1) => {
+    if (createJobInFlightRef.current) return;
     const prompt = promptText.trim();
     if (!prompt || hasMissingTemplateValues || !resolvedPrompt || !selectedProviderCanGenerateDraft || (provider === 'manual_upload' && count !== 1)) return;
+    createJobInFlightRef.current = true;
     const preservePausedReview = Boolean(batchReviewSession && batchReviewPaused);
     setBusy(true);
     setMessage('');
@@ -990,8 +1018,9 @@ export default function GenerationPanel({
           ? `${t('generationSet')} ${t('queueQueued').toLowerCase()} · ${count}`
           : `${attachments.length > 0 ? t('useResultAsEditInput') : t('generate')} · ${t('queueQueued').toLowerCase()}`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : t('generationCreateFailed'));
+      setMessage(`${error instanceof Error ? error.message : t('generationCreateFailed')} ${t('generationCreateRetrySafe')}`);
     } finally {
+      createJobInFlightRef.current = false;
       setBusy(false);
     }
   };
@@ -1049,6 +1078,7 @@ export default function GenerationPanel({
       const result = await api.acceptGenerationJob(job.id);
       const acceptedJob = result.job.result_path ? result.job : { ...result.job, result_path: job.result_path };
       invalidateGenerationRefreshRequests();
+      setActiveGenerationSet(current => acceptGenerationSetJob(current, acceptedJob));
       const nextJobs = updateGenerationJobs(current => current.map(candidate => candidate.id === acceptedJob.id ? acceptedJob : candidate));
       onQueueChangedRef.current?.();
       setMessage(t('imageAddedToItem'));
@@ -1080,6 +1110,7 @@ export default function GenerationPanel({
       const result = await api.acceptGenerationJobIntoItem(job.id, groupedBatchTarget.id);
       const acceptedJob = result.job.result_path ? result.job : { ...result.job, result_path: job.result_path };
       invalidateGenerationRefreshRequests();
+      setActiveGenerationSet(current => acceptGenerationSetJob(current, acceptedJob));
       const nextJobs = updateGenerationJobs(current => current.map(candidate => candidate.id === acceptedJob.id ? acceptedJob : candidate));
       onQueueChangedRef.current?.();
       setMessage(t('imageAddedToItem'));
@@ -1307,7 +1338,7 @@ export default function GenerationPanel({
   };
 
   const imageAttachmentPayload = () => editAttachments.map(attachment => ({
-    id: attachment.id,
+    // UI IDs for uploads change on re-selection; do not make them part of a submission.
     name: attachment.name,
     source: attachment.source,
     data_url: attachment.dataUrl,
@@ -1473,6 +1504,7 @@ export default function GenerationPanel({
       const result = await api.acceptGenerationJobAsNewItem(reviewJob.id, metadataPayload);
       const acceptedJob = result.job.result_path ? result.job : { ...result.job, result_path: reviewJob.result_path };
       invalidateGenerationRefreshRequests();
+      setActiveGenerationSet(current => acceptGenerationSetJob(current, acceptedJob));
       const nextJobs = updateGenerationJobs(current => current.map(candidate => candidate.id === acceptedJob.id ? acceptedJob : candidate));
       onQueueChangedRef.current?.();
       setReviewJob(undefined);
@@ -2039,6 +2071,12 @@ export default function GenerationPanel({
           <div>
             <p className="modal-kicker">{t('generate')}</p>
             <h2 id="generation-workspace-title">{reviewJob ? t('saveGeneratedImageAsNew') : isHistoryReview ? t('reviewGeneration') : t('createImage')}</h2>
+            {statusRefreshFailed && (
+              <div className="provider-message" role="alert">
+                <p>{t('generationStatusStale')}</p>
+                <button type="button" className="secondary" onClick={() => void refreshStatus()}>{t('generationRefreshStatus')}</button>
+              </div>
+            )}
           </div>
           <button className="modal-icon-button generation-workspace-close" onClick={reviewJob ? closeSaveAsNewReview : () => handleClose()} disabled={busy || isClosing || isSavePanelClosing} aria-label={t('close')}>
             <X size={20} strokeWidth={2.25} />

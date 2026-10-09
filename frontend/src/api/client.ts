@@ -1,5 +1,6 @@
 import type { AppConfig, AppUpdateRequest, AppUpdateResult, AppUpdateStatus, CleanupApplyRequest, CleanupApplyResult, CleanupPreview, ClusterRecord, CodexNativeAuthPollRequest, CodexNativeAuthPollResponse, CodexNativeAuthStart, GenerationJobAcceptAsNewItemPayload, GenerationJobAcceptResult, GenerationJobCreate, GenerationJobList, GenerationJobRecord, GenerationJobRetryResult, GenerationJobSetCreate, GenerationJobSetRecord, GenerationProviderStatus, GrokOAuthPollRequest, ItemBatchRequest, ItemBatchResult, ItemCreate, ItemDetail, ItemImageUpdate, ItemList, ItemSortMode, ItemSummary, ProviderDeviceAuthStart, TagRecord, TitleSuggestionProvider, TitleSuggestionRequest, TitleSuggestionResponse, UploadImageRole } from '../types';
 import { DEFAULT_ITEM_SORT } from '../utils/searchSort';
+import { submitGenerationRequest } from '../utils/generationSubmission';
 
 const API = '';
 const isDemoMode = import.meta.env.VITE_DEMO_MODE === 'true';
@@ -23,7 +24,7 @@ function demoUrl(path: string) {
 
 async function json<T>(url: string, init?: RequestInit): Promise<T> {
   const r = await fetch(API + url, { headers: init?.body instanceof FormData ? undefined : { 'Content-Type': 'application/json' }, ...init });
-  if (!r.ok) throw new Error(await responseError(r));
+  if (!r.ok) throw Object.assign(new Error(await responseError(r)), { status: r.status });
   return r.json();
 }
 
@@ -273,8 +274,8 @@ export const api = isDemoMode ? {
   suggestTitle: suggestTitleRequest,
   generationJobs: (params: Record<string, string | number | boolean | undefined> = {}) => { const qs = new URLSearchParams(); Object.entries(params).forEach(([k,v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)); }); return json<GenerationJobList>(`/api/generation-jobs?${qs}`); },
   generationJob: (id: string) => json<GenerationJobRecord>(`/api/generation-jobs/${id}`),
-  createGenerationJob: (payload: GenerationJobCreate) => json<GenerationJobRecord>('/api/generation-jobs', { method: 'POST', body: JSON.stringify(payload) }),
-  createGenerationSet: (payload: GenerationJobSetCreate) => json<GenerationJobSetRecord>('/api/generation-jobs/sets', { method: 'POST', body: JSON.stringify(payload) }),
+  createGenerationJob: (payload: GenerationJobCreate) => submitGenerationRequest('/api/generation-jobs', payload, requestId => json<GenerationJobRecord>('/api/generation-jobs', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestId }, body: JSON.stringify(payload) })),
+  createGenerationSet: (payload: GenerationJobSetCreate) => submitGenerationRequest('/api/generation-jobs/sets', payload, requestId => json<GenerationJobSetRecord>('/api/generation-jobs/sets', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestId }, body: JSON.stringify(payload) })),
   generationSet: (id: string) => json<GenerationJobSetRecord>(`/api/generation-jobs/sets/${id}`),
   cancelRemainingGenerationSet: (id: string) => json<GenerationJobSetRecord>(`/api/generation-jobs/sets/${id}/cancel-remaining`, { method: 'POST' }),
   runGenerationJob: (id: string) => json<GenerationJobRecord>(`/api/generation-jobs/${id}/run`, { method: 'POST' }),

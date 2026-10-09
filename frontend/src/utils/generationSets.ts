@@ -1,4 +1,16 @@
-import type { GenerationJobSetRecord, GenerationProviderQueueState } from '../types';
+import type { GenerationJobRecord, GenerationJobSetRecord, GenerationProviderQueueState } from '../types';
+
+export function acceptGenerationSetJob(set: GenerationJobSetRecord | undefined, job: GenerationJobRecord) {
+  if (!set || job.status !== 'accepted') return set;
+  const previous = set.jobs.find(candidate => candidate.id === job.id);
+  if (!previous || previous.status !== 'succeeded') return set;
+  return {
+    ...set,
+    succeeded: set.succeeded - 1,
+    accepted: set.accepted + 1,
+    jobs: set.jobs.map(candidate => candidate.id === job.id ? job : candidate),
+  };
+}
 
 export function generationSetProgressText(set: GenerationJobSetRecord) {
   const parts = [`${set.completed} of ${set.total} finished`];

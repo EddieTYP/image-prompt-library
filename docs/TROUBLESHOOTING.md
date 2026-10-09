@@ -1,5 +1,11 @@
 # Troubleshooting
 
+## Generation submission failed or its response was lost
+
+Check the work queue first: the server may have created the job even if the browser did not receive its response. In the same browser tab, retrying the exact same content, settings, references, and count reuses the unacknowledged request ID, including after reloading the page. The server returns the original job or batch instead of creating another one. Conflicting content for an existing ID is rejected.
+
+This protection covers job creation, not retries of a failed provider execution. A new tab/device, cleared browser storage, changed submission, or a new generation after an acknowledged response is a separate request and may incur another charge. Do not retry a provider timeout blindly; inspect its job and provider activity first. If browser session storage is unavailable, generation submission stops before sending the request.
+
 ## Windows: Python is missing or too old
 
 Native Windows support begins with v0.8.0 and requires Python 3.10+. The installer does not install Python. Install a supported version from <https://www.python.org/downloads/windows/>, open a new PowerShell window, then run the installer again.

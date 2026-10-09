@@ -9,7 +9,7 @@ import math
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from contextlib import suppress
+from contextlib import nullcontext, suppress
 from io import BytesIO
 from threading import RLock
 
@@ -162,7 +162,9 @@ def _classify_error(message: str) -> str:
     lowered = (message or "").lower()
     if any(term in lowered for term in ("rate limit", "rate_limit", "rate-limit", "too many", "slow down", "retry later", "429")):
         return "rate_limited"
-    if any(term in lowered for term in ("unavailable", "timeout", "temporarily", "gateway", "500", "502", "503", "504")):
+    if any(term in lowered for term in ("timeout", "timed out")):
+        return "provider_timeout"
+    if any(term in lowered for term in ("unavailable", "temporarily", "gateway", "500", "502", "503", "504")):
         return "provider_unavailable"
     if any(term in lowered for term in ("policy", "safety", "not allowed", "violat")):
         return "policy_violation"
@@ -308,7 +310,50 @@ class GenerationJobRepository:
         init_db(self.library_path)
         self.items = ItemRepository(self.library_path)
 
-    def create_job(self, payload: GenerationJobCreate) -> GenerationJobRecord:
+    def _create_once(self, payload: GenerationJobCreate, request_id: str, count: int | None):
+        fingerprint = hashlib.sha256(json.dumps(
+            {"job": payload.model_dump(), "count": count}, sort_keys=True, separators=(",", ":"),
+        ).encode("utf-8")).hexdigest()
+        with connect(self.library_path) as conn:
+            # Serialize creation and commit the request receipt with its jobs.
+            # A lost response or a competing process must not create new jobs.
+            conn.execute("BEGIN IMMEDIATE")
+            existing = conn.execute(
+                "SELECT payload_hash, result_id FROM generation_creation_requests WHERE request_id=?",
+                (request_id,),
+            ).fetchone()
+            if existing:
+                if existing["payload_hash"] != fingerprint:
+                    raise GenerationJobConflict("Generation request ID was already used with different content")
+                try:
+                    return (self.get_job(existing["result_id"], _connection=conn) if count is None
+                            else self.get_generation_set(existing["result_id"], _connection=conn))
+                except KeyError as exc:
+                    raise GenerationJobConflict("Original generation request is no longer available; it will not be recreated") from exc
+            result = (self._create_job(payload, _connection=conn) if count is None
+                      else self._create_job_set(payload, count, _connection=conn))
+            result_id = result.id if count is None else result.generation_group_id
+            try:
+                conn.execute(
+                    "INSERT INTO generation_creation_requests(request_id, payload_hash, result_id, created_at) VALUES(?,?,?,?)",
+                    (request_id, fingerprint, result_id, now()),
+                )
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                for job in ([result] if count is None else result.jobs):
+                    # Do not remove references if a commit actually survived.
+                    if conn.execute("SELECT 1 FROM generation_jobs WHERE id=?", (job.id,)).fetchone() is None:
+                        self._cleanup_generation_reference_clones(job.id)
+                raise
+            return result
+
+    def create_job(self, payload: GenerationJobCreate, *, request_id: str | None = None) -> GenerationJobRecord:
+        if request_id:
+            return self._create_once(payload, request_id, None)
+        return self._create_job(payload)
+
+    def _create_job(self, payload: GenerationJobCreate, *, _connection=None) -> GenerationJobRecord:
         if payload.source_item_id:
             self.items.get_item(payload.source_item_id)
         parameters = sanitize_generation_parameters(payload.parameters)
@@ -322,7 +367,7 @@ class GenerationJobRepository:
         prepared_parameters = sanitize_generation_parameters(prepared_parameters)
         metadata = {"reference_image_copies": reference_image_copies} if reference_image_copies else {}
         timestamp = now()
-        with connect(self.library_path) as conn:
+        with nullcontext(_connection) if _connection is not None else connect(self.library_path) as conn:
             conn.execute(
                 """
                 INSERT INTO generation_jobs(
@@ -348,8 +393,9 @@ class GenerationJobRepository:
                     timestamp,
                 ),
             )
-            conn.commit()
-        return self.get_job(job_id)
+            if _connection is None:
+                conn.commit()
+        return self.get_job(job_id, _connection=_connection)
 
     def _prepare_library_reference_inputs(self, job_id: str, parameters: dict) -> tuple[dict, list[str]]:
         prepared = dict(parameters or {})
@@ -499,15 +545,15 @@ class GenerationJobRepository:
         prepared["input_images"] = cloned_specs
         return prepared, copy_metadata
 
-    def get_job(self, job_id: str) -> GenerationJobRecord:
-        with connect(self.library_path) as conn:
+    def get_job(self, job_id: str, *, _connection=None) -> GenerationJobRecord:
+        with nullcontext(_connection) if _connection is not None else connect(self.library_path) as conn:
             row = conn.execute("SELECT * FROM generation_jobs WHERE id=?", (job_id,)).fetchone()
         if row is None:
             raise KeyError(job_id)
         return self._record_from_row(row)
 
-    def get_generation_set(self, generation_group_id: str) -> GenerationJobSetRecord:
-        with connect(self.library_path) as conn:
+    def get_generation_set(self, generation_group_id: str, *, _connection=None) -> GenerationJobSetRecord:
+        with nullcontext(_connection) if _connection is not None else connect(self.library_path) as conn:
             group = conn.execute(
                 "SELECT * FROM generation_sets WHERE generation_group_id=?",
                 (generation_group_id,),
@@ -2157,7 +2203,12 @@ class GenerationJobRepository:
             raise GenerationJobConflict(f"Only queued or running generation jobs can be cancelled; current status is {current.status}")
         return self.get_job(job_id)
 
-    def create_job_set(self, payload: GenerationJobCreate, count: int) -> GenerationJobSetRecord:
+    def create_job_set(self, payload: GenerationJobCreate, count: int, *, request_id: str | None = None) -> GenerationJobSetRecord:
+        if request_id:
+            return self._create_once(payload, request_id, count)
+        return self._create_job_set(payload, count)
+
+    def _create_job_set(self, payload: GenerationJobCreate, count: int, *, _connection=None) -> GenerationJobSetRecord:
         if count not in {1, 3, 5, 10}:
             raise GenerationJobConflict("Generation set count must be one of 1, 3, 5, or 10")
         if payload.provider == "manual_upload" and count != 1:
@@ -2208,7 +2259,7 @@ class GenerationJobRepository:
                     timestamp,
                     timestamp,
                 ))
-            with connect(self.library_path) as conn:
+            with nullcontext(_connection) if _connection is not None else connect(self.library_path) as conn:
                 conn.execute(
                     "INSERT INTO generation_sets(generation_group_id, provider, total, created_at, updated_at) VALUES(?,?,?,?,?)",
                     (generation_group_id, payload.provider, count, timestamp, timestamp),
@@ -2224,12 +2275,13 @@ class GenerationJobRepository:
                     """,
                     prepared_rows,
                 )
-                conn.commit()
+                if _connection is None:
+                    conn.commit()
         except Exception:
             for job_id in job_ids:
                 self._cleanup_generation_reference_clones(job_id, preserve_paths=preexisting_reference_paths.get(job_id, set()))
             raise
-        return self.get_generation_set(generation_group_id)
+        return self.get_generation_set(generation_group_id, _connection=_connection)
 
     def _cleanup_generation_reference_clones(self, job_id: str, *, preserve_paths: set[Path] | None = None) -> None:
         preserved = preserve_paths or set()

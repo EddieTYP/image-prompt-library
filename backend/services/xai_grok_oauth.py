@@ -579,6 +579,9 @@ class XaiGrokOAuthProvider:
                 failed.error or "Grok image generation is temporarily limited",
                 retry_after_seconds=exc.retry_after_seconds,
             ) from exc
+        except httpx.TimeoutException as exc:
+            failed = repo.mark_failed(job_id, "Generation provider timed out; the result and billing status are unknown.")
+            raise GrokOAuthError(failed.error) from exc
         except Exception as exc:
             failed = repo.mark_failed(job_id, str(exc))
             raise GrokOAuthError(failed.error or "Grok image generation failed") from exc
@@ -667,6 +670,8 @@ class XaiGrokOAuthProvider:
                     },
                     json=payload,
                 )
+            except httpx.TimeoutException:
+                raise
             except httpx.HTTPError as exc:
                 raise GrokOAuthTemporaryError("Grok image generation is temporarily unavailable") from exc
         finally:
@@ -679,7 +684,9 @@ class XaiGrokOAuthProvider:
             )
         if response.status_code in {401, 403}:
             raise GrokOAuthError("Grok image access is unavailable for this account. Reconnect or check the account plan.")
-        if response.status_code == 408 or response.status_code >= 500:
+        if response.status_code in {408, 504}:
+            raise GrokOAuthError("Generation provider timed out; the result and billing status are unknown.")
+        if response.status_code >= 500:
             raise GrokOAuthTemporaryError("Grok image generation is temporarily unavailable")
         if response.status_code != 200:
             raise GrokOAuthRequestError(f"Grok image generation returned status {response.status_code}")

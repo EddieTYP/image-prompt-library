@@ -826,6 +826,9 @@ class OpenAICodexNativeProvider:
                 failed.error or "Generation is temporarily rate limited",
                 retry_after_seconds=exc.retry_after_seconds,
             ) from exc
+        except httpx.TimeoutException as exc:
+            failed = repo.mark_failed(job_id, "Generation provider timed out; the result and billing status are unknown.")
+            raise CodexNativeAuthError(failed.error) from exc
         except Exception as exc:
             failed = repo.mark_failed(job_id, str(exc))
             raise CodexNativeAuthError(failed.error or "Codex native generation failed") from exc
@@ -973,6 +976,8 @@ class OpenAICodexNativeProvider:
         # Give generation more read time without extending connect/write waits.
         with httpx.Client(timeout=httpx.Timeout(min(self.timeout, 120.0), read=self.timeout)) as client:
             response = client.post(f"{CODEX_BASE_URL}/{endpoint}", headers=headers, json=payload)
+        if response.status_code in {408, 504}:
+            raise CodexNativeAuthError("Generation provider timed out; the result and billing status are unknown.")
         if response.status_code != 200:
             message = _codex_response_error_message(response, api="Images")
             if response.status_code == 429:

@@ -19,7 +19,7 @@ const {
 const { resolveOriginalPrompt, resolvePromptText } = await importTypescript('../frontend/src/utils/prompts.ts');
 const { downloadFileName, imageDisplayPath, imageThumbnailPath, selectPrimaryImage } = await importTypescript('../frontend/src/utils/images.ts');
 const { generationFailure } = await importTypescript('../frontend/src/utils/generationFailures.ts');
-const { generationSetProgressText, providerPauseSeconds } = await importTypescript('../frontend/src/utils/generationSets.ts');
+const { acceptGenerationSetJob, generationSetProgressText, providerPauseSeconds } = await importTypescript('../frontend/src/utils/generationSets.ts');
 const { APPEARANCE_STORAGE_KEY, DEFAULT_APPEARANCE, normalizeAppearance } = await importTypescript('../frontend/src/utils/appearance.ts');
 const { DEFAULT_AI_PROVIDER_STORAGE_KEY, resolveDefaultAiProvider } = await importTypescript('../frontend/src/utils/defaultAiProvider.ts');
 const {
@@ -38,6 +38,143 @@ const {
   retainPendingRetryJobIds,
 } = await importTypescript('../frontend/src/utils/generationSiblings.ts');
 const { makeTranslator } = await importTypescript('../frontend/src/utils/i18n.ts');
+const { submitGenerationRequest } = await importTypescript('../frontend/src/utils/generationSubmission.ts');
+
+test('partial generation polling failures preserve active jobs and recover without resubmission', async () => {
+  const source = (await readFile(new URL('../frontend/src/components/GenerationPanel.tsx', import.meta.url), 'utf8')).replaceAll('\r\n', '\n');
+  const refreshFunctions = source.slice(source.indexOf('  const refreshJobs = async'), source.indexOf('\n  useEffect(() => {\n    let cancelled = false;', source.indexOf('  const refreshJobs = async')));
+  const harness = ts.transpileModule(`
+    return async function(api, initialJobId) {
+      const active = { id: 'active', status: 'running' };
+      const jobsRef = { current: [active] };
+      const jobsRequestRef = { current: 0 }, generationSetRequestRef = { current: 0 };
+      const statusRefreshRequestRef = { current: 0 }, statusRefreshBusyRef = { current: false };
+      const initialFocusAppliedRef = { current: false };
+      const item = undefined, activeGenerationSet = undefined, historyReviewJobId = undefined;
+      const reviewJob = undefined, batchReviewSession = undefined, activeJobId = 'active';
+      const MAX_OPEN_CONTEXT_ACTIVE_FETCHES = 10;
+      const generationReviewOpenContext = () => initialJobId ? undefined : { jobs: [active] };
+      const mapGenerationRetryJobs = jobs => jobs;
+      const mergeGenerationJobs = (a, b) => [...new Map([...a, ...b].map(job => [job.id, job])).values()];
+      const replaceGenerationJobs = jobs => { jobsRef.current = jobs; };
+      const updateGenerationJobs = update => { jobsRef.current = update(jobsRef.current); };
+      const setProviderQueueStates = () => {}, setActiveGenerationSet = () => {};
+      const setActiveJobId = () => {}, setFocusedJobHighlightId = () => {}, setHistoryReviewJobId = () => {};
+      let stale = false;
+      const setStatusRefreshFailed = value => { stale = value; };
+      ${refreshFunctions}
+      await refreshStatus();
+      const first = { stale, jobs: jobsRef.current };
+      await refreshStatus();
+      return { first, recovered: { stale, jobs: jobsRef.current }, busy: statusRefreshBusyRef.current };
+    };
+  `, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+  const run = new Function(harness)();
+  for (const initialJobId of [undefined, 'active']) {
+    for (const error of [new TypeError('network unavailable'), Object.assign(new Error('unavailable'), { status: 503 })]) {
+      let attempts = 0;
+      const result = await run({
+        generationJobs: async () => ({ jobs: [] }),
+        generationJob: async () => {
+          if (++attempts === 1) throw error;
+          return { id: 'active', status: 'running' };
+        },
+      }, initialJobId);
+      assert.equal(result.first.stale, true);
+      assert.deepEqual(result.first.jobs, [{ id: 'active', status: 'running' }]);
+      assert.equal(result.recovered.stale, false);
+      assert.equal(result.recovered.jobs[0].id, 'active');
+      assert.equal(result.busy, false);
+      assert.equal(attempts, 2);
+    }
+  }
+  for (const initialJobId of [undefined, 'active']) {
+    const removed = await run({
+      generationJobs: async () => ({ jobs: [] }),
+      generationJob: async () => { throw Object.assign(new Error('not found'), { status: 404 }); },
+    }, initialJobId);
+    assert.deepEqual(removed.first.jobs, []);
+    assert.equal(removed.first.stale, false);
+  }
+});
+
+test('API errors retain HTTP status independently of their display message', async () => {
+  const source = await readFile(new URL('../frontend/src/api/client.ts', import.meta.url), 'utf8');
+  const jsonSource = source.slice(source.indexOf('async function json<T>'), source.indexOf('\nasync function demoJson'));
+  const javascript = ts.transpileModule(`${jsonSource}\nreturn json;`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  for (const status of [404, 503]) {
+    const json = new Function('fetch', 'API', 'responseError', javascript)(async () => ({ ok: false, status }), '', async () => 'same message');
+    await assert.rejects(json('/api/generation-jobs/active'), error => error.status === status && error.message === 'same message');
+  }
+});
+
+test('unacknowledged generation submissions retain IDs without persisting private payloads', async () => {
+  const storage = new Map();
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+  Object.defineProperty(globalThis, 'sessionStorage', { configurable: true, value: {
+    getItem: key => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value),
+    removeItem: key => storage.delete(key),
+  } });
+  try {
+    for (const endpoint of ['/api/generation-jobs', '/api/generation-jobs/sets']) {
+      const payload = { prompt: 'private prompt', image: 'private image bytes' };
+      let originalId;
+      await assert.rejects(submitGenerationRequest(endpoint, payload, async id => {
+        originalId = id;
+        throw new TypeError('response lost after server commit');
+      }));
+      assert.equal(storage.size, 1);
+      assert.doesNotMatch(JSON.stringify([...storage]), /private/);
+      await assert.rejects(submitGenerationRequest(endpoint, payload, async id => {
+        assert.equal(id, originalId);
+        return null;
+      }), /incomplete/);
+      const originalResult = endpoint.endsWith('/sets')
+        ? { generation_group_id: 'original-set', jobs: [{ id: 'original-job' }] }
+        : { id: 'original-job' };
+      const result = await submitGenerationRequest(endpoint, payload, async id => {
+        assert.equal(id, originalId);
+        return originalResult;
+      });
+      assert.deepEqual(result, originalResult);
+      assert.equal(storage.size, 0);
+      await submitGenerationRequest(endpoint, payload, async id => {
+        assert.notEqual(id, originalId); // An acknowledged new action is a new request.
+        return originalResult;
+      });
+    }
+    sessionStorage.setItem = () => { throw new Error('storage unavailable'); };
+    let sent = false;
+    await assert.rejects(submitGenerationRequest('/api/generation-jobs', {}, async () => { sent = true; }));
+    assert.equal(sent, false);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, 'sessionStorage', previous);
+    else delete globalThis.sessionStorage;
+  }
+});
+
+test('saving and attaching batch results immediately updates the summary without polling', () => {
+  const jobs = [1, 2, 3].map(id => ({ id: String(id), status: 'succeeded' }));
+  const original = { generation_group_id: 'batch', total: 3, completed: 3, remaining: 0,
+    queued: 0, running: 0, succeeded: 3, accepted: 0, failed: 0, discarded: 0, cancelled: 0, jobs };
+  const saved = { ...jobs[0], status: 'accepted', accepted_image_id: 'saved-image' };
+  const afterSave = acceptGenerationSetJob(original, saved);
+  assert.equal(afterSave.succeeded, 2);
+  assert.equal(afterSave.accepted, 1);
+  assert.equal(afterSave.jobs[0], saved);
+  const afterAttach = acceptGenerationSetJob(afterSave, { ...jobs[1], status: 'accepted' });
+  assert.equal(afterAttach.succeeded, 1);
+  assert.equal(afterAttach.accepted, 2);
+  assert.equal(afterAttach.completed, 3);
+  assert.equal(afterAttach.remaining, 0);
+  assert.equal(original.succeeded, 3);
+  assert.equal(original.jobs[0].status, 'succeeded');
+  assert.equal(acceptGenerationSetJob(afterAttach, saved), afterAttach);
+  assert.equal(acceptGenerationSetJob(afterAttach, { id: 'other-batch', status: 'accepted' }), afterAttach);
+  assert.equal(acceptGenerationSetJob(afterAttach, jobs[2]), afterAttach);
+  assert.equal(acceptGenerationSetJob(undefined, saved), undefined);
+});
 
 test('search helpers parse sort operators and supported filter chips', () => {
   assert.deepEqual(parseSearchSortQuery('  cats sort:title  tag:poster '), {
@@ -160,6 +297,7 @@ test('generation failure guidance follows classified metadata exactly', () => {
     ['policy_violation', 'Cannot generate this image', 'The provider refused this request because it may violate policy. Try changing the prompt.'],
     ['rate_limited', 'Generation is temporarily rate limited', 'Please wait a bit before trying again.'],
     ['provider_unavailable', 'Provider is temporarily unavailable', 'The provider is temporarily unavailable. Please try again shortly.'],
+    ['provider_timeout', 'Generation outcome is uncertain', 'The provider timed out. The image may still be processing and a charge may apply. Check provider activity before retrying; a retry may create another image and charge.'],
     ['auth_required', 'Provider connection needs attention', 'Reconnect in Config → Providers before retrying.'],
     ['unknown', 'Generation failed', 'You can retry the job or adjust the prompt.'],
   ];
@@ -176,6 +314,17 @@ test('generation failure guidance never reclassifies diagnostic text', () => {
   }).kind, 'provider_unavailable');
   assert.equal(generationFailure({ metadata: { error_kind: 'not-a-kind' }, error: '429 rate limit' }).kind, 'unknown');
   assert.equal(generationFailure({ error: 'authentication required' }).kind, 'unknown');
+});
+
+test('timeout and stale-status guidance is localized and does not promise a free retry', () => {
+  for (const language of ['en', 'zh_hant', 'zh_hans']) {
+    const t = makeTranslator(language);
+    const failure = generationFailure({ metadata: { error_kind: 'provider_timeout' } }, t);
+    assert.equal(failure.title, t('generationFailureTimeoutTitle'));
+    assert.match(failure.guidance, /charge|費用|费用/);
+    assert.notEqual(t('generationStatusStale'), 'generationStatusStale');
+    assert.notEqual(t('generationRefreshStatus'), 'generationRefreshStatus');
+  }
 });
 
 test('generation set progress reports exact terminal and active counts', () => {

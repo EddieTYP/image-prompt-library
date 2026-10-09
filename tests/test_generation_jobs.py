@@ -53,7 +53,8 @@ def symlink_or_skip(link: Path, target: Path, *, target_is_directory: bool = Tru
         ("invalid_api_key: permission denied", "auth_required"),
         ("403 forbidden: request violates safety policy", "policy_violation"),
         ("Codex Responses API returned status 500", "provider_unavailable"),
-        ("504 Gateway Timeout", "provider_unavailable"),
+        ("504 Gateway Timeout", "provider_timeout"),
+        ("Image response timed out", "provider_timeout"),
         ("The provider returned an opaque failure", "unknown"),
     ),
 )
