@@ -10,8 +10,27 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      full: ${{ steps.scope.outputs.full }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Classify changes and check documentation
+        id: scope
+        run: python scripts/ci-scope.py
+
   test:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -44,6 +63,8 @@ jobs:
         run: npm run build:demo
 
   windows-installer:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -71,6 +92,8 @@ jobs:
         run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/windows-installer-smoke.ps1
 
   macos-backup-restore:
+    needs: changes
+    if: needs.changes.outputs.full == 'true'
     runs-on: macos-latest
     steps:
       - name: Checkout
