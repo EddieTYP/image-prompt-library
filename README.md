@@ -17,7 +17,7 @@ Your library uses local SQLite and local image files. You do not need an account
 
 ## Release status
 
-`v0.11.2` is the current stable release, available from [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest). It simplifies **ChatGPT image generation and editing** with direct Images endpoints and removes the generation-only chat-model selector. See the [v0.11.2 release notes](docs/releases/v0.11.2.md). Grok, multi-image cards, and batch organization introduced in [v0.11.0](docs/releases/v0.11.0.md) remain available.
+`v0.11.3` is the current stable release, available from [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest). It improves generation submission reliability, result context and mobile collection filters. **Back up before upgrading: application rollback does not undo migration 012, and v0.11.2 cannot handle upgraded backups.** See the [v0.11.3 release notes and rollback limits](docs/releases/v0.11.3.md). Direct Images generation from [v0.11.2](docs/releases/v0.11.2.md) and Grok, multi-image cards and batch organization from [v0.11.0](docs/releases/v0.11.0.md) remain available.
 
 ## Quick start
 

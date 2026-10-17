@@ -24,7 +24,7 @@ irm https://raw.githubusercontent.com/EddieTYP/image-prompt-library/main/scripts
 
 The installer downloads a release only when its manifest advertises the `windows-powershell-v1` capability, verifies the release checksum before extraction, creates a version-local Python runtime, starts the app in the background, and opens the browser.
 
-Without `-Version`, the installer selects the newest compatible stable release, currently `v0.11.2`, and skips drafts and prereleases. Use `-Version` only when you want to pin a specific release.
+Without `-Version`, the installer selects the newest compatible stable release, currently `v0.11.3`, and skips drafts and prereleases. Use `-Version` only when you want to pin a specific release.
 
 The public bare command resolves to `%LOCALAPPDATA%\ImagePromptLibrary\bin\image-prompt-library.cmd`. The CMD shim launches its differently named internal PowerShell delegate with `-NoProfile -ExecutionPolicy Bypass -File`, so normal commands continue to work when the caller's Windows PowerShell execution policy is `Restricted`.
 
@@ -131,7 +131,7 @@ image-prompt-library start
 
 `image-prompt-library start` runs the local server in the current terminal. Keep it open, then visit <http://127.0.0.1:8000/> in your browser. Press `Ctrl-C` in that terminal to stop the server.
 
-The command above selects the newest compatible stable release, currently `v0.11.2`, and skips drafts and prereleases. Use `--version` only when you want to pin a specific release.
+The command above selects the newest compatible stable release, currently `v0.11.3`, and skips drafts and prereleases. Use `--version` only when you want to pin a specific release.
 
 ## First run
 
@@ -233,7 +233,7 @@ Update to the latest release:
 image-prompt-library update
 ```
 
-This selects the newest compatible stable release, currently `v0.11.2`. Use `--version` only when you want to pin a specific release.
+This selects the newest compatible stable release, currently `v0.11.3`. Use `--version` only when you want to pin a specific release.
 
 Install or switch to a specific version:
 

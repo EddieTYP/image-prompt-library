@@ -228,7 +228,7 @@ def test_v010_release_docs_define_stable_update_behavior():
     notes_path = ROOT / "docs" / "releases" / "v0.10.0.md"
     assert notes_path.exists()
     notes = notes_path.read_text(encoding="utf-8")
-    current_notes = (ROOT / "docs" / "releases" / "v0.11.2.md").read_text(encoding="utf-8")
+    current_notes = (ROOT / "docs" / "releases" / "v0.11.3.md").read_text(encoding="utf-8")
     installation = (ROOT / "docs" / "INSTALLATION.md").read_text(encoding="utf-8")
     readmes = (
         (ROOT / "README.md").read_text(encoding="utf-8"),
@@ -240,22 +240,22 @@ def test_v010_release_docs_define_stable_update_behavior():
 
     assert "# Image Prompt Library v0.10.0" in notes
     assert "`v0.10.0` introduced the features below" in notes
-    assert "`v0.11.2` is the current stable release" in current_notes
+    assert "`v0.11.3` is the current stable release" in current_notes
     assert "Explore" in notes
     assert "appearance choices" in notes
     assert "Generation review" in notes
     assert "Normal install and update commands select it by default" in current_notes
     assert "newest compatible stable release" in installation
-    assert "currently `v0.11.2`" in installation
+    assert "currently `v0.11.3`" in installation
     assert "To test `v0.10.0` while it is a prerelease" not in installation
     assert "only when intentionally testing that prerelease" not in installation
     assert "prerelease candidate" not in notes.lower()
     assert "stable promotion" not in notes.lower()
     assert "## Release gate" not in notes
     assert "No paid generation request" not in notes
-    assert "`v0.11.2` is the current stable release" in readmes[0]
-    assert "`v0.11.2` 是目前穩定版本" in readmes[1]
-    assert "`v0.11.2` 是当前稳定版本" in readmes[2]
+    assert "`v0.11.3` is the current stable release" in readmes[0]
+    assert "`v0.11.3` 是目前穩定版本" in readmes[1]
+    assert "`v0.11.3` 是当前稳定版本" in readmes[2]
     assert "`v0.10.0` is the current stable release" not in readmes[0]
     assert "`v0.10.0` 已是目前 stable release" not in readmes[1]
     assert "`v0.10.0` 已是当前 stable release" not in readmes[2]
@@ -334,15 +334,18 @@ def test_v0112_release_notes_explain_direct_images_and_limitations():
     assert "next release" not in (ROOT / "docs" / "GENERATION.md").read_text(encoding="utf-8").lower()
 
 
-def test_v0113_preparation_keeps_stable_release_and_backup_boundary_explicit():
+def test_v0113_stable_release_keeps_backup_boundary_explicit():
     unreleased = (ROOT / "docs" / "releases" / "unreleased.md").read_text(encoding="utf-8")
     notes = (ROOT / "docs" / "releases" / "v0.11.3.md").read_text(encoding="utf-8")
     assert "[v0.11.3](v0.11.3.md)" in unreleased
-    assert "No unreleased changes" not in unreleased
-    assert "This version is not published yet" in notes
-    assert "`v0.11.2` remains the current stable release" in notes
+    assert "No unreleased changes" in unreleased
+    assert "This version is not published yet" not in notes
+    assert "`v0.11.3` is the current stable release" in notes
     assert "Application rollback does not downgrade the Library schema" in notes
-    assert "Still required before stable promotion" in notes
+    assert "Still required before stable promotion" not in notes
+    assert "39069277785" in notes
+    assert "Executable rollback does not reverse migration 012" in notes
+    assert "not certified by these checks" in notes
 
 
 def test_v0101_release_notes_explain_the_update_fix_to_users():

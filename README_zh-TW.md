@@ -17,7 +17,7 @@
 
 ## 版本狀態
 
-`v0.11.2` 是目前穩定版本，可從 [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest) 下載。**ChatGPT 圖片生成與編輯**改用直接 Images 端點，並移除僅供圖片生成使用的聊天模型選單。詳見 [v0.11.2 更新說明](docs/releases/v0.11.2.md)。[v0.11.0](docs/releases/v0.11.0.md) 加入的 Grok、多圖卡片與批量整理功能維持可用。
+`v0.11.3` 是目前穩定版本，可從 [GitHub Latest](https://github.com/EddieTYP/image-prompt-library/releases/latest) 下載。此版本改善生成提交可靠性、結果上下文及手機收藏篩選。**升級前請先備份：應用程式 rollback 不會撤銷 migration 012，v0.11.2 無法處理升級後的備份。** 詳見 [v0.11.3 更新說明及 rollback 限制](docs/releases/v0.11.3.md)。[v0.11.2](docs/releases/v0.11.2.md) 的直接 Images 生成，以及 [v0.11.0](docs/releases/v0.11.0.md) 的 Grok、多圖卡片與批量整理功能維持可用。
 
 ## 快速開始
 
