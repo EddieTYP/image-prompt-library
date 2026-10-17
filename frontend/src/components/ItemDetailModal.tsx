@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type Keyboard
 import { Check, Copy, Download, ExternalLink, Heart, Maximize2, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import { focusFirstAvailable } from '../hooks/useModalFocus';
-import type { ClusterRecord, ImageRecord, ItemDetail, PromptRecord, TagRecord, UiLanguage } from '../types';
+import type { ClusterRecord, GenerationDraftContext, ImageRecord, ItemDetail, PromptRecord, TagRecord, UiLanguage } from '../types';
 import { copyTextToClipboard } from '../utils/clipboard';
 import { localizedDemoTitle } from '../utils/demoTitles';
 import { downloadFileName, imageDisplayPath, imageHeroPath, imageOriginalPath, imageThumbnailPath, selectPrimaryImage } from '../utils/images';
@@ -190,6 +190,7 @@ export default function ItemDetailModal({
   onDelete,
   onOpenItem,
   onGenerate,
+  onGenerationHistory,
   showMutations = true,
   showManagementActions = true,
   canGenerate = false,
@@ -206,7 +207,8 @@ export default function ItemDetailModal({
   onChanged: () => void;
   onDelete?: (item: ItemDetail) => void | Promise<void>;
   onOpenItem?: (id: string) => void;
-  onGenerate: (item: ItemDetail) => void;
+  onGenerate: (item: ItemDetail, draft: GenerationDraftContext) => void;
+  onGenerationHistory: (item: ItemDetail, jobId: string) => void;
   showMutations?: boolean;
   showManagementActions?: boolean;
   canGenerate?: boolean;
@@ -374,6 +376,14 @@ export default function ItemDetailModal({
   const fallbackLanguage = preferredLanguage === 'origin' ? resolveInitialPromptLanguage(item?.prompts || [], preferredLanguage) : preferredLanguage;
   const resolvedPrompt = resolvePromptRecord(availablePromptRecords, lang, fallbackLanguage);
   const copyText = prompt?.text || resolvedPrompt?.text || resolvePromptText(item?.prompts, preferredLanguage, displayTitle || item?.title || '');
+  const generateFromSelection = (withImage: boolean) => {
+    if (!item) return;
+    onGenerate(item, {
+      promptText: copyText,
+      promptLanguage: prompt?.text ? prompt.language : (resolvedPrompt?.language || originalPrompt?.language || 'en'),
+      referenceImage: withImage ? selectedImage : undefined,
+    });
+  };
   const toggleFavorite = () => {
     if (!item) return;
     api.favorite(item.id).then(updated => { setItem(updated); onChanged(); });
@@ -548,9 +558,9 @@ export default function ItemDetailModal({
                       {allowManagementActions && <button className="modal-icon-button detail-delete-button" onClick={handleDelete} disabled={deleteBusy} aria-label={t('deleteReference')} title={t('deleteReference')}>
                         <Trash2 size={18} />
                       </button>}
-                       {showMutations && canGenerate && <button className="modal-icon-button mobile-generate-variant-button" onClick={() => onGenerate(item)} aria-label={t('generateVariant')} title={t('generateVariant')}>
+                       {showMutations && canGenerate && <button className="modal-icon-button mobile-generate-variant-button" onClick={() => generateFromSelection(true)} aria-label={t('editThisImage')} title={t('editThisImage')}>
                          <Plus size={18} />
-                         <span className="mobile-generate-variant-label">{t('generate')}</span>
+                         <span className="mobile-generate-variant-label">{t('editThisImage')}</span>
                       </button>}
                     </span>
                   )}
@@ -577,7 +587,7 @@ export default function ItemDetailModal({
               <aside className="detail-side">
                 <div className="detail-side-actions">
                   <span className="detail-side-primary-actions">
-                     {showMutations && canGenerate && <button className="secondary generate-variant-button" onClick={() => onGenerate(item)} aria-label={t('generateVariant')} title={t('generateVariant')}>{t('generate')}</button>}
+                     {showMutations && canGenerate && <button className="secondary generate-variant-button" onClick={() => generateFromSelection(true)} aria-label={t('editThisImage')} title={t('editThisImage')}>{t('editThisImage')}</button>}
                      {selectedImage && <a className="modal-icon-button download-button" href={mediaUrl(selectedImage.original_path || imageHeroPath(selectedImage))} download={downloadFileName(displayTitle || item.title, selectedImage?.original_path || imageHeroPath(selectedImage))} aria-label={t('download')} title={t('download')}><Download size={18} /></a>}
                     {allowManagementActions && <button className="modal-icon-button favorite-button" onClick={toggleFavorite} aria-label={item.favorite ? t('saved') : t('favorite')}>
                       <Heart size={18} fill={item.favorite ? 'currentColor' : 'none'} />
@@ -618,7 +628,23 @@ export default function ItemDetailModal({
                   </p>
                 )}
 
+                {selectedImage?.generation_job_id && (
+                  <section className="prompt-block prompt-panel active" aria-label={t('imagePrompt')}>
+                    <header className="prompt-block-header">
+                      <strong>{t('imagePrompt')}</strong>
+                      <span className="prompt-block-actions">
+                        <button type="button" className="prompt-copy-icon" onClick={() => handleCopyPrompt(selectedImage.generation_prompt_text || '')} disabled={!selectedImage.generation_prompt_text} aria-label={t('copyImagePrompt')}><Copy size={15} /></button>
+                        {canGenerate && <button type="button" className="secondary" onClick={() => onGenerationHistory(item, selectedImage.generation_job_id!)}>{t('imageGenerationHistory')}</button>}
+                      </span>
+                    </header>
+                    <div className="prompt-panel-body"><div className="prompt-inline-edit"><p>{selectedImage.generation_prompt_text}</p></div></div>
+                  </section>
+                )}
                 <div className="prompt-blocks" aria-label={t('promptLanguage')}>
+                  <div className="prompt-block-header">
+                    <strong>{t('cardPrompt')}</strong>
+                    {showMutations && canGenerate && <button type="button" className="secondary" onClick={() => generateFromSelection(false)}>{t('reusePrompt')}</button>}
+                  </div>
                   {(() => {
                     return (
                       <section className="prompt-block prompt-panel active">

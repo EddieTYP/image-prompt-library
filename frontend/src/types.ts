@@ -4,7 +4,8 @@ export type UploadImageRole = 'result_image' | 'reference_image';
 export type UiLanguage = 'zh_hant' | 'zh_hans' | 'en';
 export type TitleSuggestionProvider = 'openai_codex_oauth_native' | 'xai_grok_oauth';
 export interface PromptRecord { id: string; item_id: string; language: string; text: string; is_primary: boolean; is_original?: boolean; provenance?: Record<string, unknown> }
-export interface ImageRecord { id: string; item_id: string; original_path: string; thumb_path?: string; preview_path?: string; width?: number; height?: number; generation_provider?: string | null; generation_model?: string | null; role?: UploadImageRole; sort_order?: number }
+export interface ImageRecord { id: string; item_id: string; original_path: string; thumb_path?: string; preview_path?: string; width?: number; height?: number; generation_provider?: string | null; generation_model?: string | null; generation_job_id?: string | null; generation_prompt_text?: string | null; role?: UploadImageRole; sort_order?: number }
+export interface GenerationDraftContext { promptText: string; promptLanguage: string; referenceImage?: ImageRecord }
 export interface ItemImageUpdate { id: string; role: UploadImageRole }
 export interface ClusterRecord { id: string; name: string; names?: Partial<Record<UiLanguage, string>>; description?: string; count: number; preview_images: string[]; preview_item_ids?: string[] }
 export interface TagRecord { id: string; name: string; kind: string; count: number }

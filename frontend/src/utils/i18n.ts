@@ -1,6 +1,7 @@
 import type { UiLanguage } from '../types';
 export type { UiLanguage } from '../types';
 type TranslationKey =
+  | 'imagePrompt' | 'copyImagePrompt' | 'imageGenerationHistory' | 'cardPrompt' | 'reusePrompt' | 'editThisImage'
   | 'filters' | 'searchAria' | 'searchPlaceholder' | 'config' | 'referencesShown' | 'collectionChip'
   | 'sortChip' | 'sortByUpdated' | 'sortByCreated' | 'sortByOldest' | 'sortByTitle' | 'sortByTitleDesc' | 'sortBySource' | 'sortByModel'
   | 'explore' | 'cards' | 'uiLanguage' | 'promptCopyLanguage' | 'promptCopyLanguageHelp' | 'providers'
@@ -63,6 +64,7 @@ export function normalizeUiLanguage(value?: string | null): UiLanguage {
 
 const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
   zh_hant: {
+    imagePrompt: '此圖生成 prompt', copyImagePrompt: '複製此圖 prompt', imageGenerationHistory: '此圖生成記錄', cardPrompt: '卡片 prompt（共用）', reusePrompt: '重用 prompt', editThisImage: '編輯此圖',
     generationFailureTimeoutTitle: '生成結果未確定',
     generationFailureTimeoutGuidance: '供應商回應逾時，圖片可能仍在處理，亦可能已產生費用。重試前請先查看供應商活動紀錄；重試可能再生成一張圖片並再次收費。',
     generationStatusStale: '未能更新生成狀態；目前顯示的是最後已知資料，可能已過時。工作可能仍在執行，請勿因此重新提交生成。',
@@ -129,6 +131,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 
   },
   zh_hans: {
+    imagePrompt: '此图生成 prompt', copyImagePrompt: '复制此图 prompt', imageGenerationHistory: '此图生成记录', cardPrompt: '卡片 prompt（共用）', reusePrompt: '重用 prompt', editThisImage: '编辑此图',
     generationFailureTimeoutTitle: '生成结果未确定',
     generationFailureTimeoutGuidance: '供应商响应超时，图片可能仍在处理，也可能已产生费用。重试前请先查看供应商活动记录；重试可能再生成一张图片并再次收费。',
     generationStatusStale: '无法更新生成状态；当前显示的是最后已知数据，可能已过时。工作可能仍在执行，请勿因此重新提交生成。',
@@ -196,6 +199,7 @@ const TRANSLATIONS: Record<UiLanguage, Record<TranslationKey, string>> = {
 
   },
   en: {
+    imagePrompt: 'Image generation prompt', copyImagePrompt: 'Copy this image prompt', imageGenerationHistory: 'Image generation history', cardPrompt: 'Card prompt (shared)', reusePrompt: 'Reuse prompt', editThisImage: 'Edit this image',
     generationFailureTimeoutTitle: 'Generation outcome is uncertain',
     generationFailureTimeoutGuidance: 'The provider timed out. The image may still be processing and a charge may apply. Check provider activity before retrying; a retry may create another image and charge.',
     generationStatusStale: 'Could not refresh generation status. Showing the last known information, which may be out of date. Work may still be running; do not submit another generation because of this warning.',
