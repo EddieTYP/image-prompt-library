@@ -1113,6 +1113,12 @@ test('batch review closure keeps save, provenance, references, and mobile action
   assert.match(styles, /@media\(max-width:420px\)\{[\s\S]*?\.generation-history-prompt-actions\{display:grid;grid-template-columns:minmax\(0,1fr\);gap:8px\}[\s\S]*?\.generation-history-prompt-primary-actions\{display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\);width:100%;gap:8px\}/);
 });
 
+test('filter drawer constrains long collection rows without shrinking counts', async () => {
+  const styles = await readFile(`${ROOT}/frontend/src/styles.css`, 'utf8');
+  assert.match(styles, /\.drawer\.filter-drawer \.filter-pill-grid\{grid-template-columns:minmax\(0,1fr\);/);
+  assert.match(styles, /\.drawer\.filter-drawer \.filter-pill-grid button b\{flex-shrink:0;/);
+});
+
 test('redesign interaction guards keep overlays mutually exclusive and focus-safe', async () => {
   const [app, filters, config, detail, generation, focus, styles] = await Promise.all([
     readFile(`${ROOT}/frontend/src/App.tsx`, 'utf8'),

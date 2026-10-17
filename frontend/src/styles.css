@@ -1087,7 +1087,7 @@ button.explore-collection-preview:focus-visible{outline:2px solid var(--studio-a
   background:var(--studio-canvas);
   box-shadow:none;
 }
-.drawer.filter-drawer .filter-pill-grid{gap:2px}
+.drawer.filter-drawer .filter-pill-grid{grid-template-columns:minmax(0,1fr);gap:2px}
 .drawer.filter-drawer .filter-pill-grid button{
   padding:11px 10px;
   border:0;
@@ -1100,7 +1100,7 @@ button.explore-collection-preview:focus-visible{outline:2px solid var(--studio-a
   background:var(--studio-accent-soft);
   transform:none;
 }
-.drawer.filter-drawer .filter-pill-grid button b{background:transparent;color:var(--studio-muted)}
+.drawer.filter-drawer .filter-pill-grid button b{flex-shrink:0;background:transparent;color:var(--studio-muted)}
 .drawer.config .provider-card,
 .drawer.config .segmented-control{
   border-color:var(--studio-hairline);
