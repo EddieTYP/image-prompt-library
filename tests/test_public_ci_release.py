@@ -332,7 +332,17 @@ def test_v0112_release_notes_explain_direct_images_and_limitations():
         for stale_label in ("Next-release change", "下一版改動", "下一版改动"):
             assert stale_label not in readme
     assert "next release" not in (ROOT / "docs" / "GENERATION.md").read_text(encoding="utf-8").lower()
-    assert "No unreleased changes" in (ROOT / "docs" / "releases" / "unreleased.md").read_text(encoding="utf-8")
+
+
+def test_v0113_preparation_keeps_stable_release_and_backup_boundary_explicit():
+    unreleased = (ROOT / "docs" / "releases" / "unreleased.md").read_text(encoding="utf-8")
+    notes = (ROOT / "docs" / "releases" / "v0.11.3.md").read_text(encoding="utf-8")
+    assert "[v0.11.3](v0.11.3.md)" in unreleased
+    assert "No unreleased changes" not in unreleased
+    assert "This version is not published yet" in notes
+    assert "`v0.11.2` remains the current stable release" in notes
+    assert "Application rollback does not downgrade the Library schema" in notes
+    assert "Still required before stable promotion" in notes
 
 
 def test_v0101_release_notes_explain_the_update_fix_to_users():
