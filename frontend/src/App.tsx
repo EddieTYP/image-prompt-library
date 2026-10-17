@@ -9,6 +9,7 @@ import CardsView from './components/CardsView';
 import ItemDetailModal from './components/ItemDetailModal';
 import ItemEditorModal from './components/ItemEditorModal';
 import GenerationPanel from './components/GenerationPanel';
+import type { GenerationDraftContext } from './types';
 import GenerationQueueDrawer from './components/GenerationQueueDrawer';
 import ConfigPanel from './components/ConfigPanel';
 import BatchActionDialog from './components/BatchActionDialog';
@@ -118,6 +119,7 @@ export default function App() {
   const [generationQueueRefreshKey, setGenerationQueueRefreshKey] = useState(0);
   const [focusedGenerationJobId, setFocusedGenerationJobId] = useState<string>();
   const [generationSourceItem, setGenerationSourceItem] = useState<ItemDetail>();
+  const [generationDraft, setGenerationDraft] = useState<GenerationDraftContext>();
   const generationJobRequestRef = useRef(0);
   const editItemRequestRef = useRef(0);
   const [editingItemId, setEditingItemId] = useState<string>();
@@ -385,6 +387,7 @@ export default function App() {
     setConfigOpen(true);
   };
   const openStandaloneGeneration = () => {
+    setGenerationDraft(undefined);
     generationJobRequestRef.current += 1;
     cancelPendingEdit();
     setFocusedGenerationJobId(undefined);
@@ -392,21 +395,24 @@ export default function App() {
     setStandaloneGenerationOpen(true);
     setGenerationQueueOpen(false);
   };
-  const openGenerationFromDetail = (item: ItemDetail) => {
+  const openGenerationFromDetail = (item: ItemDetail, draft?: GenerationDraftContext, jobId?: string) => {
+    setGenerationDraft(draft);
     generationJobRequestRef.current += 1;
     cancelPendingEdit();
-    setFocusedGenerationJobId(undefined);
+    setFocusedGenerationJobId(jobId);
     setGenerationSourceItem(item);
     setStandaloneGenerationOpen(true);
     setGenerationQueueOpen(false);
   };
   const closeStandaloneGeneration = () => {
+    setGenerationDraft(undefined);
     generationJobRequestRef.current += 1;
     setStandaloneGenerationOpen(false);
     setFocusedGenerationJobId(undefined);
     setGenerationSourceItem(undefined);
   };
   const openGenerationJob = (job: GenerationJobRecord) => {
+    setGenerationDraft(undefined);
     cancelPendingEdit();
     const requestId = generationJobRequestRef.current + 1;
     generationJobRequestRef.current = requestId;
@@ -633,10 +639,10 @@ export default function App() {
         </div>
       </div>
     )}
-    {!standaloneGenerationOpen && detailId && <ItemDetailModal key={detailId} t={t} id={detailId} uiLanguage={uiLanguage} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={closeItemDetail} onCopyPrompt={showCopyToast} onChanged={saved} onDelete={isDemoMode ? undefined : deleteDetail} onOpenItem={setDetailId} onGenerate={openGenerationFromDetail} onEdit={(item) => { closeItemDetail(); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} showManagementActions={showManagementActions} canGenerate={!isDemoMode} />}
+    {!standaloneGenerationOpen && detailId && <ItemDetailModal key={detailId} t={t} id={detailId} uiLanguage={uiLanguage} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={closeItemDetail} onCopyPrompt={showCopyToast} onChanged={saved} onDelete={isDemoMode ? undefined : deleteDetail} onOpenItem={setDetailId} onGenerate={openGenerationFromDetail} onGenerationHistory={(item, jobId) => openGenerationFromDetail(item, undefined, jobId)} onEdit={(item) => { closeItemDetail(); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} showManagementActions={showManagementActions} canGenerate={!isDemoMode} />}
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}${toastClosing ? ' is-closing' : ''}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
     {editorOpen && <ItemEditorModal t={t} item={editing} clusters={localizedClusters} tags={tags} defaultAiProvider={defaultAiProvider} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} allowDelete={showManagementActions} />}
-    {standaloneGenerationOpen && <GenerationPanel item={generationSourceItem} t={t} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} defaultAiProvider={defaultAiProvider} promptVariablesEnabled={Boolean(appConfig?.features?.camelot?.percival)} initialJobId={focusedGenerationJobId} onClose={closeStandaloneGeneration} onOpenProviders={openProviders} onQueueChanged={() => setGenerationQueueRefreshKey(key => key + 1)} onAccepted={(item, message) => { saved(); setToast({ title: message || t('saveReference'), tone: 'success' }); if (item?.id) setDetailId(item.id); }} />}
+    {standaloneGenerationOpen && <GenerationPanel item={generationSourceItem} initialDraft={generationDraft} t={t} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} defaultAiProvider={defaultAiProvider} promptVariablesEnabled={Boolean(appConfig?.features?.camelot?.percival)} initialJobId={focusedGenerationJobId} onClose={closeStandaloneGeneration} onOpenProviders={openProviders} onQueueChanged={() => setGenerationQueueRefreshKey(key => key + 1)} onAccepted={(item, message) => { saved(); setToast({ title: message || t('saveReference'), tone: 'success' }); if (item?.id) setDetailId(item.id); }} />}
     </div>
   </div>
 }

@@ -33,6 +33,40 @@ def create_payload(**overrides):
     return payload
 
 
+def test_image_generation_prompt_tracks_accepted_image_not_card_or_source(tmp_path):
+    c = client(tmp_path)
+    source = c.post("/api/items", json=create_payload(title="Source")).json()
+    target = c.post("/api/items", json=create_payload(title="Saved as new")).json()
+    for index in range(3):
+        response = c.post(f"/api/items/{target['id']}/images", data={"role": "result_image"},
+                          files={"file": (f"result-{index}.png", png_bytes(color=(index, 2, 3)), "image/png")})
+        assert response.status_code == 200
+    images = c.get(f"/api/items/{target['id']}").json()["images"]
+    with connect(tmp_path / "library") as conn:
+        for index, edited in enumerate([None, "Change only the background to mint"]):
+            conn.execute("""INSERT INTO generation_jobs
+                (id,source_item_id,status,prompt_text,edited_prompt_text,accepted_image_id,created_at,updated_at,accepted_at)
+                VALUES(?,?,'accepted',?,?,?,?,?,?)""",
+                (f"job-{index}", source["id"], "Peach background", edited, images[index]["id"], "2026-01-01", "2026-01-01", "2026-01-01"))
+        conn.commit()
+    detail = c.get(f"/api/items/{target['id']}").json()
+    assert detail["images"][0]["generation_prompt_text"] == "Peach background"
+    assert detail["images"][1]["generation_prompt_text"] == "Change only the background to mint"
+    assert detail["images"][1]["generation_job_id"] == "job-1"
+    assert detail["images"][2]["generation_job_id"] is None
+    assert detail["images"][2]["generation_prompt_text"] is None
+    assert detail["prompts"] == target["prompts"]
+    assert c.get(f"/api/items/{source['id']}").json()["images"] == []
+
+    # Image ordering is independent of the accepted-generation association.
+    with connect(tmp_path / "library") as conn:
+        conn.execute("UPDATE images SET sort_order=-1 WHERE id=?", (images[1]["id"],))
+        conn.commit()
+    reordered = c.get(f"/api/items/{target['id']}").json()["images"]
+    assert reordered[0]["id"] == images[1]["id"]
+    assert reordered[0]["generation_prompt_text"] == "Change only the background to mint"
+
+
 def test_api_rejects_explicit_prompt_provenance_without_exactly_one_original(tmp_path):
     c = client(tmp_path)
     zero_original = create_payload(prompts=[

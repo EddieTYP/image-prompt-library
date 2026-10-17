@@ -2055,13 +2055,6 @@ html:lang(zh-Hant) .secondary,
 html:lang(zh-Hans) .secondary{
   font-weight:400;
 }
-html:lang(zh-Hant) .detail.modal .generate-variant-button,
-html:lang(zh-Hans) .detail.modal .generate-variant-button{
-  width:44px;
-  min-width:44px;
-  flex-basis:44px;
-  padding-inline:0;
-}
 html:lang(zh-Hant) .filter-drawer .filter-search input,
 html:lang(zh-Hans) .filter-drawer .filter-search input,
 html:lang(zh-Hant) .filter-drawer .filter-pill-grid button,

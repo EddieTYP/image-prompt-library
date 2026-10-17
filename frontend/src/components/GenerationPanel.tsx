@@ -15,6 +15,8 @@ import { extractPromptTemplateVariableRecords, resolvePromptTemplate } from '../
 import { createGenerationReviewSession, generationResultPosition, generationReviewNext, generationReviewOpenContext, generationReviewSlotNavigation, generationReviewSummary, generationSiblingNavigation, isActionableGenerationResult, mapGenerationRetryJobs, mapGenerationRetryToReviewSlot, reconcileGenerationReviewSession, resolveGenerationReviewSlot, retainPendingRetryJobIds, type GenerationReviewSession } from '../utils/generationSiblings';
 import { useModalFocus } from '../hooks/useModalFocus';
 import SuggestedTitleField from './SuggestedTitleField';
+import type { GenerationDraftContext } from '../types';
+import { loadGenerationQuality, saveGenerationQuality } from '../utils/generationQuality';
 
 function providerReady(provider: GenerationProviderStatus) {
   return Boolean(provider.available && provider.authenticated && provider.configured);
@@ -297,6 +299,7 @@ export default function GenerationPanel({
   tags = [],
   promptVariablesEnabled = false,
   defaultAiProvider,
+  initialDraft,
 }: {
   item?: ItemDetail;
   preferredLanguage: PromptCopyLanguage;
@@ -310,10 +313,11 @@ export default function GenerationPanel({
   tags?: TagRecord[];
   promptVariablesEnabled?: boolean;
   defaultAiProvider: TitleSuggestionProvider;
+  initialDraft?: GenerationDraftContext;
 }) {
   const originalPrompt = resolveOriginalPrompt(item?.prompts);
-  const defaultPromptLanguage = preferredLanguage === 'origin' ? (originalPrompt?.language || 'en') : preferredLanguage;
-  const defaultPrompt = item ? resolvePromptText(item.prompts, preferredLanguage, item.title) : '';
+  const defaultPromptLanguage = initialDraft?.promptLanguage || (preferredLanguage === 'origin' ? (originalPrompt?.language || 'en') : preferredLanguage);
+  const defaultPrompt = initialDraft?.promptText ?? (item ? resolvePromptText(item.prompts, preferredLanguage, item.title) : '');
   const [providers, setProviders] = useState<GenerationProviderStatus[]>([]);
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
   const [activeGenerationSet, setActiveGenerationSet] = useState<GenerationJobSetRecord>();
@@ -323,7 +327,7 @@ export default function GenerationPanel({
   const statusRefreshBusyRef = useRef(false);
   const [provider, setProvider] = useState<string>(defaultAiProvider);
   const [aspectRatio, setAspectRatio] = useState('auto');
-  const [quality, setQuality] = useState('high');
+  const [quality, setQuality] = useState(loadGenerationQuality);
   const [grokQuality, setGrokQuality] = useState('medium');
   const [grokResolution, setGrokResolution] = useState('1k');
   const [openControl, setOpenControl] = useState<'provider' | 'aspect' | 'quality' | null>(null);
@@ -331,7 +335,8 @@ export default function GenerationPanel({
   const [cancelSetBusy, setCancelSetBusy] = useState(false);
   const [queueClock, setQueueClock] = useState(() => Date.now());
   const [promptText, setPromptText] = useState(defaultPrompt);
-  const [editAttachments, setEditAttachments] = useState<EditAttachment[]>([]);
+  const [editAttachments, setEditAttachments] = useState<EditAttachment[]>(() => initialDraft?.referenceImage
+    ? [libraryAttachment(initialDraft.referenceImage, item?.title || '')] : []);
   const [referenceMenuOpen, setReferenceMenuOpen] = useState(false);
   const [referencePicker, setReferencePicker] = useState<'library' | 'recent' | null>(null);
   const [libraryItems, setLibraryItems] = useState<ItemSummary[]>([]);
@@ -2222,7 +2227,7 @@ export default function GenerationPanel({
                         ) : QUALITY_OPTIONS.map(option => {
                             const selected = quality === option.value;
                             return (
-                              <button key={option.value} type="button" role="menuitemradio" aria-checked={selected} className={selected ? 'is-selected' : ''} onClick={() => { setQuality(option.value); closeGenerationControl('quality'); }}>
+                              <button key={option.value} type="button" role="menuitemradio" aria-checked={selected} className={selected ? 'is-selected' : ''} onClick={() => { setQuality(option.value); saveGenerationQuality(option.value); closeGenerationControl('quality'); }}>
                                 <span className="generation-control-option-label">{optionLabel(QUALITY_OPTIONS, option.value, t)}</span>
                                 {selected && <Check className="generation-control-option-check" size={15} aria-hidden="true" />}
                               </button>

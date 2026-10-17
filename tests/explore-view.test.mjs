@@ -1022,8 +1022,8 @@ test('Explore detail boundary keeps local mutation actions while gating manageme
   assert.match(detail, /focusFirstAvailable\(\[opener, \.\.\.fallbacks, searchFallback\]\)/);
   assert.match(detail, /\[data-card-id\]/);
   assert.equal((detail.match(/\{selectedImage && <a className="modal-icon-button download-button"/g) || []).length, 2);
-  assert.match(detail, /mobile-generate-variant-button"[\s\S]*?aria-label=\{t\('generateVariant'\)\}[\s\S]*?mobile-generate-variant-label">\{t\('generate'\)\}/);
-  assert.match(detail, /generate-variant-button"[\s\S]*?aria-label=\{t\('generateVariant'\)\}[\s\S]*?>\{t\('generate'\)\}<\/button>/);
+  assert.match(detail, /mobile-generate-variant-button"[\s\S]*?aria-label=\{t\('editThisImage'\)\}[\s\S]*?mobile-generate-variant-label">\{t\('editThisImage'\)\}/);
+  assert.match(detail, /generate-variant-button"[\s\S]*?aria-label=\{t\('editThisImage'\)\}[\s\S]*?>\{t\('editThisImage'\)\}<\/button>/);
   assert.match(detail, /generationSourceLabel\(selectedImage\)/);
   assert.match(detail, /className="image-generation-provenance"[\s\S]*?t\('generatedWith'\)/);
   assert.match(detail, /openai_codex_oauth_native'[\s\S]*?ChatGPT \/ Codex/);
@@ -1126,7 +1126,7 @@ test('redesign interaction guards keep overlays mutually exclusive and focus-saf
 
   assert.match(app, /setGenerationQueueOpen\(false\); setFiltersOpen\(true\)/);
   assert.match(app, /setGenerationQueueOpen\(false\); setConfigOpen\(true\)/);
-  assert.match(app, /const openGenerationFromDetail = \(item: ItemDetail\) => \{[\s\S]*?setGenerationSourceItem\(item\);[\s\S]*?setStandaloneGenerationOpen\(true\)/);
+  assert.match(app, /const openGenerationFromDetail = \(item: ItemDetail, draft\?: GenerationDraftContext, jobId\?: string\) => \{[\s\S]*?setGenerationDraft\(draft\);[\s\S]*?setFocusedGenerationJobId\(jobId\);[\s\S]*?setGenerationSourceItem\(item\);[\s\S]*?setStandaloneGenerationOpen\(true\)/);
   assert.match(app, /const closeStandaloneGeneration = \(\) => \{[\s\S]*?setStandaloneGenerationOpen\(false\);[\s\S]*?setGenerationSourceItem\(undefined\);[\s\S]*?\};/);
   assert.match(app, /\{!standaloneGenerationOpen && detailId && <ItemDetailModal key=\{detailId\}/);
   assert.match(app, /\{standaloneGenerationOpen && <GenerationPanel item=\{generationSourceItem\}/);
@@ -1251,7 +1251,8 @@ test('Explore/detail CSS keeps responsive grids, token controls, CJK hierarchy, 
   assert.match(styles, /\.generation-queue-quick-expand,[\s\S]*?\.generation-stage-result \.stage-action\{[\s\S]*?background:var\(--studio-glass-fill\);[\s\S]*?box-shadow:var\(--studio-glass-shadow-compact\)/);
   assert.match(styles, /\.scope-sort-control:focus-within\{[^}]*background:rgb\(var\(--studio-accent-rgb\) \/ \.06\);outline:0/);
   assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.item-card \.hover-action\{[^}]*background:rgb\(var\(--studio-surface-rgb\) \/ \.92\)/);
-  assert.match(styles, /html:lang\(zh-Hant\) \.detail\.modal \.generate-variant-button,[\s\S]*?width:44px;[\s\S]*?min-width:44px;[\s\S]*?flex-basis:44px/);
+  assert.match(styles, /\.detail\.modal \.generate-variant-button\{[^}]*width:auto;[^}]*flex:0 0 auto;[^}]*padding:0 14px/);
+  assert.doesNotMatch(styles, /html:lang\(zh-Hant\) \.detail\.modal \.generate-variant-button,[^}]*width:44px/);
   assert.match(styles, /@supports \(\(-webkit-backdrop-filter:blur\(1px\)\) or \(backdrop-filter:blur\(1px\)\)\)\{[\s\S]*?\.item-card \.hover-action\{[\s\S]*?backdrop-filter:var\(--studio-glass-filter\)/);
   assert.match(styles, /\.generation-stage-result \.stage-action:disabled\{opacity:\.45;cursor:not-allowed\}/);
   assert.doesNotMatch(styles, /(?:^|\n)\.stage-action\{[^}]*background:var\(--studio-glass-fill\)/);

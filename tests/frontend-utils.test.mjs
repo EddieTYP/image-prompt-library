@@ -39,6 +39,52 @@ const {
 } = await importTypescript('../frontend/src/utils/generationSiblings.ts');
 const { makeTranslator } = await importTypescript('../frontend/src/utils/i18n.ts');
 const { submitGenerationRequest } = await importTypescript('../frontend/src/utils/generationSubmission.ts');
+const { loadGenerationQuality, saveGenerationQuality, normalizeGenerationQuality, GENERATION_QUALITY_STORAGE_KEY } = await importTypescript('../frontend/src/utils/generationQuality.ts');
+
+test('generation quality survives reopening and safely handles unavailable storage', () => {
+  const previousWindow = globalThis.window;
+  try {
+    const data = new Map();
+    globalThis.window = { localStorage: { getItem: key => data.get(key) ?? null, setItem: (key, value) => data.set(key, value) } };
+    assert.equal(loadGenerationQuality(), 'high');
+    for (const quality of ['low', 'medium', 'high']) {
+      saveGenerationQuality(quality);
+      assert.equal(loadGenerationQuality(), quality);
+      assert.equal(data.get(GENERATION_QUALITY_STORAGE_KEY), quality);
+    }
+    assert.equal(normalizeGenerationQuality('unexpected'), 'high');
+    globalThis.window = { get localStorage() { throw new Error('blocked'); } };
+    assert.equal(loadGenerationQuality(), 'high');
+    assert.doesNotThrow(() => saveGenerationQuality('low'));
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window;
+    else globalThis.window = previousWindow;
+  }
+});
+
+test('detail generation passes selected language and image only for image editing', async () => {
+  const source = (await readFile(new URL('../frontend/src/components/ItemDetailModal.tsx', import.meta.url), 'utf8')).replaceAll('\r\n', '\n');
+  const handler = source.slice(source.indexOf('  const generateFromSelection ='), source.indexOf('  const toggleFavorite ='));
+  const javascript = ts.transpileModule(`return function(withImage, prompt, resolvedPrompt, originalPrompt) {
+    const item = { id: 'card' }, selectedImage = { id: 'second-image' };
+    const copyText = prompt?.text || resolvedPrompt?.text || originalPrompt?.text || '';
+    let result;
+    const onGenerate = (item, draft) => { result = { item, draft }; };
+    ${handler}
+    generateFromSelection(withImage);
+    return result;
+  }`, { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText;
+  const invoke = new Function(javascript)();
+  const chinese = { language: 'zh_hant', text: '一隻 {{顏色}} 杯' };
+  const english = { language: 'en', text: 'A cup' };
+  assert.deepEqual(invoke(true, chinese, chinese, english).draft, {
+    promptText: chinese.text, promptLanguage: 'zh_hant', referenceImage: { id: 'second-image' },
+  });
+  assert.equal(invoke(false, chinese, chinese, english).draft.referenceImage, undefined);
+  assert.equal(invoke(true, undefined, english, english).draft.promptLanguage, 'en');
+  assert.match(source, /handleCopyPrompt\(selectedImage\.generation_prompt_text/);
+  assert.match(source, /onGenerationHistory\(item, selectedImage\.generation_job_id!/);
+});
 
 test('partial generation polling failures preserve active jobs and recover without resubmission', async () => {
   const source = (await readFile(new URL('../frontend/src/components/GenerationPanel.tsx', import.meta.url), 'utf8')).replaceAll('\r\n', '\n');
