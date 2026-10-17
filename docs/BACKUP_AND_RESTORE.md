@@ -78,6 +78,12 @@ Full abrupt power-loss reconciliation is not part of this release. If the machin
 
 Archives made by the former `backup.sh` format have no manifest, use machine-dependent paths, and omit generation storage. They are deliberately rejected rather than guessed at. Keep them for manual recovery, or open the old library with the current app stopped and create a new portable backup.
 
+## Version rollback and migration 012
+
+Application rollback changes the executable, not the Library's database schema. The planned v0.11.3 upgrade adds migration 012. Its backup engine accepts v0.11.2 backups and migrates restored copies in staging, but v0.11.2 rejects both a migrated Library when creating a backup and a schema-012 archive when verifying or restoring it.
+
+Keep a verified pre-upgrade backup outside the Library. To return fully to v0.11.2, stop the app, preserve the upgraded Library and newer backups, and restore that pre-upgrade snapshot with v0.11.2. Later changes are not merged into the old snapshot. Keep the `.pre-restore-*` copy; use the newer version to read newer backups. Do not remove migration ledger entries to bypass validation. See the [v0.11.3 preparation notes](releases/v0.11.3.md) for the tested compatibility matrix and remaining installer acceptance.
+
 ## Privacy boundary
 
 OAuth tokens, provider config, device-login/session state, logs, installer state, and `BACKUP_DIR` are outside the payload allowlist and are not traversed. The same credential-path boundary used at app startup rejects `IMAGE_PROMPT_LIBRARY_AUTH_PATH` or `IMAGE_PROMPT_LIBRARY_CONFIG_PATH` if either resolves inside the active library.

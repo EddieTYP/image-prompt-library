@@ -835,6 +835,36 @@ def test_known_older_schema_is_migrated_only_in_staging(tmp_path):
         assert connection.execute("SELECT version FROM schema_migrations ORDER BY rowid").fetchall()[-1][0] == db.MIGRATIONS[-2]
 
 
+def test_migration_012_upgrade_is_repeatable_and_preserves_baseline_media(tmp_path):
+    library = tmp_path / "schema-011"
+    _init_migration_prefix(library, db.MIGRATIONS[:11])
+    sentinel = library / "originals" / "baseline.txt"
+    sentinel.write_bytes(b"before-upgrade")
+    db.init_db(library)
+    db.init_db(library)
+    with db.connect(library) as connection:
+        ledger = [row[0] for row in connection.execute("SELECT version FROM schema_migrations ORDER BY rowid")]
+        assert ledger == db.MIGRATIONS
+        assert ledger.count("012_generation_creation_requests.sql") == 1
+        assert connection.execute("SELECT COUNT(*) FROM generation_creation_requests").fetchone()[0] == 0
+    assert sentinel.read_bytes() == b"before-upgrade"
+
+
+def test_backup_restore_preserves_generation_submission_receipt(tmp_path):
+    library = _library(tmp_path)
+    payload = GenerationJobCreate(prompt_text="archive receipt fixture")
+    request_id = "archive-receipt-012"
+    original = GenerationJobRepository(library).create_job(payload, request_id=request_id)
+    archive = backup_library(library, tmp_path / "with-receipt.tar.gz")
+    destination = tmp_path / "restored"
+    restore_library(archive, destination, confirm=True)
+    replay = GenerationJobRepository(destination).create_job(payload, request_id=request_id)
+    assert replay.id == original.id
+    with db.connect(destination) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM generation_jobs").fetchone()[0] == 1
+        assert connection.execute("SELECT COUNT(*) FROM generation_creation_requests").fetchone()[0] == 1
+
+
 def test_handled_publish_failure_rolls_active_library_back(tmp_path, monkeypatch):
     source = _library(tmp_path / "source")
     archive = backup_library(source, tmp_path / "valid.tar.gz")
