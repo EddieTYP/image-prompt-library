@@ -497,7 +497,24 @@ class ItemRepository:
             row = conn.execute("""SELECT i.*, c.id cluster_id, c.name cluster_name, c.names cluster_names, c.description cluster_description, c.sort_order cluster_sort_order FROM items i LEFT JOIN clusters c ON c.id=i.cluster_id WHERE i.id=?""", (item_id,)).fetchone()
             if not row: raise KeyError(item_id)
             summary = self._summary_from_row(conn, row)
-            return ItemDetail(**summary.model_dump(), images=self._images(conn,item_id), notes=row["notes"], author=row["author"])
+            images = self._images(conn, item_id)
+            # Resolve provenance by accepted image, not source item: edits and
+            # results saved as a new card need not share the original prompt.
+            jobs = conn.execute("""SELECT j.id, j.accepted_image_id, j.prompt_text, j.edited_prompt_text
+                FROM generation_jobs j JOIN images img ON img.id=j.accepted_image_id
+                WHERE img.item_id=? AND j.status='accepted'
+                ORDER BY j.accepted_at DESC, j.id DESC""", (item_id,)).fetchall()
+            by_image = {}
+            for job in jobs:
+                by_image.setdefault(job["accepted_image_id"], job)
+            for image in images:
+                job = by_image.get(image.id)
+                if job is not None:
+                    image.generation_job_id = job["id"]
+                    image.generation_prompt_text = sanitize_structured_credentials({
+                        "text": job["edited_prompt_text"] or job["prompt_text"],
+                    })["text"]
+            return ItemDetail(**summary.model_dump(), images=images, notes=row["notes"], author=row["author"])
 
     def _date_filter_window(self, value: str) -> tuple[str, str | None]:
         current = datetime.now(timezone.utc)

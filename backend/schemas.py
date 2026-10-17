@@ -26,6 +26,8 @@ class ImageRecord(BaseModel):
     file_sha256: Optional[str] = None
     generation_provider: Optional[str] = None
     generation_model: Optional[str] = None
+    generation_job_id: Optional[str] = None
+    generation_prompt_text: Optional[str] = None
     role: str = "result_image"
     sort_order: int = 0
     created_at: str
