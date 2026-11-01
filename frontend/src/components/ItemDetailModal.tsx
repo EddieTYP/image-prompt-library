@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react';
-import { Check, Copy, Download, ExternalLink, Heart, Maximize2, Pencil, Plus, Trash2, X } from 'lucide-react';
+import { ArrowRight, Check, Copy, Download, ExternalLink, Heart, Maximize2, MoreHorizontal, Pencil, Plus, Trash2, WandSparkles, X } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import { focusFirstAvailable } from '../hooks/useModalFocus';
 import type { ClusterRecord, GenerationDraftContext, ImageRecord, ItemDetail, PromptRecord, TagRecord, UiLanguage } from '../types';
@@ -14,7 +14,9 @@ const LANG_LABELS: Record<string, string> = {
   en: 'ENG',
 };
 const promptDisplayOrder = ['en', 'zh_hant', 'zh_hans'];
-const FOCUSABLE_SELECTOR = 'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])';
+const imageEditIcon = <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 9V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h4M3 16l5-5 3 3" /><path d="m12 21 1-4 6-6 3 3-6 6-4 1Zm5-8 3 3" /></svg>;
+const imageGenerateIcon = <WandSparkles size={20} strokeWidth={1.75} aria-hidden="true" />;
+const FOCUSABLE_SELECTOR = 'a[href],button:not(:disabled),textarea:not(:disabled),input:not(:disabled),select:not(:disabled),[tabindex]:not([tabindex="-1"])';
 
 function getImageIdentity(image: ImageRecord) {
   return image.thumb_path || image.preview_path || image.original_path || image.id;
@@ -78,6 +80,7 @@ function InlineEditableField({
   inputList,
   onCommit,
   editable = true,
+  busy = false,
   children,
 }: {
   t: Translator;
@@ -85,20 +88,22 @@ function InlineEditableField({
   value: string;
   placeholder?: string;
   inputList?: string;
-  onCommit: (value: string) => void;
+  onCommit: (value: string) => Promise<boolean>;
   editable?: boolean;
+  busy?: boolean;
   children?: ReactNode;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
-  const confirm = () => { onCommit(draft); setEditing(false); };
-  const cancel = () => { setDraft(value); setEditing(false); };
+  const confirm = async () => { if (!busy && await onCommit(draft)) setEditing(false); };
+  const cancel = () => { if (busy) return; setDraft(value); setEditing(false); };
   if (editing && editable) {
     return (
       <span className={`inline-editable ${className} is-editing`}>
         <input
           value={draft}
+          disabled={busy}
           placeholder={placeholder}
           list={inputList}
           autoFocus
@@ -110,8 +115,8 @@ function InlineEditableField({
         />
         {children}
         <span className="inline-edit-controls">
-          <button type="button" className="inline-edit-confirm" onClick={confirm} aria-label={t('confirmEdit')}><Check size={14} /></button>
-          <button type="button" className="inline-edit-cancel" onClick={cancel} aria-label={t('cancelEdit')}><X size={14} /></button>
+          <button type="button" className="inline-edit-confirm" onClick={confirm} disabled={busy} aria-label={t('confirmEdit')}><Check size={14} /></button>
+          <button type="button" className="inline-edit-cancel" onClick={cancel} disabled={busy} aria-label={t('cancelEdit')}><X size={14} /></button>
         </span>
       </span>
     );
@@ -133,24 +138,27 @@ function InlineEditableTextArea({
   placeholder,
   onCommit,
   editable = true,
+  busy = false,
 }: {
   t: Translator;
   className: string;
   value: string;
   placeholder?: string;
-  onCommit: (value: string) => void;
+  onCommit: (value: string) => Promise<boolean>;
   editable?: boolean;
+  busy?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
-  const confirm = () => { onCommit(draft); setEditing(false); };
-  const cancel = () => { setDraft(value); setEditing(false); };
+  const confirm = async () => { if (!busy && await onCommit(draft)) setEditing(false); };
+  const cancel = () => { if (busy) return; setDraft(value); setEditing(false); };
   if (editing && editable) {
     return (
       <div className={`inline-editable ${className} is-editing`}>
         <textarea
           value={draft}
+          disabled={busy}
           placeholder={placeholder}
           autoFocus
           onChange={event => setDraft(event.target.value)}
@@ -160,8 +168,8 @@ function InlineEditableTextArea({
           }}
         />
         <span className="inline-edit-controls">
-          <button type="button" className="inline-edit-confirm" onClick={confirm} aria-label={t('confirmEdit')}><Check size={14} /></button>
-          <button type="button" className="inline-edit-cancel" onClick={cancel} aria-label={t('cancelEdit')}><X size={14} /></button>
+          <button type="button" className="inline-edit-confirm" onClick={confirm} disabled={busy} aria-label={t('confirmEdit')}><Check size={14} /></button>
+          <button type="button" className="inline-edit-cancel" onClick={cancel} disabled={busy} aria-label={t('cancelEdit')}><X size={14} /></button>
         </span>
       </div>
     );
@@ -220,6 +228,7 @@ export default function ItemDetailModal({
   const [lang, setLang] = useState<string>(preferredLanguage);
   const [addingTag, setAddingTag] = useState(false);
   const [inlineMutationBusy, setInlineMutationBusy] = useState(false);
+  const [inlineMutationError, setInlineMutationError] = useState<string>();
   const inlineMutationBusyRef = useRef(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [tagQuery, setTagQuery] = useState('');
@@ -345,6 +354,7 @@ export default function ItemDetailModal({
   const primaryImage = selectPrimaryImage(uniqueImages);
   const selectedImage = uniqueImages.find(image => image.id === selectedImageId) || primaryImage;
   const selectedImageGenerationSource = generationSourceLabel(selectedImage);
+  const hasDistinctGenerationPrompt = Boolean(selectedImage?.generation_prompt_text?.trim() && !item?.prompts.some(entry => entry.text.trim() === selectedImage.generation_prompt_text!.trim()));
   const selectedImageIndex = selectedImage ? uniqueImages.findIndex(image => image.id === selectedImage.id) : -1;
   const heroStyle = selectedImage?.width && selectedImage.height
     ? ({ '--detail-image-aspect-ratio': `${selectedImage.width} / ${selectedImage.height}` } as CSSProperties)
@@ -377,7 +387,7 @@ export default function ItemDetailModal({
   const resolvedPrompt = resolvePromptRecord(availablePromptRecords, lang, fallbackLanguage);
   const copyText = prompt?.text || resolvedPrompt?.text || resolvePromptText(item?.prompts, preferredLanguage, displayTitle || item?.title || '');
   const generateFromSelection = (withImage: boolean) => {
-    if (!item) return;
+    if (!item || editingPromptLanguage !== undefined || inlineMutationBusy) return;
     onGenerate(item, {
       promptText: copyText,
       promptLanguage: prompt?.text ? prompt.language : (resolvedPrompt?.language || originalPrompt?.language || 'en'),
@@ -389,13 +399,18 @@ export default function ItemDetailModal({
     api.favorite(item.id).then(updated => { setItem(updated); onChanged(); });
   };
   const commitInlineUpdate = async (payload: Record<string, unknown>) => {
-    if (!item || inlineMutationBusyRef.current) return;
+    if (!item || inlineMutationBusyRef.current) return false;
     inlineMutationBusyRef.current = true;
     setInlineMutationBusy(true);
+    setInlineMutationError(undefined);
     try {
       const updated = await api.updateItem(item.id, payload);
       setItem(updated);
       onChanged();
+      return true;
+    } catch (error) {
+      setInlineMutationError(error instanceof Error ? error.message : t('saveFailed'));
+      return false;
     } finally {
       inlineMutationBusyRef.current = false;
       setInlineMutationBusy(false);
@@ -424,20 +439,22 @@ export default function ItemDetailModal({
     const prompts = orderedPromptTexts
       .map(nextPrompt => ({ language: nextPrompt.promptLanguage, text: nextPrompt.text, is_primary: nextPrompt.promptLanguage === primaryLanguage }))
       .filter(nextPrompt => nextPrompt.text);
-    commitInlineUpdate({ prompts });
+    return commitInlineUpdate({ prompts });
   };
   const startPromptEdit = (language: string, text: string) => {
+    if (inlineMutationBusyRef.current) return;
+    setInlineMutationError(undefined);
     setEditingPromptLanguage(language);
     setPromptDraft(text);
   };
   const cancelPromptEdit = () => {
+    if (inlineMutationBusyRef.current) return;
     setEditingPromptLanguage(undefined);
     setPromptDraft('');
   };
-  const confirmPromptEdit = () => {
-    if (!editingPromptLanguage) return;
-    commitPrompt(editingPromptLanguage, promptDraft);
-    cancelPromptEdit();
+  const confirmPromptEdit = async () => {
+    if (!editingPromptLanguage || inlineMutationBusyRef.current) return;
+    if (await commitPrompt(editingPromptLanguage, promptDraft)) cancelPromptEdit();
   };
   const unlinkTag = (tagName: string) => {
     if (!item) return;
@@ -456,7 +473,7 @@ export default function ItemDetailModal({
   const focusableModalElements = () => {
     if (!backdropRef.current) return [];
     return Array.from(backdropRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-      .filter(element => !element.hasAttribute('disabled') && (element.getClientRects().length > 0 || element === document.activeElement));
+      .filter(element => !element.matches(':disabled') && (element.getClientRects().length > 0 || element === document.activeElement));
   };
 
   const handleModalKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -497,6 +514,22 @@ export default function ItemDetailModal({
     }
   };
 
+  const managementActions = item && (showMutations || allowManagementActions) && (
+    <details className="detail-management-actions" onKeyDown={event => {
+      if (event.key !== 'Escape' || !event.currentTarget.open) return;
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.open = false;
+      event.currentTarget.querySelector('summary')?.focus();
+    }}>
+      <summary tabIndex={0} aria-label={t('moreActions')} title={t('moreActions')}><MoreHorizontal size={20} /></summary>
+      <div className="detail-management-menu">
+        {showMutations && <button type="button" onClick={() => onEdit(item)}><Pencil size={16} />{t('edit')}</button>}
+        {allowManagementActions && <button type="button" className="danger" disabled={deleteBusy} onClick={handleDelete}><Trash2 size={16} />{t('deleteReference')}</button>}
+      </div>
+    </details>
+  );
+
   return (
     <div ref={backdropRef} className={`modal-backdrop${isClosing ? ' is-closing' : ''}`} onClick={handleClose} onKeyDown={handleModalKeyDown}>
       <div
@@ -508,6 +541,10 @@ export default function ItemDetailModal({
         aria-label={displayTitle || item?.title || t('loading')}
         tabIndex={-1}
       >
+        <header className="detail-compact-header">
+          <span>{displayTitle || item?.title || t('loading')}</span>
+          <button type="button" className="modal-icon-button" onClick={handleClose} aria-label={t('close')}><X size={20} /></button>
+        </header>
         {!item ? (
           loadError ? (
             <div className="modal-load-error" role="alert">
@@ -552,15 +589,9 @@ export default function ItemDetailModal({
                       {allowManagementActions && <button className="modal-icon-button favorite-button" onClick={toggleFavorite} aria-label={item.favorite ? t('saved') : t('favorite')}>
                         <Heart size={18} fill={item.favorite ? 'currentColor' : 'none'} />
                       </button>}
-                      {showMutations && <button className="modal-icon-button edit-button" onClick={() => onEdit(item)} aria-label={t('edit')}>
-                        <Pencil size={18} />
-                      </button>}
-                      {allowManagementActions && <button className="modal-icon-button detail-delete-button" onClick={handleDelete} disabled={deleteBusy} aria-label={t('deleteReference')} title={t('deleteReference')}>
-                        <Trash2 size={18} />
-                      </button>}
-                       {showMutations && canGenerate && <button className="modal-icon-button mobile-generate-variant-button" onClick={() => generateFromSelection(true)} aria-label={t('editThisImage')} title={t('editThisImage')}>
-                         <Plus size={18} />
-                         <span className="mobile-generate-variant-label">{t('editThisImage')}</span>
+                      {managementActions}
+                       {showMutations && canGenerate && <button className="modal-icon-button mobile-generate-variant-button" disabled={editingPromptLanguage !== undefined || inlineMutationBusy} onClick={() => generateFromSelection(true)} aria-label={t('editThisImage')} title={t('editThisImage')}>
+                         {imageEditIcon}
                       </button>}
                     </span>
                   )}
@@ -587,69 +618,51 @@ export default function ItemDetailModal({
               <aside className="detail-side">
                 <div className="detail-side-actions">
                   <span className="detail-side-primary-actions">
-                     {showMutations && canGenerate && <button className="secondary generate-variant-button" onClick={() => generateFromSelection(true)} aria-label={t('editThisImage')} title={t('editThisImage')}>{t('editThisImage')}</button>}
+                     {showMutations && canGenerate && <button className="secondary generate-variant-button" disabled={editingPromptLanguage !== undefined || inlineMutationBusy} onClick={() => generateFromSelection(true)} aria-label={t('editThisImage')} title={t('editThisImage')}>{imageEditIcon}</button>}
                      {selectedImage && <a className="modal-icon-button download-button" href={mediaUrl(selectedImage.original_path || imageHeroPath(selectedImage))} download={downloadFileName(displayTitle || item.title, selectedImage?.original_path || imageHeroPath(selectedImage))} aria-label={t('download')} title={t('download')}><Download size={18} /></a>}
                     {allowManagementActions && <button className="modal-icon-button favorite-button" onClick={toggleFavorite} aria-label={item.favorite ? t('saved') : t('favorite')}>
                       <Heart size={18} fill={item.favorite ? 'currentColor' : 'none'} />
                     </button>}
-                    {showMutations && <button className="modal-icon-button edit-button" onClick={() => onEdit(item)} aria-label={t('edit')}>
-                      <Pencil size={18} />
-                    </button>}
-                    {allowManagementActions && <button className="modal-icon-button detail-delete-button" onClick={handleDelete} disabled={deleteBusy} aria-label={t('deleteReference')} title={t('deleteReference')}>
-                      <Trash2 size={18} />
-                    </button>}
+                    {managementActions}
                   </span>
                   <button className="modal-icon-button close" onClick={handleClose} aria-label={t('close')}>
                     <X size={20} strokeWidth={2.25} />
                   </button>
                 </div>
-                <InlineEditableField t={t} className="collection-inline-edit" value={item.cluster?.name || ''} placeholder={t('unclustered')} inputList="detail-collection-suggestions" onCommit={value => commitInlineUpdate({ cluster_name: value.trim() || null })} editable={allowManagementActions && !inlineMutationBusy}>
+                <div className="detail-identity">
+                <InlineEditableField t={t} className="collection-inline-edit" value={item.cluster?.name || ''} placeholder={t('unclustered')} inputList="detail-collection-suggestions" onCommit={value => commitInlineUpdate({ cluster_name: value.trim() || null })} editable={allowManagementActions} busy={inlineMutationBusy}>
                   <datalist id="detail-collection-suggestions">
                     {clusters.map(collection => <option key={collection.id} value={collection.name} />)}
                   </datalist>
                 </InlineEditableField>
                 <h2>
-                  <InlineEditableField t={t} className="title-inline-edit" value={showMutations ? item.title : (displayTitle || item.title)} placeholder={t('titlePlaceholder')} onCommit={value => commitInlineUpdate({ title: value.trim() || item.title })} editable={allowManagementActions && !inlineMutationBusy} />
+                  <InlineEditableField t={t} className="title-inline-edit" value={showMutations ? item.title : (displayTitle || item.title)} placeholder={t('titlePlaceholder')} onCommit={value => commitInlineUpdate({ title: value.trim() || item.title })} editable={allowManagementActions} busy={inlineMutationBusy} />
                 </h2>
                 <p className="muted metadata-row">
-                  <InlineEditableField t={t} className="metadata-inline-edit" value={item.model || t('defaultModel')} placeholder={t('imageGeneratedFrom')} onCommit={value => commitInlineUpdate({ model: value.trim() || item.model })} editable={allowManagementActions && !inlineMutationBusy} />
+                  <InlineEditableField t={t} className="metadata-inline-edit" value={item.model || t('defaultModel')} placeholder={t('imageGeneratedFrom')} onCommit={value => commitInlineUpdate({ model: value.trim() || item.model })} editable={allowManagementActions} busy={inlineMutationBusy} />
                   <span>·</span>
-                  <InlineEditableField t={t} className="metadata-inline-edit" value={`@${item.author || 'User'}`} placeholder="@User" onCommit={value => commitInlineUpdate({ author: value.replace(/^@/, '').trim() || 'User' })} editable={allowManagementActions && !inlineMutationBusy} />
+                  <InlineEditableField t={t} className="metadata-inline-edit" value={`@${item.author || 'User'}`} placeholder="@User" onCommit={value => commitInlineUpdate({ author: value.replace(/^@/, '').trim() || 'User' })} editable={allowManagementActions} busy={inlineMutationBusy} />
                   {item.source_url && (
                     <a className="source-icon-link" href={item.source_url} target="_blank" rel="noreferrer" aria-label={t('source')}>
                       <ExternalLink size={16} />
                     </a>
                   )}
                 </p>
-                {selectedImageGenerationSource && (
-                  <p className="image-generation-provenance">
-                    <span>{t('generatedWith')}</span>
-                    <strong>{selectedImageGenerationSource}</strong>
-                  </p>
-                )}
-
-                {selectedImage?.generation_job_id && (
-                  <section className="prompt-block prompt-panel active" aria-label={t('imagePrompt')}>
-                    <header className="prompt-block-header">
-                      <strong>{t('imagePrompt')}</strong>
-                      <span className="prompt-block-actions">
-                        <button type="button" className="prompt-copy-icon" onClick={() => handleCopyPrompt(selectedImage.generation_prompt_text || '')} disabled={!selectedImage.generation_prompt_text} aria-label={t('copyImagePrompt')}><Copy size={15} /></button>
-                        {canGenerate && <button type="button" className="secondary" onClick={() => onGenerationHistory(item, selectedImage.generation_job_id!)}>{t('imageGenerationHistory')}</button>}
-                      </span>
-                    </header>
-                    <div className="prompt-panel-body"><div className="prompt-inline-edit"><p>{selectedImage.generation_prompt_text}</p></div></div>
-                  </section>
-                )}
+                </div>
                 <div className="prompt-blocks" aria-label={t('promptLanguage')}>
-                  <div className="prompt-block-header">
-                    <strong>{t('cardPrompt')}</strong>
-                    {showMutations && canGenerate && <button type="button" className="secondary" onClick={() => generateFromSelection(false)}>{t('reusePrompt')}</button>}
-                  </div>
                   {(() => {
                     return (
-                      <section className="prompt-block prompt-panel active">
+                      <section className="prompt-block prompt-panel active" aria-label={t('cardPrompt')}>
                         <header className="prompt-block-header">
-                          <div className="prompt-language-tabs tabs" role="tablist" aria-label={t('promptLanguage')}>
+                          <div className="prompt-language-tabs tabs" role="tablist" aria-label={t('promptLanguage')} onKeyDown={event => {
+                            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+                            event.preventDefault();
+                            const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+                            const current = tabs.indexOf(document.activeElement as HTMLButtonElement);
+                            const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+                            tabs[next]?.click();
+                            tabs[next]?.focus();
+                          }}>
                             {promptDisplayOrder.map(promptLanguage => {
                               const tabPrompt = item.prompts.find(prompt => prompt.language === promptLanguage);
                               const isOriginalPrompt = Boolean(tabPrompt?.is_original || originalPrompt?.language === promptLanguage);
@@ -657,25 +670,28 @@ export default function ItemDetailModal({
                                 <button
                                   type="button"
                                   role="tab"
+                                  disabled={inlineMutationBusy}
                                   aria-selected={lang === promptLanguage}
+                                  aria-label={`${LANG_LABELS[promptLanguage] || promptLanguage}${isOriginalPrompt ? ` · ${t('origin')}` : ''}`}
+                                  tabIndex={lang === promptLanguage ? 0 : -1}
                                   className={`prompt-language-tab ${lang === promptLanguage ? 'active' : ''} ${isOriginalPrompt ? 'is-original' : ''}`}
                                   onClick={() => { setLang(promptLanguage); cancelPromptEdit(); }}
-                                  title={tabPrompt?.text.trim() ? undefined : t('promptText')}
+                                  title={isOriginalPrompt ? t('origin') : tabPrompt?.text.trim() ? undefined : t('promptText')}
                                   key={promptLanguage}
                                 >
                                   {LANG_LABELS[promptLanguage] || promptLanguage}
-                                  {isOriginalPrompt && <span className="origin-badge">{t('origin')}</span>}
                                 </button>
                               );
                             })}
                           </div>
                           <span className="prompt-block-actions">
-                            <button type="button" className="prompt-copy-icon" onClick={() => handleCopyPrompt(prompt?.text || '')} aria-label={t('copyPrompt')} disabled={!prompt?.text}>
-                              <Copy size={15} />
+                            <button type="button" className="prompt-copy-icon" onClick={() => handleCopyPrompt(prompt?.text || '')} aria-label={t('copyPrompt')} title={t('copyPrompt')} disabled={!prompt?.text}>
+                              <Copy size={18} strokeWidth={1.75} aria-hidden="true" />
                             </button>
-                            {allowManagementActions && <button type="button" className="prompt-edit-icon" onClick={() => startPromptEdit(lang, prompt?.text || '')} aria-label={t('edit')}>
-                              <Pencil size={15} />
+                            {allowManagementActions && <button type="button" className="prompt-edit-icon" onClick={() => startPromptEdit(lang, prompt?.text || '')} aria-label={t('edit')} title={t('edit')}>
+                              <Pencil size={18} strokeWidth={1.75} aria-hidden="true" />
                             </button>}
+                            {showMutations && canGenerate && <button type="button" className="prompt-generate-action" disabled={editingPromptLanguage !== undefined || inlineMutationBusy} onClick={() => generateFromSelection(false)} aria-label={t('reusePrompt')} title={t('reusePrompt')}>{imageGenerateIcon}</button>}
                           </span>
                         </header>
                         <div className="prompt-panel-body">
@@ -684,6 +700,7 @@ export default function ItemDetailModal({
                               <textarea
                                 className="prompt-edit-textarea"
                                 value={promptDraft}
+                                disabled={inlineMutationBusy}
                                 placeholder={t('promptText')}
                                 autoFocus
                                 onChange={event => setPromptDraft(event.target.value)}
@@ -693,8 +710,8 @@ export default function ItemDetailModal({
                                 }}
                               />
                               <span className="prompt-edit-controls">
-                                 <button type="button" className="inline-edit-confirm" onClick={confirmPromptEdit} aria-label={t('confirmEdit')}><Check size={14} /></button>
-                                 <button type="button" className="inline-edit-cancel" onClick={cancelPromptEdit} aria-label={t('cancelEdit')}><X size={14} /></button>
+                                 <button type="button" className="inline-edit-confirm" onClick={confirmPromptEdit} disabled={inlineMutationBusy} aria-label={t('confirmEdit')}><Check size={14} /></button>
+                                 <button type="button" className="inline-edit-cancel" onClick={cancelPromptEdit} disabled={inlineMutationBusy} aria-label={t('cancelEdit')}><X size={14} /></button>
                               </span>
                             </>
                           ) : (
@@ -708,7 +725,26 @@ export default function ItemDetailModal({
                   })()}
                 </div>
 
-                <InlineEditableTextArea t={t} className="notes-inline-edit" value={item.notes || ''} placeholder={t('addNote')} onCommit={value => commitInlineUpdate({ notes: value.trim() || null })} editable={allowManagementActions && !inlineMutationBusy} />
+                {inlineMutationError && <p className="provider-message" role="alert">{inlineMutationError}</p>}
+                {(selectedImage?.generation_job_id || selectedImageGenerationSource) && (
+                  <details className="generation-details">
+                    <summary tabIndex={0}>{t('generationDetails')}</summary>
+                    {selectedImageGenerationSource && <p className="image-generation-provenance"><span>{t('generatedWith')}</span><strong>{selectedImageGenerationSource}</strong></p>}
+                    {selectedImage?.generation_job_id && canGenerate && <button type="button" className="generation-history-link" onClick={() => onGenerationHistory(item, selectedImage.generation_job_id!)}>{t('imageGenerationHistory')}<ArrowRight size={14} aria-hidden="true" /></button>}
+                    {selectedImage && hasDistinctGenerationPrompt && (
+                      <section className="prompt-block prompt-panel active" aria-label={t('imagePrompt')}>
+                        <header className="prompt-block-header">
+                          <strong>{t('imagePrompt')}</strong>
+                          <span className="prompt-block-actions">
+                            <button type="button" className="prompt-copy-icon" onClick={() => handleCopyPrompt(selectedImage.generation_prompt_text || '')} disabled={!selectedImage.generation_prompt_text} aria-label={t('copyImagePrompt')}><Copy size={15} /></button>
+                          </span>
+                        </header>
+                        <div className="prompt-panel-body"><div className="prompt-inline-edit"><p>{selectedImage.generation_prompt_text}</p></div></div>
+                      </section>
+                    )}
+                  </details>
+                )}
+                <InlineEditableTextArea t={t} className="notes-inline-edit" value={item.notes || ''} placeholder={t('addNote')} onCommit={value => commitInlineUpdate({ notes: value.trim() || null })} editable={allowManagementActions} busy={inlineMutationBusy} />
 
                 <div className="tags detail-tags">
                   {item.tags.map(tag => (

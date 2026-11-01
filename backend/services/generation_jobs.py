@@ -1435,6 +1435,7 @@ class GenerationJobRepository:
                 or current_token != claim_token
             ):
                 raise GenerationJobConflict(f"Generation job cannot be accepted; current status is {row['status']}")
+            metadata["_generation_accept_mode"] = _accept_claim_mode(metadata)
             metadata.pop(_ACCEPT_CLAIM_METADATA_KEY, None)
             metadata.pop(_ACCEPT_CLAIM_TIMESTAMP_METADATA_KEY, None)
             metadata.pop(_ACCEPT_ARTIFACTS_METADATA_KEY, None)
@@ -1576,7 +1577,20 @@ class GenerationJobRepository:
             raise
 
     def accept_result_as_new_item(self, job_id: str, overrides: GenerationJobAcceptAsNewItemRequest | None = None) -> GenerationJobAcceptResult:
-        job, claim_token = self._claim_acceptance(job_id, require_source_item=False)
+        try:
+            job, claim_token = self._claim_acceptance(job_id, require_source_item=False)
+        except GenerationJobConflict:
+            # A lost HTTP response must not turn a completed save into an unrecoverable retry.
+            job = self.get_job(job_id)
+            if job.status == "accepted" and job.accepted_image_id and job.metadata.get("_generation_accept_mode") == "new_item":
+                try:
+                    image = self.items.get_image(job.accepted_image_id)
+                    saved_item = self.items.get_item(image.item_id)
+                except KeyError:
+                    pass
+                else:
+                    return GenerationJobAcceptResult(job=job, item=saved_item)
+            raise
         try:
             source_item = self.items.get_item(job.source_item_id) if job.source_item_id else None
         except Exception:

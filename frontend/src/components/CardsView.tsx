@@ -17,6 +17,7 @@ export default function CardsView({
   onCopyPrompt,
   onAdd,
   onOpenConfig,
+  onClearSearch,
   total,
   sort,
   onSort,
@@ -37,6 +38,7 @@ export default function CardsView({
   onCopyPrompt: (item: ItemSummary) => void;
   onAdd?: () => void;
   onOpenConfig?: () => void;
+  onClearSearch?: () => void;
   total: number;
   sort: ItemSortMode;
   onSort: (sort: ItemSortMode) => void;
@@ -77,9 +79,10 @@ export default function CardsView({
           <p className="empty-eyebrow">{t('firstRunLocalInstall')}</p>
           <h2>{t('firstRunEmptyTitle')}</h2>
           <p>{t('firstRunEmptyHelp')}</p>
+          <p>{t('referenceRequirements')}</p>
           <div className="empty-actions">
             {onAdd && <button className="empty-primary" onClick={onAdd}>{t('addFirstPrompt')}</button>}
-            {onOpenConfig && <button className="secondary" onClick={onOpenConfig}>{t('firstRunOpenConfig')}</button>}
+            {onOpenConfig && <button className="secondary" onClick={onOpenConfig}>{t('connectGeneration')}</button>}
           </div>
           <div className="first-run-command">
             <span>{t('firstRunSampleHelp')}</span>
@@ -108,6 +111,7 @@ export default function CardsView({
           <h2>{t('noMatchingPrompts')}</h2>
           <p>{t('noMatchingPromptsHelp')}</p>
           <div className="empty-actions">
+            {onClearSearch && <button className="secondary" onClick={onClearSearch}>{t('clearSearchFilters')}</button>}
             {onAdd && <button className="empty-primary" onClick={onAdd}>{t('addFirstPrompt')}</button>}
           </div>
         </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, ImagePlus, Star, Trash2, X } from 'lucide-react';
 import { api, mediaUrl } from '../api/client';
 import { useModalFocus } from '../hooks/useModalFocus';
@@ -58,6 +58,7 @@ export default function ItemEditorModal({
   const [zhHantPrompt, setZhHantPrompt] = useState(initialTraditionalPrompt(item));
   const [zhHansPrompt, setZhHansPrompt] = useState(promptText(item, 'zh_hans'));
   const [englishPrompt, setEnglishPrompt] = useState(promptText(item, 'en'));
+  const [translationsOpen, setTranslationsOpen] = useState(Boolean(initialTraditionalPrompt(item) || promptText(item, 'zh_hans')));
   const [originalLanguage, setOriginalLanguage] = useState(initialOriginalLanguage(item));
   const [resultFile, setResultFile] = useState<File>();
   const [referenceFile, setReferenceFile] = useState<File>();
@@ -78,6 +79,9 @@ export default function ItemEditorModal({
   };
   const editorFallbackSelector = '.card-open-hit, .add-fab, .empty-primary';
   const { containerRef: editorDialogRef, handleModalKeyDown } = useModalFocus<HTMLDivElement>(handleClose, { fallbackFocusSelector: editorFallbackSelector });
+  useEffect(() => {
+    if (saving || deleting) editorDialogRef.current?.focus({ preventScroll: true });
+  }, [saving, deleting]);
 
   const hasExistingResultImage = imageDrafts.some(image => image.role === 'result_image');
   const hasPrompt = Boolean(zhHantPrompt.trim() || zhHansPrompt.trim() || englishPrompt.trim());
@@ -276,10 +280,32 @@ export default function ItemEditorModal({
           <p className="modal-kicker">{persistedItem ? t('updateReference') : t('newReference')}</p>
           <h2 id="reference-editor-title">{persistedItem ? t('editPromptCard') : t('addPromptCard')}</h2>
           <p>{t('editorHelp')}</p>
+          <p>{t('referenceRequirements')}</p>
         </div>
 
-        <div className="editor-grid">
+        <fieldset className="editor-grid" disabled={saving || deleting}>
           <SuggestedTitleField className="field field-title" value={title} promptText={titleSuggestionPrompt} provider={defaultAiProvider} t={t} onChange={setTitle} autoFocus />
+          <label className="field prompt-field prompt-field-en">
+            <span className="prompt-field-title">{t('englishPrompt')} <button type="button" className={`origin-marker ${originalLanguage === 'en' ? 'active' : ''}`} onClick={() => setOriginalLanguage('en')}>{originalLanguage === 'en' ? t('origin') : t('markAsOriginal')}</button></span>
+            <textarea placeholder={t('englishPromptPlaceholder')} value={englishPrompt} onChange={e => setEnglishPrompt(e.target.value)} />
+          </label>
+          <label className={`drop-zone result-drop-zone ${missingRequiredImage ? 'required' : ''}`}>
+            <ImagePlus size={24} />
+            <strong>{resultFile ? resultFile.name : hasExistingResultImage ? t('resultImageAlreadySaved') : t('resultImageRequired')}</strong>
+            <span>{t('resultImageHelp')}</span>
+            <input type="file" accept="image/*" required={!hasExistingResultImage} onChange={e => setResultFile(e.target.files?.[0])} />
+          </label>
+          <details className="editor-translations" open={translationsOpen} onToggle={event => setTranslationsOpen(event.currentTarget.open)}>
+            <summary tabIndex={0}>{t('optionalTranslations')}</summary>
+          <label className="field prompt-field prompt-field-zh-hant">
+            <span className="prompt-field-title">{t('traditionalChinesePrompt')} <button type="button" className={`origin-marker ${originalLanguage === 'zh_hant' ? 'active' : ''}`} onClick={() => setOriginalLanguage('zh_hant')}>{originalLanguage === 'zh_hant' ? t('origin') : t('markAsOriginal')}</button></span>
+            <textarea placeholder={t('traditionalPromptPlaceholder')} value={zhHantPrompt} onChange={e => setZhHantPrompt(e.target.value)} />
+          </label>
+          <label className="field prompt-field prompt-field-zh-hans">
+            <span className="prompt-field-title">{t('simplifiedChinesePrompt')} <button type="button" className={`origin-marker ${originalLanguage === 'zh_hans' ? 'active' : ''}`} onClick={() => setOriginalLanguage('zh_hans')}>{originalLanguage === 'zh_hans' ? t('origin') : t('markAsOriginal')}</button></span>
+            <textarea placeholder={t('simplifiedPromptPlaceholder')} value={zhHansPrompt} onChange={e => setZhHansPrompt(e.target.value)} />
+          </label>
+          </details>
           <label className="field">
             <span>{t('collection')}</span>
             <input list="collection-suggestions" placeholder={t('collectionPlaceholder')} value={cluster} onChange={e => setCluster(e.target.value)} />
@@ -288,7 +314,7 @@ export default function ItemEditorModal({
             </datalist>
           </label>
           <label className="field">
-            <span>{t('imageGeneratedFrom')}</span>
+            <span>{t('libraryModelLabel')}</span>
             <input placeholder={t('defaultModel')} value={model} onChange={e => setModel(e.target.value)} />
           </label>
           <label className="field">
@@ -310,18 +336,6 @@ export default function ItemEditorModal({
                 {filteredTags.map(tag => <button type="button" key={tag.id} onClick={() => addSuggestedTag(tag.name)}>#{tag.name}</button>)}
               </div>
             )}
-          </label>
-          <label className="field prompt-field prompt-field-en">
-            <span className="prompt-field-title">{t('englishPrompt')} <button type="button" className={`origin-marker ${originalLanguage === 'en' ? 'active' : ''}`} onClick={() => setOriginalLanguage('en')}>{originalLanguage === 'en' ? t('origin') : t('markAsOriginal')}</button></span>
-            <textarea placeholder={t('englishPromptPlaceholder')} value={englishPrompt} onChange={e => setEnglishPrompt(e.target.value)} />
-          </label>
-          <label className="field prompt-field prompt-field-zh-hant">
-            <span className="prompt-field-title">{t('traditionalChinesePrompt')} <button type="button" className={`origin-marker ${originalLanguage === 'zh_hant' ? 'active' : ''}`} onClick={() => setOriginalLanguage('zh_hant')}>{originalLanguage === 'zh_hant' ? t('origin') : t('markAsOriginal')}</button></span>
-            <textarea placeholder={t('traditionalPromptPlaceholder')} value={zhHantPrompt} onChange={e => setZhHantPrompt(e.target.value)} />
-          </label>
-          <label className="field prompt-field prompt-field-zh-hans">
-            <span className="prompt-field-title">{t('simplifiedChinesePrompt')} <button type="button" className={`origin-marker ${originalLanguage === 'zh_hans' ? 'active' : ''}`} onClick={() => setOriginalLanguage('zh_hans')}>{originalLanguage === 'zh_hans' ? t('origin') : t('markAsOriginal')}</button></span>
-            <textarea placeholder={t('simplifiedPromptPlaceholder')} value={zhHansPrompt} onChange={e => setZhHansPrompt(e.target.value)} />
           </label>
           <label className="field prompt-field notes-field">
             <span>{t('notes')}</span>
@@ -368,19 +382,13 @@ export default function ItemEditorModal({
               </div>
             </section>
           )}
-          <label className={`drop-zone result-drop-zone ${missingRequiredImage ? 'required' : ''}`}>
-            <ImagePlus size={24} />
-            <strong>{resultFile ? resultFile.name : hasExistingResultImage ? t('resultImageAlreadySaved') : t('resultImageRequired')}</strong>
-            <span>{t('resultImageHelp')}</span>
-            <input type="file" accept="image/*" required={!hasExistingResultImage} onChange={e => setResultFile(e.target.files?.[0])} />
-          </label>
           <label className="drop-zone reference-drop-zone">
             <ImagePlus size={24} />
             <strong>{referenceFile ? referenceFile.name : t('referencePhotoOptional')}</strong>
             <span>{t('referencePhotoHelp')}</span>
             <input type="file" accept="image/*" onChange={e => setReferenceFile(e.target.files?.[0])} />
           </label>
-        </div>
+        </fieldset>
 
         {saveError && <p className="form-error" role="alert">{saveError}</p>}
 

@@ -1,14 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowLeft, Check, ChevronDown, ChevronLeft, ChevronRight, Clipboard, Clock3, Download, FilePlus2, Images, Info, Maximize2, Paperclip, Plus, RotateCcw, Trash2, Upload, X } from 'lucide-react';
-import aspectRatioIcon from '../assets/generation-controls/aspect-ratio.png';
-import brainAiIcon from '../assets/generation-controls/model.png';
-import qualityIcon from '../assets/generation-controls/quality.png';
 import { api, mediaUrl } from '../api/client';
 import type { ClusterRecord, GenerationJobAcceptAsNewItemPayload, GenerationJobCreate, GenerationJobRecord, GenerationJobSetRecord, GenerationProviderQueueState, GenerationProviderStatus, GenerationSetCount, ImageRecord, ItemDetail, ItemSummary, TagRecord, TitleSuggestionProvider } from '../types';
 import type { Translator } from '../utils/i18n';
 import { acceptGenerationSetJob, providerPauseSeconds } from '../utils/generationSets';
 import { downloadFileName } from '../utils/images';
+import { copyTextToClipboard } from '../utils/clipboard';
 import { generationFailure } from '../utils/generationFailures';
 import { resolveOriginalPrompt, resolvePromptText, type PromptCopyLanguage } from '../utils/prompts';
 import { extractPromptTemplateVariableRecords, resolvePromptTemplate } from '../utils/promptTemplateVariables';
@@ -95,7 +93,7 @@ const GROK_RESOLUTION_OPTIONS = [
 
 const MAX_EDIT_ATTACHMENTS = 4;
 const MAX_OPEN_CONTEXT_ACTIVE_FETCHES = 16;
-const HISTORY_FOCUSABLE_SELECTOR = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+const HISTORY_FOCUSABLE_SELECTOR = 'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 const SAVE_NEW_LANGUAGE_OPTIONS = [
   { value: 'en', labelKey: 'englishPrompt' },
   { value: 'zh_hant', labelKey: 'traditionalChinesePrompt' },
@@ -319,7 +317,9 @@ export default function GenerationPanel({
   const defaultPromptLanguage = initialDraft?.promptLanguage || (preferredLanguage === 'origin' ? (originalPrompt?.language || 'en') : preferredLanguage);
   const defaultPrompt = initialDraft?.promptText ?? (item ? resolvePromptText(item.prompts, preferredLanguage, item.title) : '');
   const [providers, setProviders] = useState<GenerationProviderStatus[]>([]);
+  const [providersLoading, setProvidersLoading] = useState(true);
   const [jobs, setJobs] = useState<GenerationJobRecord[]>([]);
+  const [acceptedTargets, setAcceptedTargets] = useState<Record<string, { id: string; title: string }>>({});
   const [activeGenerationSet, setActiveGenerationSet] = useState<GenerationJobSetRecord>();
   const [providerQueueStates, setProviderQueueStates] = useState<GenerationProviderQueueState[]>([]);
   const [statusRefreshFailed, setStatusRefreshFailed] = useState(false);
@@ -337,6 +337,7 @@ export default function GenerationPanel({
   const [promptText, setPromptText] = useState(defaultPrompt);
   const [editAttachments, setEditAttachments] = useState<EditAttachment[]>(() => initialDraft?.referenceImage
     ? [libraryAttachment(initialDraft.referenceImage, item?.title || '')] : []);
+  const openingDraftRef = useRef({ prompt: defaultPrompt, attachmentIds: editAttachments.map(attachment => attachment.id).join('|'), templateValues: {} as Record<string, string> });
   const [referenceMenuOpen, setReferenceMenuOpen] = useState(false);
   const [referencePicker, setReferencePicker] = useState<'library' | 'recent' | null>(null);
   const [libraryItems, setLibraryItems] = useState<ItemSummary[]>([]);
@@ -354,6 +355,7 @@ export default function GenerationPanel({
   const [metadataTagQuery, setMetadataTagQuery] = useState('');
   const [isSavePanelClosing, setIsSavePanelClosing] = useState(false);
   const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
+  const historyFocusReturnPendingRef = useRef(false);
   const [isHistoryDrawerClosing, setIsHistoryDrawerClosing] = useState(false);
   const [historyReviewJobId, setHistoryReviewJobId] = useState<string | undefined>(initialJobId);
   const [batchReviewSession, setBatchReviewSession] = useState<GenerationReviewSession>();
@@ -365,6 +367,7 @@ export default function GenerationPanel({
   onCloseRef.current = onClose;
   const onAcceptedRef = useRef(onAccepted);
   const createJobInFlightRef = useRef(false);
+  const acceptAsNewInFlightRef = useRef(false);
   onAcceptedRef.current = onAccepted;
   const onQueueChangedRef = useRef(onQueueChanged);
   onQueueChangedRef.current = onQueueChanged;
@@ -458,7 +461,7 @@ export default function GenerationPanel({
   }, [batchReviewSession]);
   const batchReviewActive = Boolean(batchReviewSession);
   const selectedProvider = useMemo(() => providers.find(candidate => candidate.provider === provider), [providers, provider]);
-  const selectedProviderCanGenerate = providerCanGenerate(selectedProvider);
+  const selectedProviderCanGenerate = !providersLoading && providerCanGenerate(selectedProvider);
   const selectedProviderMaxInputImages = selectedProvider?.max_input_images || MAX_EDIT_ATTACHMENTS;
   const selectedProviderSupportsEdit = editAttachments.length === 0 || Boolean(selectedProvider?.features.image_edit);
   const selectedProviderWithinInputLimit = editAttachments.length <= selectedProviderMaxInputImages;
@@ -680,6 +683,7 @@ export default function GenerationPanel({
 
   useEffect(() => {
     let cancelled = false;
+    setProvidersLoading(true);
     api.generationProviders()
       .then(nextProviders => {
         if (cancelled) return;
@@ -705,7 +709,8 @@ export default function GenerationPanel({
           features: { text_to_image: false, text_reference_to_image: false, image_edit: false, title_suggestion: false },
           max_input_images: 4,
         }]);
-      });
+      })
+      .finally(() => { if (!cancelled) setProvidersLoading(false); });
     void refreshStatus(false);
     return () => {
       cancelled = true;
@@ -824,16 +829,22 @@ export default function GenerationPanel({
   useEffect(() => {
     if (!isHistoryDrawerClosing) return undefined;
     return watchMotionEnd(historyDrawerRef.current, () => {
+      historyFocusReturnPendingRef.current = true;
       setShowHistoryDrawer(false);
       setIsHistoryDrawerClosing(false);
-      historyTriggerRef.current?.focus({ preventScroll: true });
     });
   }, [isHistoryDrawerClosing]);
 
   useEffect(() => {
+    if (showHistoryDrawer || !historyFocusReturnPendingRef.current) return;
+    historyFocusReturnPendingRef.current = false;
+    (historyTriggerRef.current || generationDialogRef.current?.querySelector<HTMLElement>('.generation-history-back'))?.focus({ preventScroll: true });
+  }, [showHistoryDrawer]);
+
+  useEffect(() => {
     if (!showHistoryDrawer || isHistoryDrawerClosing) return undefined;
     const frame = window.requestAnimationFrame(() => {
-      historyDrawerRef.current?.querySelector<HTMLElement>('button:not([disabled]), [tabindex]:not([tabindex="-1"])')?.focus({ preventScroll: true });
+      historyDrawerRef.current?.querySelector<HTMLElement>('button:not(:disabled), [tabindex]:not([tabindex="-1"])')?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
   }, [showHistoryDrawer, isHistoryDrawerClosing]);
@@ -953,6 +964,7 @@ export default function GenerationPanel({
     const prompt = promptText.trim();
     if (!prompt || hasMissingTemplateValues || !resolvedPrompt || !selectedProviderCanGenerateDraft || (provider === 'manual_upload' && count !== 1)) return;
     createJobInFlightRef.current = true;
+    const submittedDraft = { prompt: promptText, attachmentIds: editAttachments.map(attachment => attachment.id).join('|'), templateValues: { ...templateValues } };
     const preservePausedReview = Boolean(batchReviewSession && batchReviewPaused);
     setBusy(true);
     setMessage('');
@@ -1015,18 +1027,19 @@ export default function GenerationPanel({
         }
       }
       setActiveJobId(createdJobs[0]?.id);
+      // Use the submitted snapshot, so edits made while awaiting acknowledgement remain unsent.
+      openingDraftRef.current = submittedDraft;
       onQueueChangedRef.current?.();
     window.requestAnimationFrame(() => scrollIntoViewRespectingMotion(stageRef.current, 'start'));
-      setMessage(provider === 'manual_upload'
-        ? `${t('queueQueued')}. ${t('uploadImage')}.`
-        : count > 1
-          ? `${t('generationSet')} ${t('queueQueued').toLowerCase()} · ${count}`
-          : `${attachments.length > 0 ? t('useResultAsEditInput') : t('generate')} · ${t('queueQueued').toLowerCase()}`);
+      setMessage('');
     } catch (error) {
       setMessage(`${error instanceof Error ? error.message : t('generationCreateFailed')} ${t('generationCreateRetrySafe')}`);
     } finally {
       createJobInFlightRef.current = false;
       setBusy(false);
+      window.requestAnimationFrame(() => {
+        if (document.activeElement === document.body) promptInputRef.current?.focus({ preventScroll: true });
+      });
     }
   };
 
@@ -1069,9 +1082,10 @@ export default function GenerationPanel({
     }
   };
 
-  const queueAccepted = (acceptedItem?: ItemDetail, message?: string) => {
-    pendingAcceptedRef.current = { item: acceptedItem, message };
-    handleClose(true);
+  const queueAccepted = (acceptedItem?: ItemDetail, message?: string, jobId?: string) => {
+    if (acceptedItem && jobId) setAcceptedTargets(current => ({ ...current, [jobId]: { id: acceptedItem.id, title: acceptedItem.title } }));
+    // Acceptance must never consume a newer composer draft, including during an async save.
+    onAcceptedRef.current(undefined, message);
   };
 
   const acceptAttach = async (job: GenerationJobRecord) => {
@@ -1097,7 +1111,7 @@ export default function GenerationPanel({
         onAcceptedRef.current(undefined, t('imageAddedToItem'));
         advanceBatchReview(acceptedJob, resolvedSession, nextJobs);
       } else {
-        queueAccepted(result.item, t('imageAddedToItem'));
+        queueAccepted(result.item, t('imageAddedToItem'), acceptedJob.id);
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t('generationAcceptFailed'));
@@ -1129,7 +1143,7 @@ export default function GenerationPanel({
         onAcceptedRef.current(undefined, t('imageAddedToItem'));
         advanceBatchReview(acceptedJob, resolvedSession, nextJobs);
       } else {
-        queueAccepted(result.item, t('imageAddedToItem'));
+        queueAccepted(result.item, t('imageAddedToItem'), acceptedJob.id);
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t('generationAcceptFailed'));
@@ -1139,6 +1153,7 @@ export default function GenerationPanel({
   };
 
   const openSaveAsNewReview = (job: GenerationJobRecord) => {
+    setMessage('');
     ensureBatchReviewSession(job);
     const initialMetadata = buildInitialMetadata(job, item);
     setIsSavePanelClosing(false);
@@ -1153,15 +1168,53 @@ export default function GenerationPanel({
     setIsSavePanelClosing(true);
   };
 
+  const hasUnsubmittedDraft = () => promptText !== openingDraftRef.current.prompt
+    || editAttachments.map(attachment => attachment.id).join('|') !== openingDraftRef.current.attachmentIds
+    || [...new Set([...Object.keys(templateValues), ...Object.keys(openingDraftRef.current.templateValues)])]
+      .some(key => (templateValues[key] || '') !== (openingDraftRef.current.templateValues[key] || ''));
+
   const handleClose = (force = false) => {
-    if (busy && !force) return;
-    if (isClosing) return;
+    if (busy && !force) return false;
+    if (isClosing) return false;
+    if (!force && hasUnsubmittedDraft() && !window.confirm(t('discardGenerationDraft'))) return false;
     setIsClosing(true);
+    return true;
   };
 
   const closeGenerationControl = (control = openControl) => {
     setOpenControl(null);
     if (control) window.requestAnimationFrame(() => controlTriggerRefs.current[control]?.focus({ preventScroll: true }));
+  };
+
+  useEffect(() => {
+    if (!openControl) return;
+    const menu = controlTriggerRefs.current[openControl]?.parentElement?.querySelector<HTMLElement>('[role="menu"]');
+    const selected = menu?.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]:not(:disabled)');
+    (selected || menu?.querySelector<HTMLElement>('[role="menuitemradio"]:not(:disabled)'))?.focus({ preventScroll: true });
+  }, [openControl]);
+
+  const handleControlMenuKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const menu = (event.target as HTMLElement).closest('.generation-control-popover');
+    if (!menu) return;
+    if (event.key === 'Escape' || event.key === 'Tab') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === 'Escape') closeGenerationControl();
+      else {
+        const trigger = openControl ? controlTriggerRefs.current[openControl] : null;
+        const controls = Array.from(generationDialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled),input:not(:disabled),textarea:not(:disabled),a[href]') || []).filter(element => !menu.contains(element) && element.getClientRects().length > 0);
+        const index = controls.indexOf(trigger!);
+        setOpenControl(null);
+        controls[event.shiftKey ? Math.max(0,index) : index + 1]?.focus();
+      }
+      return;
+    }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    const options = Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]:not(:disabled)'));
+    const index = options.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+    options[next]?.focus();
   };
 
   const closeReferenceMenu = () => {
@@ -1246,13 +1299,13 @@ export default function GenerationPanel({
 
   const openReviewTarget = (targetItemId?: string, targetItemTitle?: string) => {
     if (!targetItemId) return;
+    if (!handleClose()) return;
     // App's existing onAccepted flow closes Generation first, then opens the
     // Item Detail modal by id (which fetches the full item when needed).
     pendingAcceptedRef.current = {
       item: { id: targetItemId } as ItemDetail,
       message: targetItemTitle ? `${t('viewItem')}: ${targetItemTitle}` : t('viewItem'),
     };
-    handleClose(true);
   };
 
   const handleGenerationDialogKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -1320,6 +1373,12 @@ export default function GenerationPanel({
     closeSaveAsNewReview,
     { active: Boolean(reviewJob && metadataDraft), fallbackFocusSelector: '.generation-workspace-close' },
   );
+  useEffect(() => {
+    if (!busy || !reviewJob || !metadataDraft) return;
+    // Disabling the focused save button can send focus to the page body.
+    // The disclosure stays available while the submitted fields are locked.
+    saveAsNewDialogRef.current?.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
+  }, [busy, reviewJob, metadataDraft]);
   const { containerRef: referencePickerDialogRef, handleModalKeyDown: handleReferencePickerKeyDown } = useModalFocus<HTMLElement>(
     closeReferencePicker,
     { active: Boolean(referencePicker), fallbackFocusSelector: '.generation-reference-add' },
@@ -1497,7 +1556,8 @@ export default function GenerationPanel({
   };
 
   const acceptAsNew = async () => {
-    if (!reviewJob || !metadataDraft) return;
+    if (!reviewJob || !metadataDraft || busy || acceptAsNewInFlightRef.current) return;
+    acceptAsNewInFlightRef.current = true;
     const reviewSession = ensureBatchReviewSession(reviewJob);
     const metadataPayload = {
       ...metadataDraft,
@@ -1527,11 +1587,12 @@ export default function GenerationPanel({
         onAcceptedRef.current(undefined, t('newVariantCreated'));
         advanceBatchReview(acceptedJob, resolvedSession, nextJobs);
       } else {
-        queueAccepted(result.item, t('newVariantCreated'));
+        queueAccepted(result.item, t('newVariantCreated'), acceptedJob.id);
       }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : t('saveFailed'));
     } finally {
+      acceptAsNewInFlightRef.current = false;
       setBusy(false);
     }
   };
@@ -1589,6 +1650,7 @@ export default function GenerationPanel({
   };
 
   const discardAndRetryJob = async (job: GenerationJobRecord) => {
+    if (busy) return;
     const reviewSession = ensureBatchReviewSession(job);
     setBusy(true);
     setActiveJobId(job.id);
@@ -1609,16 +1671,6 @@ export default function GenerationPanel({
           .map(candidate => candidate.id === result.discarded_job.id ? result.discarded_job : candidate)
           .filter(candidate => candidate.id !== retryJob.id),
       ]);
-      setPromptText(jobPrompt(retryJob));
-      setAspectRatio(jobAspectRatio(retryJob));
-      if (retryJob.provider === 'xai_grok_oauth') {
-        setGrokQuality(jobQuality(retryJob) === 'low' ? 'low' : 'medium');
-        setGrokResolution(jobResolution(retryJob));
-      } else {
-        setQuality(jobQuality(retryJob));
-      }
-      setProvider(retryJob.provider || provider);
-      setEditAttachments(restorableJobAttachments(retryJob));
       setFocusedJobHighlightId(retryJob.id);
       onQueueChangedRef.current?.();
       if (reviewSession) {
@@ -1693,16 +1745,6 @@ export default function GenerationPanel({
       } : retry;
       invalidateGenerationRefreshRequests();
       const nextJobs = updateGenerationJobs(current => [retryJob, ...current.filter(candidate => candidate.id !== retryJob.id)]);
-      setPromptText(jobPrompt(retry));
-      setAspectRatio(jobAspectRatio(retry));
-      if (retryJob.provider === 'xai_grok_oauth') {
-        setGrokQuality(jobQuality(retryJob) === 'low' ? 'low' : 'medium');
-        setGrokResolution(jobResolution(retryJob));
-      } else {
-        setQuality(jobQuality(retryJob));
-      }
-      setProvider(retryJob.provider || provider);
-      setEditAttachments(restorableJobAttachments(retryJob));
       setFocusedJobHighlightId(retryJob.id);
       onQueueChangedRef.current?.();
       if (reviewSession) {
@@ -1755,10 +1797,12 @@ export default function GenerationPanel({
   };
 
   const useJobAsDraft = (job: GenerationJobRecord) => {
+    if (hasUnsubmittedDraft() && !window.confirm(t('replaceGenerationDraft'))) return;
     const reviewSession = ensureBatchReviewSession(job);
     const attachments = jobAttachments(job);
     const restorableAttachments = restorableJobAttachments(job);
     setPromptText(jobPrompt(job));
+    setTemplateValues({});
     setAspectRatio(jobAspectRatio(job));
     if (job.provider === 'xai_grok_oauth') {
       setGrokQuality(jobQuality(job) === 'low' ? 'low' : 'medium');
@@ -1770,7 +1814,7 @@ export default function GenerationPanel({
     setEditAttachments(restorableAttachments);
     setHistoryReviewJobId(undefined);
     if (reviewSession) setBatchReviewPaused(true);
-    setMessage(attachments.length > restorableAttachments.length ? `${t('copyPrompt')}. ${t('uploadImage')}.` : `${t('copyPrompt')}.`);
+    setMessage(attachments.length > restorableAttachments.length ? `${t('draftLoaded')} ${t('draftReferencesMissing')}` : t('draftLoaded'));
     window.requestAnimationFrame(() => {
       scrollIntoViewRespectingMotion(promptInputRef.current, 'center');
       promptInputRef.current?.focus({ preventScroll: true });
@@ -1779,18 +1823,14 @@ export default function GenerationPanel({
 
   const copyJobPrompt = async (job: GenerationJobRecord) => {
     const text = jobPrompt(job);
-    try {
-      await navigator.clipboard?.writeText(text);
-      setMessage(`${t('copyPrompt')}.`);
-    } catch {
-      setMessage(text ? `${t('copyPrompt')}.` : t('noGenerationJobs'));
-    }
+    const copied = await copyTextToClipboard(text);
+    setMessage(copied ? t('copySuccess') : t('copyFailed'));
   };
 
   const renderReferenceTray = (attachments: EditAttachment[], readOnly = false, limit = selectedProviderMaxInputImages) => {
     if (readOnly && attachments.length === 0) return null;
     return (
-    <div className={`generation-reference-tray${readOnly ? ' is-readonly' : ''}`} aria-label={readOnly ? t('generationReferencesUsed') : t('generationReferences')}>
+    <div className={`generation-reference-tray${readOnly ? ' is-readonly' : ''}${attachments.length ? '' : ' is-empty'}`} aria-label={readOnly ? t('generationReferencesUsed') : t('generationReferences')}>
       <div className="generation-reference-tray-head">
         <strong>{readOnly ? t('generationReferencesUsed') : t('generationReferences')}</strong>
         <span>{attachments.length} / {limit}</span>
@@ -1834,30 +1874,35 @@ export default function GenerationPanel({
 
   const renderStageActions = (job: GenerationJobRecord) => (
     <div className="generation-stage-actions" aria-label={t('resultActions')}>
+      <button ref={saveAsNewTriggerRef} className="stage-action stage-action-label primary" onClick={() => openSaveAsNewReview(job)} disabled={busy}>
+        <FilePlus2 size={16} aria-hidden="true" /> {t('saveAsNewItem')}
+      </button>
+      <button className="stage-action stage-action-label" onClick={() => addResultAsAttachment(job, true)} disabled={busy || editAttachments.length >= selectedProviderMaxInputImages || !job.result_path}>
+        <Plus size={16} aria-hidden="true" /> {t('useResultAsEditInput')}
+      </button>
+      <details className="generation-secondary-actions">
+        <summary tabIndex={0}>{t('moreActions')}</summary>
+        <div className="generation-secondary-action-list">
       {groupedBatchTarget && (
-        <button className="stage-action" onClick={() => acceptIntoGroupedItem(job)} disabled={busy} aria-label={t('addToGroupedItem').replace('${item}', groupedBatchTarget.title || t('viewItem'))} title={t('addToGroupedItem').replace('${item}', groupedBatchTarget.title || t('viewItem'))}>
-          <Images size={16} aria-hidden="true" />
+        <button className="stage-action stage-action-label" onClick={() => acceptIntoGroupedItem(job)} disabled={busy}>
+          <Images size={16} aria-hidden="true" /> {t('addToGroupedItem').replace('${item}', groupedBatchTarget.title || t('viewItem'))}
         </button>
       )}
       {canAttachToSourceItem(job) && (
-        <button className="stage-action" onClick={() => acceptAttach(job)} disabled={busy} aria-label={t('attachToCurrentItem')} title={t('attachToCurrentItem')}>
-          <Paperclip size={16} aria-hidden="true" />
+        <button className="stage-action stage-action-label" onClick={() => acceptAttach(job)} disabled={busy}>
+          <Paperclip size={16} aria-hidden="true" /> {t('attachToCurrentItem')}
         </button>
       )}
-      <button ref={saveAsNewTriggerRef} className="stage-action" onClick={() => openSaveAsNewReview(job)} disabled={busy} aria-label={t('saveAsNewItem')} title={t('saveAsNewItem')}>
-        <FilePlus2 size={16} aria-hidden="true" />
-      </button>
-      <button className="stage-action" onClick={() => addResultAsAttachment(job, true)} disabled={busy || editAttachments.length >= selectedProviderMaxInputImages || !job.result_path} aria-label={t('useResultAsEditInput')} title={t('useResultAsEditInput')}>
-        <Plus size={16} aria-hidden="true" />
-      </button>
-      <button className="stage-action" onClick={() => discardAndRetryJob(job)} disabled={busy} aria-label={t('retry')} title={t('retry')}>
-        <RotateCcw size={16} aria-hidden="true" />
+      <button className="stage-action stage-action-label" onClick={() => discardAndRetryJob(job)} disabled={busy}>
+        <RotateCcw size={16} aria-hidden="true" /> {t('discardAndRegenerate')}
       </button>
       {canDiscardTransientResult(job) && (
-        <button className="stage-action danger" onClick={() => discardJob(job)} disabled={busy} aria-label={t('discard')} title={t('discard')}>
-          <Trash2 size={16} aria-hidden="true" />
+        <button className="stage-action stage-action-label danger" onClick={() => discardJob(job)} disabled={busy}>
+          <Trash2 size={16} aria-hidden="true" /> {t('discard')}
         </button>
       )}
+        </div>
+      </details>
     </div>
   );
 
@@ -1929,7 +1974,7 @@ export default function GenerationPanel({
 
   const renderStage = () => {
     if (!selectedStageJob) {
-      return <div className="generation-stage generation-stage-ready"><strong>{t('generationReady')}</strong></div>;
+      return <div className="generation-stage generation-stage-ready"><div className="generation-empty-preview"><Images size={28} aria-hidden="true" /><strong>{t('generationPreviewTitle')}</strong><p>{t('generationPreviewHelp')}</p></div></div>;
     }
     const reviewSlot = batchReviewSession?.slots.find(slot => slot.currentJobId === selectedStageJob.id || slot.originalJobId === selectedStageJob.id);
     const reviewOutcome = reviewSlot?.resolution
@@ -1946,8 +1991,8 @@ export default function GenerationPanel({
             : reviewOutcome === 'failed' || reviewOutcome === 'cancelled'
               ? t('reviewFailedOrCancelled')
               : undefined;
-    const reviewTargetId = reviewSlot?.targetItemId;
-    const reviewTargetTitle = reviewSlot?.targetItemTitle;
+    const reviewTargetId = reviewSlot?.targetItemId || acceptedTargets[selectedStageJob.id]?.id;
+    const reviewTargetTitle = reviewSlot?.targetItemTitle || acceptedTargets[selectedStageJob.id]?.title;
     if (selectedStageJob.status === 'queued' || selectedStageJob.status === 'running') {
       return (
         <div className="generation-stage generation-stage-generating">
@@ -2036,8 +2081,8 @@ export default function GenerationPanel({
           <div ref={fullscreenFrameRef} className="generation-fullscreen-frame">
             <img ref={resultImageRef} className="generation-result-image generation-result-fade-in" src={resultUrl} alt={t('saveGeneratedResultPreview')} />
             {renderSiblingNavigation()}
-            {batchReviewSession && outcomeLabel && <span className="generation-stage-outcome-label" role="status">{outcomeLabel}</span>}
-            {batchReviewSession && reviewTargetId && (reviewOutcome === 'saved' || reviewOutcome === 'attached') && (
+            {outcomeLabel && <span className="generation-stage-outcome-label" role="status">{outcomeLabel}</span>}
+            {reviewTargetId && (reviewOutcome === 'saved' || reviewOutcome === 'attached') && (
               <button type="button" className="generation-stage-open-target" onClick={() => openReviewTarget(reviewTargetId, reviewTargetTitle)}>{t('viewItem')}</button>
             )}
             <button ref={fullscreenCloseRef} className="modal-icon-button generation-fullscreen-close" type="button" onClick={closeStageFullscreen} aria-label={t('closeFullscreen')}><X size={20} strokeWidth={2.25} /></button>
@@ -2074,7 +2119,6 @@ export default function GenerationPanel({
       >
         <header className="generation-workspace-head" inert={showHistoryDrawer} aria-hidden={showHistoryDrawer || undefined}>
           <div>
-            <p className="modal-kicker">{t('generate')}</p>
             <h2 id="generation-workspace-title">{reviewJob ? t('saveGeneratedImageAsNew') : isHistoryReview ? t('reviewGeneration') : t('createImage')}</h2>
             {statusRefreshFailed && (
               <div className="provider-message" role="alert">
@@ -2083,7 +2127,7 @@ export default function GenerationPanel({
               </div>
             )}
           </div>
-          <button className="modal-icon-button generation-workspace-close" onClick={reviewJob ? closeSaveAsNewReview : () => handleClose()} disabled={busy || isClosing || isSavePanelClosing} aria-label={t('close')}>
+          <button data-modal-initial-focus className="modal-icon-button generation-workspace-close" onClick={reviewJob ? closeSaveAsNewReview : () => handleClose()} disabled={busy || isClosing || isSavePanelClosing} aria-label={t('close')}>
             <X size={20} strokeWidth={2.25} />
           </button>
         </header>
@@ -2092,7 +2136,8 @@ export default function GenerationPanel({
             {!isHistoryReview ? (
               <>
                 <div className="generation-prompt-area">
-                      <textarea ref={promptInputRef} data-modal-initial-focus value={promptText} onChange={event => setPromptText(event.currentTarget.value)} placeholder={t('promptPlaceholder')} aria-label={t('generationPrompt')} />
+                  <label className="generation-prompt-label" htmlFor="generation-prompt-input">{t('cardPrompt')}</label>
+                      <textarea id="generation-prompt-input" ref={promptInputRef} value={promptText} onChange={event => setPromptText(event.currentTarget.value)} placeholder={t('promptPlaceholder')} aria-label={t('generationPrompt')} />
                   {renderReferenceTray(editAttachments)}
                 </div>
                 {renderBatchReviewResume()}
@@ -2124,19 +2169,21 @@ export default function GenerationPanel({
                     </div>
                   </div>
                 )}
-                <div className={`generation-compact-controls${selectedProviderCanGenerateDraft ? '' : ' has-provider-attention'}`}>
+                <div className={`generation-compact-controls${providersLoading || selectedProviderCanGenerateDraft ? '' : ' has-provider-attention'}`} onKeyDown={handleControlMenuKeyDown}>
                   <div className="generation-control-wrap generation-provider-control">
                     <button
                       ref={element => { controlTriggerRefs.current.provider = element; }}
                       className="generation-control-trigger generation-provider-trigger"
                       type="button"
+                      disabled={providersLoading}
                       onClick={() => setOpenControl(openControl === 'provider' ? null : 'provider')}
-                      aria-label={`${t('providers')}: ${selectedProvider?.display_name || compactProviderLabel(selectedProvider)}`}
+                      aria-label={`${t('providers')}: ${providersLoading ? t('loading') : selectedProvider?.display_name || compactProviderLabel(selectedProvider)}`}
                       aria-haspopup="menu"
                       aria-expanded={openControl === 'provider'}
                       title={selectedProvider?.display_name}
                     >
-                      <span>{compactProviderLabel(selectedProvider)}</span>
+                      <span className="generation-control-label">{t('providers')}</span>
+                      <span className="generation-control-value">{providersLoading ? t('loading') : compactProviderLabel(selectedProvider)}</span>
                     </button>
                     {openControl === 'provider' && (
                       <div className="generation-control-popover generation-provider-popover" role="menu">
@@ -2173,7 +2220,7 @@ export default function GenerationPanel({
                   </div>
                   <div className="generation-control-wrap">
                      <button ref={element => { controlTriggerRefs.current.aspect = element; }} className="generation-control-trigger generation-aspect-trigger" type="button" onClick={() => setOpenControl(openControl === 'aspect' ? null : 'aspect')} aria-label={`${t('queueAspectRatio')}: ${optionLabel(ASPECT_RATIO_OPTIONS, aspectRatio, t)}`} title={`${t('queueAspectRatio')}: ${optionLabel(ASPECT_RATIO_OPTIONS, aspectRatio, t)}`}>
-                      <img className="generation-control-icon" src={aspectRatioIcon} alt="" aria-hidden="true" />
+                      <span className="generation-control-label">{t('queueAspectRatio')}</span>
                       <span className="generation-control-value">{optionLabel(ASPECT_RATIO_OPTIONS, aspectRatio, t)}</span>
                     </button>
                     {openControl === 'aspect' && (
@@ -2192,7 +2239,7 @@ export default function GenerationPanel({
                   </div>
                   <div className="generation-control-wrap">
                      <button ref={element => { controlTriggerRefs.current.quality = element; }} className="generation-control-trigger generation-quality-trigger" type="button" onClick={() => setOpenControl(openControl === 'quality' ? null : 'quality')} aria-label={selectedOutputAriaLabel} title={selectedOutputAriaLabel}>
-                      <img className="generation-control-icon" src={qualityIcon} alt="" aria-hidden="true" />
+                      <span className="generation-control-label">{t('queueQuality')}</span>
                       <span className="generation-control-value">{selectedOutputLabel}</span>
                     </button>
                     {openControl === 'quality' && (
@@ -2239,13 +2286,13 @@ export default function GenerationPanel({
                   {provider === 'xai_grok_oauth' && (
                     <div className="generation-control-wrap generation-model-control">
                       <button className="generation-control-trigger generation-model-trigger generation-has-long-value" type="button" disabled aria-label={`${t('queueModel')}: ${selectedModelLabel}`} title={selectedModelLabel}>
-                        <img className="generation-control-icon" src={brainAiIcon} alt="" aria-hidden="true" />
+                        <span className="generation-control-label">{t('queueModel')}</span>
                         <span className="generation-control-value">{selectedModelLabel}</span>
                       </button>
                     </div>
                   )}
                   <input ref={attachmentInputRef} className="generation-attachment-input" type="file" accept="image/*" multiple onChange={event => addUploadedAttachments(event.currentTarget.files)} />
-                  {!selectedProviderCanGenerateDraft && <div className="generation-provider-status">
+                  {!providersLoading && !selectedProviderCanGenerateDraft && <div className="generation-provider-status">
                     <span className={`generation-provider-readiness ${selectedProviderCanGenerateDraft ? 'is-ready' : 'needs-attention'}`} title={selectedProviderSupportsDraft ? selectedProviderMessage : compactProviderMessage} aria-label={selectedProviderSupportsDraft ? selectedProviderMessage : compactProviderMessage}>
                       {compactProviderMessage}
                     </span>
@@ -2258,12 +2305,6 @@ export default function GenerationPanel({
                   <div
                     ref={generationCountMenuRef}
                     className="generation-generate-split"
-                     onMouseEnter={() => {
-                       clearGenerationCountCloseTimer();
-                       generationCountFocusOnOpenRef.current = false;
-                       if (window.matchMedia('(hover: hover)').matches) setGenerationCountMenuOpen(true);
-                     }}
-                     onMouseLeave={scheduleGenerationCountClose}
                     onKeyDown={handleGenerationCountMenuKeyDown}
                     onBlur={event => {
                        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) scheduleGenerationCountClose();
@@ -2288,7 +2329,7 @@ export default function GenerationPanel({
                           clearGenerationCountCloseTimer();
                           if (generationCountMenuOpen) {
                             generationCountFocusOnOpenRef.current = false;
-                            window.requestAnimationFrame(() => generationCountMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus());
+                            setGenerationCountMenuOpen(false);
                             return;
                           }
                           generationCountFocusOnOpenRef.current = true;
@@ -2301,7 +2342,7 @@ export default function GenerationPanel({
                           setGenerationCountMenuOpen(true);
                         }}
                         disabled={busy || !selectedProviderCanGenerateDraft || !promptText.trim() || hasMissingTemplateValues}
-                      ><ChevronDown size={17} aria-hidden="true" /></button>
+                      ><span>{t('multipleImages')}</span><ChevronDown size={17} aria-hidden="true" /></button>
                     {generationCountMenuOpen && (
                        <div id="generation-count-menu" className="generation-count-menu" role="menu" aria-label={t('generateVariations')}>
                         {GENERATION_SET_OPTIONS.map(count => (
@@ -2313,7 +2354,7 @@ export default function GenerationPanel({
                       </div>
                     )}
                   </div>
-                    <button ref={historyTriggerRef} className="generation-history-control" onClick={openHistoryDrawer} aria-label={t('history')} title={t('history')} type="button"><Clock3 size={17} /></button>
+                    <button ref={historyTriggerRef} className="generation-history-control" onClick={openHistoryDrawer} aria-label={t('history')} title={t('history')} type="button"><Clock3 size={17} /><span>{t('history')}</span></button>
                 </div>
                 {selectedProviderQueueState && selectedProviderPauseSeconds > 0 && (
                    <section className="generation-provider-pause" aria-label={`${t('generationQueuePaused')}: ${selectedProviderQueueState.paused_until || ''}`}>
@@ -2346,7 +2387,7 @@ export default function GenerationPanel({
                    <button className="secondary generation-history-back" onClick={() => setHistoryReviewJobId(undefined)}><ArrowLeft size={15} /> {t('backToDraft')}</button>
                    <span className="generation-history-prompt-primary-actions">
                      <button className="secondary" onClick={() => copyJobPrompt(historyReviewJob)}><Clipboard size={15} /> {t('copyPrompt')}</button>
-                     <button className="primary" onClick={() => useJobAsDraft(historyReviewJob)}>{t('useAsDraft')}</button>
+                     <button className="secondary" onClick={() => useJobAsDraft(historyReviewJob)}>{t('useAsDraft')}</button>
                    </span>
                 </div>
               </div>
@@ -2355,7 +2396,7 @@ export default function GenerationPanel({
 
           <section ref={stageRef} className="generation-stage-card">
              {selectedStageJob?.result_path && !['discarded', 'cancelled', 'failed'].includes(selectedStageJob.status) && <a className="modal-icon-button generation-download-overlay" href={jobResultUrl(selectedStageJob)} download={downloadFileName('generation-result', selectedStageJob.result_path)} aria-label={t('download')} title={t('download')}><Download size={16} /></a>}
-             <button ref={fullscreenTriggerRef} className="modal-icon-button generation-fullscreen-overlay" onClick={toggleStageFullscreen} aria-label={t('viewFullscreen')} title={t('viewFullscreen')}><Maximize2 size={16} /></button>
+             {selectedStageJob && jobResultUrl(selectedStageJob) && <button ref={fullscreenTriggerRef} className="modal-icon-button generation-fullscreen-overlay" onClick={toggleStageFullscreen} aria-label={t('viewFullscreen')} title={t('viewFullscreen')}><Maximize2 size={16} /></button>}
              {(!selectedStageJob || !jobResultUrl(selectedStageJob)) && renderSiblingNavigation()}
             {renderStage()}
           </section>
@@ -2440,8 +2481,8 @@ export default function GenerationPanel({
               <button className="modal-icon-button" onClick={closeHistoryDrawer} aria-label={t('close')}><X size={20} strokeWidth={2.25} /></button>
             </div>
             {visibleJobs.length === 0 && <p className="muted">{t('noGenerationJobs')}</p>}
-            {visibleJobs.map(job => (
-              <button key={job.id} className={`generation-history-item status-${job.status}`} onClick={() => previewHistoryJob(job)} aria-label={`${statusLabel(job.status, t, isUsedAsGenerationReference(job))} ${t('result')}, ${jobAspectRatio(job)}, ${jobQuality(job)}${job.provider === 'xai_grok_oauth' ? `, ${jobResolution(job)}` : ''}, ${jobModel(job)}`}>
+            {visibleJobs.map((job, index) => (
+              <button key={job.id} className={`generation-history-item status-${job.status}`} onClick={() => previewHistoryJob(job)} aria-label={`${t('result')} ${index + 1}: ${jobPrompt(job).slice(0, 100)}, ${statusLabel(job.status, t, isUsedAsGenerationReference(job))}, ${jobAspectRatio(job)}, ${jobQuality(job)}${job.provider === 'xai_grok_oauth' ? `, ${jobResolution(job)}` : ''}, ${jobModel(job)}`}>
                 <span className="generation-history-media">
                   {jobResultUrl(job) ? <img src={jobResultUrl(job)} alt="" /> : <span className="generation-history-placeholder">{statusLabel(job.status, t, isUsedAsGenerationReference(job))}</span>}
                 </span>
@@ -2466,19 +2507,21 @@ export default function GenerationPanel({
              role="dialog"
              aria-modal="true"
              aria-label={t('saveGeneratedImageAsNew')}
+             aria-busy={busy}
              onKeyDown={handleSaveAsNewDialogKeyDown}
            >
             <div className="drawer-head generation-save-head">
               <div>
-                <p className="drawer-eyebrow">{t('referenceDetails')}</p>
                 <h3>{generationResultPosition(reviewJob) ? `${t('result')} ${generationResultPosition(reviewJob)?.index} / ${generationResultPosition(reviewJob)?.total}` : t('result')}</h3>
               </div>
             </div>
             <div className="save-new-metadata-grid">
               {jobResultUrl(reviewJob) && <img src={jobResultUrl(reviewJob)} alt={t('saveGeneratedResultPreview')} />}
-              <div className="save-new-fields">
-                {renderReferenceTray(jobAttachments(reviewJob), true, jobInputLimit(reviewJob))}
+              <fieldset className="save-new-fields" disabled={busy}>
                 <SuggestedTitleField value={metadataDraft.title || ''} promptText={metadataDraft.prompts?.[0]?.text || ''} provider={isTitleSuggestionProvider(reviewJob.provider) ? reviewJob.provider : defaultAiProvider} t={t} onChange={title => updateMetadataDraft({ title })} autoFocus />
+                <details className="save-new-more-details">
+                  <summary tabIndex={0}>{t('moreDetails')}</summary>
+                {renderReferenceTray(jobAttachments(reviewJob), true, jobInputLimit(reviewJob))}
                 <label><span>{t('collection')}</span><input list="save-new-collection-suggestions" value={metadataDraft.cluster_name || ''} onChange={event => updateMetadataDraft({ cluster_name: event.currentTarget.value })} /></label>
                 <datalist id="save-new-collection-suggestions">
                   {filteredMetadataClusters.map(collection => <option key={collection.id} value={collection.name} />)}
@@ -2502,15 +2545,17 @@ export default function GenerationPanel({
                     {generationResultPosition(reviewJob) && <div><dt>{t('batchPosition')}</dt><dd>{generationResultPosition(reviewJob)?.index} / {generationResultPosition(reviewJob)?.total}</dd></div>}
                   </dl>
                 </div>
-              </div>
+                </details>
+              </fieldset>
             </div>
+            {message && <p className="provider-message generation-save-message" role="alert">{message}</p>}
             <footer className="generation-save-actions">
               <button className="secondary" onClick={closeSaveAsNewReview} disabled={busy}>{t('cancel')}</button>
-              <button className="primary" onClick={acceptAsNew} disabled={busy}>{batchReviewSession && generationReviewNext(jobs, batchReviewSession, reviewJob.id) ? t('saveAndContinue') : t('confirmSave')}</button>
+              <button className="primary" onClick={acceptAsNew} disabled={busy}>{busy ? t('saving') : batchReviewSession && generationReviewNext(jobs, batchReviewSession, reviewJob.id) ? t('saveAndContinue') : t('confirmSave')}</button>
             </footer>
           </section>
         )}
-        {message && !selectedStageJob && <p className="provider-message generation-toast">{message}</p>}
+        {message && !(reviewJob && metadataDraft) && <p className="provider-message generation-toast" role="status">{message}</p>}
       </section>
     </div>
   );

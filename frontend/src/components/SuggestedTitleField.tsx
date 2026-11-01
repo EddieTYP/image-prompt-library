@@ -107,7 +107,8 @@ export default function SuggestedTitleField({
           <button type="button" onClick={() => { onChange(suggestion); setSuggestion(''); }}>{t('useSuggestedTitle')}</button>
         </div>
       )}
-      {(error || providerAvailable === false) && <p className="title-suggestion-error" role="alert">{error || t('titleSuggestionProviderLoginRequired').replace('${provider}', providerLabel(provider))}</p>}
+      {error && <p className="title-suggestion-error" role="alert">{error}</p>}
+      {!error && providerAvailable === false && <p className="muted title-suggestion-help">{t('titleSuggestionOptional').replace('${provider}', providerLabel(provider))}</p>}
     </div>
   );
 }

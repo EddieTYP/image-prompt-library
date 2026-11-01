@@ -106,6 +106,7 @@ export default function ConfigPanel({
   onLibraryCleanup?: () => void;
 }) {
   const [cfg, setCfg] = useState<AppConfig>();
+  const [settingsArea, setSettingsArea] = useState<'general' | 'generation' | 'data'>('general');
   const [providers, setProviders] = useState<GenerationProviderStatus[]>([]);
   const [cleanupPreview, setCleanupPreview] = useState<CleanupPreview>();
   const [cleanupBusy, setCleanupBusy] = useState(false);
@@ -178,6 +179,7 @@ export default function ConfigPanel({
   useEffect(() => {
     if (!open) return;
     closeMotionCleanupRef.current?.();
+    setSettingsArea(focusProviders ? 'generation' : 'general');
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLElement && !drawerRef.current?.contains(activeElement)) {
       openerRef.current = activeElement;
@@ -211,6 +213,16 @@ export default function ConfigPanel({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    const radioGroup = (event.target as HTMLElement).closest('[role="radiogroup"]');
+    if (radioGroup && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) {
+      event.preventDefault();
+      const options = Array.from(radioGroup.querySelectorAll<HTMLButtonElement>('[role="radio"]:not(:disabled)'));
+      const index = options.indexOf(document.activeElement as HTMLButtonElement);
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : (index + (event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+      options[next]?.click();
+      options[next]?.focus();
+      return;
+    }
     if (event.key === 'Escape') {
       event.preventDefault();
       closePanel();
@@ -405,13 +417,19 @@ export default function ConfigPanel({
         </button>
       </div>
 
-      <section className="setting-group">
+      <div className="config-area-switcher" role="group" aria-label={t('config')}>
+        {([['general', 'settingsGeneral'], ['generation', 'settingsGeneration'], ['data', 'settingsDataUpdates']] as const).map(([area, label]) => (
+          <button key={area} type="button" aria-pressed={settingsArea === area} onClick={() => setSettingsArea(area)}>{t(label)}</button>
+        ))}
+      </div>
+      <section className="setting-group" hidden={settingsArea !== 'general'}>
         <h3>{t('uiLanguage')}</h3>
         <div className="segmented-control" aria-label={t('uiLanguage')}>
           {UI_LANGUAGE_OPTIONS.map(language => (
             <button
               key={language}
               className={uiLanguage === language ? 'active' : ''}
+              aria-pressed={uiLanguage === language}
               onClick={() => onUiLanguage(language)}
             >
               {UI_LANGUAGE_LABELS[language]}
@@ -420,7 +438,7 @@ export default function ConfigPanel({
         </div>
       </section>
 
-      <section className="setting-group">
+      <section className="setting-group" hidden={settingsArea !== 'general'}>
         <h3>{t('promptCopyLanguage')}</h3>
         <p className="muted">{t('promptCopyLanguageHelp')}</p>
         <div className="segmented-control prompt-copy-language-control" aria-label={t('preferredPromptLanguage')}>
@@ -428,6 +446,7 @@ export default function ConfigPanel({
             <button
               key={language}
               className={preferredLanguage === language ? 'active' : ''}
+              aria-pressed={preferredLanguage === language}
               onClick={() => onPreferredLanguage(language)}
             >
               {getPromptCopyLanguageLabel(language, uiLanguage)}
@@ -436,9 +455,8 @@ export default function ConfigPanel({
         </div>
       </section>
 
-      <section className="setting-group">
+      <section className="setting-group" hidden={settingsArea !== 'general'}>
         <h3>{t('appearance')}</h3>
-        <p className="muted">{t('appearanceHelp')}</p>
         <div className="appearance-control" role="radiogroup" aria-label={t('appearance')}>
           {([
             ['gallery_vermilion', 'appearanceGalleryVermilion'],
@@ -460,7 +478,7 @@ export default function ConfigPanel({
         </div>
       </section>
 
-      <section className="setting-group app-update-section">
+      <section className="setting-group app-update-section" hidden={settingsArea !== 'data'}>
          <h3>{t('appUpdate')}</h3>
          {!updateStatus && <p className="muted">{t('updateChecking')}</p>}
         {updateInstalled ? (
@@ -516,7 +534,7 @@ export default function ConfigPanel({
       </section>
 
       {!isDemoMode && (
-        <section className="setting-group cleanup-section">
+        <section className="setting-group cleanup-section" hidden={settingsArea !== 'data'}>
            <h3>{t('cleanupTitle')}</h3>
            <p className="muted">{t('cleanupHelp')}</p>
            {!cleanupPreview && <p className="cleanup-precheck-state" role="status">{t('cleanupPrecheck')}</p>}
@@ -535,9 +553,9 @@ export default function ConfigPanel({
         </section>
       )}
 
-      <section ref={providersSectionRef} className="setting-group provider-section" tabIndex={-1} aria-labelledby="config-providers-title">
+      <section ref={providersSectionRef} className="setting-group provider-section" hidden={settingsArea !== 'generation'} tabIndex={-1} aria-labelledby="config-providers-title">
         <h3 id="config-providers-title">{t('providers')}</h3>
-        <p className="muted">{t('providerSetupHelp')}</p>
+        <p className="muted">{t('providerConnectionHelp')}</p>
         <fieldset className="default-ai-provider-control">
           <legend>{t('defaultAiProvider')}</legend>
           <div className="segmented-control" role="radiogroup" aria-label={t('defaultAiProvider')}>
@@ -593,7 +611,7 @@ export default function ConfigPanel({
       </section>
 
       {!isDemoMode && (
-        <section className="setting-group local-setup-section">
+        <section className="setting-group local-setup-section" hidden={settingsArea !== 'data'}>
           <h3>{t('systemInformation')}</h3>
           <p className="muted">{t('localSetupHelp')}</p>
           <dl className="local-setup-list">

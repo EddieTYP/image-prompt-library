@@ -1880,10 +1880,68 @@ def test_concurrent_accept_as_new_item_creates_one_item_and_one_winner(tmp_path)
 
     results = _concurrent_results(accept_as_new)
 
-    assert [result[0] for result in results].count("ok") == 1
-    assert [result[0] for result in results].count("conflict") == 1
+    successful = [result[1] for result in results if result[0] == "ok"]
+    assert successful
+    assert len({result.item.id for result in successful}) == 1
     assert repo.get_job(job.id).status == "accepted"
     assert repo.items.list_items(limit=10).total == 2
+
+
+def test_accept_as_new_replays_committed_save_after_lost_response(tmp_path):
+    c = client(tmp_path)
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="keep this prompt"))
+    repo.stage_result(job.id, png_bytes("blue"), "generated.png")
+    endpoint = f"/api/generation-jobs/{job.id}/accept-as-new-item"
+    first = c.post(endpoint, json={"title": "Saved before connection dropped"})
+    assert first.status_code == 200
+    # The client never received the first response and resubmits the same operation.
+    replay = c.post(endpoint, json={"title": "Must not overwrite the saved title"})
+    assert replay.status_code == 200
+    assert replay.json()["item"]["id"] == first.json()["item"]["id"]
+    assert replay.json()["job"]["accepted_image_id"] == first.json()["job"]["accepted_image_id"]
+    assert replay.json()["item"]["title"] == "Saved before connection dropped"
+    assert repo.items.list_items(limit=10).total == 1
+    assert len(replay.json()["item"]["images"]) == 1
+    assert repo.get_job(job.id).metadata["_generation_accept_mode"] == "new_item"
+    assert "_generation_accept_mode" not in replay.json()["job"]["metadata"]
+
+
+def test_accept_as_new_retry_does_not_recreate_deleted_target(tmp_path):
+    c = client(tmp_path)
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="deleted target"))
+    repo.stage_result(job.id, png_bytes("blue"), "generated.png")
+    accepted = repo.accept_result_as_new_item(job.id)
+    repo.items.delete_item(accepted.item.id)
+    replay = c.post(f"/api/generation-jobs/{job.id}/accept-as-new-item")
+    assert replay.status_code == 409
+    assert repo.items.list_items(limit=10).total == 0
+
+
+def test_accept_as_new_retry_does_not_reinterpret_accept_into_existing(tmp_path):
+    c = client(tmp_path)
+    source_item = create_source_item(c)
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(source_item_id=source_item["id"], provider="manual_upload", prompt_text="existing target"))
+    repo.stage_result(job.id, png_bytes("blue"), "generated.png")
+    repo.accept_result(job.id)
+    replay = c.post(f"/api/generation-jobs/{job.id}/accept-as-new-item")
+    assert replay.status_code == 409
+    assert repo.items.list_items(limit=10).total == 1
+
+
+def test_accept_as_new_replay_cannot_be_enabled_by_prompt_provenance(tmp_path):
+    repo = GenerationJobRepository(tmp_path / "library")
+    job = repo.create_job(GenerationJobCreate(provider="manual_upload", prompt_text="existing target"))
+    target = repo.items.create_item(ItemCreate(title="Existing item", prompts=[
+        PromptIn(language="en", text="Editable marker", is_original=True, provenance={"source_generation_job_id": job.id}),
+    ]))
+    repo.stage_result(job.id, png_bytes("blue"), "generated.png")
+    repo.accept_result(job.id, target_item_id=target.id)
+    with pytest.raises(GenerationJobConflict):
+        repo.accept_result_as_new_item(job.id)
+    assert repo.items.list_items(limit=10).total == 1
 
 
 def test_stale_accept_claim_only_recovers_the_same_acceptance_mode(tmp_path):
@@ -2088,7 +2146,7 @@ def test_accept_reuses_side_effects_after_crash_before_finalize_and_legacy_claim
     assert accepted.job.status == "accepted"
     assert len(repo.items.get_item(source.id).images) == 1
     assert accepted.job.accepted_image_id == repo.items.get_item(source.id).images[0].id
-    assert not any(key.startswith("_generation_accept_") for key in accepted.job.metadata)
+    assert not any(key.startswith("_generation_accept_") and key != "_generation_accept_mode" for key in accepted.job.metadata)
 
 
 def test_accept_lease_loss_during_store_cleans_losing_claim_side_effects(tmp_path, monkeypatch):
@@ -2155,7 +2213,7 @@ def test_accept_as_new_reuses_item_and_image_after_crash_before_finalize(tmp_pat
     assert accepted.item.id != source.id
     assert repo.items.list_items(limit=10).total == 2
     assert len(accepted.item.images) == 1
-    assert not any(key.startswith("_generation_accept_") for key in accepted.job.metadata)
+    assert not any(key.startswith("_generation_accept_") and key != "_generation_accept_mode" for key in accepted.job.metadata)
 
 
 def test_stale_timestamped_accept_claim_is_recovered_for_discard_and_retry(tmp_path):

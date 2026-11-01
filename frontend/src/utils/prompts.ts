@@ -33,16 +33,23 @@ export function resolveOriginalPrompt<T extends Pick<PromptRecord, 'language' | 
   return usable.find(prompt => prompt.is_original) || usable.find(prompt => prompt.language === 'en') || usable[0];
 }
 
+export function resolveCopyPrompt(
+  prompts: Array<Pick<PromptRecord, 'language' | 'text' | 'is_original'>> | undefined,
+  preferredLanguage: PromptCopyLanguage,
+) {
+  const usable = (prompts || []).filter(prompt => prompt.text.trim().length > 0);
+  if (preferredLanguage === 'origin') return resolveOriginalPrompt(usable);
+  const preferred = usable.find(prompt => prompt.language === preferredLanguage);
+  const english = usable.find(prompt => prompt.language === 'en');
+  const original = resolveOriginalPrompt(usable);
+  const anyPrompt = usable[0];
+  return preferred || english || original || anyPrompt;
+}
+
 export function resolvePromptText(
   prompts: Array<Pick<PromptRecord, 'language' | 'text' | 'is_original'>> | undefined,
   preferredLanguage: PromptCopyLanguage,
   fallbackTitle = '',
 ): string {
-  const usable = (prompts || []).filter(prompt => prompt.text.trim().length > 0);
-  if (preferredLanguage === 'origin') return resolveOriginalPrompt(usable)?.text || fallbackTitle;
-  const preferred = usable.find(prompt => prompt.language === preferredLanguage);
-  const english = usable.find(prompt => prompt.language === 'en');
-  const original = resolveOriginalPrompt(usable);
-  const anyPrompt = usable[0];
-  return preferred?.text || english?.text || original?.text || anyPrompt?.text || fallbackTitle;
+  return resolveCopyPrompt(prompts, preferredLanguage)?.text || fallbackTitle;
 }

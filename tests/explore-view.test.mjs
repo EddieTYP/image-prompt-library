@@ -27,6 +27,9 @@ const labels = {
   libraryEmptyTitle: 'Your library is empty',
   more: 'Show more',
   noCollectionsFound: 'No collections found',
+  collectionsEmptyTitle: 'No collections yet',
+  collectionsEmptyHelp: '${count} references are not in a collection yet. They are available in Library.',
+  viewLibrary: 'View Library',
   noImage: 'No image',
   noMatchingPrompts: 'No matching prompts',
   noMatchingPromptsHelp: 'Try another search',
@@ -267,10 +270,22 @@ test('active search uses the Explore feed while unclustered items do not claim t
   assert.match(searchHtml, /<h1>Search results<\/h1>/);
   assert.match(searchHtml, /No matching prompts/);
 
-  const unclusteredHtml = render({ items: [item(0)], total: 1 });
-  assert.match(unclusteredHtml, /No collections found/);
+  const unclusteredHtml = render({ items: [item(0)], total: 1, onOpenLibrary: () => {} });
+  assert.match(unclusteredHtml, /No collections yet/);
+  assert.match(unclusteredHtml, /1 references are not in a collection yet/);
+  assert.match(unclusteredHtml, /<button class="secondary">View Library<\/button>/);
   assert.match(unclusteredHtml, /class="scope-count"[\s\S]*?>0<span class="sr-only"> Collections<\/span>/);
   assert.doesNotMatch(unclusteredHtml, /Your library is empty/);
+  assert.doesNotMatch(searchHtml, /No collections yet|View Library/);
+  const emptyHtml = render({ onOpenLibrary: () => {} });
+  assert.match(emptyHtml, /Your library is empty/);
+  assert.doesNotMatch(emptyHtml, /No collections yet|View Library/);
+});
+
+test('card identity precedes utilities in DOM and mobile reading order', () => {
+  const html = renderToStaticMarkup(React.createElement(ItemCard, { t, item: item(0), onOpen: () => {}, onCopyPrompt: () => {} }));
+  assert.ok(html.indexOf('card-image-frame') < html.indexOf('class="card-body"'));
+  assert.ok(html.indexOf('class="card-body"') < html.indexOf('class="card-actions'));
 });
 
 test('Library keeps one contextual scope, sort, and first-run count', () => {
@@ -850,9 +865,9 @@ test('Explore wiring preserves Library management, semantic appearance, and rest
   assert.match(styles, /\.item-card:focus-within \.card-actions/);
   assert.match(styles, /\.card-open-hit:focus-visible\{[^}]*outline:2px/);
   assert.match(styles, /\.hover-action:focus-visible/);
-  assert.match(styles, /\.item-card \.card-actions\{[^}]*display:flex!important;[^}]*width:max-content;[^}]*flex-direction:column;[^}]*align-items:flex-end;[^}]*opacity:1/);
+  assert.match(styles, /\.item-card \.card-actions\{[^}]*position:relative;[^}]*display:flex!important;[^}]*width:100%;[^}]*flex-direction:row;[^}]*align-items:center;[^}]*opacity:1/);
   assert.match(styles, /\.item-card \.card-action-secondary\{display:none\}/);
-  assert.match(styles, /\.item-card \.card-more-shell\{display:inline-flex;width:34px;height:34px\}/);
+  assert.match(styles, /\.item-card \.card-more-shell\{display:inline-flex;width:44px;height:44px\}/);
   assert.match(styles, /\.card-action-menu-item\{[\s\S]*?min-height:44px/);
   assert.match(itemCard, /className="card-action-menu" role="menu"/);
   assert.match(itemCard, /\['ArrowDown', 'ArrowUp', 'Home', 'End'\]/);
@@ -868,9 +883,9 @@ test('Explore wiring preserves Library management, semantic appearance, and rest
   assert.match(styles, /\.chrome,\.app-main\{[\s\S]*?--ink:var\(--studio-ink\)/);
   assert.match(styles, /\.app-command-dock[\s\S]*?var\(--studio-ink\)/);
   assert.match(styles, /bottom:calc\(10px \+ env\(safe-area-inset-bottom\)\)/);
-  assert.match(styles, /padding:10px calc\(14px \+ env\(safe-area-inset-right\)\) calc\(112px \+ env\(safe-area-inset-bottom\)\)/);
+  assert.match(styles, /padding:10px calc\(16px \+ env\(safe-area-inset-right\)\) calc\(112px \+ env\(safe-area-inset-bottom\)\)/);
   assert.match(styles, /\.generation-count-menu\{[^}]*bottom:100%/);
-  assert.match(styles, /\.generation-compose-card\.generation-composer-card\{height:auto;min-height:calc\(100dvh - 96px - env\(safe-area-inset-top\)\);overflow:visible;overscroll-behavior:auto\}/);
+  assert.match(styles, /\.generation-compose-card\.generation-composer-card\{height:auto;min-height:0;flex:0 0 auto;grid-template-rows:auto auto;overflow:visible;overscroll-behavior:auto\}/);
   assert.match(styles, /\.card-select-action\{[^}]*pointer-events:auto/);
   assert.doesNotMatch(styles, /\.generation-queue-row>span:first-of-type/);
   assert.match(styles, /@keyframes modal-panel-in\{from\{opacity:0;transform:translateY\(6px\)\}/);
@@ -984,8 +999,8 @@ test('Explore wiring preserves Library management, semantic appearance, and rest
   assert.match(generationPanel, /const generationSetRequestRef = useRef\(0\)/);
   assert.match(generationPanel, /if \(generationSetRequestRef\.current !== requestId\) return undefined;/);
   assert.match(generationPanel, /localizedGenerationSetProgressText\(activeGenerationSet, t\)/);
-  assert.match(generationPanel, /if \(busy && !force\) return;/);
-  assert.match(generationPanel, /handleClose\(true\)/);
+  assert.match(generationPanel, /if \(busy && !force\) return false;/);
+  assert.doesNotMatch(generationPanel, /handleClose\(true\)/);
   assert.match(generationPanel, /handleReferenceSourceMenuKeyDown/);
   assert.match(generationPanel, /\['ArrowDown', 'ArrowUp', 'Home', 'End'\]/);
   assert.match(generationPanel, /saveAsNewDialogRef/);
@@ -1008,12 +1023,12 @@ test('Explore detail boundary keeps local mutation actions while gating manageme
   assert.match(app, /showMutations={!isDemoMode} showManagementActions={showManagementActions}/);
   assert.match(detail, /const allowManagementActions = showMutations && showManagementActions;/);
   assert.match(detail, /const inlineMutationBusyRef = useRef\(false\)/);
-  assert.match(detail, /if \(!item \|\| inlineMutationBusyRef\.current\) return;/);
+  assert.match(detail, /if \(!item \|\| inlineMutationBusyRef\.current\) return false;/);
   assert.match(detail, /disabled=\{deleteBusy\}/);
   assert.match(detail, /showMutations && canGenerate/);
-  assert.match(detail, /showMutations && <button className="modal-icon-button edit-button"/);
+  assert.match(detail, /showMutations && <button type="button" onClick=\{\(\) => onEdit\(item\)\}/);
   assert.match(detail, /allowManagementActions && <button className="modal-icon-button favorite-button"/);
-  assert.match(detail, /allowManagementActions && <button className="modal-icon-button detail-delete-button"/);
+  assert.match(detail, /allowManagementActions && <button type="button" className="danger" disabled=\{deleteBusy\} onClick=\{handleDelete\}/);
   assert.match(detail, /allowManagementActions && editingPromptLanguage === lang/);
   assert.match(detail, /allowManagementActions && \(addingTag \?/);
   assert.match(detail, /selectedImage \|\| showMutations/);
@@ -1022,8 +1037,8 @@ test('Explore detail boundary keeps local mutation actions while gating manageme
   assert.match(detail, /focusFirstAvailable\(\[opener, \.\.\.fallbacks, searchFallback\]\)/);
   assert.match(detail, /\[data-card-id\]/);
   assert.equal((detail.match(/\{selectedImage && <a className="modal-icon-button download-button"/g) || []).length, 2);
-  assert.match(detail, /mobile-generate-variant-button"[\s\S]*?aria-label=\{t\('editThisImage'\)\}[\s\S]*?mobile-generate-variant-label">\{t\('editThisImage'\)\}/);
-  assert.match(detail, /generate-variant-button"[\s\S]*?aria-label=\{t\('editThisImage'\)\}[\s\S]*?>\{t\('editThisImage'\)\}<\/button>/);
+  assert.match(detail, /mobile-generate-variant-button"[^\n]*aria-label=\{t\('editThisImage'\)\}[^>]*title=\{t\('editThisImage'\)\}>\s*\{imageEditIcon\}/);
+  assert.match(detail, /generate-variant-button"[^\n]*aria-label=\{t\('editThisImage'\)\}[^>]*title=\{t\('editThisImage'\)\}>\{imageEditIcon\}<\/button>/);
   assert.match(detail, /generationSourceLabel\(selectedImage\)/);
   assert.match(detail, /className="image-generation-provenance"[\s\S]*?t\('generatedWith'\)/);
   assert.match(detail, /openai_codex_oauth_native'[\s\S]*?ChatGPT \/ Codex/);
@@ -1100,7 +1115,7 @@ test('batch review closure keeps save, provenance, references, and mobile action
   assert.match(styles, /@media\(min-width:761px\) and \(max-width:900px\)\{[\s\S]*?grid-template-columns:minmax\(240px,\.8fr\) minmax\(0,1\.2fr\)/);
   assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.generation-save-view \.save-new-metadata-grid\{grid-template-columns:minmax\(0,1fr\);grid-template-rows:minmax\(140px,30dvh\) minmax\(0,1fr\)/);
   assert.match(styles, /\.item-card \.card-action-secondary\{display:none\}/);
-  assert.match(styles, /\.item-card \.card-more-shell\{display:inline-flex;width:34px;height:34px\}/);
+  assert.match(styles, /\.item-card \.card-more-shell\{display:inline-flex;width:44px;height:44px\}/);
   assert.match(styles, /\.card-more-shell\{position:relative;display:none\}/);
   assert.match(styles, /\.generation-history-prompt-preview\{[^}]*grid-template-rows:minmax\(180px,1fr\) auto;[^}]*gap:12px/);
   assert.match(styles, /\.generation-history-prompt-preview\.has-references\{grid-template-rows:minmax\(180px,1fr\) auto auto\}/);
@@ -1117,6 +1132,27 @@ test('filter drawer constrains long collection rows without shrinking counts', a
   const styles = await readFile(`${ROOT}/frontend/src/styles.css`, 'utf8');
   assert.match(styles, /\.drawer\.filter-drawer \.filter-pill-grid\{grid-template-columns:minmax\(0,1fr\);/);
   assert.match(styles, /\.drawer\.filter-drawer \.filter-pill-grid button b\{flex-shrink:0;/);
+});
+
+test('UI polish keeps demo details, visible generation settings, and separate settings areas', async () => {
+  const [app, generation, config, styles] = await Promise.all([
+    readFile(`${ROOT}/frontend/src/App.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/ConfigPanel.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/styles.css`, 'utf8'),
+  ]);
+  assert.match(app, /<details className="demo-banner">[\s\S]*?<summary>[\s\S]*?runLocallyForPrivateLibrary[\s\S]*?localInstallHighlights[\s\S]*?<\/details>/);
+  assert.match(generation, /generation-control-label[\s\S]*?queueAspectRatio[\s\S]*?generation-control-value[\s\S]*?aspectRatio, t/);
+  assert.match(generation, /generation-control-label[\s\S]*?queueQuality[\s\S]*?generation-control-value[\s\S]*?selectedOutputLabel/);
+  assert.match(generation, /generation-empty-preview[\s\S]*?generationPreviewTitle[\s\S]*?generationPreviewHelp/);
+  assert.doesNotMatch(generation, /<small>\{t\('generationPreviewSaveHelp'\)\}/);
+  assert.match(styles, /\.generation-control-value\{[^}]*display:block;[^}]*font-size:14px/);
+  assert.match(config, /setSettingsArea\(focusProviders \? 'generation' : 'general'\)/);
+  assert.match(config, /aria-pressed=\{settingsArea === area\} onClick=\{\(\) => setSettingsArea\(area\)\}/);
+  assert.equal((config.match(/hidden=\{settingsArea !== 'general'\}/g) || []).length, 3);
+  assert.equal((config.match(/hidden=\{settingsArea !== 'data'\}/g) || []).length, 3);
+  assert.match(config, /provider-section" hidden=\{settingsArea !== 'generation'\}/);
+  assert.match(styles, /\.drawer\.config \.setting-group\[hidden\]\{display:none\}/);
 });
 
 test('redesign interaction guards keep overlays mutually exclusive and focus-safe', async () => {
@@ -1149,19 +1185,20 @@ test('redesign interaction guards keep overlays mutually exclusive and focus-saf
   assert.match(generation, /generationFailure\(selectedStageJob, t\)/);
   assert.match(generation, /generation-history-drawer open/);
   assert.match(generation, /provider === 'xai_grok_oauth'[\s\S]*?generation-provider-popover-help[\s\S]*?grokCapabilityGap/);
-  assert.match(generation, /historyTriggerRef\.current\?\.focus/);
+  assert.match(generation, /historyTriggerRef\.current \|\| generationDialogRef\.current\?\.querySelector<HTMLElement>\('\.generation-history-back'\)/);
   assert.doesNotMatch(generation, /setGenerationCountMenuOpen\(open => !open\)/);
-  assert.match(generation, /if \(generationCountMenuOpen\) \{[\s\S]*?\[role="menuitem"\][\s\S]*?return;[\s\S]*?setGenerationCountMenuOpen\(true\);/);
+  assert.match(generation, /if \(generationCountMenuOpen\) \{[\s\S]*?setGenerationCountMenuOpen\(false\);[\s\S]*?return;[\s\S]*?setGenerationCountMenuOpen\(true\);/);
+  assert.doesNotMatch(generation, /onMouseEnter=/);
   assert.doesNotMatch(generation, /Could not (?:create|run|accept|read|load|save|cancel|discard|retry|mark)/);
   assert.doesNotMatch(detail, /aria-label="(?:Confirm|Cancel) edit"/);
   assert.doesNotMatch(detail, /import GenerationPanel|<GenerationPanel/);
   assert.match(focus, /hasActiveModalOutside\([\s\S]*?restoreCandidates/);
   assert.match(focus, /dialog\.contains\(candidate\)/);
   assert.match(styles, /\.card-actions\{[\s\S]*?position:absolute;[\s\S]*?display:flex;[\s\S]*?width:max-content/);
-  assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.item-card \.card-actions\{[^}]*display:flex!important;[^}]*width:max-content;[^}]*opacity:1;[^}]*transform:none;[^}]*pointer-events:auto/);
+  assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.item-card \.card-actions\{[^}]*display:flex!important;[^}]*width:100%;[^}]*opacity:1;[^}]*transform:none;[^}]*pointer-events:auto/);
   assert.match(styles, /@media \(min-width:761px\) and \(hover:none\),\(min-width:761px\) and \(pointer:coarse\)\{[\s\S]*?\.item-card \.card-actions\{display:flex;width:max-content;opacity:1;transform:none;pointer-events:auto/);
-  assert.match(styles, /@media\(max-width:400px\)\{[\s\S]*?\.responsive-cards-grid\{column-count:1\}/);
-  assert.match(styles, /@media\(max-width:400px\)\{[\s\S]*?\.responsive-cards-grid\.is-sparse\.sparse-count-2\{grid-template-columns:1fr;gap:18px\}/);
+  assert.match(styles, /@media\(max-width:360px\)\{[\s\S]*?\.responsive-cards-grid\{column-count:1\}/);
+  assert.match(styles, /@media\(max-width:360px\)\{[\s\S]*?\.responsive-cards-grid\.is-sparse\.sparse-count-2\{grid-template-columns:1fr;gap:18px\}/);
   assert.match(styles, /\.hover-action\{[\s\S]*?cursor:pointer;/);
   assert.match(styles, /\.card-media\{position:relative;z-index:2;pointer-events:none\}/);
   assert.doesNotMatch(styles, /\.item-card\.is-selecting \.card-actions/);
@@ -1172,19 +1209,19 @@ test('redesign interaction guards keep overlays mutually exclusive and focus-saf
   assert.match(styles, /\.detail-fullscreen-overlay\{position:absolute;right:12px;top:20px/);
   assert.match(styles, /\.modal-hero \.detail-fullscreen-frame\{[^}]*position:absolute;[^}]*inset:0;[^}]*width:100%;[^}]*height:100%/);
   assert.match(styles, /\.mobile-hero-actions\{position:absolute;inset:0;[^}]*pointer-events:none/);
-  assert.match(styles, /\.mobile-generate-variant-button\{display:inline-flex;[^}]*width:auto/);
+  assert.match(styles, /\.mobile-generate-variant-button\{display:inline-flex;[^}]*width:44px/);
   assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.detail-side-actions\{display:none\}/);
   assert.match(detail, /--detail-image-aspect-ratio/);
   assert.match(detail, /heroFullscreenCloseRef\.current/);
   assert.match(detail, /heroFullscreenTriggerRef\.current/);
-  assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.modal-hero\{height:auto;min-height:260px;max-height:min\(72dvh,680px\);aspect-ratio:var\(--detail-image-aspect-ratio,4 \/ 3\)/);
+  assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.modal-hero\{height:36dvh;min-height:220px;max-height:320px/);
   assert.match(styles, /\.modal-hero\.is-mobile-fullscreen\{height:100dvh;min-height:100dvh;max-height:none;aspect-ratio:auto\}/);
   assert.match(styles, /\.scope-sort-control\{[\s\S]*?cursor:pointer/);
   assert.match(styles, /\.scope-sort-picker\{position:relative;display:flex;align-items:center;min-width:0\}/);
   assert.match(styles, /\.scope-sort-select\{[^}]*width:auto;[^}]*cursor:pointer;[^}]*appearance:none/);
   assert.doesNotMatch(styles, /\.scope-sort-select\{[^}]*position:absolute;[^}]*opacity:0/);
   assert.match(styles, /main\{max-width:1600px[\s\S]*?@media\(min-width:1760px\)\{main,\.chrome \.nav-row,\.status-row\{max-width:1920px\}\}/);
-  assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.view-dock\{grid-column:1\/-1;grid-row:3;justify-self:stretch;width:100%;margin-top:1px\}[\s\S]*?\.view-dock \.toggle\{width:100%;height:44px;gap:0;padding:0;border:0;overflow:hidden\}[\s\S]*?\.view-dock \.toggle button\{flex:1 1 50%;min-height:44px;padding:0 13px;border-radius:0\}/);
+  assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.toolbar-search\{grid-column:1\/3;grid-row:2;[\s\S]*?\.view-dock\{grid-column:3\/5;grid-row:2;justify-self:stretch;width:100%;margin:0\}[\s\S]*?\.view-dock \.toggle\{width:100%;height:44px;gap:0;padding:0;border:0;overflow:hidden\}[\s\S]*?\.view-dock \.toggle button\{flex:1 1 50%;min-height:44px;padding:0 7px;border-radius:0\}/);
   assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.scope-sort-control\{height:40px;max-width:min\(190px,48vw\);min-height:40px\}[\s\S]*?\.scope-sort-select\{height:38px;min-height:38px/);
   assert.match(styles, /\.generation-generating-block::after\{[\s\S]*?opacity:0[\s\S]*?transform:translateX\(-130%\)[\s\S]*?animation:generation-exposure-sweep 1\.45s/);
   assert.match(styles, /@keyframes generation-exposure-sweep/);
@@ -1213,10 +1250,11 @@ test('redesign interaction guards keep overlays mutually exclusive and focus-saf
   assert.match(generation, /className="generation-sibling-next"/);
   assert.match(generation, /const openLibraryPicker = async \(\) => \{[\s\S]*?const requestId = \+\+libraryItemRequestRef\.current;[\s\S]*?if \(requestId === libraryItemRequestRef\.current\) \{[\s\S]*?setLibraryItems/);
   assert.match(generation, /const openRecentPicker = async \(\) => \{[\s\S]*?const requestId = \+\+libraryItemRequestRef\.current;[\s\S]*?if \(requestId === libraryItemRequestRef\.current\) \{[\s\S]*?setRecentJobs/);
-  assert.match(focus, /element\.hasAttribute\('disabled'\)/);
+  assert.match(focus, /element\.matches\(':disabled'\)/);
   assert.match(focus, /element\.getAttribute\('aria-disabled'\) === 'true'/);
   assert.match(styles, /\.generation-sibling-navigation\{position:absolute;inset:0/);
-  assert.match(styles, /\.generation-sibling-navigation button\{[^}]*width:44px;[^}]*height:44px;[^}]*border:0;[^}]*background:transparent;[^}]*box-shadow:none;[^}]*backdrop-filter:none/);
+  assert.match(styles, /\.generation-sibling-navigation button\{[^}]*width:44px;[^}]*height:44px;[^}]*background:var\(--studio-surface\);[^}]*color:var\(--studio-ink\);[^}]*opacity:1;/);
+  assert.match(styles, /\.generation-sibling-navigation button svg\{[^}]*filter:none/);
   assert.match(styles, /\.generation-sibling-navigation button:disabled\{[^}]*visibility:hidden;[^}]*pointer-events:none/);
   assert.match(styles, /\.generation-sibling-count\{[^}]*border:1px solid var\(--studio-glass-border\);[^}]*background:var\(--studio-glass-fill\);[^}]*box-shadow:var\(--studio-glass-shadow-compact\)/);
   assert.match(styles, /\.generation-sibling-previous\{left:12px\}/);
@@ -1224,11 +1262,12 @@ test('redesign interaction guards keep overlays mutually exclusive and focus-saf
   assert.match(generation, /className="generation-control-wrap generation-provider-control"/);
   assert.match(generation, /className="generation-control-popover generation-provider-popover" role="menu"/);
   assert.match(generation, /className="generation-provider-popover-help"/);
-  assert.match(generation, /<span>\{compactProviderLabel\(selectedProvider\)\}<\/span>/);
+  assert.match(generation, /<span className="generation-control-value">\{providersLoading \? t\('loading'\) : compactProviderLabel\(selectedProvider\)\}<\/span>/);
   assert.doesNotMatch(generation, /return 'GPT'/);
   assert.doesNotMatch(generation, /className="generation-provider-select"/);
-  assert.match(styles, /\.generation-provider-trigger\{[^}]*width:92px;[^}]*justify-content:flex-start;[^}]*font-weight:800/);
-  assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.generation-provider-control,\.generation-provider-trigger\{width:72px;min-width:72px/);
+  assert.match(styles, /\.generation-provider-trigger\{font-size:14px;font-weight:600;white-space:nowrap\}/);
+  assert.match(styles, /\.generation-control-trigger,\.generation-history-control\{width:100%;min-width:0;height:54px;min-height:44px/);
+  assert.doesNotMatch(styles, /\.generation-control-wrap,\.generation-control-trigger\{width:40px/);
   assert.doesNotMatch(styles, /\.scope-sort-control>span/);
   assert.doesNotMatch(styles, /\.card-template-badge\{font-size:11px\}/);
 });
@@ -1256,15 +1295,15 @@ test('Explore/detail CSS keeps responsive grids, token controls, CJK hierarchy, 
   assert.match(styles, /--studio-glass-fill:var\(--studio-surface\);[\s\S]*?--studio-glass-fill-strong:var\(--studio-surface\);[\s\S]*?--studio-glass-dark-fill:rgb\(16 16 18\)/);
   assert.match(styles, /\.generation-queue-quick-expand,[\s\S]*?\.generation-stage-result \.stage-action\{[\s\S]*?background:var\(--studio-glass-fill\);[\s\S]*?box-shadow:var\(--studio-glass-shadow-compact\)/);
   assert.match(styles, /\.scope-sort-control:focus-within\{[^}]*background:rgb\(var\(--studio-accent-rgb\) \/ \.06\);outline:0/);
-  assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.item-card \.hover-action\{[^}]*background:rgb\(var\(--studio-surface-rgb\) \/ \.92\)/);
-  assert.match(styles, /\.detail\.modal \.generate-variant-button\{[^}]*width:auto;[^}]*flex:0 0 auto;[^}]*padding:0 14px/);
+  assert.match(styles, /@media\(max-width:760px\)\{[\s\S]*?\.item-card \.card-actions \.hover-action\{[^}]*background:transparent;[^}]*box-shadow:none/);
+  assert.match(styles, /\.detail\.modal \.generate-variant-button\{[^}]*width:44px;[^}]*flex:0 0 auto;[^}]*padding:0/);
   assert.doesNotMatch(styles, /html:lang\(zh-Hant\) \.detail\.modal \.generate-variant-button,[^}]*width:44px/);
   assert.match(styles, /@supports \(\(-webkit-backdrop-filter:blur\(1px\)\) or \(backdrop-filter:blur\(1px\)\)\)\{[\s\S]*?\.item-card \.hover-action\{[\s\S]*?backdrop-filter:var\(--studio-glass-filter\)/);
   assert.match(styles, /\.generation-stage-result \.stage-action:disabled\{opacity:\.45;cursor:not-allowed\}/);
   assert.doesNotMatch(styles, /(?:^|\n)\.stage-action\{[^}]*background:var\(--studio-glass-fill\)/);
   assert.match(styles, /@supports \(\(-webkit-backdrop-filter:blur\(1px\)\) or \(backdrop-filter:blur\(1px\)\)\)\{[\s\S]*?\.app-command-dock,[\s\S]*?backdrop-filter:var\(--studio-glass-filter\)/);
   assert.match(styles, /@media\(prefers-reduced-transparency:reduce\)\{[\s\S]*?--studio-glass-fill:var\(--studio-surface\)[\s\S]*?--studio-glass-dark-fill:rgb\(16 16 18\)[\s\S]*?backdrop-filter:none!important/);
-  assert.match(styles, /\.detail\.modal \.modal-hero \.mobile-generate-variant-button\{[^}]*width:auto;[^}]*white-space:nowrap/);
+  assert.match(styles, /\.detail\.modal \.modal-hero \.mobile-generate-variant-button\{[^}]*width:44px;[^}]*white-space:nowrap/);
   assert.doesNotMatch(styles, /\.modal-icon-button\.mobile-hero-close\{[^}]*background:rgba\(41,36,38/);
   assert.match(styles, /\.detail\.modal \.detail-side-actions \.detail-delete-button\{\s*color:var\(--studio-ink\)/);
   assert.match(styles, /\.detail\.modal \.detail-side-actions \.detail-delete-button:hover,[\s\S]*?background:#f7e5e1[\s\S]*?color:#84382f/);
@@ -1318,4 +1357,24 @@ test('title suggestions are explicit, provider-aware, prompt-only, and shared by
   assert.match(config, /disabled=\{!enabled\}/);
   assert.match(config, /defaultAiProvider === providerId/);
   assert.match(styles, /\.title-suggestion-meta\{[^}]*display:flex;[^}]*gap:6px/);
+});
+
+test('UX recovery keeps draft guards, keyboard exit and required onboarding fields explicit', async () => {
+  const [generation, editor, field, cards, config] = await Promise.all([
+    readFile(`${ROOT}/frontend/src/components/GenerationPanel.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/ItemEditorModal.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/SuggestedTitleField.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/CardsView.tsx`, 'utf8'),
+    readFile(`${ROOT}/frontend/src/components/ConfigPanel.tsx`, 'utf8'),
+  ]);
+  assert.match(generation, /promptText !== openingDraftRef\.current\.prompt/);
+  assert.match(generation, /!force && hasUnsubmittedDraft\(\)/);
+  assert.match(generation, /Object\.keys\(openingDraftRef\.current\.templateValues\)/);
+  assert.match(generation, /event\.key === 'Escape' \|\| event\.key === 'Tab'/);
+  assert.ok(editor.indexOf('prompt-field-en') < editor.indexOf('result-drop-zone'));
+  assert.ok(editor.indexOf('result-drop-zone') < editor.indexOf("{t('collection')}"));
+  assert.match(field, /!error && providerAvailable === false && <p className="muted title-suggestion-help"/);
+  assert.match(cards, /onClearSearch.*clearSearchFilters/);
+  assert.match(config, /aria-pressed=\{uiLanguage === language\}/);
+  assert.match(config, /aria-pressed=\{preferredLanguage === language\}/);
 });

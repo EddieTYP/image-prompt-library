@@ -5,7 +5,7 @@
     "dev": "vite --host 127.0.0.1 --port 5177",
     "build": "tsc && vite build",
     "build:demo": "tsc && vite build --mode demo --base /image-prompt-library/",
-    "test:frontend": "node --test tests/frontend-utils.test.mjs tests/explore-view.test.mjs",
+    "test:frontend": "node --test tests/frontend-utils.test.mjs tests/explore-view.test.mjs tests/generation-ux-regressions.test.mjs tests/items-pagination.test.mjs",
     "preview": "vite preview --host 127.0.0.1 --port 5177"
   },
   "dependencies": {

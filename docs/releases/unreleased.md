@@ -1,6 +1,8 @@
 # Unreleased
 
-No unreleased changes.
+## v0.11.4 preparation
+
+The next maintenance release simplifies image review and saving, improves mobile and keyboard interactions, and makes more Library results reachable. See [v0.11.4](v0.11.4.md) for the changes and verification boundaries. It is not the default stable release yet.
 
 See [v0.11.3](v0.11.3.md) for the current stable maintenance release, including generation reliability improvements and the migration 012 backup/rollback compatibility boundary.
 

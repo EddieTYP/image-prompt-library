@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import { mediaUrl } from '../api/client';
 import type { ClusterRecord, ImageRecord, ItemSortMode, ItemSummary } from '../types';
 import type { Translator } from '../utils/i18n';
@@ -44,6 +45,10 @@ export default function ExploreView({
   onOpen,
   onCopyPrompt,
   onAdd,
+  onOpenLibrary,
+  pagination,
+  scopeKey,
+  appendVersion = 0,
 }: {
   t: Translator;
   clusters: ClusterRecord[];
@@ -58,9 +63,12 @@ export default function ExploreView({
   onOpen: (id: string) => void;
   onCopyPrompt: (item: ItemSummary) => void;
   onAdd?: () => void;
+  onOpenLibrary?: () => void;
+  pagination?: ReactNode;
+  scopeKey?: string;
+  appendVersion?: number;
 }) {
   const [visibleCount, setVisibleCount] = useState(EXPLORE_PAGE_SIZE);
-  const loadMoreRef = useRef<HTMLButtonElement | null>(null);
   const nonEmptyClusters = useMemo(() => clusters.filter(cluster => cluster.count > 0), [clusters]);
   const previewMetadata = useMemo(() => previewEntries(items), [items]);
   const visibleItems = useMemo(() => items.slice(0, visibleCount), [items, visibleCount]);
@@ -68,19 +76,11 @@ export default function ExploreView({
 
   useEffect(() => {
     setVisibleCount(EXPLORE_PAGE_SIZE);
-  }, [hasActiveSearch, searchQuery, items]);
+  }, [hasActiveSearch, searchQuery, sort, scopeKey]);
 
-  useEffect(() => {
-    const target = loadMoreRef.current;
-    if (!target || !hasMore || typeof IntersectionObserver === 'undefined') return undefined;
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some(entry => entry.isIntersecting)) {
-        setVisibleCount(count => Math.min(items.length, count + EXPLORE_PAGE_SIZE));
-      }
-    }, { rootMargin: '480px 0px' });
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [hasMore, items.length, visibleCount]);
+  useLayoutEffect(() => {
+    if (appendVersion) setVisibleCount(count => count + EXPLORE_PAGE_SIZE);
+  }, [appendVersion]);
 
   if (loading && !items.length) {
     return (
@@ -105,11 +105,12 @@ export default function ExploreView({
     return (
       <section className="explore-directory" aria-label={t('collections')} aria-busy={loading}>
         <ScopeHeader t={t} title={t('collections')} count={0} countLabel={t('collections')} />
-        <div className="empty">
-          <h2>{t(libraryIsEmpty ? 'libraryEmptyTitle' : 'noCollectionsFound')}</h2>
-          <p>{libraryIsEmpty ? t('libraryEmptyHelp') : `${total} ${t('referencesShown')}`}</p>
+        <div className="empty explore-directory-empty">
+          <h2>{t(libraryIsEmpty ? 'libraryEmptyTitle' : 'collectionsEmptyTitle')}</h2>
+          <p>{libraryIsEmpty ? t('libraryEmptyHelp') : t('collectionsEmptyHelp').replace('${count}', String(total))}</p>
           <div className="empty-actions">
             {libraryIsEmpty && onAdd && <button className="empty-primary" onClick={onAdd}>{t('addFirstPrompt')}</button>}
+            {!libraryIsEmpty && onOpenLibrary && <button className="secondary" onClick={onOpenLibrary}>{t('viewLibrary')}</button>}
           </div>
         </div>
       </section>
@@ -149,7 +150,6 @@ export default function ExploreView({
             </div>
             {hasMore && (
               <button
-                ref={loadMoreRef}
                 type="button"
                 className="explore-load-more"
                 onClick={() => setVisibleCount(count => Math.min(items.length, count + EXPLORE_PAGE_SIZE))}
@@ -157,6 +157,7 @@ export default function ExploreView({
                 {t('more')}
               </button>
             )}
+            {!hasMore && pagination}
           </>
         )}
       </section>

@@ -338,7 +338,8 @@ def test_v0113_stable_release_keeps_backup_boundary_explicit():
     unreleased = (ROOT / "docs" / "releases" / "unreleased.md").read_text(encoding="utf-8")
     notes = (ROOT / "docs" / "releases" / "v0.11.3.md").read_text(encoding="utf-8")
     assert "[v0.11.3](v0.11.3.md)" in unreleased
-    assert "No unreleased changes" in unreleased
+    assert "[v0.11.4](v0.11.4.md)" in unreleased
+    assert "not the default stable release yet" in unreleased
     assert "This version is not published yet" not in notes
     assert "`v0.11.3` is the current stable release" in notes
     assert "Application rollback does not downgrade the Library schema" in notes
@@ -346,6 +347,17 @@ def test_v0113_stable_release_keeps_backup_boundary_explicit():
     assert "39069277785" in notes
     assert "Executable rollback does not reverse migration 012" in notes
     assert "not certified by these checks" in notes
+
+
+def test_v0114_preparation_keeps_release_gates_and_recovery_limits_explicit():
+    notes = (ROOT / "docs" / "releases" / "v0.11.4.md").read_text(encoding="utf-8")
+    assert "# Image Prompt Library v0.11.4" in notes
+    assert "current stable release remains [v0.11.3]" in notes
+    assert "Older completed saves without the durable acceptance marker" in notes
+    assert "deleted target is not recreated" in notes
+    assert "adds no database migration" in notes
+    assert "using v0.11.3 as the baseline" in notes
+    assert "candidate assets must be promoted unchanged" in notes
 
 
 def test_v0101_release_notes_explain_the_update_fix_to_users():

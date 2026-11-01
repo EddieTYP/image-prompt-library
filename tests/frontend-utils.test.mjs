@@ -16,7 +16,14 @@ const {
   parseStructuredSearchChips,
   removeSearchSortOperator,
 } = await importTypescript('../frontend/src/utils/searchSort.ts');
-const { resolveOriginalPrompt, resolvePromptText } = await importTypescript('../frontend/src/utils/prompts.ts');
+const { resolveOriginalPrompt, resolvePromptText, resolveCopyPrompt } = await importTypescript('../frontend/src/utils/prompts.ts');
+test('copy resolution exposes the actual fallback language without changing copied text', () => {
+  const prompts = [{ language: 'en', text: 'English prompt', is_original: true }];
+  assert.equal(resolveCopyPrompt(prompts, 'zh_hant')?.language, 'en');
+  assert.equal(resolveCopyPrompt(prompts, 'origin')?.text, resolvePromptText(prompts, 'origin'));
+  assert.equal(resolveCopyPrompt([], 'en'), undefined);
+  assert.equal(resolvePromptText([], 'en', 'Title'), 'Title');
+});
 const { downloadFileName, imageDisplayPath, imageThumbnailPath, selectPrimaryImage } = await importTypescript('../frontend/src/utils/images.ts');
 const { generationFailure } = await importTypescript('../frontend/src/utils/generationFailures.ts');
 const { acceptGenerationSetJob, generationSetProgressText, providerPauseSeconds } = await importTypescript('../frontend/src/utils/generationSets.ts');
@@ -67,6 +74,7 @@ test('detail generation passes selected language and image only for image editin
   const handler = source.slice(source.indexOf('  const generateFromSelection ='), source.indexOf('  const toggleFavorite ='));
   const javascript = ts.transpileModule(`return function(withImage, prompt, resolvedPrompt, originalPrompt) {
     const item = { id: 'card' }, selectedImage = { id: 'second-image' };
+    const editingPromptLanguage = undefined, inlineMutationBusy = false;
     const copyText = prompt?.text || resolvedPrompt?.text || originalPrompt?.text || '';
     let result;
     const onGenerate = (item, draft) => { result = { item, draft }; };

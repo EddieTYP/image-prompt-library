@@ -159,8 +159,12 @@ export default function ItemCard({
             <span className="selection-check">{isSelected && <Check size={15} />}</span>
           </button>
         )}
+      </div>
+      <div className="card-body">
+        <h3>{item.title}</h3>
+      </div>
         {!isSelecting && <div className={`card-actions${moreOpen ? ' is-menu-open' : ''}`} role="group" aria-label={t('itemActions')}>
-          <button className="hover-action card-action-copy" onClick={copyPrompt} aria-label={t('copyPrompt')} title={t('copyPrompt')}><Copy size={15} /></button>
+          <button className="hover-action card-action-copy" onClick={copyPrompt} aria-label={t('copyPrompt')} title={t('copyPrompt')}><Copy size={15} /><span className="card-copy-label">{t('copyPrompt')}</span></button>
           {hasDownload && <a className="hover-action card-action-secondary" href={mediaUrl(primaryImage!.original_path || imagePath!)} download={downloadFileName(item.title, primaryImage!.original_path || imagePath!)} onClick={download} aria-label={downloadLabel} title={downloadLabel}><Download size={15} /></a>}
           {showActions && onFavorite && <button className="hover-action card-action-secondary" onClick={favorite} aria-label={favoriteLabel} title={favoriteLabel}><Heart size={15} fill={item.favorite ? 'currentColor' : 'none'} /></button>}
           {showActions && onEdit && <button className="hover-action card-action-secondary" onClick={edit} aria-label={t('edit')} title={t('edit')} disabled={editBusy} aria-busy={editBusy}>{editBusy ? <LoaderCircle className="spin" size={15} /> : <Pencil size={15} />}</button>}
@@ -179,10 +183,6 @@ export default function ItemCard({
             </span>
           )}
         </div>}
-      </div>
-      <div className="card-body">
-        <h3>{item.title}</h3>
-      </div>
       {item.favorite && !isSelecting && (
         <span className="card-favorite-indicator" aria-label={t('saved')}>
           <Heart size={13} fill="currentColor" />

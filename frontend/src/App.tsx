@@ -22,7 +22,7 @@ import { DEFAULT_AI_PROVIDER_STORAGE_KEY, availableTitleSuggestionProviders, isT
 import { localizedDemoTitle } from './utils/demoTitles';
 import { APPEARANCE_STORAGE_KEY, applyAppearance, loadAppearance } from './utils/appearance';
 import { DEFAULT_UI_LANGUAGE, UI_LANGUAGE_LABELS, makeTranslator, normalizeUiLanguage, type UiLanguage } from './utils/i18n';
-import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolvePromptText, type PromptCopyLanguage } from './utils/prompts';
+import { DEFAULT_PROMPT_LANGUAGE, normalizePromptLanguage, resolveCopyPrompt, getPromptCopyLanguageLabel, type PromptCopyLanguage } from './utils/prompts';
 import { DEFAULT_ITEM_SORT, parseSearchSortQuery, parseStructuredSearchChips, removeSearchSortOperator } from './utils/searchSort';
 
 const UI_LANGUAGE_STORAGE_KEY = 'image-prompt-library.ui_language';
@@ -81,6 +81,7 @@ function localizeItemForDisplay(item: ItemSummary, language: UiLanguage): ItemSu
 
 export default function App() {
   const [q, setQ] = useState('');
+  const [detailReturnLanguage, setDetailReturnLanguage] = useState<{ id: string; language: PromptCopyLanguage }>();
   const [sort, setSort] = useState<ItemSortMode>(DEFAULT_ITEM_SORT);
   const debouncedQ = useDebouncedValue(q);
   const parsedSearchQuery = useMemo(() => parseSearchSortQuery(debouncedQ), [debouncedQ]);
@@ -103,6 +104,7 @@ export default function App() {
   const libraryTotalRequestRef = useRef(0);
   const [tags, setTags] = useState<TagRecord[]>([]);
   const [detailId, setDetailId] = useState<string>();
+  useEffect(() => { setDetailReturnLanguage(undefined); }, [detailId]);
   const [editing, setEditing] = useState<ItemDetail | undefined>();
   const [editorOpen, setEditorOpen] = useState(false);
   const [itemsReloadKey, setItemsReloadKey] = useState(0);
@@ -134,7 +136,7 @@ export default function App() {
   const detailDeleteInFlightRef = useRef(false);
   const [updateStatus, setUpdateStatus] = useState<AppUpdateStatus>();
   const [restartRequiredVersion, setRestartRequiredVersion] = useState<string>();
-  const { data, loading, initialLoading, refreshing, error, dataScope } = useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, activeSort);
+  const { data, loading, initialLoading, refreshing, error, dataScope, loadMore, loadingMore, loadMoreError, hasMore, appendVersion } = useItemsQuery(parsedSearchQuery.q, clusterId, undefined, 1000, itemsReloadKey, activeSort);
   const dataScopeMatches = dataScope.q === parsedSearchQuery.q
     && dataScope.clusterId === clusterId
     && dataScope.viewLimit === 1000
@@ -287,6 +289,7 @@ export default function App() {
   const deleted = () => { setDetailId(undefined); setEditing(undefined); setFocusedGenerationJobId(undefined); setGenerationSourceItem(undefined); exitSelectionMode(); refreshClusters(); refreshLibraryTotal(); refreshTags(); setItemsReloadKey(k => k + 1); };
   const refreshAfterBatch = () => { refreshClusters(); refreshLibraryTotal(); refreshTags(); setItemsReloadKey(k => k + 1); };
   const updatePreferredLanguage = (language: PromptCopyLanguage) => {
+    setDetailReturnLanguage(undefined);
     setPreferredLanguage(language);
     window.localStorage.setItem(PROMPT_LANGUAGE_STORAGE_KEY, language);
   };
@@ -355,9 +358,10 @@ export default function App() {
     setToast({ title: success ? t('copySuccess') : t('copyFailed'), tone: success ? 'success' : 'error', duration: 1800 });
   };
   const copyPrompt = async (item: ItemSummary) => {
-    const text = resolvePromptText(item.prompts, preferredLanguage, item.title);
-    const copied = await copyTextToClipboard(text);
-    showCopyToast(copied);
+    const prompt = resolveCopyPrompt(item.prompts, preferredLanguage);
+    const copied = await copyTextToClipboard(prompt?.text || item.title);
+    const label = prompt ? getPromptCopyLanguageLabel(normalizePromptLanguage(prompt.language), uiLanguage) : t('title');
+    setToast({ title: copied ? `${t('copySuccess')} · ${label}` : t('copyFailed'), tone: copied ? 'success' : 'error', duration: 2400 });
   };
   const queryPending = q !== debouncedQ;
   const currentScopeSettled = !initialLoading && !queryPending && !loading && dataScopeMatches;
@@ -368,6 +372,23 @@ export default function App() {
   const emptyMode = currentScopeSettled
     ? (!isDemoMode && localizedData.items.length === 0 && !q.trim() && !clusterId ? 'first-run' : 'no-results')
     : undefined;
+  const pagination = dataScopeMatches && data.total > 1000 ? (
+    <div className="library-pagination">
+      <p aria-live="polite">{data.items.length} / {data.total} {t('referencesShown')}</p>
+      {loadMoreError && <p role="alert">{t('loadFailed')}</p>}
+      <button type="button" className="secondary" disabled={!currentScopeSettled || loadingMore || !hasMore} onClick={async event => {
+        const trigger = event.currentTarget;
+        const firstAddedId = await loadMore();
+        if (firstAddedId) window.requestAnimationFrame(() => {
+          if (document.activeElement === trigger || document.activeElement === document.body) {
+            const open = document.querySelector<HTMLElement>(`.card-open-hit[data-card-id="${CSS.escape(firstAddedId)}"]`);
+            const target = open?.closest('article')?.querySelector<HTMLElement>('.card-select-action') || open;
+            target?.focus({ preventScroll: true });
+          }
+        });
+      }}>{loadingMore ? t('loading') : loadMoreError ? t('retry') : hasMore ? t('more') : t('allLoaded')}</button>
+    </div>
+  ) : undefined;
   const openNewItemEditor = () => { generationJobRequestRef.current += 1; cancelPendingEdit(); setEditing(undefined); setEditorOpen(true); };
   const openFilters = () => { generationJobRequestRef.current += 1; cancelPendingEdit(); setConfigOpen(false); setFocusConfigProviders(false); setGenerationQueueOpen(false); setFiltersOpen(true); };
   const openConfig = () => { generationJobRequestRef.current += 1; cancelPendingEdit(); setFiltersOpen(false); setFocusConfigProviders(false); setGenerationQueueOpen(false); setConfigOpen(true); };
@@ -396,6 +417,7 @@ export default function App() {
     setGenerationQueueOpen(false);
   };
   const openGenerationFromDetail = (item: ItemDetail, draft?: GenerationDraftContext, jobId?: string) => {
+    if (draft?.promptLanguage) setDetailReturnLanguage({ id: item.id, language: normalizePromptLanguage(draft.promptLanguage) });
     setGenerationDraft(draft);
     generationJobRequestRef.current += 1;
     cancelPendingEdit();
@@ -436,6 +458,7 @@ export default function App() {
     setStandaloneGenerationOpen(true);
   };
   const closeItemDetail = () => {
+    setDetailReturnLanguage(undefined);
     setDetailId(undefined);
     setFocusedGenerationJobId(undefined);
   };
@@ -552,12 +575,14 @@ export default function App() {
     <TopBar t={t} q={q} queryFilterChips={queryFilterChips} updateBadgeLabel={updateBadgeLabel} onQ={setQ} view={view} onView={updateView} onFilters={openFilters} onConfig={openConfig} filtersOpen={filtersOpen} configOpen={configOpen} hasActiveFilter={Boolean(selectedCluster)} modalOpen={blockingModalOpen} />
     <div className={`content-plane${viewTransition ? ` ${viewTransition}` : ''}`} inert={blockingModalOpen} aria-hidden={blockingModalOpen || undefined}>
     {isDemoMode && (
-      <div className="demo-banner" role="status">
-        <strong>{t('onlineReadOnlyDemo')}</strong>
-        <span>{t('runLocallyForPrivateLibrary')}</span>
-        <span>{t('localInstallHighlights')}</span>
-        <a href="https://github.com/EddieTYP/image-prompt-library" target="_blank" rel="noreferrer">{t('viewOnGitHub')}</a>
-      </div>
+      <details className="demo-banner">
+        <summary>{t('onlineReadOnlyDemo')}<span>{t('demoDetails')}</span></summary>
+        <div className="demo-banner-details">
+          <p>{t('runLocallyForPrivateLibrary')}</p>
+          <p>{t('localInstallHighlights')}</p>
+          <a href="https://github.com/EddieTYP/image-prompt-library" target="_blank" rel="noreferrer">{t('viewOnGitHub')}</a>
+        </div>
+      </details>
     )}
     {/* Static-test compatibility marker: <main className="app-main"> */}
     <main className={`app-main ${refreshing ? 'is-refreshing' : ''}${loading && !dataScopeMatches ? ' is-scope-loading' : ''}`} aria-busy={loading}>
@@ -569,8 +594,9 @@ export default function App() {
         </div>
       )}
       {(!error || localizedData.items.length > 0) && (view === 'explore'
-        ? <ExploreView t={t} clusters={localizedClusters} items={localizedData.items} total={localizedData.total} hasActiveSearch={Boolean(parsedSearchQuery.q.trim())} searchQuery={parsedSearchQuery.q} loading={contentLoading} sort={activeSort} onSort={updateSort} onOpenCollection={selectCluster} onOpen={setDetailId} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} />
-        : <CardsView t={t} items={localizedData.items} loading={contentLoading} emptyMode={emptyMode} total={localizedData.total} sort={activeSort} onSort={updateSort} clusterName={localizedClusterName(selectedCluster, uiLanguage)} hasActiveSearch={Boolean(parsedSearchQuery.q.trim())} onClearCluster={clearCluster} onOpen={setDetailId} onFavorite={isDemoMode ? undefined : favorite} onEdit={isDemoMode ? undefined : editSummary} editingItemId={editingItemId} onToggleSelection={selectionMode ? toggleSelectedItem : undefined} selectedIds={selectedItemIds} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} onOpenConfig={openConfig} />)}
+        ? <ExploreView t={t} clusters={localizedClusters} items={localizedData.items} total={localizedData.total} hasActiveSearch={Boolean(parsedSearchQuery.q.trim())} searchQuery={parsedSearchQuery.q} loading={contentLoading} sort={activeSort} onSort={updateSort} onOpenCollection={selectCluster} onOpenLibrary={() => { setClusterId(undefined); updateView('cards'); }} onOpen={setDetailId} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} pagination={pagination} appendVersion={appendVersion} scopeKey={JSON.stringify([clusterId, itemsReloadKey])} />
+        : <CardsView t={t} items={localizedData.items} loading={contentLoading} emptyMode={emptyMode} total={localizedData.total} sort={activeSort} onSort={updateSort} clusterName={localizedClusterName(selectedCluster, uiLanguage)} hasActiveSearch={Boolean(parsedSearchQuery.q.trim())} onClearCluster={clearCluster} onOpen={setDetailId} onFavorite={isDemoMode ? undefined : favorite} onEdit={isDemoMode ? undefined : editSummary} editingItemId={editingItemId} onToggleSelection={selectionMode ? toggleSelectedItem : undefined} selectedIds={selectedItemIds} onCopyPrompt={copyPrompt} onAdd={isDemoMode ? undefined : openNewItemEditor} onOpenConfig={openProviders} onClearSearch={q.trim() || clusterId ? () => { setQ(''); clearCluster(); } : undefined} />)}
+      {view === 'cards' && pagination}
     </main>
     </div>
     {view === 'cards' && selectionMode && !isDemoMode && (
@@ -634,12 +660,12 @@ export default function App() {
         <GenerationQueueDrawer t={t} open={generationQueueOpen} refreshKey={generationQueueRefreshKey} onOpen={openGenerationQueue} onClose={closeGenerationQueue} onOpenJob={openGenerationJob} onOpenProviders={openProviders} />
         <div className="floating-action-rail">
           {view === 'cards' && localizedData.items.length > 0 && <button className="fab select-fab" onClick={() => { setSelectionMode(true); clearSelection(); }}>{t('selectReferences')}</button>}
-          <button className="fab add-fab" onClick={openNewItemEditor}><Plus/> {t('add')}</button>
+          <button className="fab add-fab" onClick={openNewItemEditor}><Plus aria-hidden="true"/> {t('newReference')}</button>
           <button className="fab generate-fab" onClick={openStandaloneGeneration}>{t('generate')}</button>
         </div>
       </div>
     )}
-    {!standaloneGenerationOpen && detailId && <ItemDetailModal key={detailId} t={t} id={detailId} uiLanguage={uiLanguage} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} onClose={closeItemDetail} onCopyPrompt={showCopyToast} onChanged={saved} onDelete={isDemoMode ? undefined : deleteDetail} onOpenItem={setDetailId} onGenerate={openGenerationFromDetail} onGenerationHistory={(item, jobId) => openGenerationFromDetail(item, undefined, jobId)} onEdit={(item) => { closeItemDetail(); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} showManagementActions={showManagementActions} canGenerate={!isDemoMode} />}
+    {!standaloneGenerationOpen && detailId && <ItemDetailModal key={detailId} t={t} id={detailId} uiLanguage={uiLanguage} preferredLanguage={detailReturnLanguage?.id === detailId ? detailReturnLanguage.language : preferredLanguage} clusters={localizedClusters} tags={tags} onClose={closeItemDetail} onCopyPrompt={showCopyToast} onChanged={saved} onDelete={isDemoMode ? undefined : deleteDetail} onOpenItem={setDetailId} onGenerate={openGenerationFromDetail} onGenerationHistory={(item, jobId) => openGenerationFromDetail(item, undefined, jobId)} onEdit={(item) => { closeItemDetail(); setEditing(item); setEditorOpen(true); }} showMutations={!isDemoMode} showManagementActions={showManagementActions} canGenerate={!isDemoMode} />}
     {toast && <div className={`toast copy-toast elegant-toast ${toast.tone}${toastClosing ? ' is-closing' : ''}`} role="status"><span className="toast-icon">{toast.tone === 'success' ? <Check size={16} /> : <XCircle size={16} />}</span><span className="toast-title">{toast.title}</span></div>}
     {editorOpen && <ItemEditorModal t={t} item={editing} clusters={localizedClusters} tags={tags} defaultAiProvider={defaultAiProvider} onClose={() => setEditorOpen(false)} onSaved={saved} onDeleted={deleted} allowDelete={showManagementActions} />}
     {standaloneGenerationOpen && <GenerationPanel item={generationSourceItem} initialDraft={generationDraft} t={t} preferredLanguage={preferredLanguage} clusters={localizedClusters} tags={tags} defaultAiProvider={defaultAiProvider} promptVariablesEnabled={Boolean(appConfig?.features?.camelot?.percival)} initialJobId={focusedGenerationJobId} onClose={closeStandaloneGeneration} onOpenProviders={openProviders} onQueueChanged={() => setGenerationQueueRefreshKey(key => key + 1)} onAccepted={(item, message) => { saved(); setToast({ title: message || t('saveReference'), tone: 'success' }); if (item?.id) setDetailId(item.id); }} />}

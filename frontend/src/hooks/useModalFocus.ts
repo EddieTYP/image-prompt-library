@@ -2,10 +2,10 @@ import { useEffect, useRef, type KeyboardEvent } from 'react';
 
 const FOCUSABLE_SELECTOR = [
   'a[href]',
-  'button:not([disabled])',
-  'input:not([disabled])',
-  'select:not([disabled])',
-  'textarea:not([disabled])',
+  'button:not(:disabled)',
+  'input:not(:disabled)',
+  'select:not(:disabled)',
+  'textarea:not(:disabled)',
   '[tabindex]:not([tabindex="-1"])',
 ].join(',');
 
@@ -14,7 +14,7 @@ export function isAvailableFocusTarget(element: HTMLElement | null | undefined) 
     !element?.isConnected
     || element === document.body
     || element === document.documentElement
-    || element.hasAttribute('disabled')
+    || element.matches(':disabled')
     || element.getAttribute('aria-disabled') === 'true'
     || element.closest('[inert], [aria-hidden="true"]')
   ) return false;
@@ -124,7 +124,7 @@ export function useModalFocus<T extends HTMLElement>(
     const container = containerRef.current;
     if (!container) return;
     const focusable = Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
-      .filter(element => !element.hasAttribute('disabled') && (element.getClientRects().length > 0 || element === document.activeElement));
+      .filter(element => !element.matches(':disabled') && (element.getClientRects().length > 0 || element === document.activeElement));
     if (focusable.length === 0) {
       event.preventDefault();
       container.focus({ preventScroll: true });
